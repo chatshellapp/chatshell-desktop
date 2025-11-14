@@ -4,6 +4,7 @@ import * as React from "react"
 import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, ChevronDown, Sparkles, Database, Plug } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
+import { MessageListItem } from "@/components/message-list-item"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -68,6 +69,7 @@ const data = {
       lastMessage: "Let's finalize the architecture design",
       timestamp: "2 min ago",
       unread: 3,
+      avatars: [gptAvatar, claudeAvatar],
     },
     {
       id: "2",
@@ -75,6 +77,7 @@ const data = {
       lastMessage: "LGTM, approved the PR",
       timestamp: "1 hour ago",
       unread: 0,
+      avatars: [geminiAvatar],
     },
     {
       id: "3",
@@ -82,6 +85,7 @@ const data = {
       lastMessage: "Found the root cause of the issue",
       timestamp: "3 hours ago",
       unread: 1,
+      avatars: [claudeAvatar, gptAvatar, geminiAvatar],
     },
     {
       id: "4",
@@ -89,6 +93,7 @@ const data = {
       lastMessage: "Here's the implementation roadmap",
       timestamp: "Yesterday",
       unread: 0,
+      avatars: [llamaAvatar, claudeAvatar, gptAvatar, geminiAvatar],
     },
   ],
   bots: [
@@ -345,34 +350,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Note: I'm using state to show active item.
   // IRL you should use the url/router.
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
+  const [selectedConversation, setSelectedConversation] = React.useState<string | null>("1")
   const { setOpen } = useSidebar()
 
   const renderContent = () => {
     switch (activeItem.title) {
       case "Conversations":
         return (
-          <>
+          <div className="space-y-1 p-2">
             {data.conversations.map((conversation) => (
-              <a
-                href="#"
+              <MessageListItem
                 key={conversation.id}
-                className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
-              >
-                <div className="flex w-full items-center gap-2">
-                  <span className="font-medium">{conversation.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{conversation.timestamp}</span>
-                </div>
-                <span className="text-muted-foreground line-clamp-1">
-                  {conversation.lastMessage}
-                </span>
-                {conversation.unread > 0 && (
-                  <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
-                    {conversation.unread}
-                  </span>
-                )}
-              </a>
+                avatars={conversation.avatars}
+                summary={conversation.name}
+                timestamp={conversation.timestamp}
+                lastMessage={conversation.lastMessage}
+                isActive={selectedConversation === conversation.id}
+                onClick={() => setSelectedConversation(conversation.id)}
+              />
             ))}
-          </>
+          </div>
         )
       case "Contacts":
         return (
