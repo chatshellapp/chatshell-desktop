@@ -43,7 +43,7 @@ const data = {
       isActive: true,
     },
     {
-      title: "Contact",
+      title: "Contacts",
       url: "#",
       icon: Users,
       isActive: false,
@@ -374,7 +374,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             ))}
           </>
         )
-      case "Contact":
+      case "Contacts":
         return (
           <>
             <Tabs defaultValue="models" className="w-full p-2">
