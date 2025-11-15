@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Database, Plug, BookOpen } from "lucide-react"
+import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Plug, BookOpen } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import { MessageListItem } from "@/components/message-list-item"
@@ -9,6 +9,7 @@ import { ModelList, type Model, type ModelVendor } from "@/components/model-list
 import { AssistantList, type Assistant, type AssistantGroup } from "@/components/assistant-list"
 import { PeopleList, type Person, type PersonGroup } from "@/components/people-list"
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
+import { SettingsDialog } from "@/components/settings-dialog"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -599,6 +600,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(data.peopleGroups)
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
 
   const handleModelClick = (model: Model) => {
@@ -905,8 +907,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         hidden: false,
                       }}
                       onClick={() => {
-                        setActiveItem(item)
-                        setOpen(true)
+                        if (item.title === "Settings") {
+                          setSettingsDialogOpen(true)
+                        } else {
+                          setActiveItem(item)
+                          setOpen(true)
+                        }
                       }}
                       isActive={activeItem?.title === item.title}
                       className="px-2.5 md:px-2"
@@ -947,6 +953,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <ProviderSettingsDialog
         open={providerDialogOpen}
         onOpenChange={setProviderDialogOpen}
+      />
+      
+      <SettingsDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
       />
     </Sidebar>
   )
