@@ -1,5 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar"
-import { InputGroupDemo } from "@/components/input-group"
+import { ChatInput } from "@/components/chat-input"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -146,7 +146,7 @@ export default function Page() {
           ))}
         </div>
         <div className="bg-background border-t p-4 flex justify-center sticky bottom-0 z-10">
-          <InputGroupDemo 
+          <ChatInput 
             modelVendors={aiModels}
             assistantGroups={assistantGroups}
           />

@@ -1,10 +1,11 @@
-import { ArrowUpIcon, Paperclip, File, Image, MessageSquare, Database, Server, Sparkles } from "lucide-react"
+import { ArrowUpIcon, Paperclip, File, Image, MessageSquare, Database, Server, Sparkles, BookOpen, Plug, Globe } from "lucide-react"
 import { useState, useMemo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -30,7 +31,7 @@ interface AssistantOption extends Assistant {
 
 type SelectionOption = ModelOption | AssistantOption
 
-interface InputGroupDemoProps {
+interface ChatInputProps {
   modelVendors?: ModelVendor[]
   assistantGroups?: AssistantGroup[]
 }
@@ -83,7 +84,7 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
   )
 }
 
-export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: InputGroupDemoProps) {
+export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInputProps) {
   // Collect all starred models from all vendors
   const starredModels = useMemo(() => {
     const models: ModelOption[] = []
@@ -157,6 +158,10 @@ export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: Inpu
     console.log("MCP Server selected")
   }
 
+  const handleWebPageSelect = () => {
+    console.log("Web Page selected")
+  }
+
   const renderAvatar = (option: SelectionOption) => {
     if (option.type === "model") {
       return (
@@ -210,9 +215,9 @@ export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: Inpu
               align="start"
               className="[--radius:0.95rem]"
             >
-              <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
-                <MessageSquare className="h-4 w-4" />
-                <span>Prompt</span>
+              <DropdownMenuItem onClick={handleWebPageSelect} className="gap-2">
+                <Globe className="h-4 w-4" />
+                <span>Web Page</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleFileSelect} className="gap-2">
                 <File className="h-4 w-4" />
@@ -222,13 +227,18 @@ export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: Inpu
                 <Image className="h-4 w-4" />
                 <span>Image</span>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
+                <Sparkles className="h-4 w-4" />
+                <span>Prompt</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleKnowledgeBaseSelect} className="gap-2">
-                <Database className="h-4 w-4" />
-                <span>Knowledge Base</span>
+                <BookOpen className="h-4 w-4" />
+                <span>Knowledge</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleMCPServerSelect} className="gap-2">
-                <Server className="h-4 w-4" />
-                <span>MCP Server</span>
+                <Plug className="h-4 w-4" />
+                <span>Tools</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -345,3 +355,4 @@ export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: Inpu
     </div>
   )
 }
+
