@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Database, Plug } from "lucide-react"
+import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Database, Plug, BookOpen } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import { MessageListItem } from "@/components/message-list-item"
@@ -128,7 +128,8 @@ const data = {
       assistants: [
         {
           id: "assistant-1",
-          name: "Code Review Assistant",
+          name: "Jacob",
+          persona: "Code Review Assistant",
           avatarBg: "#3b82f6",
           avatarText: "💻",
           capabilities: {
@@ -142,7 +143,8 @@ const data = {
         },
         {
           id: "assistant-2",
-          name: "Documentation Writer",
+          name: "Emily",
+          persona: "Documentation Writer",
           avatarBg: "#10b981",
           avatarText: "📝",
           capabilities: {
@@ -156,7 +158,8 @@ const data = {
         },
         {
           id: "assistant-3",
-          name: "Bug Tracker",
+          name: "Michael",
+          persona: "Bug Tracker",
           avatarBg: "#ef4444",
           avatarText: "🐛",
           capabilities: {
@@ -177,7 +180,8 @@ const data = {
       assistants: [
         {
           id: "assistant-4",
-          name: "Research Helper",
+          name: "Madison",
+          persona: "Research Helper",
           avatarBg: "#8b5cf6",
           avatarText: "🔍",
           capabilities: {
@@ -191,7 +195,8 @@ const data = {
         },
         {
           id: "assistant-5",
-          name: "Writing Coach",
+          name: "Matthew",
+          persona: "Writing Coach",
           avatarBg: "#f59e0b",
           avatarText: "✍️",
           capabilities: {
@@ -205,7 +210,8 @@ const data = {
         },
         {
           id: "assistant-6",
-          name: "Language Tutor",
+          name: "Hannah",
+          persona: "Language Tutor",
           avatarBg: "#ec4899",
           avatarText: "🌐",
           capabilities: {
@@ -226,7 +232,8 @@ const data = {
       assistants: [
         {
           id: "assistant-7",
-          name: "Math Tutor",
+          name: "Joshua",
+          persona: "Math Tutor",
           avatarBg: "#14b8a6",
           avatarText: "🔢",
           capabilities: {
@@ -240,7 +247,8 @@ const data = {
         },
         {
           id: "assistant-8",
-          name: "Science Explainer",
+          name: "Ashley",
+          persona: "Science Explainer",
           avatarBg: "#06b6d4",
           avatarText: "🔬",
           capabilities: {
@@ -266,14 +274,14 @@ const data = {
           name: "Sarah Johnson",
           email: "sarah.johnson@example.com",
           phone: "+1 (555) 123-4567",
-          role: "Product Manager",
+          bio: "Passionate about building products that users love",
           isStarred: true,
         },
         {
           id: "person-2",
           name: "Michael Chen",
           email: "michael.chen@example.com",
-          role: "Lead Developer",
+          bio: "Coffee enthusiast and open source contributor",
           isStarred: false,
         },
         {
@@ -281,7 +289,7 @@ const data = {
           name: "Emma Davis",
           email: "emma.davis@example.com",
           phone: "+1 (555) 234-5678",
-          role: "UX Designer",
+          bio: "Creating delightful user experiences",
           isStarred: true,
         },
       ],
@@ -295,6 +303,7 @@ const data = {
           id: "person-4",
           name: "Alex Martinez",
           email: "alex.martinez@example.com",
+          bio: "Adventure seeker and photography lover",
           isStarred: false,
         },
         {
@@ -302,6 +311,7 @@ const data = {
           name: "Jessica Brown",
           email: "jessica.brown@example.com",
           phone: "+1 (555) 345-6789",
+          bio: "Bookworm and aspiring novelist",
           isStarred: false,
         },
       ],
@@ -316,14 +326,14 @@ const data = {
           name: "David Wilson",
           email: "david.wilson@clientco.com",
           phone: "+1 (555) 456-7890",
-          role: "CEO at ClientCo",
+          bio: "Building innovative solutions for enterprise clients",
           isStarred: false,
         },
         {
           id: "person-7",
           name: "Lisa Anderson",
           email: "lisa.anderson@acmecorp.com",
-          role: "Director at AcmeCorp",
+          bio: "Focused on driving digital transformation",
           isStarred: false,
         },
       ],
@@ -649,6 +659,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your group settings logic here
   }
 
+  const handleAddAssistant = () => {
+    console.log("Add assistant clicked")
+    // Add your add assistant logic here
+  }
+
   const handlePersonClick = (person: Person) => {
     console.log("Person selected:", person)
     setSelectedPersonId(person.id)
@@ -733,6 +748,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onAssistantSettings={handleAssistantSettings}
                   onAssistantStarToggle={handleAssistantStarToggle}
                   onGroupSettings={handleGroupSettings}
+                  onAddAssistant={handleAddAssistant}
                 />
               </TabsContent>
               <TabsContent value="people" className="mt-2">
@@ -751,26 +767,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         )
       case "Library":
         return (
-          <Tabs defaultValue="prompts" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 m-2">
-              <TabsTrigger value="prompts" className="text-xs">
-                <Sparkles className="size-3" />
+          <Tabs defaultValue="prompts" className="w-full p-2">
+            <TabsList className="w-full grid grid-cols-3 h-9">
+              <TabsTrigger value="prompts" className="text-xs gap-1 px-2">
+                <Sparkles className="size-3.5" />
                 Prompts
               </TabsTrigger>
-              <TabsTrigger value="files" className="text-xs">
-                <File className="size-3" />
-                Files
+              <TabsTrigger value="knowledge" className="text-xs gap-1 px-2">
+                <BookOpen className="size-3.5" />
+                Knowledge
               </TabsTrigger>
-              <TabsTrigger value="bases" className="text-xs">
-                <Database className="size-3" />
-                Bases
-              </TabsTrigger>
-              <TabsTrigger value="mcp" className="text-xs">
-                <Plug className="size-3" />
-                MCP
+              <TabsTrigger value="tools" className="text-xs gap-1 px-2">
+                <Plug className="size-3.5" />
+                Tools
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="prompts" className="m-0">
+            <TabsContent value="prompts" className="mt-2">
               {data.prompts.map((prompt) => (
                 <a
                   href="#"
@@ -791,7 +803,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </a>
               ))}
             </TabsContent>
-            <TabsContent value="files" className="m-0">
+            <TabsContent value="knowledge" className="mt-2">
               {data.files.map((file) => (
                 <a
                   href="#"
@@ -811,28 +823,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </a>
               ))}
             </TabsContent>
-            <TabsContent value="bases" className="m-0">
-              {data.knowledgeBases.map((base) => (
-                <a
-                  href="#"
-                  key={base.id}
-                  className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <Database className="size-4 text-muted-foreground" />
-                    <span className="font-medium">{base.name}</span>
-                  </div>
-                  <span className="text-muted-foreground text-xs line-clamp-2">
-                    {base.description}
-                  </span>
-                  <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-                    <span>{base.documents} documents</span>
-                    <span className="ml-auto">Updated {base.lastUpdated}</span>
-                  </div>
-                </a>
-              ))}
-            </TabsContent>
-            <TabsContent value="mcp" className="m-0">
+            <TabsContent value="tools" className="mt-2">
               {data.mcpServers.map((server) => (
                 <a
                   href="#"

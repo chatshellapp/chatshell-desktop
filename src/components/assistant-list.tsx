@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
+import { ChevronDown, MoreVertical, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AssistantListItem, AssistantCapabilities } from "@/components/assistant-list-item"
 
@@ -21,9 +21,13 @@ export interface Assistant {
    */
   id: string
   /**
-   * Display name of the assistant
+   * Display name of the assistant (nickname)
    */
   name: string
+  /**
+   * Persona/role description of the assistant
+   */
+  persona?: string
   /**
    * URL or path to the assistant logo image
    */
@@ -91,6 +95,10 @@ interface AssistantListProps {
    */
   onGroupSettings?: (group: AssistantGroup) => void
   /**
+   * Click handler for add assistant button
+   */
+  onAddAssistant?: () => void
+  /**
    * Optional className for customization
    */
   className?: string
@@ -103,6 +111,7 @@ export function AssistantList({
   onAssistantSettings,
   onAssistantStarToggle,
   onGroupSettings,
+  onAddAssistant,
   className,
 }: AssistantListProps) {
   // Collect all starred assistants from all groups
@@ -158,6 +167,21 @@ export function AssistantList({
           ignoreGroupDefault={hasStarredAssistants}
         />
       ))}
+
+      {/* Add Assistant button */}
+      {onAddAssistant && (
+        <div className="px-1 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start gap-2 h-9"
+            onClick={onAddAssistant}
+          >
+            <Plus className="size-4" />
+            Add Assistant
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -260,6 +284,7 @@ function AssistantGroupComponent({
             avatarBg={assistant.avatarBg}
             avatarText={assistant.avatarText}
             name={assistant.name}
+            persona={assistant.persona}
             capabilities={assistant.capabilities}
             isStarred={assistant.isStarred}
             isActive={selectedAssistantId === assistant.id}
