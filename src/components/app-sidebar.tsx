@@ -7,6 +7,8 @@ import { NavUser } from "@/components/nav-user"
 import { MessageListItem } from "@/components/message-list-item"
 import { ModelList, type Model, type ModelVendor } from "@/components/model-list"
 import { AssistantList, type Assistant, type AssistantGroup } from "@/components/assistant-list"
+import { PeopleList, type Person, type PersonGroup } from "@/components/people-list"
+import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -248,6 +250,80 @@ const data = {
             hasKnowledgeBase: true,
             hasMcpServer: false,
           },
+          isStarred: false,
+        },
+      ],
+    },
+  ],
+  peopleGroups: [
+    {
+      id: "team",
+      name: "Team",
+      defaultOpen: true,
+      people: [
+        {
+          id: "person-1",
+          name: "Sarah Johnson",
+          email: "sarah.johnson@example.com",
+          phone: "+1 (555) 123-4567",
+          role: "Product Manager",
+          isStarred: true,
+        },
+        {
+          id: "person-2",
+          name: "Michael Chen",
+          email: "michael.chen@example.com",
+          role: "Lead Developer",
+          isStarred: false,
+        },
+        {
+          id: "person-3",
+          name: "Emma Davis",
+          email: "emma.davis@example.com",
+          phone: "+1 (555) 234-5678",
+          role: "UX Designer",
+          isStarred: true,
+        },
+      ],
+    },
+    {
+      id: "friends",
+      name: "Friends",
+      defaultOpen: false,
+      people: [
+        {
+          id: "person-4",
+          name: "Alex Martinez",
+          email: "alex.martinez@example.com",
+          isStarred: false,
+        },
+        {
+          id: "person-5",
+          name: "Jessica Brown",
+          email: "jessica.brown@example.com",
+          phone: "+1 (555) 345-6789",
+          isStarred: false,
+        },
+      ],
+    },
+    {
+      id: "clients",
+      name: "Clients",
+      defaultOpen: false,
+      people: [
+        {
+          id: "person-6",
+          name: "David Wilson",
+          email: "david.wilson@clientco.com",
+          phone: "+1 (555) 456-7890",
+          role: "CEO at ClientCo",
+          isStarred: false,
+        },
+        {
+          id: "person-7",
+          name: "Lisa Anderson",
+          email: "lisa.anderson@acmecorp.com",
+          role: "Director at AcmeCorp",
           isStarred: false,
         },
       ],
@@ -510,6 +586,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [modelVendors, setModelVendors] = React.useState<ModelVendor[]>(data.aiModels)
   const [selectedAssistantId, setSelectedAssistantId] = React.useState<string | null>("assistant-1")
   const [assistantGroups, setAssistantGroups] = React.useState<AssistantGroup[]>(data.assistantGroups)
+  const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
+  const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(data.peopleGroups)
+  const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
 
   const handleModelClick = (model: Model) => {
@@ -539,6 +618,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your vendor settings logic here
   }
 
+  const handleAddProvider = () => {
+    setProviderDialogOpen(true)
+  }
+
   const handleAssistantClick = (assistant: Assistant) => {
     console.log("Assistant selected:", assistant)
     setSelectedAssistantId(assistant.id)
@@ -566,6 +649,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your group settings logic here
   }
 
+  const handlePersonClick = (person: Person) => {
+    console.log("Person selected:", person)
+    setSelectedPersonId(person.id)
+  }
+
+  const handlePersonSettings = (person: Person) => {
+    console.log("Person settings:", person)
+    // Add your person settings logic here
+  }
+
+  const handlePersonStarToggle = (person: Person) => {
+    console.log("Toggle star for person:", person)
+    setPeopleGroups(prevGroups =>
+      prevGroups.map(group => ({
+        ...group,
+        people: group.people.map(p =>
+          p.id === person.id ? { ...p, isStarred: !p.isStarred } : p
+        ),
+      }))
+    )
+  }
+
+  const handlePersonGroupSettings = (group: PersonGroup) => {
+    console.log("Person group settings:", group)
+    // Add your person group settings logic here
+  }
+
+  const handleAddPerson = () => {
+    console.log("Add person clicked")
+    // Add your add person logic here
+  }
+
   const renderContent = () => {
     switch (activeItem.title) {
       case "Conversations":
@@ -588,9 +703,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         return (
           <>
             <Tabs defaultValue="models" className="w-full p-2">
-              <TabsList className="w-full grid grid-cols-2">
-                <TabsTrigger value="models"><Bot className="size-4" />Models</TabsTrigger>
-                <TabsTrigger value="assistants"><Drama className="size-4" />Assistants</TabsTrigger>
+              <TabsList className="w-full grid grid-cols-3 h-9">
+                <TabsTrigger value="models" className="text-xs gap-1 px-2">
+                  <Bot className="size-3.5" />Models
+                </TabsTrigger>
+                <TabsTrigger value="assistants" className="text-xs gap-1 px-2">
+                  <Drama className="size-3.5" />Assistants
+                </TabsTrigger>
+                <TabsTrigger value="people" className="text-xs gap-1 px-2">
+                  <Users className="size-3.5" />People
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="models" className="mt-2">
                 <ModelList
@@ -600,6 +722,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onModelSettings={handleModelSettings}
                   onModelStarToggle={handleModelStarToggle}
                   onVendorSettings={handleVendorSettings}
+                  onAddProvider={handleAddProvider}
                 />
               </TabsContent>
               <TabsContent value="assistants" className="mt-2">
@@ -610,6 +733,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onAssistantSettings={handleAssistantSettings}
                   onAssistantStarToggle={handleAssistantStarToggle}
                   onGroupSettings={handleGroupSettings}
+                />
+              </TabsContent>
+              <TabsContent value="people" className="mt-2">
+                <PeopleList
+                  groups={peopleGroups}
+                  selectedPersonId={selectedPersonId || undefined}
+                  onPersonClick={handlePersonClick}
+                  onPersonSettings={handlePersonSettings}
+                  onPersonStarToggle={handlePersonStarToggle}
+                  onGroupSettings={handlePersonGroupSettings}
+                  onAddPerson={handleAddPerson}
                 />
               </TabsContent>
             </Tabs>
@@ -818,6 +952,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         </SidebarContent>
       </Sidebar>
+      
+      <ProviderSettingsDialog
+        open={providerDialogOpen}
+        onOpenChange={setProviderDialogOpen}
+      />
     </Sidebar>
   )
 }
