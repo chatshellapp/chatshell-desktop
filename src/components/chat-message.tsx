@@ -20,6 +20,7 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
 import gptAvatar from "@/assets/models/gpt.png"
+import { Spinner } from "@/components/ui/spinner"
 
 interface ChatMessageProps {
   role: "user" | "assistant"
@@ -29,6 +30,7 @@ interface ChatMessageProps {
   modelAvatar?: string
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
+  isLoading?: boolean
   onCopy?: () => void
   onResend?: () => void
   onTranslate?: () => void
@@ -45,6 +47,7 @@ export function ChatMessage({
   modelAvatar = gptAvatar,
   userMessageAlign = "right",
   userMessageShowBackground = true,
+  isLoading = false,
   onCopy,
   onResend,
   onTranslate,
@@ -157,68 +160,74 @@ export function ChatMessage({
         )}
       </div>
       <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none mb-2">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          components={{
-            code(props) {
-              const { node, inline, className, children, ...rest } = props as any
-              return (
-                <code
-                  className={`${className || ''} ${
-                    inline
-                      ? 'px-1.5 py-0.5 rounded-md bg-muted text-sm'
-                      : 'block p-3 rounded-md bg-muted overflow-x-auto'
-                  }`}
-                  {...rest}
-                >
-                  {children}
-                </code>
-              )
-            },
-            pre({ children }) {
-              return <pre className="my-2">{children}</pre>
-            },
-            p({ children }) {
-              return <p className="mb-2 last:mb-0">{children}</p>
-            },
-            ul({ children }) {
-              return <ul className="list-disc list-inside mb-2">{children}</ul>
-            },
-            ol({ children }) {
-              return <ol className="list-decimal list-inside mb-2">{children}</ol>
-            },
-            li({ children }) {
-              return <li className="mb-1">{children}</li>
-            },
-            blockquote({ children }) {
-              return <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">{children}</blockquote>
-            },
-            h1({ children }) {
-              return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
-            },
-            h2({ children }) {
-              return <h2 className="text-xl font-bold mb-2 mt-3">{children}</h2>
-            },
-            h3({ children }) {
-              return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
-            },
-            table({ children }) {
-              return <table className="border-collapse border border-border my-2">{children}</table>
-            },
-            thead({ children }) {
-              return <thead className="bg-muted">{children}</thead>
-            },
-            th({ children }) {
-              return <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>
-            },
-            td({ children }) {
-              return <td className="border border-border px-3 py-2">{children}</td>
-            },
-          }}
-        >
-          {content}
-        </ReactMarkdown>
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-2">
+            <Spinner className="size-4" />
+          </div>
+        ) : (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+            components={{
+              code(props) {
+                const { node, inline, className, children, ...rest } = props as any
+                return (
+                  <code
+                    className={`${className || ''} ${
+                      inline
+                        ? 'px-1.5 py-0.5 rounded-md bg-muted text-sm'
+                        : 'block p-3 rounded-md bg-muted overflow-x-auto'
+                    }`}
+                    {...rest}
+                  >
+                    {children}
+                  </code>
+                )
+              },
+              pre({ children }) {
+                return <pre className="my-2">{children}</pre>
+              },
+              p({ children }) {
+                return <p className="mb-2 last:mb-0">{children}</p>
+              },
+              ul({ children }) {
+                return <ul className="list-disc list-inside mb-2">{children}</ul>
+              },
+              ol({ children }) {
+                return <ol className="list-decimal list-inside mb-2">{children}</ol>
+              },
+              li({ children }) {
+                return <li className="mb-1">{children}</li>
+              },
+              blockquote({ children }) {
+                return <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">{children}</blockquote>
+              },
+              h1({ children }) {
+                return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
+              },
+              h2({ children }) {
+                return <h2 className="text-xl font-bold mb-2 mt-3">{children}</h2>
+              },
+              h3({ children }) {
+                return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
+              },
+              table({ children }) {
+                return <table className="border-collapse border border-border my-2">{children}</table>
+              },
+              thead({ children }) {
+                return <thead className="bg-muted">{children}</thead>
+              },
+              th({ children }) {
+                return <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>
+              },
+              td({ children }) {
+                return <td className="border border-border px-3 py-2">{children}</td>
+              },
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        )}
       </div>
       <TooltipProvider delayDuration={300}>
         <div className={`flex gap-1 transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>

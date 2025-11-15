@@ -10,6 +10,7 @@ interface MessageStore {
   streamingContent: string;
   scrapingStatus: 'idle' | 'scraping' | 'complete' | 'error';
   error: string | null;
+  isWaitingForAI: boolean;
 
   loadMessages: (topicId: string) => Promise<void>;
   sendMessage: (
@@ -27,6 +28,7 @@ interface MessageStore {
   setIsStreaming: (isStreaming: boolean) => void;
   setScrapingStatus: (status: 'idle' | 'scraping' | 'complete' | 'error') => void;
   appendStreamingChunk: (chunk: string) => void;
+  setIsWaitingForAI: (isWaiting: boolean) => void;
 }
 
 export const useMessageStore = create<MessageStore>((set, get) => ({
@@ -37,6 +39,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   streamingContent: '',
   scrapingStatus: 'idle',
   error: null,
+  isWaitingForAI: false,
 
   loadMessages: async (topicId: string) => {
     set({ isLoading: true, error: null });
@@ -58,7 +61,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     baseUrl?: string,
     includeHistory?: boolean
   ) => {
-    set({ isSending: true, error: null, streamingContent: '', isStreaming: true });
+    set({ isSending: true, error: null, streamingContent: '', isStreaming: true, isWaitingForAI: true });
     try {
       console.log('[messageStore] Invoking send_message command with params:', {
         topicId,
@@ -101,7 +104,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         errorKeys: error ? Object.keys(error) : 'null'
       });
       
-      set({ error: String(error), isSending: false, isStreaming: false });
+      set({ error: String(error), isSending: false, isStreaming: false, isWaitingForAI: false });
       throw error;
     }
   },
@@ -120,6 +123,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   addMessage: (message: Message) => {
     set((state) => ({
       messages: [...state.messages, message],
+      isWaitingForAI: false,
     }));
   },
 
@@ -138,7 +142,12 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   appendStreamingChunk: (chunk: string) => {
     set((state) => ({
       streamingContent: state.streamingContent + chunk,
+      isWaitingForAI: false,
     }));
+  },
+
+  setIsWaitingForAI: (isWaiting: boolean) => {
+    set({ isWaitingForAI: isWaiting });
   },
 }));
 
