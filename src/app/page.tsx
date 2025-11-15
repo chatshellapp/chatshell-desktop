@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ChatMessage } from "@/components/chat-message"
 import gptAvatar from "@/assets/models/gpt.png"
+import { aiModels, assistantGroups } from "@/lib/data"
 
 // Global chat message configuration
 const CHAT_CONFIG = {
@@ -145,7 +146,10 @@ export default function Page() {
           ))}
         </div>
         <div className="bg-background border-t p-4 flex justify-center sticky bottom-0 z-10">
-          <InputGroupDemo />
+          <InputGroupDemo 
+            modelVendors={aiModels}
+            assistantGroups={assistantGroups}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>

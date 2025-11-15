@@ -1,5 +1,5 @@
-import { ArrowUpIcon, Paperclip, File, Image, MessageSquare, Database, Server } from "lucide-react"
-import { useState } from "react"
+import { ArrowUpIcon, Paperclip, File, Image, MessageSquare, Database, Server, Sparkles } from "lucide-react"
+import { useState, useMemo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -11,30 +11,131 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Separator } from "@/components/ui/separator"
-import gptAvatar from "@/assets/models/gpt.png"
-import claudeAvatar from "@/assets/models/claude.png"
-import geminiAvatar from "@/assets/models/gemini.png"
-import llamaAvatar from "@/assets/models/llama.png"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
+import type { Model, ModelVendor } from "@/components/model-list"
+import type { Assistant, AssistantGroup } from "@/components/assistant-list"
 
-interface ModelOption {
-  id: string
-  name: string
-  avatar: string
+interface ModelOption extends Model {
+  type: "model"
+  vendorName?: string
 }
 
-const modelOptions: ModelOption[] = [
-  { id: "gpt", name: "GPT-4.1 · OpenRouter", avatar: gptAvatar },
-  { id: "claude", name: "Claude 3.5 Sonnet", avatar: claudeAvatar },
-  { id: "gemini", name: "Gemini 2.5 Pro", avatar: geminiAvatar },
-  { id: "llama", name: "Llama 3.3 70B", avatar: llamaAvatar },
-]
+interface AssistantOption extends Assistant {
+  type: "assistant"
+}
 
-export function InputGroupDemo() {
-  const [selectedModel, setSelectedModel] = useState<ModelOption>(modelOptions[0])
+type SelectionOption = ModelOption | AssistantOption
+
+interface InputGroupDemoProps {
+  modelVendors?: ModelVendor[]
+  assistantGroups?: AssistantGroup[]
+}
+
+// Circle progress component
+interface CircleProgressProps {
+  percentage: number
+  size?: number
+}
+
+function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
+  const strokeWidth = 2.5
+  const radius = (size - strokeWidth * 2) / 2
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (percentage / 100) * circumference
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      className="transform -rotate-90"
+    >
+      {/* Background circle */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        className="text-muted-foreground/20"
+      />
+      {/* Progress circle */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        className={cn(
+          "transition-all duration-300 ease-out",
+          percentage < 70 ? "text-green-500" : percentage < 90 ? "text-yellow-500" : "text-red-500"
+        )}
+      />
+    </svg>
+  )
+}
+
+export function InputGroupDemo({ modelVendors = [], assistantGroups = [] }: InputGroupDemoProps) {
+  // Collect all starred models from all vendors
+  const starredModels = useMemo(() => {
+    const models: ModelOption[] = []
+    modelVendors.forEach((vendor) => {
+      vendor.models.forEach((model) => {
+        if (model.isStarred) {
+          models.push({ ...model, type: "model", vendorName: vendor.name })
+        }
+      })
+    })
+    return models
+  }, [modelVendors])
+
+  // Collect all starred assistants from all groups
+  const starredAssistants = useMemo(() => {
+    const assistants: AssistantOption[] = []
+    assistantGroups.forEach((group) => {
+      group.assistants.forEach((assistant) => {
+        if (assistant.isStarred) {
+          assistants.push({ ...assistant, type: "assistant" })
+        }
+      })
+    })
+    return assistants
+  }, [assistantGroups])
+
+  // Initialize with first starred model or first starred assistant, or null
+  const [selectedOption, setSelectedOption] = useState<SelectionOption | null>(() => {
+    const models: ModelOption[] = []
+    modelVendors.forEach((vendor) => {
+      vendor.models.forEach((model) => {
+        if (model.isStarred) {
+          models.push({ ...model, type: "model", vendorName: vendor.name })
+        }
+      })
+    })
+    
+    const assistants: AssistantOption[] = []
+    assistantGroups.forEach((group) => {
+      group.assistants.forEach((assistant) => {
+        if (assistant.isStarred) {
+          assistants.push({ ...assistant, type: "assistant" })
+        }
+      })
+    })
+    
+    return models[0] || assistants[0] || null
+  })
+  
+  const [activeTab, setActiveTab] = useState<"models" | "assistants">(
+    starredModels.length > 0 ? "models" : "assistants"
+  )
 
   const handlePromptSelect = () => {
     console.log("Prompt selected")
@@ -54,6 +155,39 @@ export function InputGroupDemo() {
 
   const handleMCPServerSelect = () => {
     console.log("MCP Server selected")
+  }
+
+  const renderAvatar = (option: SelectionOption) => {
+    if (option.type === "model") {
+      return (
+        <Avatar className="h-4 w-4">
+          <AvatarImage src={option.logo} />
+          <AvatarFallback className="text-[10px]">
+            {option.name.charAt(0)}
+          </AvatarFallback>
+        </Avatar>
+      )
+    } else {
+      // Determine if avatarBg is a hex color or a Tailwind class
+      const isHexColor = option.avatarBg?.startsWith("#")
+      const avatarStyle = isHexColor && option.avatarBg ? { backgroundColor: option.avatarBg } : undefined
+      const avatarClassName = !isHexColor && option.avatarBg ? option.avatarBg : undefined
+
+      return (
+        <Avatar className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
+          {option.logo ? (
+            <AvatarImage src={option.logo} alt={option.name} />
+          ) : (
+            <AvatarFallback 
+              className={cn("text-xs text-white border-0", avatarClassName)} 
+              style={avatarStyle}
+            >
+              {option.avatarText || <Sparkles className="h-2.5 w-2.5" />}
+            </AvatarFallback>
+          )}
+        </Avatar>
+      )
+    }
   }
 
   return (
@@ -101,38 +235,101 @@ export function InputGroupDemo() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <InputGroupButton variant="ghost" className="gap-2">
-                <Avatar className="h-4 w-4">
-                  <AvatarImage src={selectedModel.avatar} />
-                  <AvatarFallback className="text-[10px]">
-                    {selectedModel.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs">{selectedModel.name}</span>
+                {selectedOption ? (
+                  <>
+                    {renderAvatar(selectedOption)}
+                    <span className="text-xs">
+                      {selectedOption.type === "model" && selectedOption.vendorName
+                        ? `${selectedOption.name} · ${selectedOption.vendorName}`
+                        : selectedOption.name}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Select model or assistant</span>
+                )}
               </InputGroupButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               side="top"
               align="start"
-              className="[--radius:0.95rem]"
+              className="[--radius:0.95rem] p-2 w-[280px]"
             >
-              {modelOptions.map((model) => (
-                <DropdownMenuItem
-                  key={model.id}
-                  onClick={() => setSelectedModel(model)}
-                  className="gap-2"
-                >
-                  <Avatar className="h-4 w-4">
-                    <AvatarImage src={model.avatar} />
-                    <AvatarFallback className="text-[10px]">
-                      {model.name.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs">{model.name}</span>
-                </DropdownMenuItem>
-              ))}
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "models" | "assistants")}>
+                <TabsList className="grid w-full grid-cols-2 mb-2">
+                  <TabsTrigger value="models" className="text-xs">
+                    Models
+                  </TabsTrigger>
+                  <TabsTrigger value="assistants" className="text-xs">
+                    Assistants
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="models" className="mt-0 space-y-1">
+                  {starredModels.length > 0 ? (
+                    starredModels.map((model) => (
+                      <DropdownMenuItem
+                        key={model.id}
+                        onClick={() => setSelectedOption(model)}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <Avatar className="h-4 w-4">
+                          <AvatarImage src={model.logo} />
+                          <AvatarFallback className="text-[10px]">
+                            {model.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs">
+                          {model.vendorName ? `${model.name} · ${model.vendorName}` : model.name}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                      No starred models
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="assistants" className="mt-0 space-y-1">
+                  {starredAssistants.length > 0 ? (
+                    starredAssistants.map((assistant) => {
+                      const isHexColor = assistant.avatarBg?.startsWith("#")
+                      const avatarStyle = isHexColor && assistant.avatarBg ? { backgroundColor: assistant.avatarBg } : undefined
+                      const avatarClassName = !isHexColor && assistant.avatarBg ? assistant.avatarBg : undefined
+                      
+                      return (
+                        <DropdownMenuItem
+                          key={assistant.id}
+                          onClick={() => setSelectedOption(assistant)}
+                          className="gap-2 cursor-pointer"
+                        >
+                          <Avatar className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
+                            {assistant.logo ? (
+                              <AvatarImage src={assistant.logo} alt={assistant.name} />
+                            ) : (
+                              <AvatarFallback 
+                                className={cn("text-xs text-white border-0", avatarClassName)} 
+                                style={avatarStyle}
+                              >
+                                {assistant.avatarText || <Sparkles className="h-2.5 w-2.5" />}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <span className="text-xs">{assistant.name}</span>
+                        </DropdownMenuItem>
+                      )
+                    })
+                  ) : (
+                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                      No starred assistants
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </DropdownMenuContent>
           </DropdownMenu>
-          <InputGroupText className="ml-auto">52% used</InputGroupText>
+          <div className="ml-auto flex items-center gap-1.5">
+            <CircleProgress percentage={56} size={20} />
+            <span className="text-xs text-muted-foreground">56.0%</span>
+          </div>
           <Separator orientation="vertical" className="!h-4" />
           <InputGroupButton
             variant="default"
