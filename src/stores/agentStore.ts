@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Agent, CreateAgentRequest } from '@/types';
+import { useMessageStore } from './messageStore';
 
 interface AgentStore {
   agents: Agent[];
@@ -80,6 +81,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   setCurrentAgent: (agent: Agent | null) => {
+    // Cleanup message store before switching agents to prevent memory leaks
+    useMessageStore.getState().cleanup();
+    
     set({ currentAgent: agent });
   },
 

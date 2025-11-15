@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Bot, Copy, Languages, Undo, Scan } from "lucide-react"
-import { useState } from "react"
+import { useState, memo, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -39,7 +39,7 @@ interface ChatMessageProps {
   onExportMessage?: () => void
 }
 
-export function ChatMessage({
+export const ChatMessage = memo(function ChatMessage({
   role,
   content,
   timestamp,
@@ -56,6 +56,64 @@ export function ChatMessage({
   onExportMessage,
 }: ChatMessageProps) {
   const [isExportOpen, setIsExportOpen] = useState(false)
+  
+  // Memoize markdown components to avoid recreating them on every render
+  const markdownComponents = useMemo(() => ({
+    code(props: any) {
+      const { node, inline, className, children, ...rest } = props
+      return (
+        <code
+          className={`${className || ''} ${
+            inline
+              ? 'px-1.5 py-0.5 rounded-md bg-muted text-sm'
+              : 'block p-3 rounded-md bg-muted overflow-x-auto'
+          }`}
+          {...rest}
+        >
+          {children}
+        </code>
+      )
+    },
+    pre({ children }: any) {
+      return <pre className="my-2">{children}</pre>
+    },
+    p({ children }: any) {
+      return <p className="mb-2 last:mb-0">{children}</p>
+    },
+    ul({ children }: any) {
+      return <ul className="list-disc list-inside mb-2">{children}</ul>
+    },
+    ol({ children }: any) {
+      return <ol className="list-decimal list-inside mb-2">{children}</ol>
+    },
+    li({ children }: any) {
+      return <li className="mb-1">{children}</li>
+    },
+    blockquote({ children }: any) {
+      return <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">{children}</blockquote>
+    },
+    h1({ children }: any) {
+      return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
+    },
+    h2({ children }: any) {
+      return <h2 className="text-xl font-bold mb-2 mt-3">{children}</h2>
+    },
+    h3({ children }: any) {
+      return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
+    },
+    table({ children }: any) {
+      return <table className="border-collapse border border-border my-2">{children}</table>
+    },
+    thead({ children }: any) {
+      return <thead className="bg-muted">{children}</thead>
+    },
+    th({ children }: any) {
+      return <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>
+    },
+    td({ children }: any) {
+      return <td className="border border-border px-3 py-2">{children}</td>
+    },
+  }), [])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content)
@@ -168,62 +226,7 @@ export function ChatMessage({
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
-            components={{
-              code(props) {
-                const { node, inline, className, children, ...rest } = props as any
-                return (
-                  <code
-                    className={`${className || ''} ${
-                      inline
-                        ? 'px-1.5 py-0.5 rounded-md bg-muted text-sm'
-                        : 'block p-3 rounded-md bg-muted overflow-x-auto'
-                    }`}
-                    {...rest}
-                  >
-                    {children}
-                  </code>
-                )
-              },
-              pre({ children }) {
-                return <pre className="my-2">{children}</pre>
-              },
-              p({ children }) {
-                return <p className="mb-2 last:mb-0">{children}</p>
-              },
-              ul({ children }) {
-                return <ul className="list-disc list-inside mb-2">{children}</ul>
-              },
-              ol({ children }) {
-                return <ol className="list-decimal list-inside mb-2">{children}</ol>
-              },
-              li({ children }) {
-                return <li className="mb-1">{children}</li>
-              },
-              blockquote({ children }) {
-                return <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">{children}</blockquote>
-              },
-              h1({ children }) {
-                return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
-              },
-              h2({ children }) {
-                return <h2 className="text-xl font-bold mb-2 mt-3">{children}</h2>
-              },
-              h3({ children }) {
-                return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
-              },
-              table({ children }) {
-                return <table className="border-collapse border border-border my-2">{children}</table>
-              },
-              thead({ children }) {
-                return <thead className="bg-muted">{children}</thead>
-              },
-              th({ children }) {
-                return <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>
-              },
-              td({ children }) {
-                return <td className="border border-border px-3 py-2">{children}</td>
-              },
-            }}
+            components={markdownComponents}
           >
             {content}
           </ReactMarkdown>
@@ -290,5 +293,5 @@ export function ChatMessage({
       </TooltipProvider>
     </div>
   )
-}
+})
 

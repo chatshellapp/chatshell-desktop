@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Topic, CreateTopicRequest } from '@/types';
+import { useMessageStore } from './messageStore';
 
 interface TopicStore {
   topics: Topic[];
@@ -81,6 +82,9 @@ export const useTopicStore = create<TopicStore>((set, get) => ({
 
   selectTopic: async (id: string) => {
     try {
+      // Cleanup message store before switching topics to prevent memory leaks
+      useMessageStore.getState().cleanup();
+      
       const topic = await invoke<Topic | null>('get_topic', { id });
       set({ currentTopic: topic });
     } catch (error) {
@@ -90,6 +94,9 @@ export const useTopicStore = create<TopicStore>((set, get) => ({
   },
 
   setCurrentTopic: (topic: Topic | null) => {
+    // Cleanup message store before switching topics to prevent memory leaks
+    useMessageStore.getState().cleanup();
+    
     set({ currentTopic: topic });
   },
 }));

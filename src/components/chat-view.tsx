@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
 import { useTopicStore } from "@/stores/topicStore"
@@ -23,6 +23,12 @@ export function ChatView() {
   const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
   const currentAgent = useAgentStore((state) => state.currentAgent)
   const getModelById = useModelStore((state) => state.getModelById)
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const userScrolledRef = useRef(false)
+  const isAutoScrollingRef = useRef(false)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get model name for display
   const getModelDisplayName = () => {
@@ -32,15 +38,97 @@ export function ChatView() {
     return `${currentAgent.name} · ${model.name}`
   }
 
+  // Helper function to check if at bottom
+  const isAtBottom = () => {
+    const container = scrollContainerRef.current
+    if (!container) return true
+    const { scrollTop, scrollHeight, clientHeight } = container
+    return scrollHeight - scrollTop - clientHeight < 50
+  }
+
+  // Helper function to scroll to bottom
+  const scrollToBottom = () => {
+    isAutoScrollingRef.current = true
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+      // Reset flag after a short delay
+      setTimeout(() => {
+        isAutoScrollingRef.current = false
+      }, 100)
+    })
+  }
+
   // Set up event listeners for chat streaming and scraping
   useChatEvents(currentTopic?.id || null)
 
-  // Load messages when topic changes
+  // Load messages when topic changes and cleanup on unmount
   useEffect(() => {
     if (currentTopic) {
       loadMessages(currentTopic.id)
     }
+    
+    // Cleanup when topic changes or component unmounts
+    return () => {
+      const cleanup = useMessageStore.getState().cleanup;
+      cleanup();
+    };
   }, [currentTopic, loadMessages])
+  
+  // Auto-scroll during streaming - use instant scroll to avoid jittering
+  useEffect(() => {
+    if (isStreaming && streamingContent && !userScrolledRef.current) {
+      scrollToBottom()
+    }
+  }, [isStreaming, streamingContent])
+  
+  // Scroll to bottom when new messages arrive (user sent message or AI replied)
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Always scroll to bottom on new messages, and reset user scroll flag
+      userScrolledRef.current = false
+      scrollToBottom()
+    }
+  }, [messages.length])
+  
+  // Detect if user manually scrolled (only count user-initiated scrolls)
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const handleScroll = () => {
+      // Ignore scroll events triggered by auto-scroll
+      if (isAutoScrollingRef.current) {
+        return
+      }
+      
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+      
+      // Debounce: check position after user stops scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        // If user is at bottom, enable auto-scroll
+        if (isAtBottom()) {
+          userScrolledRef.current = false
+        } else {
+          // User scrolled away from bottom
+          userScrolledRef.current = true
+        }
+      }, 100)
+    }
+    
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleCopy = () => {
     console.log("Message copied")
@@ -75,7 +163,7 @@ export function ChatView() {
   return (
     <div className="flex flex-col h-full relative">
       {/* Messages Area */}
-      <div className="flex flex-1 flex-col overflow-auto pb-6">
+      <div ref={scrollContainerRef} className="flex flex-1 flex-col overflow-auto pb-6">
         {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <p>No messages yet. Start a conversation!</p>
@@ -141,6 +229,7 @@ export function ChatView() {
             <span>Fetching webpage content...</span>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}

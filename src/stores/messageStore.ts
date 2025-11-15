@@ -29,7 +29,17 @@ interface MessageStore {
   setScrapingStatus: (status: 'idle' | 'scraping' | 'complete' | 'error') => void;
   appendStreamingChunk: (chunk: string) => void;
   setIsWaitingForAI: (isWaiting: boolean) => void;
+  cleanup: () => void;
 }
+
+// Throttling mechanism for streaming updates
+let pendingChunks: string[] = [];
+let updateScheduled = false;
+let updateTimeoutId: NodeJS.Timeout | null = null;
+const THROTTLE_MS = 50; // Update UI every 50ms for smooth rendering
+
+// Maximum messages to keep in memory to prevent memory leaks
+const MAX_MESSAGES_IN_MEMORY = 100;
 
 export const useMessageStore = create<MessageStore>((set, get) => ({
   messages: [],
@@ -45,7 +55,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const messages = await invoke<Message[]>('list_messages', { topicId });
-      set({ messages, isLoading: false });
+      // Limit messages in memory to prevent memory leaks
+      const limitedMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY);
+      set({ messages: limitedMessages, isLoading: false });
     } catch (error) {
       set({ error: String(error), isLoading: false });
       console.error('Failed to load messages:', error);
@@ -140,14 +152,54 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   },
 
   appendStreamingChunk: (chunk: string) => {
-    set((state) => ({
-      streamingContent: state.streamingContent + chunk,
-      isWaitingForAI: false,
-    }));
+    pendingChunks.push(chunk);
+    
+    if (!updateScheduled) {
+      updateScheduled = true;
+      
+      // Clear any existing timeout to prevent leaks
+      if (updateTimeoutId !== null) {
+        clearTimeout(updateTimeoutId);
+      }
+      
+      // Use setTimeout for consistent throttling
+      updateTimeoutId = setTimeout(() => {
+        const currentState = get();
+        const allChunks = pendingChunks.join('');
+        pendingChunks = [];
+        updateScheduled = false;
+        updateTimeoutId = null;
+        
+        set({
+          streamingContent: currentState.streamingContent + allChunks,
+          isWaitingForAI: false,
+        });
+      }, THROTTLE_MS);
+    }
   },
 
   setIsWaitingForAI: (isWaiting: boolean) => {
     set({ isWaitingForAI: isWaiting });
+  },
+
+  cleanup: () => {
+    // Clear any pending timeouts
+    if (updateTimeoutId !== null) {
+      clearTimeout(updateTimeoutId);
+      updateTimeoutId = null;
+    }
+    
+    // Clear pending chunks
+    pendingChunks = [];
+    updateScheduled = false;
+    
+    // Reset streaming state
+    set({
+      streamingContent: '',
+      isStreaming: false,
+      isWaitingForAI: false,
+      scrapingStatus: 'idle',
+    });
   },
 }));
 
