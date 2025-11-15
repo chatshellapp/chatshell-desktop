@@ -1,6 +1,7 @@
-import { ArrowUpIcon, Paperclip, File, Image, MessageSquare, Database, Server, Sparkles, BookOpen, Plug, Globe } from "lucide-react"
+import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X } from "lucide-react"
 import { useState, useMemo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,14 @@ interface AssistantOption extends Assistant {
 }
 
 type SelectionOption = ModelOption | AssistantOption
+
+type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
+
+interface Attachment {
+  id: string
+  type: AttachmentType
+  name: string
+}
 
 interface ChatInputProps {
   modelVendors?: ModelVendor[]
@@ -84,7 +93,31 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
   )
 }
 
+// Helper function to get icon for attachment type
+function getAttachmentIcon(type: AttachmentType, isHovered: boolean = false) {
+  if (isHovered) {
+    return <X className="h-3 w-3" />
+  }
+  
+  switch (type) {
+    case "webpage":
+      return <Globe className="h-3 w-3" />
+    case "file":
+      return <File className="h-3 w-3" />
+    case "image":
+      return <Image className="h-3 w-3" />
+    case "knowledge":
+      return <BookOpen className="h-3 w-3" />
+    case "tools":
+      return <Plug className="h-3 w-3" />
+  }
+}
+
 export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInputProps) {
+  // State for attachments
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [hoveredBadgeId, setHoveredBadgeId] = useState<string | null>(null)
+
   // Collect all starred models from all vendors
   const starredModels = useMemo(() => {
     const models: ModelOption[] = []
@@ -142,24 +175,42 @@ export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInput
     console.log("Prompt selected")
   }
 
+  const addAttachment = (type: AttachmentType, name: string) => {
+    const newAttachment: Attachment = {
+      id: `${type}-${Date.now()}`,
+      type,
+      name,
+    }
+    setAttachments([...attachments, newAttachment])
+  }
+
+  const removeAttachment = (id: string) => {
+    setAttachments(attachments.filter(att => att.id !== id))
+  }
+
   const handleFileSelect = () => {
-    console.log("File selected")
+    // In a real implementation, this would open a file picker
+    addAttachment("file", "example-document.pdf")
   }
 
   const handleImageSelect = () => {
-    console.log("Image selected")
+    // In a real implementation, this would open an image picker
+    addAttachment("image", "example-image.png")
   }
 
   const handleKnowledgeBaseSelect = () => {
-    console.log("Knowledge Base selected")
+    // In a real implementation, this would open a knowledge base selector
+    addAttachment("knowledge", "Documentation")
   }
 
   const handleMCPServerSelect = () => {
-    console.log("MCP Server selected")
+    // In a real implementation, this would open a tools selector
+    addAttachment("tools", "Calculator")
   }
 
   const handleWebPageSelect = () => {
-    console.log("Web Page selected")
+    // In a real implementation, this would open a URL input dialog
+    addAttachment("webpage", "https://example.com")
   }
 
   const renderAvatar = (option: SelectionOption) => {
@@ -198,6 +249,23 @@ export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInput
   return (
     <div className="grid w-full gap-6">
       <InputGroup>
+        {attachments.length > 0 && (
+          <div className="order-first w-full flex flex-wrap gap-2 px-3 pt-3 pb-0">
+            {attachments.map((attachment) => (
+              <Badge
+                key={attachment.id}
+                variant="outline"
+                className="cursor-pointer hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                onMouseEnter={() => setHoveredBadgeId(attachment.id)}
+                onMouseLeave={() => setHoveredBadgeId(null)}
+                onClick={() => removeAttachment(attachment.id)}
+              >
+                {getAttachmentIcon(attachment.type, hoveredBadgeId === attachment.id)}
+                <span>{attachment.name}</span>
+              </Badge>
+            ))}
+          </div>
+        )}
         <InputGroupTextarea placeholder="Ask, Search or Chat..." />
         <InputGroupAddon align="block-end">
           <DropdownMenu>
