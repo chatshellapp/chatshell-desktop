@@ -8,6 +8,7 @@ import { MessageListItem } from "@/components/message-list-item"
 import { ModelList, type Model, type ModelVendor } from "@/components/model-list"
 import { AssistantList, type Assistant, type AssistantGroup } from "@/components/assistant-list"
 import { PeopleList, type Person, type PersonGroup } from "@/components/people-list"
+import { PromptList, type Prompt, type PromptGroup } from "@/components/prompt-list"
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
 import gptAvatar from "@/assets/models/gpt.png"
@@ -466,36 +467,65 @@ const data = {
       lastModified: "1 week ago",
     },
   ],
-  prompts: [
+  promptGroups: [
     {
-      id: "1",
-      name: "Code Review Template",
-      description: "Standard template for code review comments",
-      category: "Development",
-      lastUsed: "Today",
+      id: "development",
+      name: "Development",
+      defaultOpen: true,
+      prompts: [
+        {
+          id: "1",
+          name: "Code Review Template",
+          content: "Standard template for code review comments",
+          isStarred: true,
+        },
+        {
+          id: "2",
+          name: "Bug Report Format",
+          content: "Template for reporting bugs with all necessary details",
+          isStarred: false,
+        },
+      ],
     },
     {
-      id: "2",
-      name: "Bug Report Format",
-      description: "Template for reporting bugs with all necessary details",
-      category: "Development",
-      lastUsed: "Yesterday",
+      id: "documentation",
+      name: "Documentation",
+      defaultOpen: false,
+      prompts: [
+        {
+          id: "3",
+          name: "API Documentation",
+          content: "Generate comprehensive API documentation",
+          isStarred: false,
+        },
+        {
+          id: "5",
+          name: "User Guide Template",
+          content: "Create user-friendly guides for end users",
+          isStarred: true,
+        },
+      ],
     },
     {
-      id: "3",
-      name: "API Documentation",
-      description: "Generate comprehensive API documentation",
-      category: "Documentation",
-      lastUsed: "2 days ago",
+      id: "testing",
+      name: "Testing",
+      defaultOpen: false,
+      prompts: [
+        {
+          id: "4",
+          name: "Unit Test Generator",
+          content: "Create unit tests for functions",
+          isStarred: false,
+        },
+        {
+          id: "6",
+          name: "Integration Test",
+          content: "Generate integration tests for API endpoints",
+          isStarred: false,
+        },
+      ],
     },
-    {
-      id: "4",
-      name: "Unit Test Generator",
-      description: "Create unit tests for functions",
-      category: "Testing",
-      lastUsed: "1 week ago",
-    },
-  ],
+  ] as PromptGroup[],
   files: [
     {
       id: "1",
@@ -599,6 +629,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [assistantGroups, setAssistantGroups] = React.useState<AssistantGroup[]>(data.assistantGroups)
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(data.peopleGroups)
+  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>("1")
+  const [promptGroups, setPromptGroups] = React.useState<PromptGroup[]>(data.promptGroups)
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
@@ -698,6 +730,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your add person logic here
   }
 
+  const handlePromptClick = (prompt: Prompt) => {
+    console.log("Prompt selected:", prompt)
+    setSelectedPromptId(prompt.id)
+  }
+
+  const handlePromptSettings = (prompt: Prompt) => {
+    console.log("Prompt settings:", prompt)
+    // Add your prompt settings logic here
+  }
+
+  const handlePromptStarToggle = (prompt: Prompt) => {
+    console.log("Toggle star for prompt:", prompt)
+    setPromptGroups(prevGroups =>
+      prevGroups.map(group => ({
+        ...group,
+        prompts: group.prompts.map(p =>
+          p.id === prompt.id ? { ...p, isStarred: !p.isStarred } : p
+        ),
+      }))
+    )
+  }
+
+  const handlePromptGroupSettings = (group: PromptGroup) => {
+    console.log("Prompt group settings:", group)
+    // Add your prompt group settings logic here
+  }
+
+  const handleAddPrompt = () => {
+    console.log("Add prompt clicked")
+    // Add your add prompt logic here
+  }
+
   const renderContent = () => {
     switch (activeItem.title) {
       case "Conversations":
@@ -785,25 +849,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="prompts" className="mt-2">
-              {data.prompts.map((prompt) => (
-                <a
-                  href="#"
-                  key={prompt.id}
-                  className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <Sparkles className="size-4 text-muted-foreground" />
-                    <span className="font-medium">{prompt.name}</span>
-                  </div>
-                  <span className="text-muted-foreground text-xs line-clamp-2">
-                    {prompt.description}
-                  </span>
-                  <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-                    <span className="bg-sidebar-accent px-2 py-0.5 rounded">{prompt.category}</span>
-                    <span className="ml-auto">Used {prompt.lastUsed}</span>
-                  </div>
-                </a>
-              ))}
+              <PromptList
+                groups={promptGroups}
+                selectedPromptId={selectedPromptId || undefined}
+                onPromptClick={handlePromptClick}
+                onPromptSettings={handlePromptSettings}
+                onPromptStarToggle={handlePromptStarToggle}
+                onGroupSettings={handlePromptGroupSettings}
+                onAddPrompt={handleAddPrompt}
+              />
             </TabsContent>
             <TabsContent value="knowledge" className="mt-2">
               {data.files.map((file) => (
