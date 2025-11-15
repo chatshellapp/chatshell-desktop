@@ -25,3 +25,10 @@ dist-ssr
 
 # Demo files
 src/components/demo
+src-tauri/src/demo
+
+# Temp directory
+temp
+
+# Database files
+src-tauri/chatshell.db

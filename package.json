@@ -34,7 +34,8 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.17",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

@@ -23,3 +23,33 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Cryptography
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.21"
+
+# Utilities
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+lazy_static = "1.4"
+async-trait = "0.1"
+
+# Web scraping
+scraper = "0.18"
+html2md = "0.2"
+

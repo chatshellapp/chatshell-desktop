@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ChatInput } from "@/components/chat-input"
 import {
@@ -15,64 +16,51 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { ChatMessage } from "@/components/chat-message"
-import gptAvatar from "@/assets/models/gpt.png"
-import { aiModels, assistantGroups } from "@/lib/data"
+import { useTopicStore } from "@/stores/topicStore"
+import { useMessageStore } from "@/stores/messageStore"
+import { useAgentStore } from "@/stores/agentStore"
+import { useModelStore } from "@/stores/modelStore"
+import { useChatEvents } from "@/hooks/useChatEvents"
+import { useAppInit } from "@/hooks/useAppInit"
+import { SimpleSettingsDialog } from "@/components/simple-settings-dialog"
 
 // Global chat message configuration
 const CHAT_CONFIG = {
-  userMessageAlign: "right" as const, // "left" | "right"
-  userMessageShowBackground: true, // true | false
+  userMessageAlign: "right" as const,
+  userMessageShowBackground: true,
 }
 
-// Sample chat messages
-const messages: Array<{
-  id: string
-  role: "user" | "assistant"
-  content: string
-  timestamp: string
-}> = [
-  {
-    id: "1",
-    role: "user",
-    content: "Hello! Can you help me understand how React hooks work?",
-    timestamp: "05/01/2020 10:30",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "Of course! React Hooks are functions that let you use state and other React features in functional components. The most commonly used hooks are useState and useEffect. Would you like me to explain a specific hook in detail?",
-    timestamp: "05/01/2020 10:30",
-  },
-  {
-    id: "3",
-    role: "user",
-    content: "Yes, please explain useState with an example.",
-    timestamp: "05/01/2020 10:31",
-  },
-  {
-    id: "4",
-    role: "assistant",
-    content:
-      "Great! useState is a Hook that lets you add state to functional components. Here's a simple example:\n\nconst [count, setCount] = useState(0);\n\nIn this example:\n- 'count' is the current state value\n- 'setCount' is the function to update the state\n- '0' is the initial state value\n\nWhen you call setCount, React re-renders the component with the new value.",
-    timestamp: "05/01/2020 10:31",
-  },
-  {
-    id: "5",
-    role: "user",
-    content: "That makes sense! What about useEffect?",
-    timestamp: "05/01/2020 10:32",
-  },
-  {
-    id: "6",
-    role: "assistant",
-    content:
-      "useEffect is a Hook that performs side effects in functional components. It runs after every render by default, but you can control when it runs using a dependency array.\n\nFor example:\nuseEffect(() => {\n  document.title = `Count: ${count}`;\n}, [count]);\n\nThis effect updates the document title whenever 'count' changes. The array [count] tells React to only run this effect when 'count' changes.",
-    timestamp: "05/01/2020 10:32"
-  },
-]
-
 export default function Page() {
+  // Initialize app (load agents, topics, settings)
+  const { isInitialized, error: initError } = useAppInit()
+
+  const currentTopic = useTopicStore((state) => state.currentTopic)
+  const messages = useMessageStore((state) => state.messages)
+  const loadMessages = useMessageStore((state) => state.loadMessages)
+  const isStreaming = useMessageStore((state) => state.isStreaming)
+  const streamingContent = useMessageStore((state) => state.streamingContent)
+  const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
+  const currentAgent = useAgentStore((state) => state.currentAgent)
+  const getModelById = useModelStore((state) => state.getModelById)
+
+  // Get model name for display
+  const getModelDisplayName = () => {
+    if (!currentAgent) return "AI Assistant"
+    const model = getModelById(currentAgent.model_id)
+    if (!model) return currentAgent.name
+    return `${currentAgent.name} · ${model.name}`
+  }
+
+  // Set up event listeners for chat streaming and scraping
+  useChatEvents(currentTopic?.id || null)
+
+  // Load messages when topic changes
+  useEffect(() => {
+    if (currentTopic) {
+      loadMessages(currentTopic.id)
+    }
+  }, [currentTopic, loadMessages])
+
   const handleCopy = () => {
     console.log("Message copied")
   }
@@ -95,6 +83,35 @@ export default function Page() {
 
   const handleExportMessage = () => {
     console.log("Export current message")
+  }
+
+  // Format timestamp from ISO string
+  const formatTimestamp = (isoString: string) => {
+    const date = new Date(isoString)
+    return date.toLocaleString()
+  }
+
+  // Show loading screen while initializing
+  if (!isInitialized) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-lg">Loading ChatShell...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error if initialization failed
+  if (initError) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-lg text-red-500">Failed to initialize app</p>
+          <p className="text-sm text-muted-foreground">{initError}</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -120,36 +137,67 @@ export default function Page() {
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
-                <BreadcrumbPage>React Hooks Discussion</BreadcrumbPage>
+                <BreadcrumbPage>
+                  {currentTopic?.title || "Select a conversation"}
+                </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+          <div className="ml-auto">
+            <SimpleSettingsDialog />
+          </div>
         </header>
         <div className="flex flex-1 flex-col overflow-auto pb-32">
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              role={message.role}
-              content={message.content}
-              timestamp={message.timestamp}
-              modelName="GPT-4.1 · OpenRouter"
-              modelAvatar={gptAvatar}
-              userMessageAlign={CHAT_CONFIG.userMessageAlign}
-              userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-              onCopy={handleCopy}
-              onResend={handleResend}
-              onTranslate={handleTranslate}
-              onExportAll={handleExportAll}
-              onExportConversation={handleExportConversation}
-              onExportMessage={handleExportMessage}
-            />
-          ))}
+          {messages.length === 0 && !isStreaming ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <p>No messages yet. Start a conversation!</p>
+            </div>
+          ) : (
+            <>
+              {messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  role={message.role as "user" | "assistant"}
+                  content={message.content}
+                  timestamp={formatTimestamp(message.created_at)}
+                  modelName={getModelDisplayName()}
+                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
+                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                  onCopy={handleCopy}
+                  onResend={handleResend}
+                  onTranslate={handleTranslate}
+                  onExportAll={handleExportAll}
+                  onExportConversation={handleExportConversation}
+                  onExportMessage={handleExportMessage}
+                />
+              ))}
+              {isStreaming && streamingContent && (
+                <ChatMessage
+                  key="streaming"
+                  role="assistant"
+                  content={streamingContent}
+                  timestamp="Now"
+                  modelName={getModelDisplayName()}
+                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
+                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                  onCopy={handleCopy}
+                  onResend={handleResend}
+                  onTranslate={handleTranslate}
+                  onExportAll={handleExportAll}
+                  onExportConversation={handleExportConversation}
+                  onExportMessage={handleExportMessage}
+                />
+              )}
+            </>
+          )}
+          {scrapingStatus === 'scraping' && (
+            <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
+              <span>Fetching webpage content...</span>
+            </div>
+          )}
         </div>
         <div className="bg-background border-t p-4 flex justify-center sticky bottom-0 z-10">
-          <ChatInput 
-            modelVendors={aiModels}
-            assistantGroups={assistantGroups}
-          />
+          <ChatInput />
         </div>
       </SidebarInset>
     </SidebarProvider>
