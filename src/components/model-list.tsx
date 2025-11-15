@@ -147,6 +147,7 @@ export function ModelList({
           onModelStarToggle={onModelStarToggle}
           onVendorSettings={onVendorSettings}
           forceDefaultOpen={!hasStarredModels && index === 0}
+          ignoreVendorDefault={hasStarredModels}
         />
       ))}
     </div>
@@ -162,6 +163,7 @@ interface ModelVendorGroupProps {
   onVendorSettings?: (vendor: ModelVendor) => void
   hideVendorMenu?: boolean
   forceDefaultOpen?: boolean
+  ignoreVendorDefault?: boolean
 }
 
 function ModelVendorGroup({
@@ -173,9 +175,13 @@ function ModelVendorGroup({
   onVendorSettings,
   hideVendorMenu = false,
   forceDefaultOpen = false,
+  ignoreVendorDefault = false,
 }: ModelVendorGroupProps) {
-  // Determine initial open state: use forceDefaultOpen if provided, otherwise use vendor.defaultOpen, default to false
-  const initialOpenState = forceDefaultOpen || (vendor.defaultOpen ?? false)
+  // Determine initial open state: 
+  // - If forceDefaultOpen is true, always open
+  // - If ignoreVendorDefault is true, ignore vendor.defaultOpen (use false)
+  // - Otherwise use vendor.defaultOpen, default to false
+  const initialOpenState = forceDefaultOpen || (!ignoreVendorDefault && (vendor.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
 

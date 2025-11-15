@@ -155,6 +155,7 @@ export function AssistantList({
           onAssistantStarToggle={onAssistantStarToggle}
           onGroupSettings={onGroupSettings}
           forceDefaultOpen={!hasStarredAssistants && index === 0}
+          ignoreGroupDefault={hasStarredAssistants}
         />
       ))}
     </div>
@@ -170,6 +171,7 @@ interface AssistantGroupComponentProps {
   onGroupSettings?: (group: AssistantGroup) => void
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
+  ignoreGroupDefault?: boolean
 }
 
 function AssistantGroupComponent({
@@ -181,9 +183,13 @@ function AssistantGroupComponent({
   onGroupSettings,
   hideGroupMenu = false,
   forceDefaultOpen = false,
+  ignoreGroupDefault = false,
 }: AssistantGroupComponentProps) {
-  // Determine initial open state: use forceDefaultOpen if provided, otherwise use group.defaultOpen, default to false
-  const initialOpenState = forceDefaultOpen || (group.defaultOpen ?? false)
+  // Determine initial open state: 
+  // - If forceDefaultOpen is true, always open
+  // - If ignoreGroupDefault is true, ignore group.defaultOpen (use false)
+  // - Otherwise use group.defaultOpen, default to false
+  const initialOpenState = forceDefaultOpen || (!ignoreGroupDefault && (group.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
 
