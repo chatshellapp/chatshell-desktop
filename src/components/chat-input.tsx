@@ -118,6 +118,9 @@ export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInput
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [hoveredBadgeId, setHoveredBadgeId] = useState<string | null>(null)
 
+  // URL regex pattern to detect URLs (handles URLs within sentences)
+  const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
+
   // Collect all starred models from all vendors
   const starredModels = useMemo(() => {
     const models: ModelOption[] = []
@@ -213,6 +216,24 @@ export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInput
     addAttachment("webpage", "https://example.com")
   }
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData("text")
+    const urls = pastedText.match(urlRegex)
+    
+    if (urls && urls.length > 0) {
+      // Add each detected URL as a webpage attachment
+      urls.forEach((url) => {
+        // Check if this URL is not already in attachments
+        const isDuplicate = attachments.some(
+          att => att.type === "webpage" && att.name === url
+        )
+        if (!isDuplicate) {
+          addAttachment("webpage", url)
+        }
+      })
+    }
+  }
+
   const renderAvatar = (option: SelectionOption) => {
     if (option.type === "model") {
       return (
@@ -266,7 +287,10 @@ export function ChatInput({ modelVendors = [], assistantGroups = [] }: ChatInput
             ))}
           </div>
         )}
-        <InputGroupTextarea placeholder="Ask, Search or Chat..." />
+        <InputGroupTextarea 
+          placeholder="Ask, Search or Chat..." 
+          onPaste={handlePaste}
+        />
         <InputGroupAddon align="block-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
