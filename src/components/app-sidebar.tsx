@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Plug, BookOpen } from "lucide-react"
+import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Plug, BookOpen, Plus } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
+import { Button } from "@/components/ui/button"
 import { MessageListItem } from "@/components/message-list-item"
 import { ModelList, type Model, type ModelVendor } from "@/components/model-list"
 import { AssistantList, type Assistant, type AssistantGroup } from "@/components/assistant-list"
@@ -11,6 +12,8 @@ import { PeopleList, type Person, type PersonGroup } from "@/components/people-l
 import { PromptList, type Prompt, type PromptGroup } from "@/components/prompt-list"
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
+import { useTopicStore } from "@/stores/topicStore"
+import { useAgentStore } from "@/stores/agentStore"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -634,6 +637,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
+  
+  // Get topic store functions
+  const { createTopic, setCurrentTopic } = useTopicStore()
+  const currentAgent = useAgentStore((state) => state.currentAgent)
 
   const handleModelClick = (model: Model) => {
     console.log("Model selected:", model)
@@ -762,22 +769,54 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your add prompt logic here
   }
 
+  const handleNewConversation = async () => {
+    if (!currentAgent) {
+      console.error("No current agent selected")
+      return
+    }
+    
+    try {
+      const newTopic = await createTopic({
+        agent_id: currentAgent.id,
+        title: "New Conversation",
+      })
+      setCurrentTopic(newTopic)
+      console.log("Created new conversation:", newTopic)
+    } catch (error) {
+      console.error("Failed to create new conversation:", error)
+    }
+  }
+
   const renderContent = () => {
     switch (activeItem.title) {
       case "Conversations":
         return (
-          <div className="space-y-1 p-2">
-            {data.conversations.map((conversation) => (
-              <MessageListItem
-                key={conversation.id}
-                avatars={conversation.avatars}
-                summary={conversation.name}
-                timestamp={conversation.timestamp}
-                lastMessage={conversation.lastMessage}
-                isActive={selectedConversation === conversation.id}
-                onClick={() => setSelectedConversation(conversation.id)}
-              />
-            ))}
+          <div className="flex flex-col gap-1">
+            <div className="space-y-1 p-2">
+              {data.conversations.map((conversation) => (
+                <MessageListItem
+                  key={conversation.id}
+                  avatars={conversation.avatars}
+                  summary={conversation.name}
+                  timestamp={conversation.timestamp}
+                  lastMessage={conversation.lastMessage}
+                  isActive={selectedConversation === conversation.id}
+                  onClick={() => setSelectedConversation(conversation.id)}
+                />
+              ))}
+            </div>
+            {/* New Conversation button */}
+            <div className="px-3 pt-2 pb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2 h-9"
+                onClick={handleNewConversation}
+              >
+                <Plus className="size-4" />
+                New Conversation
+              </Button>
+            </div>
           </div>
         )
       case "Contacts":
