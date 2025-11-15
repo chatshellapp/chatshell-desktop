@@ -625,7 +625,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Note: I'm using state to show active item.
   // IRL you should use the url/router.
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const [selectedConversation, setSelectedConversation] = React.useState<string | null>("1")
   const [selectedModelId, setSelectedModelId] = React.useState<string | null>("gpt-4-turbo")
   const [modelVendors, setModelVendors] = React.useState<ModelVendor[]>(data.aiModels)
   const [selectedAssistantId, setSelectedAssistantId] = React.useState<string | null>("assistant-1")
@@ -638,9 +637,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
   
-  // Get topic store functions
-  const { createTopic, setCurrentTopic } = useTopicStore()
+  // Get topic store functions and state
+  const { topics, currentTopic, createTopic, setCurrentTopic, loadTopics, selectTopic } = useTopicStore()
   const currentAgent = useAgentStore((state) => state.currentAgent)
+  
+  // Load topics when currentAgent changes
+  React.useEffect(() => {
+    if (currentAgent) {
+      loadTopics(currentAgent.id)
+    }
+  }, [currentAgent, loadTopics])
 
   const handleModelClick = (model: Model) => {
     console.log("Model selected:", model)
@@ -787,23 +793,54 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }
 
+  const handleTopicClick = async (topicId: string) => {
+    try {
+      await selectTopic(topicId)
+    } catch (error) {
+      console.error("Failed to select topic:", error)
+    }
+  }
+
+  const formatTimestamp = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+    if (diffDays === 1) return "Yesterday"
+    if (diffDays < 7) return `${diffDays} days ago`
+    
+    return date.toLocaleDateString()
+  }
+
   const renderContent = () => {
     switch (activeItem.title) {
       case "Conversations":
         return (
           <div className="flex flex-col gap-1">
             <div className="space-y-1 p-2">
-              {data.conversations.map((conversation) => (
-                <MessageListItem
-                  key={conversation.id}
-                  avatars={conversation.avatars}
-                  summary={conversation.name}
-                  timestamp={conversation.timestamp}
-                  lastMessage={conversation.lastMessage}
-                  isActive={selectedConversation === conversation.id}
-                  onClick={() => setSelectedConversation(conversation.id)}
-                />
-              ))}
+              {topics.length === 0 ? (
+                <div className="text-center text-muted-foreground text-sm py-4">
+                  No conversations yet
+                </div>
+              ) : (
+                topics.map((topic) => (
+                  <MessageListItem
+                    key={topic.id}
+                    avatars={currentAgent?.avatar_bg ? [currentAgent.avatar_bg] : [gptAvatar]}
+                    summary={topic.title}
+                    timestamp={formatTimestamp(topic.updated_at)}
+                    lastMessage="Click to view conversation"
+                    isActive={currentTopic?.id === topic.id}
+                    onClick={() => handleTopicClick(topic.id)}
+                  />
+                ))
+              )}
             </div>
             {/* New Conversation button */}
             <div className="px-3 pt-2 pb-2">
