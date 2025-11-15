@@ -53,9 +53,13 @@ interface AssistantListItemProps {
    */
   avatarText?: string
   /**
-   * Display name of the assistant
+   * Display name of the assistant (nickname)
    */
   name: string
+  /**
+   * Persona/role description of the assistant
+   */
+  persona?: string
   /**
    * Assistant capabilities
    */
@@ -91,6 +95,7 @@ export function AssistantListItem({
   avatarBg = "#3b82f6",
   avatarText,
   name,
+  persona,
   capabilities = {},
   isStarred = false,
   onClick,
@@ -142,11 +147,21 @@ export function AssistantListItem({
 
       {/* Assistant info */}
       <ItemContent>
-        <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
+        {/* First line: Name (nickname) */}
+        <ItemTitle className="text-sm font-medium leading-tight">{name}</ItemTitle>
+        
+        {/* Second line: Persona */}
+        {persona && (
+          <div className="text-xs text-muted-foreground line-clamp-1 leading-tight">
+            {persona}
+          </div>
+        )}
+        
+        {/* Third line: Capabilities */}
         {hasCapabilities && (
-          <ItemDescription className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5">
             {capabilities.hasModel && (
-              <Avatar className="size-3.5 rounded-sm">
+              <Avatar className="size-3 rounded-sm">
                 {capabilities.modelLogo ? (
                   <AvatarImage src={capabilities.modelLogo} alt="Model" />
                 ) : (
@@ -157,15 +172,15 @@ export function AssistantListItem({
               </Avatar>
             )}
             {capabilities.hasFiles && (
-              <FileText className="size-3.5 text-muted-foreground" />
+              <FileText className="size-3 text-muted-foreground" />
             )}
             {capabilities.hasKnowledgeBase && (
-              <Database className="size-3.5 text-muted-foreground" />
+              <Database className="size-3 text-muted-foreground" />
             )}
             {capabilities.hasMcpServer && (
-              <Boxes className="size-3.5 text-muted-foreground" />
+              <Boxes className="size-3 text-muted-foreground" />
             )}
-          </ItemDescription>
+          </div>
         )}
       </ItemContent>
 

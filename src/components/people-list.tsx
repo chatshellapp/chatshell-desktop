@@ -37,9 +37,9 @@ export interface Person {
    */
   phone?: string
   /**
-   * Person's role or job title
+   * Person's bio or description
    */
-  role?: string
+  bio?: string
   /**
    * Whether the person is starred/favorited
    */
@@ -280,7 +280,7 @@ function PersonGroupComponent({
             name={person.name}
             email={person.email}
             phone={person.phone}
-            role={person.role}
+            bio={person.bio}
             isStarred={person.isStarred}
             isActive={selectedPersonId === person.id}
             onClick={() => onPersonClick?.(person)}

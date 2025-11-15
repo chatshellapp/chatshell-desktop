@@ -717,7 +717,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       case "Contacts":
         return (
           <>
-            <Tabs defaultValue="models" className="w-full p-2">
+            <Tabs key="contacts-tabs" defaultValue="models" className="w-full p-2">
               <TabsList className="w-full grid grid-cols-3 h-9">
                 <TabsTrigger value="models" className="text-xs gap-1 px-2">
                   <Bot className="size-3.5" />Models
@@ -767,7 +767,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         )
       case "Library":
         return (
-          <Tabs defaultValue="prompts" className="w-full p-2">
+          <Tabs key="library-tabs" defaultValue="prompts" className="w-full p-2">
             <TabsList className="w-full grid grid-cols-3 h-9">
               <TabsTrigger value="prompts" className="text-xs gap-1 px-2">
                 <Sparkles className="size-3.5" />

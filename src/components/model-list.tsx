@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
+import { ChevronDown, MoreVertical, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ModelListItem } from "@/components/model-list-item"
 
@@ -83,6 +83,10 @@ interface ModelListProps {
    */
   onVendorSettings?: (vendor: ModelVendor) => void
   /**
+   * Click handler for adding a new provider
+   */
+  onAddProvider?: () => void
+  /**
    * Optional className for customization
    */
   className?: string
@@ -95,6 +99,7 @@ export function ModelList({
   onModelSettings,
   onModelStarToggle,
   onVendorSettings,
+  onAddProvider,
   className,
 }: ModelListProps) {
   // Collect all starred models from all vendors
@@ -150,6 +155,21 @@ export function ModelList({
           ignoreVendorDefault={hasStarredModels}
         />
       ))}
+
+      {/* Add Provider button */}
+      {onAddProvider && (
+        <div className="px-1 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start gap-2 h-9"
+            onClick={onAddProvider}
+          >
+            <Plus className="size-4" />
+            Add LLM Provider
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

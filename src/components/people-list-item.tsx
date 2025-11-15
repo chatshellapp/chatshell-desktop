@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star, Mail, Phone } from "lucide-react"
+import { MoreVertical, Star } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PersonListItemProps {
@@ -34,9 +34,9 @@ interface PersonListItemProps {
    */
   phone?: string
   /**
-   * Person's role or job title
+   * Person's bio or description
    */
-  role?: string
+  bio?: string
   /**
    * Whether the person is starred/favorited
    */
@@ -67,8 +67,8 @@ export function PersonListItem({
   avatar,
   name,
   email,
-  phone,
-  role,
+  phone: _phone,
+  bio,
   isStarred = false,
   onClick,
   onSettingsClick,
@@ -86,8 +86,6 @@ export function PersonListItem({
     }
     return name.substring(0, 2).toUpperCase()
   }
-
-  const hasContactInfo = email || phone
 
   return (
     <Item
@@ -123,15 +121,9 @@ export function PersonListItem({
       {/* Person info */}
       <ItemContent>
         <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
-        {(role || hasContactInfo) && (
-          <ItemDescription className="flex items-center gap-2">
-            {role && <span className="text-xs">{role}</span>}
-            {hasContactInfo && (
-              <div className="flex items-center gap-1.5">
-                {email && <Mail className="size-3 text-muted-foreground" />}
-                {phone && <Phone className="size-3 text-muted-foreground" />}
-              </div>
-            )}
+        {bio && (
+          <ItemDescription>
+            <span className="text-xs line-clamp-1">{bio}</span>
           </ItemDescription>
         )}
       </ItemContent>
