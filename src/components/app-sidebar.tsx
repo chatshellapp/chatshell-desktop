@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, ChevronDown, Sparkles, Database, Plug } from "lucide-react"
+import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Database, Plug } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import { MessageListItem } from "@/components/message-list-item"
+import { ModelList, type Model, type ModelVendor } from "@/components/model-list"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -22,12 +23,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 // This is sample data
 const data = {
@@ -124,76 +119,100 @@ const data = {
   ],
   aiModels: [
     {
-      vendor: "OpenAI",
+      id: "openai",
+      name: "OpenAI",
       models: [
         {
           id: "gpt-4-turbo",
           name: "GPT-4 Turbo",
-          avatar: gptAvatar,
+          modelId: "gpt-4-turbo-preview",
+          logo: gptAvatar,
+          isStarred: true,
         },
         {
           id: "gpt-4",
           name: "GPT-4",
-          avatar: gptAvatar,
+          modelId: "gpt-4",
+          logo: gptAvatar,
+          isStarred: false,
         },
         {
           id: "gpt-3.5-turbo",
           name: "GPT-3.5 Turbo",
-          avatar: gptAvatar,
+          modelId: "gpt-3.5-turbo",
+          logo: gptAvatar,
+          isStarred: false,
         },
       ],
     },
     {
-      vendor: "Anthropic",
+      id: "anthropic",
+      name: "Anthropic",
       models: [
         {
           id: "claude-3-opus",
           name: "Claude 3 Opus",
-          avatar: claudeAvatar,
+          modelId: "claude-3-opus-20240229",
+          logo: claudeAvatar,
+          isStarred: false,
         },
         {
           id: "claude-3-sonnet",
           name: "Claude 3 Sonnet",
-          avatar: claudeAvatar,
+          modelId: "claude-3-sonnet-20240229",
+          logo: claudeAvatar,
+          isStarred: true,
         },
         {
           id: "claude-3-haiku",
           name: "Claude 3 Haiku",
-          avatar: claudeAvatar,
+          modelId: "claude-3-haiku-20240307",
+          logo: claudeAvatar,
+          isStarred: false,
         },
       ],
     },
     {
-      vendor: "Google",
+      id: "google",
+      name: "Google",
       models: [
         {
           id: "gemini-pro",
           name: "Gemini Pro",
-          avatar: geminiAvatar,
+          modelId: "gemini-pro",
+          logo: geminiAvatar,
+          isStarred: false,
         },
         {
           id: "gemini-ultra",
           name: "Gemini Ultra",
-          avatar: geminiAvatar,
+          modelId: "gemini-1.5-pro-latest",
+          logo: geminiAvatar,
+          isStarred: false,
         },
       ],
     },
     {
-      vendor: "Meta",
+      id: "meta",
+      name: "Meta",
       models: [
         {
           id: "llama-2-70b",
           name: "Llama 2 70B",
-          avatar: llamaAvatar,
+          modelId: "llama-2-70b-chat",
+          logo: llamaAvatar,
+          isStarred: false,
         },
         {
           id: "llama-2-13b",
           name: "Llama 2 13B",
-          avatar: llamaAvatar,
+          modelId: "llama-2-13b-chat",
+          logo: llamaAvatar,
+          isStarred: false,
         },
       ],
     },
-  ],
+  ] as ModelVendor[],
   resources: [
     {
       id: "1",
@@ -351,7 +370,36 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // IRL you should use the url/router.
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
   const [selectedConversation, setSelectedConversation] = React.useState<string | null>("1")
+  const [selectedModelId, setSelectedModelId] = React.useState<string | null>("gpt-4-turbo")
+  const [modelVendors, setModelVendors] = React.useState<ModelVendor[]>(data.aiModels)
   const { setOpen } = useSidebar()
+
+  const handleModelClick = (model: Model) => {
+    console.log("Model selected:", model)
+    setSelectedModelId(model.id)
+  }
+
+  const handleModelSettings = (model: Model) => {
+    console.log("Model settings:", model)
+    // Add your model settings logic here
+  }
+
+  const handleModelStarToggle = (model: Model) => {
+    console.log("Toggle star for model:", model)
+    setModelVendors(prevVendors =>
+      prevVendors.map(vendor => ({
+        ...vendor,
+        models: vendor.models.map(m =>
+          m.id === model.id ? { ...m, isStarred: !m.isStarred } : m
+        ),
+      }))
+    )
+  }
+
+  const handleVendorSettings = (vendor: ModelVendor) => {
+    console.log("Vendor settings:", vendor)
+    // Add your vendor settings logic here
+  }
 
   const renderContent = () => {
     switch (activeItem.title) {
@@ -379,30 +427,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <TabsTrigger value="models"><Bot className="size-4" />Models</TabsTrigger>
                 <TabsTrigger value="assistants"><Drama className="size-4" />Assistants</TabsTrigger>
               </TabsList>
-              <TabsContent value="models" className="space-y-2">
-                {data.aiModels.map((vendorGroup) => (
-                  <Collapsible key={vendorGroup.vendor} defaultOpen className="space-y-2">
-                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg px-3 py-2 hover:bg-sidebar-accent">
-                      <span className="text-sm font-semibold">{vendorGroup.vendor}</span>
-                      <ChevronDown className="h-4 w-4 transition-transform duration-200 data-[state=open]:rotate-180" />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-1">
-                      {vendorGroup.models.map((model) => (
-                        <a
-                          href="#"
-                          key={model.id}
-                          className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors"
-                        >
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={model.avatar} alt={model.name} />
-                            <AvatarFallback>{model.name.substring(0, 2)}</AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">{model.name}</span>
-                        </a>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-                ))}
+              <TabsContent value="models" className="mt-2">
+                <ModelList
+                  vendors={modelVendors}
+                  selectedModelId={selectedModelId || undefined}
+                  onModelClick={handleModelClick}
+                  onModelSettings={handleModelSettings}
+                  onModelStarToggle={handleModelStarToggle}
+                  onVendorSettings={handleVendorSettings}
+                />
               </TabsContent>
               <TabsContent value="assistants" className="space-y-1">
                 {data.bots.map((bot) => (
