@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useMessageStore } from '@/stores/messageStore';
+import { useConversationStore } from '@/stores/conversationStore';
 import type {
   ChatStreamEvent,
   ChatCompleteEvent,
@@ -8,6 +9,11 @@ import type {
   ScrapingCompleteEvent,
   ScrapingErrorEvent,
 } from '@/types';
+
+interface ConversationUpdatedEvent {
+  conversation_id: string;
+  title: string;
+}
 
 export function useChatEvents(conversationId: string | null) {
   const conversationIdRef = useRef(conversationId);
@@ -44,6 +50,26 @@ export function useChatEvents(conversationId: string | null) {
   const handleScrapingError = useCallback((error: string) => {
     useMessageStore.getState().setScrapingStatus('error');
     console.error('Scraping error:', error);
+  }, []);
+
+  const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
+    console.log('[useChatEvents] Conversation title updated:', conversationId, title);
+    const conversationStore = useConversationStore.getState();
+    
+    // Update the conversation in the list
+    const updatedConversations = conversationStore.conversations.map(conv => 
+      conv.id === conversationId ? { ...conv, title } : conv
+    );
+    
+    // Update the store
+    useConversationStore.setState({ conversations: updatedConversations });
+    
+    // If it's the current conversation, update that too
+    if (conversationStore.currentConversation?.id === conversationId) {
+      useConversationStore.setState({
+        currentConversation: { ...conversationStore.currentConversation, title }
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -105,6 +131,15 @@ export function useChatEvents(conversationId: string | null) {
       }
     );
 
+    // Listen for conversation updates (title changes)
+    const unlistenConversationUpdated = listen<ConversationUpdatedEvent>(
+      'conversation-updated',
+      (event) => {
+        console.log('[useChatEvents] Received conversation-updated event:', event.payload);
+        handleConversationUpdated(event.payload.conversation_id, event.payload.title);
+      }
+    );
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId);
@@ -113,6 +148,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenScrapingStarted.then((fn) => fn());
       unlistenScrapingComplete.then((fn) => fn());
       unlistenScrapingError.then((fn) => fn());
+      unlistenConversationUpdated.then((fn) => fn());
     };
   }, [
     conversationId,
@@ -121,6 +157,7 @@ export function useChatEvents(conversationId: string | null) {
     handleScrapingStarted,
     handleScrapingComplete,
     handleScrapingError,
+    handleConversationUpdated,
   ]);
 }
 

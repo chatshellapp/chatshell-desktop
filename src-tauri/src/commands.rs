@@ -293,6 +293,105 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .map_err(|e| e.to_string())
 }
 
+// Helper function to generate conversation title
+async fn generate_conversation_title(
+    state: &AppState,
+    _conversation_id: &str,
+    user_message: &str,
+    assistant_message: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<String> {
+    println!("🏷️ [generate_title] Starting title generation...");
+    
+    // Check if there's a custom summary model setting
+    let summary_model_id = state.db.get_setting("conversation_summary_model_id")
+        .ok()
+        .flatten();
+    
+    let (summary_provider, summary_model, summary_api_key, summary_base_url) = if let Some(model_id) = summary_model_id {
+        // Get the custom model settings
+        match state.db.get_model(&model_id) {
+            Ok(Some(m)) => {
+                // Get provider info
+                match state.db.get_provider(&m.provider_id) {
+                    Ok(Some(p)) => {
+                        println!("🏷️ [generate_title] Using custom summary model: {} from provider: {}", m.model_id, p.provider_type);
+                        (p.provider_type.clone(), m.model_id.clone(), p.api_key.clone(), p.base_url.clone())
+                    },
+                    _ => {
+                        println!("🏷️ [generate_title] Custom model provider not found, using current model");
+                        (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+                    }
+                }
+            },
+            _ => {
+                println!("🏷️ [generate_title] Custom model not found, using current model");
+                (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+            }
+        }
+    } else {
+        // Use the current conversation model by default
+        println!("🏷️ [generate_title] No custom summary model set, using current model");
+        (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+    };
+    
+    // Create the title generation prompt
+    let title_prompt = format!(
+        "You are an expert at creating concise conversation titles. Summarize the following conversation into a title within 8 words. Use the same language as the user's message. Do not include punctuation or special symbols.\n\nUser: {}\n\nAssistant: {}",
+        user_message,
+        assistant_message
+    );
+    
+    // Create LLM provider
+    let llm_provider: Box<dyn LLMProvider> = match summary_provider.as_str() {
+        "openai" => {
+            if let Some(k) = summary_api_key {
+                Box::new(llm::openai::OpenAIProvider::new(k))
+            } else {
+                return Err(anyhow::anyhow!("OpenAI API key required"));
+            }
+        }
+        "openrouter" => {
+            if let Some(k) = summary_api_key {
+                Box::new(llm::openrouter::OpenRouterProvider::new(k))
+            } else {
+                return Err(anyhow::anyhow!("OpenRouter API key required"));
+            }
+        }
+        "ollama" => {
+            Box::new(llm::ollama::OllamaProvider::new(summary_base_url))
+        },
+        _ => {
+            return Err(anyhow::anyhow!("Unknown provider: {}", summary_provider));
+        }
+    };
+    
+    // Create chat request for title generation
+    let request = ChatRequest {
+        model: summary_model,
+        messages: vec![ChatMessage {
+            role: "user".to_string(),
+            content: title_prompt,
+        }],
+        stream: false,
+    };
+    
+    // Call LLM (using chat_stream with empty callback since we don't need streaming for this)
+    let response = llm_provider.chat_stream(request, Box::new(|_| {})).await?;
+    
+    // Clean up the title (remove quotes, extra whitespace, etc.)
+    let title = response.content.trim()
+        .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == ',' || c == '!' || c == '?')
+        .trim()
+        .to_string();
+    
+    println!("🏷️ [generate_title] Generated title: {}", title);
+    Ok(title)
+}
+
 // Chat command - now returns immediately and processes in background
 #[tauri::command]
 pub async fn send_message(
@@ -498,6 +597,47 @@ pub async fn send_message(
             "message": assistant_message,
         });
         let _ = app.emit("chat-complete", completion_payload);
+        
+        // Check if this is the first assistant reply and generate title if needed
+        let should_generate_title = match state_clone.db.get_conversation(&conversation_id_clone) {
+            Ok(Some(conv)) => conv.title == "New Conversation",
+            _ => false,
+        };
+        
+        if should_generate_title {
+            println!("🏷️ [background_task] Generating conversation title...");
+            let title_result = generate_conversation_title(
+                &state_clone,
+                &conversation_id_clone,
+                &processed_content,
+                &assistant_message.content,
+                &provider,
+                &model,
+                api_key.clone(),
+                base_url.clone(),
+            ).await;
+            
+            match title_result {
+                Ok(title) => {
+                    println!("✅ [background_task] Generated title: {}", title);
+                    match state_clone.db.update_conversation(&conversation_id_clone, &title) {
+                        Ok(_) => {
+                            // Emit event to notify frontend about the title update
+                            let _ = app.emit("conversation-updated", serde_json::json!({
+                                "conversation_id": conversation_id_clone,
+                                "title": title,
+                            }));
+                        },
+                        Err(e) => {
+                            eprintln!("❌ [background_task] Failed to update conversation title: {}", e);
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("❌ [background_task] Failed to generate title: {}", e);
+                }
+            }
+        }
     });
 
     // Return user message immediately
