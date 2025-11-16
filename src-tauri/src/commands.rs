@@ -412,6 +412,8 @@ pub async fn send_message(
     api_key: Option<String>,
     base_url: Option<String>,
     include_history: Option<bool>,
+    system_prompt: Option<String>,
+    user_prompt: Option<String>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
     println!("   conversation_id: {}", conversation_id);
@@ -419,6 +421,8 @@ pub async fn send_message(
     println!("   provider: {}", provider);
     println!("   model: {}", model);
     println!("   base_url: {:?}", base_url);
+    println!("   has_system_prompt: {}", system_prompt.is_some());
+    println!("   has_user_prompt: {}", user_prompt.is_some());
     
     // Save user message to database with original content first
     // URL processing will happen in background
@@ -497,11 +501,14 @@ pub async fn send_message(
             }
         };
         
-        // Build chat messages with a default system prompt
-        // In the new architecture, we don't rely on assistants anymore
+        // Build chat messages with system prompt
+        // Use assistant's system prompt if provided, otherwise use default
+        let system_prompt_content = system_prompt
+            .unwrap_or_else(|| "You are a helpful, harmless, and honest AI assistant.".to_string());
+        
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
-            content: "You are a helpful, harmless, and honest AI assistant.".to_string(),
+            content: system_prompt_content,
         }];
 
         // Include message history if requested (default: true)
@@ -524,9 +531,16 @@ pub async fn send_message(
         }
         
         // Always add the current user message with processed content (URL fetching done)
+        // If user_prompt is provided (from assistant), prepend it to the content
+        let final_user_content = if let Some(ref prompt) = user_prompt {
+            format!("{}\n\n{}", prompt, processed_content)
+        } else {
+            processed_content.clone()
+        };
+        
         chat_messages.push(ChatMessage {
             role: "user".to_string(),
-            content: processed_content.clone(),
+            content: final_user_content,
         });
 
         // Create LLM provider directly from parameters

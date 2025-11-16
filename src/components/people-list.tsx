@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical, Plus } from "lucide-react"
+import { ChevronDown, MoreVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PersonListItem } from "@/components/people-list-item"
 
@@ -91,10 +91,6 @@ interface PeopleListProps {
    */
   onGroupSettings?: (group: PersonGroup) => void
   /**
-   * Click handler for adding a new person
-   */
-  onAddPerson?: () => void
-  /**
    * Optional className for customization
    */
   className?: string
@@ -107,7 +103,6 @@ export function PeopleList({
   onPersonSettings,
   onPersonStarToggle,
   onGroupSettings,
-  onAddPerson,
   className,
 }: PeopleListProps) {
   // Collect all starred people from all groups
@@ -163,21 +158,6 @@ export function PeopleList({
           ignoreGroupDefault={hasStarredPeople}
         />
       ))}
-
-      {/* Add Person button */}
-      {onAddPerson && (
-        <div className="px-1 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2 h-9"
-            onClick={onAddPerson}
-          >
-            <Plus className="size-4" />
-            Add Contact
-          </Button>
-        </div>
-      )}
     </div>
   )
 }

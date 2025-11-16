@@ -632,6 +632,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [promptGroups, setPromptGroups] = React.useState<PromptGroup[]>(data.promptGroups)
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
+  const [activeContactsTab, setActiveContactsTab] = React.useState("models")
+  const [activeLibraryTab, setActiveLibraryTab] = React.useState("prompts")
   const { setOpen } = useSidebar()
   
   // Get conversation store functions and state
@@ -908,48 +910,121 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return date.toLocaleDateString()
   }
 
-  const renderContent = () => {
+  const renderFooter = () => {
     switch (activeItem.title) {
       case "Conversations":
         return (
-          <div className="flex flex-col gap-1">
-            <div className="space-y-1 p-2">
-              {conversations.length === 0 ? (
-                <div className="text-center text-muted-foreground text-sm py-4">
-                  No conversations yet
-                </div>
-              ) : (
-                conversations.map((conversation) => (
-                  <MessageListItem
-                    key={conversation.id}
-                    avatars={selectedAssistant?.avatar_bg ? [selectedAssistant.avatar_bg] : [gptAvatar]}
-                    summary={conversation.title}
-                    timestamp={formatTimestamp(conversation.updated_at)}
-                    lastMessage="Click to view conversation"
-                    isActive={currentConversation?.id === conversation.id}
-                    onClick={() => handleConversationClick(conversation.id)}
-                  />
-                ))
-              )}
-            </div>
-            {/* New Conversation button */}
+          <div className="px-3 pt-2 pb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start gap-2 h-9"
+              onClick={handleNewConversation}
+            >
+              <Plus className="size-4" />
+              New Conversation
+            </Button>
+          </div>
+        )
+      case "Contacts":
+        switch (activeContactsTab) {
+          case "models":
+            return (
+              <div className="px-3 pt-2 pb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2 h-9"
+                  onClick={handleAddProvider}
+                >
+                  <Plus className="size-4" />
+                  Add LLM Provider
+                </Button>
+              </div>
+            )
+          case "assistants":
+            return (
+              <div className="px-3 pt-2 pb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2 h-9"
+                  onClick={handleAddAssistant}
+                >
+                  <Plus className="size-4" />
+                  Add Assistant
+                </Button>
+              </div>
+            )
+          case "people":
+            return (
+              <div className="px-3 pt-2 pb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2 h-9"
+                  onClick={handleAddPerson}
+                >
+                  <Plus className="size-4" />
+                  Add Contact
+                </Button>
+              </div>
+            )
+        }
+        break
+      case "Library":
+        if (activeLibraryTab === "prompts") {
+          return (
             <div className="px-3 pt-2 pb-2">
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full justify-start gap-2 h-9"
-                onClick={handleNewConversation}
+                onClick={handleAddPrompt}
               >
                 <Plus className="size-4" />
-                New Conversation
+                Add Prompt
               </Button>
             </div>
+          )
+        }
+        break
+      case "Settings":
+        return null
+      default:
+        return null
+    }
+    return null
+  }
+
+  const renderContent = () => {
+    switch (activeItem.title) {
+      case "Conversations":
+        return (
+          <div className="space-y-1 p-2">
+            {conversations.length === 0 ? (
+              <div className="text-center text-muted-foreground text-sm py-4">
+                No conversations yet
+              </div>
+            ) : (
+              conversations.map((conversation) => (
+                <MessageListItem
+                  key={conversation.id}
+                  avatars={selectedAssistant?.avatar_bg ? [selectedAssistant.avatar_bg] : [gptAvatar]}
+                  summary={conversation.title}
+                  timestamp={formatTimestamp(conversation.updated_at)}
+                  lastMessage="Click to view conversation"
+                  isActive={currentConversation?.id === conversation.id}
+                  onClick={() => handleConversationClick(conversation.id)}
+                />
+              ))
+            )}
           </div>
         )
       case "Contacts":
         return (
           <>
-            <Tabs key="contacts-tabs" defaultValue="models" className="w-full p-2">
+            <Tabs key="contacts-tabs" value={activeContactsTab} onValueChange={setActiveContactsTab} className="w-full p-2">
               <TabsList className="w-full grid grid-cols-3 h-9">
                 <TabsTrigger value="models" className="text-xs gap-1 px-2">
                   <Bot className="size-3.5" />Models
@@ -969,7 +1044,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onModelSettings={handleModelSettings}
                   onModelStarToggle={handleModelStarToggle}
                   onVendorSettings={handleVendorSettings}
-                  onAddProvider={handleAddProvider}
                 />
               </TabsContent>
               <TabsContent value="assistants" className="mt-2">
@@ -980,7 +1054,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onAssistantSettings={handleAssistantSettings}
                   onAssistantStarToggle={handleAssistantStarToggle}
                   onGroupSettings={handleGroupSettings}
-                  onAddAssistant={handleAddAssistant}
                 />
               </TabsContent>
               <TabsContent value="people" className="mt-2">
@@ -991,7 +1064,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onPersonSettings={handlePersonSettings}
                   onPersonStarToggle={handlePersonStarToggle}
                   onGroupSettings={handlePersonGroupSettings}
-                  onAddPerson={handleAddPerson}
                 />
               </TabsContent>
             </Tabs>
@@ -999,7 +1071,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         )
       case "Library":
         return (
-          <Tabs key="library-tabs" defaultValue="prompts" className="w-full p-2">
+          <Tabs key="library-tabs" value={activeLibraryTab} onValueChange={setActiveLibraryTab} className="w-full p-2">
             <TabsList className="w-full grid grid-cols-3 h-9">
               <TabsTrigger value="prompts" className="text-xs gap-1 px-2">
                 <Sparkles className="size-3.5" />
@@ -1022,7 +1094,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 onPromptSettings={handlePromptSettings}
                 onPromptStarToggle={handlePromptStarToggle}
                 onGroupSettings={handlePromptGroupSettings}
-                onAddPrompt={handleAddPrompt}
               />
             </TabsContent>
             <TabsContent value="knowledge" className="mt-2">
@@ -1168,6 +1239,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarFooter className="border-t">
+          {renderFooter()}
+        </SidebarFooter>
       </Sidebar>
       
       <ProviderSettingsDialog

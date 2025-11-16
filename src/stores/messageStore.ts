@@ -20,7 +20,9 @@ interface MessageStore {
     model: string,
     apiKey?: string,
     baseUrl?: string,
-    includeHistory?: boolean
+    includeHistory?: boolean,
+    systemPrompt?: string,
+    userPrompt?: string
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
@@ -72,7 +74,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     model: string,
     apiKey?: string,
     baseUrl?: string,
-    includeHistory?: boolean
+    includeHistory?: boolean,
+    systemPrompt?: string,
+    userPrompt?: string
   ) => {
     set({ isSending: true, error: null, streamingContent: '', isStreaming: true, isWaitingForAI: true });
     try {
@@ -103,7 +107,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         model,
         hasApiKey: !!apiKey,
         baseUrl,
-        includeHistory
+        includeHistory,
+        hasSystemPrompt: !!systemPrompt,
+        hasUserPrompt: !!userPrompt
       });
 
       // This will return the user message immediately
@@ -115,6 +121,8 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         apiKey,
         baseUrl,
         includeHistory,
+        systemPrompt,
+        userPrompt,
       });
 
       console.log('[messageStore] Received user message:', userMessage);

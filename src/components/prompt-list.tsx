@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical, Plus } from "lucide-react"
+import { ChevronDown, MoreVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PromptListItem } from "@/components/prompt-list-item"
 
@@ -79,10 +79,6 @@ interface PromptListProps {
    */
   onGroupSettings?: (group: PromptGroup) => void
   /**
-   * Click handler for adding a new prompt
-   */
-  onAddPrompt?: () => void
-  /**
    * Optional className for customization
    */
   className?: string
@@ -95,7 +91,6 @@ export function PromptList({
   onPromptSettings,
   onPromptStarToggle,
   onGroupSettings,
-  onAddPrompt,
   className,
 }: PromptListProps) {
   // Collect all starred prompts from all groups
@@ -151,21 +146,6 @@ export function PromptList({
           ignoreGroupDefault={hasStarredPrompts}
         />
       ))}
-
-      {/* Add Prompt button */}
-      {onAddPrompt && (
-        <div className="px-1 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2 h-9"
-            onClick={onAddPrompt}
-          >
-            <Plus className="size-4" />
-            Add Prompt
-          </Button>
-        </div>
-      )}
     </div>
   )
 }

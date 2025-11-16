@@ -22,6 +22,7 @@ import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useSettingsStore } from "@/stores/settingsStore"
+import { useAssistantStore } from "@/stores/assistantStore"
 import type { Model } from "@/types"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
@@ -116,9 +117,11 @@ export function ChatInput({}: ChatInputProps) {
     selectedModel,
     selectedAssistant,
     setSelectedModel,
+    setSelectedAssistant,
   } = useConversationStore()
   
   const { models, getModelById, getProviderById } = useModelStore()
+  const { assistants } = useAssistantStore()
   const { sendMessage, stopGeneration, isSending, isStreaming, isWaitingForAI } = useMessageStore()
   const { getSetting } = useSettingsStore()
 
@@ -248,13 +251,28 @@ export function ChatInput({}: ChatInputProps) {
         baseUrl = (await getSetting("ollama_base_url")) || "http://localhost:11434"
       }
 
+      // Get prompts from assistant if selected
+      let systemPrompt: string | undefined
+      let userPrompt: string | undefined
+      
+      if (selectedAssistant) {
+        systemPrompt = selectedAssistant.system_prompt
+        userPrompt = selectedAssistant.user_prompt || undefined
+        console.log("Using assistant prompts:", {
+          hasSystemPrompt: !!systemPrompt,
+          hasUserPrompt: !!userPrompt
+        })
+      }
+
       console.log("Sending message:", {
         content,
         conversationId: currentConversation?.id,
         provider: providerType,
         model: modelIdStr,
         hasApiKey: !!apiKey,
-        baseUrl
+        baseUrl,
+        hasSystemPrompt: !!systemPrompt,
+        hasUserPrompt: !!userPrompt
       })
 
       await sendMessage(
@@ -263,7 +281,10 @@ export function ChatInput({}: ChatInputProps) {
         providerType,
         modelIdStr,
         apiKey,
-        baseUrl
+        baseUrl,
+        undefined, // includeHistory
+        systemPrompt,
+        userPrompt
       )
 
       console.log("Message sent successfully")
@@ -307,6 +328,19 @@ export function ChatInput({}: ChatInputProps) {
     // Simply set the selected model
     setSelectedModel(model)
     console.log('Selected model:', model.name)
+  }
+
+  const handleAssistantSelect = (assistantId: string) => {
+    console.log('handleAssistantSelect called with assistantId:', assistantId)
+    const assistant = assistants.find(a => a.id === assistantId)
+    if (!assistant) {
+      console.error('Assistant not found:', assistantId)
+      return
+    }
+    
+    // Set the selected assistant (this will clear model selection automatically)
+    setSelectedAssistant(assistant)
+    console.log('Selected assistant:', assistant.name)
   }
 
   // Get display text for current selection
@@ -449,9 +483,39 @@ export function ChatInput({}: ChatInputProps) {
                   )}
                 </TabsContent>
                 <TabsContent value="assistants" className="mt-0 space-y-1">
-                  <div className="text-xs text-muted-foreground px-2 py-4 text-center">
-                    Select assistants from the sidebar
-                  </div>
+                  {assistants.length > 0 ? (
+                    assistants.map((assistant) => {
+                      const assistantModel = getModelById(assistant.model_id)
+                      return (
+                        <DropdownMenuItem
+                          key={assistant.id}
+                          onClick={() => handleAssistantSelect(assistant.id)}
+                          className={cn(
+                            "gap-2 cursor-pointer",
+                            selectedAssistant?.id === assistant.id && "bg-accent"
+                          )}
+                        >
+                          <Avatar className="h-4 w-4">
+                            <AvatarFallback className="text-[10px]">
+                              {assistant.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="text-xs">{assistant.name}</span>
+                            {assistantModel && (
+                              <span className="text-xs text-muted-foreground">
+                                {assistantModel.name}
+                              </span>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      )
+                    })
+                  ) : (
+                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                      No assistants available
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </DropdownMenuContent>

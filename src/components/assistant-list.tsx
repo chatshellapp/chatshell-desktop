@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical, Plus } from "lucide-react"
+import { ChevronDown, MoreVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AssistantListItem, AssistantCapabilities } from "@/components/assistant-list-item"
 
@@ -95,10 +95,6 @@ interface AssistantListProps {
    */
   onGroupSettings?: (group: AssistantGroup) => void
   /**
-   * Click handler for add assistant button
-   */
-  onAddAssistant?: () => void
-  /**
    * Optional className for customization
    */
   className?: string
@@ -111,7 +107,6 @@ export function AssistantList({
   onAssistantSettings,
   onAssistantStarToggle,
   onGroupSettings,
-  onAddAssistant,
   className,
 }: AssistantListProps) {
   // Collect all starred assistants from all groups
@@ -167,21 +162,6 @@ export function AssistantList({
           ignoreGroupDefault={hasStarredAssistants}
         />
       ))}
-
-      {/* Add Assistant button */}
-      {onAddAssistant && (
-        <div className="px-1 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2 h-9"
-            onClick={onAddAssistant}
-          >
-            <Plus className="size-4" />
-            Add Assistant
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
