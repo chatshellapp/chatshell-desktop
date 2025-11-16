@@ -1,4 +1,4 @@
-import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X } from "lucide-react"
+import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square } from "lucide-react"
 import React, { useState, useRef } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -119,7 +119,7 @@ export function ChatInput({}: ChatInputProps) {
   } = useConversationStore()
   
   const { models, getModelById, getProviderById } = useModelStore()
-  const { sendMessage, isSending } = useMessageStore()
+  const { sendMessage, stopGeneration, isSending, isStreaming, isWaitingForAI } = useMessageStore()
   const { getSetting } = useSettingsStore()
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
@@ -270,6 +270,22 @@ export function ChatInput({}: ChatInputProps) {
     } catch (error) {
       console.error("Failed to send message:", error)
       alert(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const handleStop = async () => {
+    if (!currentConversation) {
+      console.warn("Cannot stop: no current conversation")
+      return
+    }
+
+    console.log("handleStop called for conversation:", currentConversation.id)
+    
+    try {
+      await stopGeneration(currentConversation.id)
+      console.log("Generation stopped successfully")
+    } catch (error) {
+      console.error("Failed to stop generation:", error)
     }
   }
 
@@ -445,16 +461,28 @@ export function ChatInput({}: ChatInputProps) {
             <span className="text-xs text-muted-foreground">56.0%</span>
           </div>
           <Separator orientation="vertical" className="!h-4" />
-          <InputGroupButton
-            variant="default"
-            className="rounded-full"
-            size="icon-xs"
-            disabled={!input.trim() || (!selectedModel && !selectedAssistant) || isSending}
-            onClick={handleSend}
-          >
-            <ArrowUpIcon />
-            <span className="sr-only">Send</span>
-          </InputGroupButton>
+          {isStreaming || isWaitingForAI ? (
+            <InputGroupButton
+              variant="default"
+              className="rounded-full"
+              size="icon-xs"
+              onClick={handleStop}
+            >
+              <Square className="h-4 w-4" />
+              <span className="sr-only">Stop</span>
+            </InputGroupButton>
+          ) : (
+            <InputGroupButton
+              variant="default"
+              className="rounded-full"
+              size="icon-xs"
+              disabled={!input.trim() || (!selectedModel && !selectedAssistant) || isSending}
+              onClick={handleSend}
+            >
+              <ArrowUpIcon />
+              <span className="sr-only">Send</span>
+            </InputGroupButton>
+          )}
         </InputGroupAddon>
       </InputGroup>
     </div>

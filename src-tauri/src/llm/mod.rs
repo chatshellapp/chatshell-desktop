@@ -32,7 +32,7 @@ pub trait LLMProvider: Send + Sync {
     async fn chat_stream(
         &self,
         request: ChatRequest,
-        callback: Box<dyn Fn(String) + Send>,
+        callback: Box<dyn Fn(String) -> bool + Send>,
     ) -> Result<ChatResponse>;
 }
 

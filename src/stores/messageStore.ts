@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { Message, CreateMessageRequest, Conversation } from '@/types';
+import type { Message, Conversation } from '@/types';
 
 interface MessageStore {
   messages: Message[];
@@ -22,6 +22,7 @@ interface MessageStore {
     baseUrl?: string,
     includeHistory?: boolean
   ) => Promise<void>;
+  stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
   addMessage: (message: Message) => void;
   setStreamingContent: (content: string) => void;
@@ -138,6 +139,23 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       
       set({ error: String(error), isSending: false, isStreaming: false, isWaitingForAI: false });
       throw error;
+    }
+  },
+
+  stopGeneration: async (conversationId: string) => {
+    try {
+      console.log('[messageStore] Stopping generation for conversation:', conversationId);
+      await invoke('stop_generation', { conversationId });
+      
+      // Only reset flags, keep streamingContent visible until chat-complete event
+      set({
+        isSending: false,
+        isWaitingForAI: false,
+      });
+      
+      console.log('[messageStore] Generation stopped successfully');
+    } catch (error) {
+      console.error('[messageStore] Failed to stop generation:', error);
     }
   },
 

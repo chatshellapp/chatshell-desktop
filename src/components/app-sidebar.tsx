@@ -662,6 +662,57 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     loadConversations()
   }, [loadConversations])
 
+  // Memoize vendors list - must be at top level to avoid hook ordering issues
+  const vendorsList = React.useMemo(() => {
+    // Convert flat models and providers to grouped format
+    if (providers.length === 0) return []
+    
+    // Group models by provider
+    return providers.map((provider: any) => {
+      const providerModels = models
+        .filter((m: any) => m.provider_id === provider.id)
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          modelId: m.model_id,
+          logo: gptAvatar, // TODO: map model to correct logo
+          isStarred: m.is_starred || false,
+        }))
+      
+      return {
+        id: provider.id,
+        name: provider.name,
+        models: providerModels,
+      }
+    }).filter((vendor: any) => vendor.models.length > 0)
+  }, [models, providers])
+
+  // Memoize assistant groups - must be at top level to avoid hook ordering issues
+  const assistantGroups = React.useMemo(() => {
+    // Convert flat assistants list to grouped format
+    if (assistants.length === 0) return []
+    return [{
+      id: "all",
+      name: "Assistants",
+      defaultOpen: true,
+      assistants: assistants.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        persona: a.system_prompt?.substring(0, 50) + '...' || 'Custom Assistant',
+        avatarBg: a.avatar_bg || '#3b82f6',
+        avatarText: a.avatar_text || a.name.charAt(0),
+        capabilities: {
+          modelLogo: gptAvatar, // We can improve this later with actual model logos
+          hasModel: true,
+          hasFiles: false,
+          hasKnowledgeBase: false,
+          hasMcpServer: false,
+        },
+        isStarred: a.is_starred || false,
+      }))
+    }]
+  }, [assistants])
+
   const handleModelClick = (model: any) => {
     console.log("Model selected:", model.name)
     // Find the real model from store
@@ -912,29 +963,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </TabsList>
               <TabsContent value="models" className="mt-2">
                 <ModelList
-                  vendors={React.useMemo(() => {
-                    // Convert flat models and providers to grouped format
-                    if (providers.length === 0) return []
-                    
-                    // Group models by provider
-                    return providers.map((provider: any) => {
-                      const providerModels = models
-                        .filter((m: any) => m.provider_id === provider.id)
-                        .map((m: any) => ({
-                          id: m.id,
-                          name: m.name,
-                          modelId: m.model_id,
-                          logo: gptAvatar, // TODO: map model to correct logo
-                          isStarred: m.is_starred || false,
-                        }))
-                      
-                      return {
-                        id: provider.id,
-                        name: provider.name,
-                        models: providerModels,
-                      }
-                    }).filter((vendor: any) => vendor.models.length > 0)
-                  }, [models, providers])}
+                  vendors={vendorsList}
                   selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
                   onModelClick={handleModelClick}
                   onModelSettings={handleModelSettings}
@@ -945,30 +974,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </TabsContent>
               <TabsContent value="assistants" className="mt-2">
                 <AssistantList
-                  groups={React.useMemo(() => {
-                    // Convert flat assistants list to grouped format
-                    if (assistants.length === 0) return []
-                    return [{
-                      id: "all",
-                      name: "Assistants",
-                      defaultOpen: true,
-                      assistants: assistants.map((a: any) => ({
-                        id: a.id,
-                        name: a.name,
-                        persona: a.system_prompt?.substring(0, 50) + '...' || 'Custom Assistant',
-                        avatarBg: a.avatar_bg || '#3b82f6',
-                        avatarText: a.avatar_text || a.name.charAt(0),
-                        capabilities: {
-                          modelLogo: gptAvatar, // We can improve this later with actual model logos
-                          hasModel: true,
-                          hasFiles: false,
-                          hasKnowledgeBase: false,
-                          hasMcpServer: false,
-                        },
-                        isStarred: a.is_starred || false,
-                      }))
-                    }]
-                  }, [assistants])}
+                  groups={assistantGroups}
                   selectedAssistantId={selectedAssistant?.id}
                   onAssistantClick={handleAssistantClick}
                   onAssistantSettings={handleAssistantSettings}

@@ -5,12 +5,20 @@ use crate::crypto;
 use crate::llm::{self, LLMProvider, ChatRequest, ChatMessage};
 use crate::scraper;
 use anyhow::Result;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 pub use crate::llm::models::ModelInfo;
+
+// Global state to track active generation tasks with cancellation tokens
+type GenerationTasks = Arc<RwLock<HashMap<String, CancellationToken>>>;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
+    pub generation_tasks: GenerationTasks,
 }
 
 // Provider commands
@@ -380,7 +388,7 @@ async fn generate_conversation_title(
     };
     
     // Call LLM (using chat_stream with empty callback since we don't need streaming for this)
-    let response = llm_provider.chat_stream(request, Box::new(|_| {})).await?;
+    let response = llm_provider.chat_stream(request, Box::new(|_| true)).await?;
     
     // Clean up the title (remove quotes, extra whitespace, etc.)
     let title = response.content.trim()
@@ -432,6 +440,15 @@ pub async fn send_message(
         })?;
     
     println!("✅ [send_message] User message created with id: {}", user_message.id);
+
+    // Create cancellation token for this generation
+    let cancel_token = CancellationToken::new();
+    
+    // Register the cancellation token
+    {
+        let mut tasks = state.generation_tasks.write().await;
+        tasks.insert(conversation_id.clone(), cancel_token.clone());
+    }
 
     // Spawn background task to process LLM request
     // This allows the command to return immediately and multiple requests to process concurrently
@@ -552,17 +569,35 @@ pub async fn send_message(
         };
         println!("📤 [background_task] Request has {} messages", chat_messages.len());
 
+        // Track accumulated content for cancellation handling
+        let accumulated_content = Arc::new(RwLock::new(String::new()));
+        let accumulated_content_clone = accumulated_content.clone();
         let conversation_id_for_stream = conversation_id_clone.clone();
         let app_for_stream = app.clone();
+        let cancel_token_for_stream = cancel_token.clone();
+        
         let response = match llm_provider
             .chat_stream(
                 request,
-                Box::new(move |chunk: String| {
+                Box::new(move |chunk: String| -> bool {
+                    // Check if cancelled
+                    if cancel_token_for_stream.is_cancelled() {
+                        println!("🛑 [streaming] Generation cancelled, stopping stream");
+                        return false; // Signal to stop streaming
+                    }
+                    
+                    // Accumulate content
+                    if let Ok(mut content) = accumulated_content_clone.try_write() {
+                        content.push_str(&chunk);
+                    }
+                    
                     let payload = serde_json::json!({
                         "conversation_id": conversation_id_for_stream,
                         "content": chunk,
                     });
                     let _ = app_for_stream.emit("chat-stream", payload);
+                    
+                    true // Continue streaming
                 }),
             )
             .await
@@ -570,26 +605,55 @@ pub async fn send_message(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("LLM request failed: {}", e);
+                // Remove task from tracking
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
                 return;
             }
         };
 
+        // Check if generation was cancelled
+        let was_cancelled = cancel_token.is_cancelled();
+        
+        // Use accumulated content if cancelled, otherwise use response content
+        let final_content = if was_cancelled {
+            println!("⚠️ [background_task] Generation was cancelled, saving partial content");
+            let content = accumulated_content.read().await;
+            content.clone()
+        } else {
+            response.content.clone()
+        };
+        
+        // Only save if we have content
+        if final_content.is_empty() {
+            println!("⚠️ [background_task] No content to save, skipping");
+            // Remove task from tracking
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+        
         // Save assistant message
         let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
             conversation_id: Some(conversation_id_clone.clone()),
             sender_type: "assistant".to_string(),
             sender_id: None,
             role: "assistant".to_string(),
-            content: response.content,
-            thinking_content: response.thinking_content,
-            tokens: response.tokens,
+            content: final_content.clone(),
+            thinking_content: if was_cancelled { None } else { response.thinking_content },
+            tokens: if was_cancelled { None } else { response.tokens },
         }) {
             Ok(msg) => msg,
             Err(e) => {
                 eprintln!("Failed to save assistant message: {}", e);
+                // Remove task from tracking
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
                 return;
             }
         };
+        
+        println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
         
         // Notify frontend that streaming is complete with the saved message
         let completion_payload = serde_json::json!({
@@ -605,12 +669,12 @@ pub async fn send_message(
         };
         
         if should_generate_title {
-            println!("🏷️ [background_task] Generating conversation title...");
+            println!("🏷️ [background_task] Generating conversation title{}", if was_cancelled { " (from partial content)" } else { "" });
             let title_result = generate_conversation_title(
                 &state_clone,
                 &conversation_id_clone,
                 &processed_content,
-                &assistant_message.content,
+                &final_content,
                 &provider,
                 &model,
                 api_key.clone(),
@@ -638,9 +702,40 @@ pub async fn send_message(
                 }
             }
         }
+        
+        // Remove task from tracking when done
+        let mut tasks = state_clone.generation_tasks.write().await;
+        tasks.remove(&conversation_id_clone);
     });
 
     // Return user message immediately
     Ok(user_message)
+}
+
+// Stop generation command
+#[tauri::command]
+pub async fn stop_generation(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<bool, String> {
+    println!("🛑 [stop_generation] Stopping generation for conversation: {}", conversation_id);
+    
+    let tasks = state.generation_tasks.read().await;
+    
+    if let Some(cancel_token) = tasks.get(&conversation_id) {
+        cancel_token.cancel();
+        println!("✅ [stop_generation] Cancellation token triggered");
+        
+        // Emit event to notify frontend that generation was stopped
+        let _ = app.emit("generation-stopped", serde_json::json!({
+            "conversation_id": conversation_id,
+        }));
+        
+        Ok(true)
+    } else {
+        println!("⚠️ [stop_generation] No active task found for conversation");
+        Ok(false)
+    }
 }
 

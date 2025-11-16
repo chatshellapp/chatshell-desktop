@@ -15,6 +15,10 @@ interface ConversationUpdatedEvent {
   title: string;
 }
 
+interface GenerationStoppedEvent {
+  conversation_id: string;
+}
+
 export function useChatEvents(conversationId: string | null) {
   const conversationIdRef = useRef(conversationId);
   
@@ -70,6 +74,12 @@ export function useChatEvents(conversationId: string | null) {
         currentConversation: { ...conversationStore.currentConversation, title }
       });
     }
+  }, []);
+
+  const handleGenerationStopped = useCallback(() => {
+    console.log('[useChatEvents] Generation stopped, keeping content visible until chat-complete');
+    // Don't clear anything here - let the chat-complete event handle the final state
+    // This prevents the message from disappearing before it's saved
   }, []);
 
   useEffect(() => {
@@ -140,6 +150,17 @@ export function useChatEvents(conversationId: string | null) {
       }
     );
 
+    // Listen for generation stopped
+    const unlistenGenerationStopped = listen<GenerationStoppedEvent>(
+      'generation-stopped',
+      (event) => {
+        console.log('[useChatEvents] Received generation-stopped event:', event.payload);
+        if (event.payload.conversation_id === conversationIdRef.current) {
+          handleGenerationStopped();
+        }
+      }
+    );
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId);
@@ -149,6 +170,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenScrapingComplete.then((fn) => fn());
       unlistenScrapingError.then((fn) => fn());
       unlistenConversationUpdated.then((fn) => fn());
+      unlistenGenerationStopped.then((fn) => fn());
     };
   }, [
     conversationId,
@@ -158,6 +180,7 @@ export function useChatEvents(conversationId: string | null) {
     handleScrapingComplete,
     handleScrapingError,
     handleConversationUpdated,
+    handleGenerationStopped,
   ]);
 }
 

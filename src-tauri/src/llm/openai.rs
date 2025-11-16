@@ -61,7 +61,7 @@ impl LLMProvider for OpenAIProvider {
     async fn chat_stream(
         &self,
         request: ChatRequest,
-        callback: Box<dyn Fn(String) + Send>,
+        callback: Box<dyn Fn(String) -> bool + Send>,
     ) -> Result<ChatResponse> {
         let client = Client::new();
 
@@ -112,7 +112,11 @@ impl LLMProvider for OpenAIProvider {
                         if let Some(choice) = chunk.choices.first() {
                             if let Some(content) = &choice.delta.content {
                                 full_content.push_str(content);
-                                callback(content.clone());
+                                // Check if callback returns false (cancellation requested)
+                                if !callback(content.clone()) {
+                                    println!("🛑 [openai] Cancellation requested via callback");
+                                    break;
+                                }
                             }
                         }
                     }

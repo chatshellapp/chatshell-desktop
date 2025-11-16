@@ -45,7 +45,7 @@ impl LLMProvider for OllamaProvider {
     async fn chat_stream(
         &self,
         request: ChatRequest,
-        callback: Box<dyn Fn(String) + Send>,
+        callback: Box<dyn Fn(String) -> bool + Send>,
     ) -> Result<ChatResponse> {
         let messages: Vec<OllamaMessage> = request
             .messages
@@ -82,8 +82,14 @@ impl LLMProvider for OllamaProvider {
         println!("📥 [ollama] Processing streaming response...");
         let mut stream = response.bytes_stream();
         let mut full_raw_content = String::new();
+        let mut cancelled = false;
 
         while let Some(chunk) = stream.next().await {
+            if cancelled {
+                println!("🛑 [ollama] Stream cancelled, stopping processing");
+                break;
+            }
+            
             let chunk = chunk?;
             let text = String::from_utf8_lossy(&chunk);
             
@@ -92,7 +98,12 @@ impl LLMProvider for OllamaProvider {
                     if let Some(message) = response.message {
                         if !message.content.is_empty() {
                             full_raw_content.push_str(&message.content);
-                            callback(message.content);
+                            // Check if callback returns false (cancellation requested)
+                            if !callback(message.content) {
+                                println!("🛑 [ollama] Cancellation requested via callback");
+                                cancelled = true;
+                                break;
+                            }
                         }
                     }
                     if response.done {

@@ -8,6 +8,9 @@ mod thinking_parser;
 
 use commands::AppState;
 use db::Database;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,7 +29,10 @@ pub fn run() {
     
     println!("Database seeded with default assistants");
     
-    let app_state = AppState { db };
+    let app_state = AppState { 
+        db,
+        generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+    };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -75,8 +81,9 @@ pub fn run() {
             commands::fetch_openai_models,
             commands::fetch_openrouter_models,
             commands::fetch_ollama_models,
-            // Chat command
+            // Chat commands
             commands::send_message,
+            commands::stop_generation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
