@@ -20,10 +20,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { useTopicStore } from "@/stores/topicStore"
 import { useMessageStore } from "@/stores/messageStore"
-import { useAgentStore } from "@/stores/agentStore"
+import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useSettingsStore } from "@/stores/settingsStore"
-import type { Topic, Agent, Model } from "@/types"
+import type { Topic, Assistant, Model } from "@/types"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
 
@@ -113,10 +113,10 @@ export function ChatInput({}: ChatInputProps) {
 
   // Store hooks
   const currentTopic = useTopicStore((state: any) => state.currentTopic) as Topic | null
-  const currentAgent = useAgentStore((state: any) => state.currentAgent) as Agent | null
-  const agents = useAgentStore((state: any) => state.agents) as Agent[]
-  const setCurrentAgent = useAgentStore((state: any) => state.setCurrentAgent)
-  const updateAgent = useAgentStore((state: any) => state.updateAgent)
+  const currentAssistant = useAssistantStore((state: any) => state.currentAssistant) as Assistant | null
+  const assistants = useAssistantStore((state: any) => state.assistants) as Assistant[]
+  const setCurrentAssistant = useAssistantStore((state: any) => state.setCurrentAssistant)
+  const updateAssistant = useAssistantStore((state: any) => state.updateAssistant)
   const models = useModelStore((state: any) => state.models) as Model[]
   const getModelById = useModelStore((state: any) => state.getModelById)
   const getProviderById = useModelStore((state: any) => state.getProviderById)
@@ -128,15 +128,15 @@ export function ChatInput({}: ChatInputProps) {
   React.useEffect(() => {
     console.log('=== ChatInput component mounted ===')
     console.log('Current topic:', currentTopic)
-    console.log('Current agent:', currentAgent)
+    console.log('Current assistant:', currentAssistant)
   }, [])
 
-  // Debug: Log when topic or agent changes
+  // Debug: Log when topic or assistant changes
   React.useEffect(() => {
     console.log('=== State changed ===')
     console.log('Current topic:', currentTopic)
-    console.log('Current agent:', currentAgent)
-  }, [currentTopic, currentAgent])
+    console.log('Current assistant:', currentAssistant)
+  }, [currentTopic, currentAssistant])
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
   const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
@@ -205,20 +205,20 @@ export function ChatInput({}: ChatInputProps) {
     console.log("handleSend called", {
       input: input.trim(),
       hasCurrentTopic: !!currentTopic,
-      hasCurrentAgent: !!currentAgent,
+      hasCurrentAssistant: !!currentAssistant,
       currentTopic,
-      currentAgent
+      currentAssistant
     })
 
-    if (!input.trim() || !currentTopic || !currentAgent) {
-      console.warn("Cannot send: missing input, topic, or agent")
+    if (!input.trim() || !currentTopic || !currentAssistant) {
+      console.warn("Cannot send: missing input, topic, or assistant")
       return
     }
 
-    // Get model info from agent's model_id
-    const model = getModelById(currentAgent.model_id)
+    // Get model info from assistant's model_id
+    const model = getModelById(currentAssistant.model_id)
     if (!model) {
-      console.error("Model not found for agent:", currentAgent.model_id)
+      console.error("Model not found for assistant:", currentAssistant.model_id)
       alert("Error: Model configuration not found")
       return
     }
@@ -292,27 +292,27 @@ export function ChatInput({}: ChatInputProps) {
   }
 
   const handleModelSelect = async (modelId: string) => {
-    if (!currentAgent) return
+    if (!currentAssistant) return
 
     try {
-      await updateAgent(currentAgent.id, {
-        name: currentAgent.name,
-        system_prompt: currentAgent.system_prompt,
+      await updateAssistant(currentAssistant.id, {
+        name: currentAssistant.name,
+        system_prompt: currentAssistant.system_prompt,
         model_id: modelId,
-        avatar_bg: currentAgent.avatar_bg,
-        avatar_text: currentAgent.avatar_text,
-        is_starred: currentAgent.is_starred,
+        avatar_bg: currentAssistant.avatar_bg,
+        avatar_text: currentAssistant.avatar_text,
+        is_starred: currentAssistant.is_starred,
       })
-      console.log('Model updated successfully for agent:', currentAgent.name)
+      console.log('Model updated successfully for assistant:', currentAssistant.name)
     } catch (error) {
-      console.error('Failed to update agent model:', error)
+      console.error('Failed to update assistant model:', error)
       alert(`Failed to update model: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  const handleAgentSelect = (agent: Agent) => {
-    setCurrentAgent(agent)
-    console.log('Agent selected:', agent.name)
+  const handleAssistantSelect = (assistant: Assistant) => {
+    setCurrentAssistant(assistant)
+    console.log('Assistant selected:', assistant.name)
   }
 
 
@@ -349,7 +349,7 @@ export function ChatInput({}: ChatInputProps) {
             handleKeyDown(e)
           }}
           onPaste={handlePaste}
-          disabled={!currentTopic || !currentAgent}
+          disabled={!currentTopic || !currentAssistant}
         />
         <InputGroupAddon align="block-end">
           <DropdownMenu>
@@ -397,17 +397,17 @@ export function ChatInput({}: ChatInputProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <InputGroupButton variant="ghost" className="gap-2">
-                {currentAgent ? (
+                {currentAssistant ? (
                   <>
                     <Avatar className="h-4 w-4">
                       <AvatarFallback className="text-[10px]">
-                        {currentAgent.name.charAt(0)}
+                        {currentAssistant.name.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
                     <span className="text-xs">
                       {(() => {
-                        const model = getModelById(currentAgent.model_id)
-                        return model ? `${currentAgent.name} · ${model.name}` : currentAgent.name
+                        const model = getModelById(currentAssistant.model_id)
+                        return model ? `${currentAssistant.name} · ${model.name}` : currentAssistant.name
                       })()}
                     </span>
                   </>
@@ -438,7 +438,7 @@ export function ChatInput({}: ChatInputProps) {
                         onClick={() => handleModelSelect(model.id)}
                         className={cn(
                           "gap-2 cursor-pointer",
-                          currentAgent?.model_id === model.id && "bg-accent"
+                          currentAssistant?.model_id === model.id && "bg-accent"
                         )}
                       >
                         <Avatar className="h-4 w-4">
@@ -461,22 +461,22 @@ export function ChatInput({}: ChatInputProps) {
                   )}
                 </TabsContent>
                 <TabsContent value="assistants" className="mt-0 space-y-1">
-                  {agents.length > 0 ? (
-                    agents.map((agent) => (
+                  {assistants.length > 0 ? (
+                    assistants.map((assistant) => (
                       <DropdownMenuItem
-                        key={agent.id}
-                        onClick={() => handleAgentSelect(agent)}
+                        key={assistant.id}
+                        onClick={() => handleAssistantSelect(assistant)}
                         className={cn(
                           "gap-2 cursor-pointer",
-                          currentAgent?.id === agent.id && "bg-accent"
+                          currentAssistant?.id === assistant.id && "bg-accent"
                         )}
                       >
                         <Avatar className="h-4 w-4">
                           <AvatarFallback className="text-[10px]">
-                            {agent.avatar_text || agent.name.charAt(0)}
+                            {assistant.avatar_text || assistant.name.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-xs">{agent.name}</span>
+                        <span className="text-xs">{assistant.name}</span>
                       </DropdownMenuItem>
                     ))
                   ) : (
@@ -497,13 +497,13 @@ export function ChatInput({}: ChatInputProps) {
             variant="default"
             className="rounded-full"
             size="icon-xs"
-            disabled={!input.trim() || !currentTopic || !currentAgent || isSending}
+            disabled={!input.trim() || !currentTopic || !currentAssistant || isSending}
             onClick={() => {
               console.log('🔘 Send button clicked!')
               console.log('Button state:', {
                 hasInput: !!input.trim(),
                 hasTopic: !!currentTopic,
-                hasAgent: !!currentAgent,
+                hasAssistant: !!currentAssistant,
                 isSending
               })
               handleSend()

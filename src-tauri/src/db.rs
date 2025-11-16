@@ -56,15 +56,22 @@ impl Database {
             [],
         )?;
 
-        // Agents table
+        // Assistants table
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS agents (
+            "CREATE TABLE IF NOT EXISTS assistants (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
+                role TEXT,
+                description TEXT,
                 system_prompt TEXT NOT NULL,
+                user_prompt TEXT,
                 model_id TEXT NOT NULL,
+                avatar_type TEXT DEFAULT 'text',
                 avatar_bg TEXT,
                 avatar_text TEXT,
+                avatar_image_path TEXT,
+                avatar_image_url TEXT,
+                group_name TEXT,
                 is_starred INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -77,11 +84,70 @@ impl Database {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS topics (
                 id TEXT PRIMARY KEY,
-                agent_id TEXT NOT NULL,
+                assistant_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+                FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        // Knowledge bases table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS knowledge_bases (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                content TEXT,
+                url TEXT,
+                metadata TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Assistant-KnowledgeBase junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS assistant_knowledge_bases (
+                id TEXT PRIMARY KEY,
+                assistant_id TEXT NOT NULL,
+                knowledge_base_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
+                FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+                UNIQUE(assistant_id, knowledge_base_id)
+            )",
+            [],
+        )?;
+
+        // MCPs table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mcps (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                endpoint TEXT,
+                config TEXT,
+                description TEXT,
+                is_enabled INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Assistant-MCP junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS assistant_mcps (
+                id TEXT PRIMARY KEY,
+                assistant_id TEXT NOT NULL,
+                mcp_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
+                FOREIGN KEY (mcp_id) REFERENCES mcps(id) ON DELETE CASCADE,
+                UNIQUE(assistant_id, mcp_id)
             )",
             [],
         )?;
@@ -339,118 +405,154 @@ impl Database {
         Ok(())
     }
 
-    // Agent CRUD operations
-    pub fn create_agent(&self, req: CreateAgentRequest) -> Result<Agent> {
+    // Assistant CRUD operations
+    pub fn create_assistant(&self, req: CreateAssistantRequest) -> Result<Assistant> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let is_starred = req.is_starred.unwrap_or(false);
+        let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO agents (id, name, system_prompt, model_id, avatar_bg, avatar_text, is_starred, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO assistants (id, name, role, description, system_prompt, user_prompt, model_id, 
+                 avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
+                 group_name, is_starred, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     id,
                     req.name,
+                    req.role,
+                    req.description,
                     req.system_prompt,
+                    req.user_prompt,
                     req.model_id,
+                    avatar_type,
                     req.avatar_bg,
                     req.avatar_text,
+                    req.avatar_image_path,
+                    req.avatar_image_url,
+                    req.group_name,
                     is_starred as i32,
                     now,
                     now
                 ],
             )?;
-            // Lock released here
         }
 
-        self.get_agent(&id)?
-            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created agent"))
+        self.get_assistant(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created assistant"))
     }
 
-    pub fn get_agent(&self, id: &str) -> Result<Option<Agent>> {
+    pub fn get_assistant(&self, id: &str) -> Result<Option<Assistant>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, system_prompt, model_id, avatar_bg, avatar_text, is_starred, created_at, updated_at
-             FROM agents WHERE id = ?1",
+            "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
+             avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
+             group_name, is_starred, created_at, updated_at
+             FROM assistants WHERE id = ?1",
         )?;
 
-        let agent = stmt
+        let assistant = stmt
             .query_row(params![id], |row| {
-                Ok(Agent {
+                Ok(Assistant {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    system_prompt: row.get(2)?,
-                    model_id: row.get(3)?,
-                    avatar_bg: row.get(4)?,
-                    avatar_text: row.get(5)?,
-                    is_starred: row.get::<_, i32>(6)? != 0,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    role: row.get(2)?,
+                    description: row.get(3)?,
+                    system_prompt: row.get(4)?,
+                    user_prompt: row.get(5)?,
+                    model_id: row.get(6)?,
+                    avatar_type: row.get(7)?,
+                    avatar_bg: row.get(8)?,
+                    avatar_text: row.get(9)?,
+                    avatar_image_path: row.get(10)?,
+                    avatar_image_url: row.get(11)?,
+                    group_name: row.get(12)?,
+                    is_starred: row.get::<_, i32>(13)? != 0,
+                    created_at: row.get(14)?,
+                    updated_at: row.get(15)?,
                 })
             })
             .optional()?;
 
-        Ok(agent)
+        Ok(assistant)
     }
 
-    pub fn list_agents(&self) -> Result<Vec<Agent>> {
+    pub fn list_assistants(&self) -> Result<Vec<Assistant>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, system_prompt, model_id, avatar_bg, avatar_text, is_starred, created_at, updated_at
-             FROM agents ORDER BY created_at DESC",
+            "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
+             avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
+             group_name, is_starred, created_at, updated_at
+             FROM assistants ORDER BY created_at DESC",
         )?;
 
-        let agents = stmt
+        let assistants = stmt
             .query_map([], |row| {
-                Ok(Agent {
+                Ok(Assistant {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    system_prompt: row.get(2)?,
-                    model_id: row.get(3)?,
-                    avatar_bg: row.get(4)?,
-                    avatar_text: row.get(5)?,
-                    is_starred: row.get::<_, i32>(6)? != 0,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    role: row.get(2)?,
+                    description: row.get(3)?,
+                    system_prompt: row.get(4)?,
+                    user_prompt: row.get(5)?,
+                    model_id: row.get(6)?,
+                    avatar_type: row.get(7)?,
+                    avatar_bg: row.get(8)?,
+                    avatar_text: row.get(9)?,
+                    avatar_image_path: row.get(10)?,
+                    avatar_image_url: row.get(11)?,
+                    group_name: row.get(12)?,
+                    is_starred: row.get::<_, i32>(13)? != 0,
+                    created_at: row.get(14)?,
+                    updated_at: row.get(15)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(agents)
+        Ok(assistants)
     }
 
-    pub fn update_agent(&self, id: &str, req: CreateAgentRequest) -> Result<Agent> {
+    pub fn update_assistant(&self, id: &str, req: CreateAssistantRequest) -> Result<Assistant> {
         let now = Utc::now().to_rfc3339();
         let is_starred = req.is_starred.unwrap_or(false);
+        let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "UPDATE agents SET name = ?1, system_prompt = ?2, model_id = ?3, 
-                 avatar_bg = ?4, avatar_text = ?5, is_starred = ?6, updated_at = ?7 WHERE id = ?8",
+                "UPDATE assistants SET name = ?1, role = ?2, description = ?3, system_prompt = ?4, 
+                 user_prompt = ?5, model_id = ?6, avatar_type = ?7, avatar_bg = ?8, avatar_text = ?9, 
+                 avatar_image_path = ?10, avatar_image_url = ?11, group_name = ?12, 
+                 is_starred = ?13, updated_at = ?14 WHERE id = ?15",
                 params![
                     req.name,
+                    req.role,
+                    req.description,
                     req.system_prompt,
+                    req.user_prompt,
                     req.model_id,
+                    avatar_type,
                     req.avatar_bg,
                     req.avatar_text,
+                    req.avatar_image_path,
+                    req.avatar_image_url,
+                    req.group_name,
                     is_starred as i32,
                     now,
                     id
                 ],
             )?;
-            // Lock released here
         }
 
-        self.get_agent(id)?
-            .ok_or_else(|| anyhow::anyhow!("Agent not found"))
+        self.get_assistant(id)?
+            .ok_or_else(|| anyhow::anyhow!("Assistant not found"))
     }
 
-    pub fn delete_agent(&self, id: &str) -> Result<()> {
+    pub fn delete_assistant(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM agents WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM assistants WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -462,11 +564,10 @@ impl Database {
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO topics (id, agent_id, title, created_at, updated_at)
+                "INSERT INTO topics (id, assistant_id, title, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![id, req.agent_id, req.title, now, now],
+                params![id, req.assistant_id, req.title, now, now],
             )?;
-            // Lock released here
         }
 
         self.get_topic(&id)?
@@ -476,7 +577,7 @@ impl Database {
     pub fn get_topic(&self, id: &str) -> Result<Option<Topic>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, agent_id, title, created_at, updated_at
+            "SELECT id, assistant_id, title, created_at, updated_at
              FROM topics WHERE id = ?1",
         )?;
 
@@ -484,7 +585,7 @@ impl Database {
             .query_row(params![id], |row| {
                 Ok(Topic {
                     id: row.get(0)?,
-                    agent_id: row.get(1)?,
+                    assistant_id: row.get(1)?,
                     title: row.get(2)?,
                     created_at: row.get(3)?,
                     updated_at: row.get(4)?,
@@ -495,18 +596,18 @@ impl Database {
         Ok(topic)
     }
 
-    pub fn list_topics(&self, agent_id: &str) -> Result<Vec<Topic>> {
+    pub fn list_topics(&self, assistant_id: &str) -> Result<Vec<Topic>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, agent_id, title, created_at, updated_at
-             FROM topics WHERE agent_id = ?1 ORDER BY updated_at DESC",
+            "SELECT id, assistant_id, title, created_at, updated_at
+             FROM topics WHERE assistant_id = ?1 ORDER BY updated_at DESC",
         )?;
 
         let topics = stmt
-            .query_map(params![agent_id], |row| {
+            .query_map(params![assistant_id], |row| {
                 Ok(Topic {
                     id: row.get(0)?,
-                    agent_id: row.get(1)?,
+                    assistant_id: row.get(1)?,
                     title: row.get(2)?,
                     created_at: row.get(3)?,
                     updated_at: row.get(4)?,
@@ -689,7 +790,7 @@ impl Database {
         Ok(settings)
     }
 
-    // Seed database with default agents if empty
+    // Seed database with default assistants if empty
     pub fn seed_default_data(&self) -> Result<()> {
         // Check if default ollama provider already exists
         let providers = self.list_providers()?;
@@ -722,10 +823,10 @@ impl Database {
         
         if provider_has_models {
             println!("✅ [db] Models already exist for provider, skipping model seed");
-            // Still check and seed agents if needed
-            let agents = self.list_agents()?;
-            if agents.is_empty() {
-                println!("⚠️  [db] No agents found, but models exist. You may need to manually create agents.");
+            // Still check and seed assistants if needed
+            let assistants = self.list_assistants()?;
+            if assistants.is_empty() {
+                println!("⚠️  [db] No assistants found, but models exist. You may need to manually create assistants.");
             }
             return Ok(());
         }
@@ -760,46 +861,67 @@ impl Database {
         })?;
         println!("✅ [db] Created model: {}", deepseek_model.name);
 
-        // Check if agents already exist
-        let agents = self.list_agents()?;
-        if !agents.is_empty() {
-            println!("✅ [db] Agents already exist, skipping seed");
+        // Check if assistants already exist
+        let assistants = self.list_assistants()?;
+        if !assistants.is_empty() {
+            println!("✅ [db] Assistants already exist, skipping seed");
             return Ok(());
         }
 
-        println!("🌱 [db] Seeding default agents...");
+        println!("🌱 [db] Seeding default assistants...");
 
-        // Create default agents using these models
-        let default_agents = vec![
-            CreateAgentRequest {
+        // Create default assistants using these models
+        let default_assistants = vec![
+            CreateAssistantRequest {
                 name: "Code Assistant".to_string(),
+                role: Some("Coding Expert".to_string()),
+                description: Some("Help with programming tasks and technical questions".to_string()),
                 system_prompt: "You are a helpful coding assistant. Help users with programming tasks, code review, debugging, and technical questions. Provide clear explanations and working code examples.".to_string(),
+                user_prompt: None,
                 model_id: gemma_model.id.clone(),
+                avatar_type: Some("text".to_string()),
                 avatar_bg: Some("#3b82f6".to_string()),
                 avatar_text: Some("💻".to_string()),
+                avatar_image_path: None,
+                avatar_image_url: None,
+                group_name: Some("Development".to_string()),
                 is_starred: Some(true),
             },
-            CreateAgentRequest {
+            CreateAssistantRequest {
                 name: "General Assistant".to_string(),
+                role: Some("General Helper".to_string()),
+                description: Some("General purpose AI assistant".to_string()),
                 system_prompt: "You are a helpful, harmless, and honest AI assistant. Provide clear and accurate information to help users with their questions. Think through problems step by step.".to_string(),
+                user_prompt: None,
                 model_id: gpt_oss_model.id.clone(),
+                avatar_type: Some("text".to_string()),
                 avatar_bg: Some("#10b981".to_string()),
                 avatar_text: Some("🤖".to_string()),
+                avatar_image_path: None,
+                avatar_image_url: None,
+                group_name: Some("General".to_string()),
                 is_starred: Some(false),
             },
-            CreateAgentRequest {
+            CreateAssistantRequest {
                 name: "Research Assistant".to_string(),
+                role: Some("Research Specialist".to_string()),
+                description: Some("Help with research and data analysis".to_string()),
                 system_prompt: "You are a research assistant. Help users find information, analyze data, and summarize findings. Provide detailed analysis with reasoning.".to_string(),
+                user_prompt: None,
                 model_id: deepseek_model.id.clone(),
+                avatar_type: Some("text".to_string()),
                 avatar_bg: Some("#8b5cf6".to_string()),
                 avatar_text: Some("🔍".to_string()),
+                avatar_image_path: None,
+                avatar_image_url: None,
+                group_name: Some("Research".to_string()),
                 is_starred: Some(false),
             },
         ];
 
-        for agent_req in default_agents {
-            let agent = self.create_agent(agent_req)?;
-            println!("✅ [db] Created agent: {}", agent.name);
+        for assistant_req in default_assistants {
+            let assistant = self.create_assistant(assistant_req)?;
+            println!("✅ [db] Created assistant: {}", assistant.name);
         }
 
         println!("🎉 [db] Seeding complete!");

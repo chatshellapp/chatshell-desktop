@@ -9,7 +9,7 @@ interface TopicStore {
   isLoading: boolean;
   error: string | null;
 
-  loadTopics: (agentId: string) => Promise<void>;
+  loadTopics: (assistantId: string) => Promise<void>;
   createTopic: (req: CreateTopicRequest) => Promise<Topic>;
   updateTopic: (id: string, title: string) => Promise<Topic>;
   deleteTopic: (id: string) => Promise<void>;
@@ -23,10 +23,10 @@ export const useTopicStore = create<TopicStore>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadTopics: async (agentId: string) => {
+  loadTopics: async (assistantId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const topics = await invoke<Topic[]>('list_topics', { agentId });
+      const topics = await invoke<Topic[]>('list_topics', { assistantId });
       set({ topics, isLoading: false });
     } catch (error) {
       set({ error: String(error), isLoading: false });

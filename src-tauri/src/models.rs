@@ -46,27 +46,46 @@ pub struct CreateModelRequest {
     pub is_starred: Option<bool>,
 }
 
-// Agent (Assistant) models
+// Assistant models
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Agent {
+pub struct Assistant {
     pub id: String,
     pub name: String,
+    pub role: Option<String>,
+    pub description: Option<String>,
     pub system_prompt: String,
+    pub user_prompt: Option<String>,
     pub model_id: String,       // Foreign key to models table
+    
+    // Avatar fields
+    pub avatar_type: String,
     pub avatar_bg: Option<String>,
     pub avatar_text: Option<String>,
+    pub avatar_image_path: Option<String>,
+    pub avatar_image_url: Option<String>,
+    
+    pub group_name: Option<String>,
     pub is_starred: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAgentRequest {
+pub struct CreateAssistantRequest {
     pub name: String,
+    pub role: Option<String>,
+    pub description: Option<String>,
     pub system_prompt: String,
+    pub user_prompt: Option<String>,
     pub model_id: String,       // Foreign key to models table
+    
+    pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,
     pub avatar_text: Option<String>,
+    pub avatar_image_path: Option<String>,
+    pub avatar_image_url: Option<String>,
+    
+    pub group_name: Option<String>,
     pub is_starred: Option<bool>,
 }
 
@@ -74,7 +93,7 @@ pub struct CreateAgentRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Topic {
     pub id: String,
-    pub agent_id: String,
+    pub assistant_id: String,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -82,8 +101,54 @@ pub struct Topic {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTopicRequest {
-    pub agent_id: String,
+    pub assistant_id: String,
     pub title: String,
+}
+
+// Knowledge Base models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeBase {
+    pub id: String,
+    pub name: String,
+    pub r#type: String,
+    pub content: Option<String>,
+    pub url: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateKnowledgeBaseRequest {
+    pub name: String,
+    pub r#type: String,
+    pub content: Option<String>,
+    pub url: Option<String>,
+    pub metadata: Option<String>,
+}
+
+// MCP models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mcp {
+    pub id: String,
+    pub name: String,
+    pub r#type: String,
+    pub endpoint: Option<String>,
+    pub config: Option<String>,
+    pub description: Option<String>,
+    pub is_enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMcpRequest {
+    pub name: String,
+    pub r#type: String,
+    pub endpoint: Option<String>,
+    pub config: Option<String>,
+    pub description: Option<String>,
+    pub is_enabled: Option<bool>,
 }
 
 // Message models

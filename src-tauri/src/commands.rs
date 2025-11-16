@@ -95,45 +95,45 @@ pub async fn delete_model(
     state.db.delete_model(&id).map_err(|e| e.to_string())
 }
 
-// Agent commands
+// Assistant commands
 #[tauri::command]
-pub async fn create_agent(
+pub async fn create_assistant(
     state: State<'_, AppState>,
-    req: CreateAgentRequest,
-) -> Result<Agent, String> {
-    state.db.create_agent(req).map_err(|e| e.to_string())
+    req: CreateAssistantRequest,
+) -> Result<Assistant, String> {
+    state.db.create_assistant(req).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_agent(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<Agent>, String> {
-    state.db.get_agent(&id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn list_agents(
-    state: State<'_, AppState>,
-) -> Result<Vec<Agent>, String> {
-    state.db.list_agents().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn update_agent(
+pub async fn get_assistant(
     state: State<'_, AppState>,
     id: String,
-    req: CreateAgentRequest,
-) -> Result<Agent, String> {
-    state.db.update_agent(&id, req).map_err(|e| e.to_string())
+) -> Result<Option<Assistant>, String> {
+    state.db.get_assistant(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_agent(
+pub async fn list_assistants(
+    state: State<'_, AppState>,
+) -> Result<Vec<Assistant>, String> {
+    state.db.list_assistants().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_assistant(
+    state: State<'_, AppState>,
+    id: String,
+    req: CreateAssistantRequest,
+) -> Result<Assistant, String> {
+    state.db.update_assistant(&id, req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_assistant(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    state.db.delete_agent(&id).map_err(|e| e.to_string())
+    state.db.delete_assistant(&id).map_err(|e| e.to_string())
 }
 
 // Topic commands
@@ -156,9 +156,9 @@ pub async fn get_topic(
 #[tauri::command]
 pub async fn list_topics(
     state: State<'_, AppState>,
-    agent_id: String,
+    assistant_id: String,
 ) -> Result<Vec<Topic>, String> {
-    state.db.list_topics(&agent_id).map_err(|e| e.to_string())
+    state.db.list_topics(&assistant_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -363,7 +363,7 @@ pub async fn send_message(
             }
         };
         
-        // Get topic and agent
+        // Get topic and assistant
         println!("📦 [background_task] Getting topic from database...");
         let topic = match state_clone.db.get_topic(&topic_id) {
             Ok(Some(t)) => {
@@ -380,30 +380,30 @@ pub async fn send_message(
             }
         };
 
-        println!("📦 [background_task] Getting agent from database...");
-        let agent = match state_clone.db.get_agent(&topic.agent_id) {
+        println!("📦 [background_task] Getting assistant from database...");
+        let assistant = match state_clone.db.get_assistant(&topic.assistant_id) {
             Ok(Some(a)) => {
-                println!("✅ [background_task] Got agent: {} (model_id: {})", a.name, a.model_id);
+                println!("✅ [background_task] Got assistant: {} (model_id: {})", a.name, a.model_id);
                 a
             },
             Ok(None) => {
-                eprintln!("❌ [background_task] Agent not found: {}", topic.agent_id);
+                eprintln!("❌ [background_task] Assistant not found: {}", topic.assistant_id);
                 return;
             },
             Err(e) => {
-                eprintln!("❌ [background_task] Failed to get agent: {}", e);
+                eprintln!("❌ [background_task] Failed to get assistant: {}", e);
                 return;
             }
         };
 
         println!("📦 [background_task] Getting model from database...");
-        let model_info = match state_clone.db.get_model(&agent.model_id) {
+        let model_info = match state_clone.db.get_model(&assistant.model_id) {
             Ok(Some(m)) => {
                 println!("✅ [background_task] Got model: {} ({})", m.name, m.model_id);
                 m
             },
             Ok(None) => {
-                eprintln!("❌ [background_task] Model not found: {}", agent.model_id);
+                eprintln!("❌ [background_task] Model not found: {}", assistant.model_id);
                 return;
             },
             Err(e) => {
@@ -431,7 +431,7 @@ pub async fn send_message(
         // Build chat messages
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
-            content: agent.system_prompt.clone(),
+            content: assistant.system_prompt.clone(),
         }];
 
         // Include message history if requested (default: true)

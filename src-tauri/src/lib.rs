@@ -21,10 +21,10 @@ pub fn run() {
     
     println!("Database initialized successfully");
     
-    // Seed database with default agents
+    // Seed database with default assistants
     db.seed_default_data().expect("Failed to seed database");
     
-    println!("Database seeded with default agents");
+    println!("Database seeded with default assistants");
     
     let app_state = AppState { db };
 
@@ -44,12 +44,12 @@ pub fn run() {
             commands::list_models,
             commands::update_model,
             commands::delete_model,
-            // Agent commands
-            commands::create_agent,
-            commands::get_agent,
-            commands::list_agents,
-            commands::update_agent,
-            commands::delete_agent,
+            // Assistant commands
+            commands::create_assistant,
+            commands::get_assistant,
+            commands::list_assistants,
+            commands::update_assistant,
+            commands::delete_assistant,
             // Topic commands
             commands::create_topic,
             commands::get_topic,

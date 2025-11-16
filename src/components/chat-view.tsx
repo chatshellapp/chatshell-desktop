@@ -3,7 +3,7 @@ import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
 import { useTopicStore } from "@/stores/topicStore"
 import { useMessageStore } from "@/stores/messageStore"
-import { useAgentStore } from "@/stores/agentStore"
+import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
 
@@ -21,15 +21,15 @@ export function ChatView() {
   const streamingContent = useMessageStore((state) => state.streamingContent)
   const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
   const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
-  const currentAgent = useAgentStore((state) => state.currentAgent)
+  const currentAssistant = useAssistantStore((state) => state.currentAssistant)
   const getModelById = useModelStore((state) => state.getModelById)
 
   // Get model name for display
   const getModelDisplayName = () => {
-    if (!currentAgent) return "AI Assistant"
-    const model = getModelById(currentAgent.model_id)
-    if (!model) return currentAgent.name
-    return `${currentAgent.name} · ${model.name}`
+    if (!currentAssistant) return "AI Assistant"
+    const model = getModelById(currentAssistant.model_id)
+    if (!model) return currentAssistant.name
+    return `${currentAssistant.name} · ${model.name}`
   }
 
   // Set up event listeners for chat streaming and scraping

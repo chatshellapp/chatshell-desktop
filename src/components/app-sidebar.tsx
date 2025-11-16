@@ -13,7 +13,7 @@ import { PromptList, type Prompt, type PromptGroup } from "@/components/prompt-l
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { useTopicStore } from "@/stores/topicStore"
-import { useAgentStore } from "@/stores/agentStore"
+import { useAssistantStore } from "@/stores/assistantStore"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -639,14 +639,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   
   // Get topic store functions and state
   const { topics, currentTopic, createTopic, setCurrentTopic, loadTopics, selectTopic } = useTopicStore()
-  const currentAgent = useAgentStore((state) => state.currentAgent)
+  const currentAssistant = useAssistantStore((state) => state.currentAssistant)
   
-  // Load topics when currentAgent changes
+  // Load topics when currentAssistant changes
   React.useEffect(() => {
-    if (currentAgent) {
-      loadTopics(currentAgent.id)
+    if (currentAssistant) {
+      loadTopics(currentAssistant.id)
     }
-  }, [currentAgent, loadTopics])
+  }, [currentAssistant, loadTopics])
 
   const handleModelClick = (model: Model) => {
     console.log("Model selected:", model)
@@ -776,14 +776,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }
 
   const handleNewConversation = async () => {
-    if (!currentAgent) {
-      console.error("No current agent selected")
+    if (!currentAssistant) {
+      console.error("No current assistant selected")
       return
     }
     
     try {
       const newTopic = await createTopic({
-        agent_id: currentAgent.id,
+        assistant_id: currentAssistant.id,
         title: "New Conversation",
       })
       setCurrentTopic(newTopic)

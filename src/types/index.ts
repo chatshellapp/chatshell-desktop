@@ -40,40 +40,96 @@ export interface CreateModelRequest {
   is_starred?: boolean;
 }
 
-// Agent (Assistant) types
-export interface Agent {
+// Assistant types
+export interface Assistant {
   id: string;
   name: string;
+  role?: string;
+  description?: string;
   system_prompt: string;
+  user_prompt?: string;
   model_id: string; // Foreign key to models table
+  avatar_type: string; // "text" or "image"
   avatar_bg?: string;
   avatar_text?: string;
+  avatar_image_path?: string;
+  avatar_image_url?: string;
+  group_name?: string;
   is_starred: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateAgentRequest {
+export interface CreateAssistantRequest {
   name: string;
+  role?: string;
+  description?: string;
   system_prompt: string;
+  user_prompt?: string;
   model_id: string; // Foreign key to models table
+  avatar_type?: string;
   avatar_bg?: string;
   avatar_text?: string;
+  avatar_image_path?: string;
+  avatar_image_url?: string;
+  group_name?: string;
   is_starred?: boolean;
 }
 
 // Topic (Conversation) types
 export interface Topic {
   id: string;
-  agent_id: string;
+  assistant_id: string;
   title: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateTopicRequest {
-  agent_id: string;
+  assistant_id: string;
   title: string;
+}
+
+// Knowledge Base types
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  type: string; // "document", "url", "file", "folder"
+  content?: string;
+  url?: string;
+  metadata?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateKnowledgeBaseRequest {
+  name: string;
+  type: string;
+  content?: string;
+  url?: string;
+  metadata?: string;
+}
+
+// MCP types
+export interface Mcp {
+  id: string;
+  name: string;
+  type: string; // "server", "tool", "api"
+  endpoint?: string;
+  config?: string;
+  description?: string;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMcpRequest {
+  name: string;
+  type: string;
+  endpoint?: string;
+  config?: string;
+  description?: string;
+  is_enabled?: boolean;
 }
 
 // Message types
