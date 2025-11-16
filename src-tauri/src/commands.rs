@@ -295,7 +295,10 @@ pub async fn send_message(
     let user_message = state
         .db
         .create_message(CreateMessageRequest {
-            topic_id: topic_id.clone(),
+            conversation_id: None,
+            topic_id: Some(topic_id.clone()),
+            sender_type: "user".to_string(),
+            sender_id: None,
             role: "user".to_string(),
             content: content.clone(),
             thinking_content: None,
@@ -329,12 +332,10 @@ pub async fn send_message(
         // Process URLs in background (not blocking the command return)
         let processed_content = match scraper::process_message_with_urls(&content).await {
             Ok((full_content, scraped_only)) => {
-                // Emit scraping complete event and update database
+                // Emit scraping complete event
                 if !urls.is_empty() {
-                    // Update database with scraped content only (not including original message)
-                    if let Err(e) = state_clone.db.update_message_scraping(&user_message_id, Some(scraped_only.clone()), None) {
-                        eprintln!("Failed to update message with scraped content: {}", e);
-                    }
+                    // TODO: Create external_resource and link to message via message_external_resources
+                    // For now, just emit the event
                     
                     let _ = app_clone.emit("scraping-complete", serde_json::json!({
                         "message_id": user_message_id,
@@ -346,12 +347,9 @@ pub async fn send_message(
             },
             Err(e) => {
                 eprintln!("Failed to process URLs: {}, using original", e);
-                // Emit scraping error event and update database
+                // Emit scraping error event
                 if !urls.is_empty() {
-                    // Update database with scraping error
-                    if let Err(db_err) = state_clone.db.update_message_scraping(&user_message_id, None, Some(e.to_string())) {
-                        eprintln!("Failed to update message with scraping error: {}", db_err);
-                    }
+                    // TODO: Store scraping error in external_resource
                     
                     let _ = app_clone.emit("scraping-error", serde_json::json!({
                         "message_id": user_message_id,
@@ -526,7 +524,10 @@ pub async fn send_message(
 
         // Save assistant message
         let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
-            topic_id: topic_id.clone(),
+            conversation_id: None,
+            topic_id: Some(topic_id.clone()),
+            sender_type: "assistant".to_string(),
+            sender_id: None,
             role: "assistant".to_string(),
             content: response.content,
             thinking_content: response.thinking_content,

@@ -173,7 +173,7 @@ export function ChatInput({}: ChatInputProps) {
     addAttachment("knowledge", "Documentation")
   }
 
-  const handleMCPServerSelect = () => {
+  const handleToolSelect = () => {
     // In a real implementation, this would open a tools selector
     addAttachment("tools", "Calculator")
   }
@@ -388,7 +388,7 @@ export function ChatInput({}: ChatInputProps) {
                 <BookOpen className="h-4 w-4" />
                 <span>Knowledge</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleMCPServerSelect} className="gap-2">
+              <DropdownMenuItem onClick={handleToolSelect} className="gap-2">
                 <Plug className="h-4 w-4" />
                 <span>Tools</span>
               </DropdownMenuItem>

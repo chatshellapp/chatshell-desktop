@@ -34,9 +34,9 @@ export interface AssistantCapabilities {
    */
   hasKnowledgeBase?: boolean
   /**
-   * Whether the assistant can use MCP Server
+   * Whether the assistant can use Tools
    */
-  hasMcpServer?: boolean
+  hasTools?: boolean
 }
 
 interface AssistantListItemProps {
@@ -177,7 +177,7 @@ export function AssistantListItem({
             {capabilities.hasKnowledgeBase && (
               <Database className="size-3 text-muted-foreground" />
             )}
-            {capabilities.hasMcpServer && (
+            {capabilities.hasTools && (
               <Boxes className="size-3 text-muted-foreground" />
             )}
           </div>

@@ -589,7 +589,7 @@ const data = {
       lastUpdated: "2 weeks ago",
     },
   ],
-  mcpServers: [
+  tools: [
     {
       id: "1",
       name: "GitHub Integration",
@@ -832,7 +832,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 topics.map((topic) => (
                   <MessageListItem
                     key={topic.id}
-                    avatars={currentAgent?.avatar_bg ? [currentAgent.avatar_bg] : [gptAvatar]}
+                    avatars={currentAssistant?.avatar_bg ? [currentAssistant.avatar_bg] : [gptAvatar]}
                     summary={topic.title}
                     timestamp={formatTimestamp(topic.updated_at)}
                     lastMessage="Click to view conversation"
@@ -956,28 +956,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               ))}
             </TabsContent>
             <TabsContent value="tools" className="mt-2">
-              {data.mcpServers.map((server) => (
+              {data.tools.map((tool) => (
                 <a
                   href="#"
-                  key={server.id}
+                  key={tool.id}
                   className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
                 >
                   <div className="flex w-full items-center gap-2">
                     <Plug className="size-4 text-muted-foreground" />
-                    <span className="font-medium">{server.name}</span>
+                    <span className="font-medium">{tool.name}</span>
                     <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
-                      server.status === "connected" 
+                      tool.status === "connected" 
                         ? "bg-green-500/10 text-green-500" 
                         : "bg-red-500/10 text-red-500"
                     }`}>
-                      {server.status}
+                      {tool.status}
                     </span>
                   </div>
                   <span className="text-muted-foreground text-xs line-clamp-2">
-                    {server.description}
+                    {tool.description}
                   </span>
                   <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-                    <span>Last sync: {server.lastSync}</span>
+                    <span>Last sync: {tool.lastSync}</span>
                   </div>
                 </a>
               ))}

@@ -110,8 +110,8 @@ export interface CreateKnowledgeBaseRequest {
   metadata?: string;
 }
 
-// MCP types
-export interface Mcp {
+// Tool types
+export interface Tool {
   id: string;
   name: string;
   type: string; // "server", "tool", "api"
@@ -123,7 +123,7 @@ export interface Mcp {
   updated_at: string;
 }
 
-export interface CreateMcpRequest {
+export interface CreateToolRequest {
   name: string;
   type: string;
   endpoint?: string;
@@ -132,25 +132,103 @@ export interface CreateMcpRequest {
   is_enabled?: boolean;
 }
 
-// Message types
+// Conversation types
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateConversationRequest {
+  title: string;
+}
+
+// Conversation participant types
+export interface ConversationParticipant {
+  id: string;
+  conversation_id: string;
+  participant_type: string; // "user", "model", "assistant"
+  participant_id?: string;
+  display_name?: string;
+  joined_at: string;
+}
+
+export interface CreateConversationParticipantRequest {
+  conversation_id: string;
+  participant_type: string;
+  participant_id?: string;
+  display_name?: string;
+}
+
+// Message types (updated for conversation support)
 export interface Message {
   id: string;
-  topic_id: string;
+  conversation_id?: string;
+  topic_id?: string;
+  sender_type: string;
+  sender_id?: string;
   role: string;
   content: string;
   thinking_content?: string;
-  scraped_content?: string;
-  scraping_error?: string;
   tokens?: number;
   created_at: string;
 }
 
 export interface CreateMessageRequest {
-  topic_id: string;
+  conversation_id?: string;
+  topic_id?: string;
+  sender_type: string;
+  sender_id?: string;
   role: string;
   content: string;
   thinking_content?: string;
   tokens?: number;
+}
+
+// External resource types
+export interface ExternalResource {
+  id: string;
+  resource_type: string; // "webpage", "image", "file"
+  url?: string;
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  scraped_content?: string;
+  scraping_error?: string;
+  metadata?: string;
+  created_at: string;
+}
+
+export interface CreateExternalResourceRequest {
+  resource_type: string;
+  url?: string;
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  metadata?: string;
+}
+
+// Prompt types
+export interface Prompt {
+  id: string;
+  name: string;
+  content: string;
+  description?: string;
+  category?: string;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePromptRequest {
+  name: string;
+  content: string;
+  description?: string;
+  category?: string;
+  is_system?: boolean;
 }
 
 // Settings type

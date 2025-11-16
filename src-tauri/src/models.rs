@@ -127,9 +127,9 @@ pub struct CreateKnowledgeBaseRequest {
     pub metadata: Option<String>,
 }
 
-// MCP models
+// Tool models
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Mcp {
+pub struct Tool {
     pub id: String,
     pub name: String,
     pub r#type: String,
@@ -142,7 +142,7 @@ pub struct Mcp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateMcpRequest {
+pub struct CreateToolRequest {
     pub name: String,
     pub r#type: String,
     pub endpoint: Option<String>,
@@ -151,27 +151,113 @@ pub struct CreateMcpRequest {
     pub is_enabled: Option<bool>,
 }
 
-// Message models
+// Conversation models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateConversationRequest {
+    pub title: String,
+}
+
+// Conversation participant models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationParticipant {
+    pub id: String,
+    pub conversation_id: String,
+    pub participant_type: String,  // "user", "model", "assistant"
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateConversationParticipantRequest {
+    pub conversation_id: String,
+    pub participant_type: String,
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+}
+
+// Message models (updated for conversation support)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
-    pub topic_id: String,
+    pub conversation_id: Option<String>,
+    pub topic_id: Option<String>,
+    pub sender_type: String,
+    pub sender_id: Option<String>,
     pub role: String,
     pub content: String,
     pub thinking_content: Option<String>,
-    pub scraped_content: Option<String>,
-    pub scraping_error: Option<String>,
     pub tokens: Option<i64>,
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageRequest {
-    pub topic_id: String,
+    pub conversation_id: Option<String>,
+    pub topic_id: Option<String>,
+    pub sender_type: String,
+    pub sender_id: Option<String>,
     pub role: String,
     pub content: String,
     pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
+}
+
+// External resource models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalResource {
+    pub id: String,
+    pub resource_type: String,  // "webpage", "image", "file"
+    pub url: Option<String>,
+    pub file_path: Option<String>,
+    pub file_name: Option<String>,
+    pub file_size: Option<i64>,
+    pub mime_type: Option<String>,
+    pub scraped_content: Option<String>,
+    pub scraping_error: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateExternalResourceRequest {
+    pub resource_type: String,
+    pub url: Option<String>,
+    pub file_path: Option<String>,
+    pub file_name: Option<String>,
+    pub file_size: Option<i64>,
+    pub mime_type: Option<String>,
+    pub metadata: Option<String>,
+}
+
+// Prompt models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Prompt {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub is_system: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePromptRequest {
+    pub name: String,
+    pub content: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub is_system: Option<bool>,
 }
 
 // Settings model

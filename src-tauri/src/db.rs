@@ -80,7 +80,33 @@ impl Database {
             [],
         )?;
 
-        // Topics table
+        // Conversations table (replaces topics for multi-participant support)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Conversation participants table (many-to-many for users, models, and assistants)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS conversation_participants (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                participant_type TEXT NOT NULL,
+                participant_id TEXT,
+                display_name TEXT,
+                joined_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                UNIQUE(conversation_id, participant_type, participant_id)
+            )",
+            [],
+        )?;
+
+        // Legacy topics table (kept for backward compatibility during migration)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS topics (
                 id TEXT PRIMARY KEY,
@@ -122,9 +148,9 @@ impl Database {
             [],
         )?;
 
-        // MCPs table
+        // Tools table
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS mcps (
+            "CREATE TABLE IF NOT EXISTS tools (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 type TEXT NOT NULL,
@@ -138,33 +164,124 @@ impl Database {
             [],
         )?;
 
-        // Assistant-MCP junction table
+        // Assistant-Tool junction table
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS assistant_mcps (
+            "CREATE TABLE IF NOT EXISTS assistant_tools (
                 id TEXT PRIMARY KEY,
                 assistant_id TEXT NOT NULL,
-                mcp_id TEXT NOT NULL,
+                tool_id TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
-                FOREIGN KEY (mcp_id) REFERENCES mcps(id) ON DELETE CASCADE,
-                UNIQUE(assistant_id, mcp_id)
+                FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE,
+                UNIQUE(assistant_id, tool_id)
             )",
             [],
         )?;
 
-        // Messages table
+        // Messages table (supports both conversations and legacy topics)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
-                topic_id TEXT NOT NULL,
+                conversation_id TEXT,
+                topic_id TEXT,
+                sender_type TEXT NOT NULL,
+                sender_id TEXT,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 thinking_content TEXT,
-                scraped_content TEXT,
-                scraping_error TEXT,
                 tokens INTEGER,
                 created_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
                 FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        // External resources table (webpages, images, files)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS external_resources (
+                id TEXT PRIMARY KEY,
+                resource_type TEXT NOT NULL,
+                url TEXT,
+                file_path TEXT,
+                file_name TEXT,
+                file_size INTEGER,
+                mime_type TEXT,
+                scraped_content TEXT,
+                scraping_error TEXT,
+                metadata TEXT,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Message-ExternalResource junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_external_resources (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                external_resource_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (external_resource_id) REFERENCES external_resources(id) ON DELETE CASCADE,
+                UNIQUE(message_id, external_resource_id)
+            )",
+            [],
+        )?;
+
+        // Prompts table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS prompts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                description TEXT,
+                category TEXT,
+                is_system INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Message-Prompt junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_prompts (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                prompt_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+                UNIQUE(message_id, prompt_id)
+            )",
+            [],
+        )?;
+
+        // Message-KnowledgeBase junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_knowledge_bases (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                knowledge_base_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+                UNIQUE(message_id, knowledge_base_id)
+            )",
+            [],
+        )?;
+
+        // Message-Tool junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_tools (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                tool_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE,
+                UNIQUE(message_id, tool_id)
             )",
             [],
         )?;
@@ -650,13 +767,19 @@ impl Database {
             let conn = self.conn.lock().unwrap();
             println!("✅ [db] Lock acquired");
             
-            println!("💾 [db] Executing INSERT for message (topic_id: {})", req.topic_id);
+            let target_id = req.conversation_id.as_ref().or(req.topic_id.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("unknown");
+            println!("💾 [db] Executing INSERT for message (target_id: {})", target_id);
             conn.execute(
-                "INSERT INTO messages (id, topic_id, role, content, thinking_content, tokens, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO messages (id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     id,
+                    req.conversation_id,
                     req.topic_id,
+                    req.sender_type,
+                    req.sender_id,
                     req.role,
                     req.content,
                     req.thinking_content,
@@ -678,7 +801,7 @@ impl Database {
     pub fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, topic_id, role, content, thinking_content, scraped_content, scraping_error, tokens, created_at
+            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
              FROM messages WHERE id = ?1",
         )?;
 
@@ -686,14 +809,15 @@ impl Database {
             .query_row(params![id], |row| {
                 Ok(Message {
                     id: row.get(0)?,
-                    topic_id: row.get(1)?,
-                    role: row.get(2)?,
-                    content: row.get(3)?,
-                    thinking_content: row.get(4)?,
-                    scraped_content: row.get(5)?,
-                    scraping_error: row.get(6)?,
-                    tokens: row.get(7)?,
-                    created_at: row.get(8)?,
+                    conversation_id: row.get(1)?,
+                    topic_id: row.get(2)?,
+                    sender_type: row.get(3)?,
+                    sender_id: row.get(4)?,
+                    role: row.get(5)?,
+                    content: row.get(6)?,
+                    thinking_content: row.get(7)?,
+                    tokens: row.get(8)?,
+                    created_at: row.get(9)?,
                 })
             })
             .optional()?;
@@ -704,7 +828,7 @@ impl Database {
     pub fn list_messages(&self, topic_id: &str) -> Result<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, topic_id, role, content, thinking_content, scraped_content, scraping_error, tokens, created_at
+            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
              FROM messages WHERE topic_id = ?1 ORDER BY created_at ASC",
         )?;
 
@@ -712,14 +836,42 @@ impl Database {
             .query_map(params![topic_id], |row| {
                 Ok(Message {
                     id: row.get(0)?,
-                    topic_id: row.get(1)?,
-                    role: row.get(2)?,
-                    content: row.get(3)?,
-                    thinking_content: row.get(4)?,
-                    scraped_content: row.get(5)?,
-                    scraping_error: row.get(6)?,
-                    tokens: row.get(7)?,
-                    created_at: row.get(8)?,
+                    conversation_id: row.get(1)?,
+                    topic_id: row.get(2)?,
+                    sender_type: row.get(3)?,
+                    sender_id: row.get(4)?,
+                    role: row.get(5)?,
+                    content: row.get(6)?,
+                    thinking_content: row.get(7)?,
+                    tokens: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(messages)
+    }
+
+    pub fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
+             FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
+        )?;
+
+        let messages = stmt
+            .query_map(params![conversation_id], |row| {
+                Ok(Message {
+                    id: row.get(0)?,
+                    conversation_id: row.get(1)?,
+                    topic_id: row.get(2)?,
+                    sender_type: row.get(3)?,
+                    sender_id: row.get(4)?,
+                    role: row.get(5)?,
+                    content: row.get(6)?,
+                    thinking_content: row.get(7)?,
+                    tokens: row.get(8)?,
+                    created_at: row.get(9)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -733,20 +885,8 @@ impl Database {
         Ok(())
     }
 
-    // Update message with scraped content
-    pub fn update_message_scraping(
-        &self,
-        id: &str,
-        scraped_content: Option<String>,
-        scraping_error: Option<String>,
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE messages SET scraped_content = ?1, scraping_error = ?2 WHERE id = ?3",
-            params![scraped_content, scraping_error, id],
-        )?;
-        Ok(())
-    }
+    // Note: Scraping functionality moved to external_resources table
+    // Use create external resource and link it to message via message_external_resources
 
     // Settings operations
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
