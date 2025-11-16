@@ -32,6 +32,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            // Provider commands
+            commands::create_provider,
+            commands::get_provider,
+            commands::list_providers,
+            commands::update_provider,
+            commands::delete_provider,
             // Model commands
             commands::create_model,
             commands::get_model,

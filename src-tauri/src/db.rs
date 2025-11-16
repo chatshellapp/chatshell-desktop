@@ -24,16 +24,34 @@ impl Database {
     fn init_schema(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
+        // Providers table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS providers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                provider_type TEXT NOT NULL,
+                api_key TEXT,
+                base_url TEXT,
+                description TEXT,
+                is_enabled INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
         // Models table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS models (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                provider TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
                 model_id TEXT NOT NULL,
                 description TEXT,
+                is_starred INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
             )",
             [],
         )?;
@@ -101,22 +119,136 @@ impl Database {
         Ok(())
     }
 
-    // Model CRUD operations
-    pub fn create_model(&self, req: CreateModelRequest) -> Result<Model> {
+    // Provider CRUD operations
+    pub fn create_provider(&self, req: CreateProviderRequest) -> Result<Provider> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
+        let is_enabled = req.is_enabled.unwrap_or(true);
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO models (id, name, provider, model_id, description, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO providers (id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     id,
                     req.name,
-                    req.provider,
+                    req.provider_type,
+                    req.api_key,
+                    req.base_url,
+                    req.description,
+                    is_enabled as i32,
+                    now,
+                    now
+                ],
+            )?;
+        }
+
+        self.get_provider(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created provider"))
+    }
+
+    pub fn get_provider(&self, id: &str) -> Result<Option<Provider>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
+             FROM providers WHERE id = ?1",
+        )?;
+
+        let provider = stmt
+            .query_row(params![id], |row| {
+                Ok(Provider {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    provider_type: row.get(2)?,
+                    api_key: row.get(3)?,
+                    base_url: row.get(4)?,
+                    description: row.get(5)?,
+                    is_enabled: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            })
+            .optional()?;
+
+        Ok(provider)
+    }
+
+    pub fn list_providers(&self) -> Result<Vec<Provider>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
+             FROM providers ORDER BY created_at ASC",
+        )?;
+
+        let providers = stmt
+            .query_map([], |row| {
+                Ok(Provider {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    provider_type: row.get(2)?,
+                    api_key: row.get(3)?,
+                    base_url: row.get(4)?,
+                    description: row.get(5)?,
+                    is_enabled: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(providers)
+    }
+
+    pub fn update_provider(&self, id: &str, req: CreateProviderRequest) -> Result<Provider> {
+        let now = Utc::now().to_rfc3339();
+        let is_enabled = req.is_enabled.unwrap_or(true);
+
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE providers SET name = ?1, provider_type = ?2, api_key = ?3, base_url = ?4, description = ?5, is_enabled = ?6, updated_at = ?7 WHERE id = ?8",
+                params![
+                    req.name,
+                    req.provider_type,
+                    req.api_key,
+                    req.base_url,
+                    req.description,
+                    is_enabled as i32,
+                    now,
+                    id
+                ],
+            )?;
+        }
+
+        self.get_provider(id)?
+            .ok_or_else(|| anyhow::anyhow!("Provider not found"))
+    }
+
+    pub fn delete_provider(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // Model CRUD operations
+    pub fn create_model(&self, req: CreateModelRequest) -> Result<Model> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let is_starred = req.is_starred.unwrap_or(false);
+
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    id,
+                    req.name,
+                    req.provider_id,
                     req.model_id,
                     req.description,
+                    is_starred as i32,
                     now,
                     now
                 ],
@@ -130,7 +262,7 @@ impl Database {
     pub fn get_model(&self, id: &str) -> Result<Option<Model>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, provider, model_id, description, created_at, updated_at
+            "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
              FROM models WHERE id = ?1",
         )?;
 
@@ -139,11 +271,12 @@ impl Database {
                 Ok(Model {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    provider: row.get(2)?,
+                    provider_id: row.get(2)?,
                     model_id: row.get(3)?,
                     description: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_starred: row.get::<_, i32>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .optional()?;
@@ -154,7 +287,7 @@ impl Database {
     pub fn list_models(&self) -> Result<Vec<Model>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, provider, model_id, description, created_at, updated_at
+            "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
              FROM models ORDER BY created_at ASC",
         )?;
 
@@ -163,11 +296,12 @@ impl Database {
                 Ok(Model {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    provider: row.get(2)?,
+                    provider_id: row.get(2)?,
                     model_id: row.get(3)?,
                     description: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_starred: row.get::<_, i32>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -177,16 +311,18 @@ impl Database {
 
     pub fn update_model(&self, id: &str, req: CreateModelRequest) -> Result<Model> {
         let now = Utc::now().to_rfc3339();
+        let is_starred = req.is_starred.unwrap_or(false);
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "UPDATE models SET name = ?1, provider = ?2, model_id = ?3, description = ?4, updated_at = ?5 WHERE id = ?6",
+                "UPDATE models SET name = ?1, provider_id = ?2, model_id = ?3, description = ?4, is_starred = ?5, updated_at = ?6 WHERE id = ?7",
                 params![
                     req.name,
-                    req.provider,
+                    req.provider_id,
                     req.model_id,
                     req.description,
+                    is_starred as i32,
                     now,
                     id
                 ],
@@ -555,38 +691,83 @@ impl Database {
 
     // Seed database with default agents if empty
     pub fn seed_default_data(&self) -> Result<()> {
-        // Check if already seeded
-        let models = self.list_models()?;
-        if !models.is_empty() {
-            return Ok(()); // Already seeded
+        // Check if default ollama provider already exists
+        let providers = self.list_providers()?;
+        let has_ollama = providers.iter().any(|p| p.provider_type == "ollama");
+        
+        let ollama_provider = if has_ollama {
+            // Use existing ollama provider
+            providers.into_iter()
+                .find(|p| p.provider_type == "ollama")
+                .unwrap()
+        } else {
+            // Create default Ollama provider
+            println!("🌱 [db] Seeding default Ollama provider...");
+            let provider = self.create_provider(CreateProviderRequest {
+                name: "Ollama Local".to_string(),
+                provider_type: "ollama".to_string(),
+                api_key: None,
+                base_url: Some("http://localhost:11434".to_string()),
+                description: Some("Local Ollama instance".to_string()),
+                is_enabled: Some(true),
+            })?;
+            println!("✅ [db] Created provider: {}", provider.name);
+            provider
+        };
+
+        // Check if models already exist for this provider
+        let existing_models = self.list_models()?;
+        let provider_has_models = existing_models.iter()
+            .any(|m| m.provider_id == ollama_provider.id);
+        
+        if provider_has_models {
+            println!("✅ [db] Models already exist for provider, skipping model seed");
+            // Still check and seed agents if needed
+            let agents = self.list_agents()?;
+            if agents.is_empty() {
+                println!("⚠️  [db] No agents found, but models exist. You may need to manually create agents.");
+            }
+            return Ok(());
         }
 
-        println!("🌱 [db] Seeding default models and agents...");
+        println!("🌱 [db] Seeding default models...");
 
         // Create default models
         let gemma_model = self.create_model(CreateModelRequest {
             name: "Gemma 3 12B".to_string(),
-            provider: "ollama".to_string(),
+            provider_id: ollama_provider.id.clone(),
             model_id: "gemma3:12b".to_string(),
             description: Some("Gemma 3 12B - Google's efficient instruction-following model".to_string()),
+            is_starred: Some(false),
         })?;
         println!("✅ [db] Created model: {}", gemma_model.name);
 
         let gpt_oss_model = self.create_model(CreateModelRequest {
             name: "GPT-OSS 20B".to_string(),
-            provider: "ollama".to_string(),
+            provider_id: ollama_provider.id.clone(),
             model_id: "gpt-oss:20b".to_string(),
             description: Some("GPT-OSS 20B - Open source GPT-style model for general tasks".to_string()),
+            is_starred: Some(false),
         })?;
         println!("✅ [db] Created model: {}", gpt_oss_model.name);
 
         let deepseek_model = self.create_model(CreateModelRequest {
             name: "DeepSeek R1 14B".to_string(),
-            provider: "ollama".to_string(),
+            provider_id: ollama_provider.id.clone(),
             model_id: "deepseek-r1:14b".to_string(),
             description: Some("DeepSeek R1 14B - Advanced reasoning model with thinking process".to_string()),
+            is_starred: Some(true),
         })?;
         println!("✅ [db] Created model: {}", deepseek_model.name);
+
+        // Check if agents already exist
+        let agents = self.list_agents()?;
+        if !agents.is_empty() {
+            println!("✅ [db] Agents already exist, skipping seed");
+            return Ok(());
+        }
+
+        println!("🌱 [db] Seeding default agents...");
 
         // Create default agents using these models
         let default_agents = vec![

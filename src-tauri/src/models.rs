@@ -1,13 +1,38 @@
 use serde::{Deserialize, Serialize};
 
+// Provider models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Provider {
+    pub id: String,
+    pub name: String,           // Display name, e.g., "Ollama Local", "OpenAI"
+    pub provider_type: String,  // Type: ollama, openai, openrouter
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub description: Option<String>,
+    pub is_enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProviderRequest {
+    pub name: String,
+    pub provider_type: String,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub description: Option<String>,
+    pub is_enabled: Option<bool>,
+}
+
 // Model (LLM) models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
     pub id: String,
     pub name: String,           // Display name, e.g., "DeepSeek R1 14B"
-    pub provider: String,       // ollama, openai, openrouter
+    pub provider_id: String,    // Foreign key to providers table
     pub model_id: String,       // Actual model identifier, e.g., "deepseek-r1:14b"
     pub description: Option<String>,
+    pub is_starred: bool,       // Whether model is starred for quick access
     pub created_at: String,
     pub updated_at: String,
 }
@@ -15,9 +40,10 @@ pub struct Model {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateModelRequest {
     pub name: String,
-    pub provider: String,
+    pub provider_id: String,
     pub model_id: String,
     pub description: Option<String>,
+    pub is_starred: Option<bool>,
 }
 
 // Agent (Assistant) models

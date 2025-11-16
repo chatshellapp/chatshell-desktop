@@ -1,19 +1,43 @@
+// Provider types
+export interface Provider {
+  id: string;
+  name: string;
+  provider_type: string; // "ollama", "openai", "openrouter"
+  api_key?: string;
+  base_url?: string;
+  description?: string;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProviderRequest {
+  name: string;
+  provider_type: string;
+  api_key?: string;
+  base_url?: string;
+  description?: string;
+  is_enabled?: boolean;
+}
+
 // Model (LLM) types
 export interface Model {
   id: string;
   name: string;
-  provider: string;
+  provider_id: string; // Foreign key to providers table
   model_id: string;
   description?: string;
+  is_starred: boolean; // For quick access in chat interface
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateModelRequest {
   name: string;
-  provider: string;
+  provider_id: string;
   model_id: string;
   description?: string;
+  is_starred?: boolean;
 }
 
 // Agent (Assistant) types

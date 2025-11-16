@@ -13,6 +13,47 @@ pub struct AppState {
     pub db: Database,
 }
 
+// Provider commands
+#[tauri::command]
+pub async fn create_provider(
+    state: State<'_, AppState>,
+    req: CreateProviderRequest,
+) -> Result<Provider, String> {
+    state.db.create_provider(req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_provider(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<Provider>, String> {
+    state.db.get_provider(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<Provider>, String> {
+    state.db.list_providers().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_provider(
+    state: State<'_, AppState>,
+    id: String,
+    req: CreateProviderRequest,
+) -> Result<Provider, String> {
+    state.db.update_provider(&id, req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_provider(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.db.delete_provider(&id).map_err(|e| e.to_string())
+}
+
 // Model commands
 #[tauri::command]
 pub async fn create_model(
@@ -371,6 +412,22 @@ pub async fn send_message(
             }
         };
 
+        println!("📦 [background_task] Getting provider from database...");
+        let provider_info = match state_clone.db.get_provider(&model_info.provider_id) {
+            Ok(Some(p)) => {
+                println!("✅ [background_task] Got provider: {} ({})", p.name, p.provider_type);
+                p
+            },
+            Ok(None) => {
+                eprintln!("❌ [background_task] Provider not found: {}", model_info.provider_id);
+                return;
+            },
+            Err(e) => {
+                eprintln!("❌ [background_task] Failed to get provider: {}", e);
+                return;
+            }
+        };
+
         // Build chat messages
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
@@ -402,33 +459,36 @@ pub async fn send_message(
             content: processed_content.clone(),
         });
 
-        // Create LLM provider using model info from database
-        println!("🤖 [background_task] Creating LLM provider: {}", model_info.provider);
-        let llm_provider: Box<dyn LLMProvider> = match model_info.provider.as_str() {
+        // Create LLM provider using provider info from database
+        println!("🤖 [background_task] Creating LLM provider: {}", provider_info.provider_type);
+        let llm_provider: Box<dyn LLMProvider> = match provider_info.provider_type.as_str() {
             "openai" => {
-                if let Some(key) = api_key {
+                let key = api_key.or(provider_info.api_key);
+                if let Some(k) = key {
                     println!("✅ [background_task] Created OpenAI provider");
-                    Box::new(llm::openai::OpenAIProvider::new(key))
+                    Box::new(llm::openai::OpenAIProvider::new(k))
                 } else {
                     eprintln!("❌ [background_task] OpenAI API key required");
                     return;
                 }
             }
             "openrouter" => {
-                if let Some(key) = api_key {
+                let key = api_key.or(provider_info.api_key);
+                if let Some(k) = key {
                     println!("✅ [background_task] Created OpenRouter provider");
-                    Box::new(llm::openrouter::OpenRouterProvider::new(key))
+                    Box::new(llm::openrouter::OpenRouterProvider::new(k))
                 } else {
                     eprintln!("❌ [background_task] OpenRouter API key required");
                     return;
                 }
             }
             "ollama" => {
-                println!("✅ [background_task] Created Ollama provider with base_url: {:?}", base_url);
-                Box::new(llm::ollama::OllamaProvider::new(base_url))
+                let url = base_url.or(provider_info.base_url);
+                println!("✅ [background_task] Created Ollama provider with base_url: {:?}", url);
+                Box::new(llm::ollama::OllamaProvider::new(url))
             },
             _ => {
-                eprintln!("❌ [background_task] Unknown provider: {}", model_info.provider);
+                eprintln!("❌ [background_task] Unknown provider: {}", provider_info.provider_type);
                 return;
             }
         };

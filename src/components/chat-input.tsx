@@ -16,13 +16,14 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { useTopicStore } from "@/stores/topicStore"
 import { useMessageStore } from "@/stores/messageStore"
 import { useAgentStore } from "@/stores/agentStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useSettingsStore } from "@/stores/settingsStore"
-import type { Topic, Agent } from "@/types"
+import type { Topic, Agent, Model } from "@/types"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
 
@@ -107,12 +108,18 @@ export function ChatInput({}: ChatInputProps) {
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [hoveredBadgeId, setHoveredBadgeId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"models" | "assistants">("models")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Store hooks
   const currentTopic = useTopicStore((state: any) => state.currentTopic) as Topic | null
   const currentAgent = useAgentStore((state: any) => state.currentAgent) as Agent | null
+  const agents = useAgentStore((state: any) => state.agents) as Agent[]
+  const setCurrentAgent = useAgentStore((state: any) => state.setCurrentAgent)
+  const updateAgent = useAgentStore((state: any) => state.updateAgent)
+  const models = useModelStore((state: any) => state.models) as Model[]
   const getModelById = useModelStore((state: any) => state.getModelById)
+  const getProviderById = useModelStore((state: any) => state.getProviderById)
   const sendMessage = useMessageStore((state: any) => state.sendMessage)
   const isSending = useMessageStore((state: any) => state.isSending) as boolean
   const getSetting = useSettingsStore((state: any) => state.getSetting)
@@ -216,37 +223,48 @@ export function ChatInput({}: ChatInputProps) {
       return
     }
 
+    // Get provider info from model's provider_id
+    const provider = getProviderById(model.provider_id)
+    if (!provider) {
+      console.error("Provider not found for model:", model.provider_id)
+      alert("Error: Provider configuration not found")
+      return
+    }
+
     const content = input.trim()
     setInput("")
 
     try {
-      // Get API key or base URL from settings based on model provider
-      let apiKey: string | undefined
-      let baseUrl: string | undefined
+      // Use provider's configuration, fall back to settings for backward compatibility
+      let apiKey: string | undefined = provider.api_key
+      let baseUrl: string | undefined = provider.base_url
 
-      if (model.provider === "openai") {
+      // Fall back to settings if not in provider
+      if (!apiKey && provider.provider_type === "openai") {
         apiKey = (await getSetting("openai_api_key")) || undefined
-      } else if (model.provider === "openrouter") {
+      } else if (!apiKey && provider.provider_type === "openrouter") {
         apiKey = (await getSetting("openrouter_api_key")) || undefined
-      } else if (model.provider === "ollama") {
+      }
+      
+      if (!baseUrl && provider.provider_type === "ollama") {
         baseUrl = (await getSetting("ollama_base_url")) || "http://localhost:11434"
       }
 
       console.log("Sending message:", {
         content,
         topicId: currentTopic.id,
-        provider: model.provider,
+        provider: provider.provider_type,
         model: model.model_id,
         hasApiKey: !!apiKey,
         baseUrl
       })
 
       // Note: provider and model parameters are kept for backward compatibility
-      // but backend now fetches this from database
+      // Backend now fetches provider/model info from database via agent
       await sendMessage(
         content,
         currentTopic.id,
-        model.provider,
+        provider.provider_type,
         model.model_id,
         apiKey,
         baseUrl
@@ -271,6 +289,30 @@ export function ChatInput({}: ChatInputProps) {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const handleModelSelect = async (modelId: string) => {
+    if (!currentAgent) return
+
+    try {
+      await updateAgent(currentAgent.id, {
+        name: currentAgent.name,
+        system_prompt: currentAgent.system_prompt,
+        model_id: modelId,
+        avatar_bg: currentAgent.avatar_bg,
+        avatar_text: currentAgent.avatar_text,
+        is_starred: currentAgent.is_starred,
+      })
+      console.log('Model updated successfully for agent:', currentAgent.name)
+    } catch (error) {
+      console.error('Failed to update agent model:', error)
+      alert(`Failed to update model: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const handleAgentSelect = (agent: Agent) => {
+    setCurrentAgent(agent)
+    console.log('Agent selected:', agent.name)
   }
 
 
@@ -352,19 +394,100 @@ export function ChatInput({}: ChatInputProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className="flex items-center gap-2">
-            <Avatar className="h-4 w-4">
-              <AvatarFallback className="text-[10px]">
-                {currentAgent ? currentAgent.name.charAt(0) : "?"}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-xs">
-              {currentAgent ? (() => {
-                const model = getModelById(currentAgent.model_id)
-                return model ? `${currentAgent.name} · ${model.name}` : currentAgent.name
-              })() : "Select agent"}
-            </span>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <InputGroupButton variant="ghost" className="gap-2">
+                {currentAgent ? (
+                  <>
+                    <Avatar className="h-4 w-4">
+                      <AvatarFallback className="text-[10px]">
+                        {currentAgent.name.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs">
+                      {(() => {
+                        const model = getModelById(currentAgent.model_id)
+                        return model ? `${currentAgent.name} · ${model.name}` : currentAgent.name
+                      })()}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Select model or assistant</span>
+                )}
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="[--radius:0.95rem] p-2 w-[280px]"
+            >
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "models" | "assistants")}>
+                <TabsList className="grid w-full grid-cols-2 mb-2">
+                  <TabsTrigger value="models" className="text-xs">
+                    Models
+                  </TabsTrigger>
+                  <TabsTrigger value="assistants" className="text-xs">
+                    Assistants
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="models" className="mt-0 space-y-1">
+                  {models.length > 0 ? (
+                    models.map((model) => (
+                      <DropdownMenuItem
+                        key={model.id}
+                        onClick={() => handleModelSelect(model.id)}
+                        className={cn(
+                          "gap-2 cursor-pointer",
+                          currentAgent?.model_id === model.id && "bg-accent"
+                        )}
+                      >
+                        <Avatar className="h-4 w-4">
+                          <AvatarFallback className="text-[10px]">
+                            {model.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-xs">{model.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {getProviderById(model.provider_id)?.name || 'Unknown'}
+                          </span>
+                        </div>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                      No models available
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="assistants" className="mt-0 space-y-1">
+                  {agents.length > 0 ? (
+                    agents.map((agent) => (
+                      <DropdownMenuItem
+                        key={agent.id}
+                        onClick={() => handleAgentSelect(agent)}
+                        className={cn(
+                          "gap-2 cursor-pointer",
+                          currentAgent?.id === agent.id && "bg-accent"
+                        )}
+                      >
+                        <Avatar className="h-4 w-4">
+                          <AvatarFallback className="text-[10px]">
+                            {agent.avatar_text || agent.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs">{agent.name}</span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                      No assistants available
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="ml-auto flex items-center gap-1.5">
             <CircleProgress percentage={56} size={20} />
             <span className="text-xs text-muted-foreground">56.0%</span>

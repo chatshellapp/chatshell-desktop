@@ -8,7 +8,7 @@ export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadModels = useModelStore((state: any) => state.loadModels);
+  const loadAll = useModelStore((state: any) => state.loadAll);
   const loadAgents = useAgentStore((state: any) => state.loadAgents);
   const agents = useAgentStore((state: any) => state.agents);
   const setCurrentAgent = useAgentStore((state: any) => state.setCurrentAgent);
@@ -29,9 +29,9 @@ export function useAppInit() {
         console.log('Loading settings...');
         await loadSettings();
 
-        // Load models first (agents reference models)
-        console.log('Loading models...');
-        await loadModels();
+        // Load models and providers first (agents reference models)
+        console.log('Loading models and providers...');
+        await loadAll();
 
         // Load agents
         console.log('Loading agents...');
@@ -47,7 +47,7 @@ export function useAppInit() {
     }
 
     initialize();
-  }, [loadSettings, loadModels, loadAgents]);
+  }, [loadSettings, loadAll, loadAgents]);
 
   // Once agents are loaded, set the first starred agent as current
   useEffect(() => {
