@@ -106,19 +106,6 @@ impl Database {
             [],
         )?;
 
-        // Legacy topics table (kept for backward compatibility during migration)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS topics (
-                id TEXT PRIMARY KEY,
-                assistant_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE
-            )",
-            [],
-        )?;
-
         // Knowledge bases table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS knowledge_bases (
@@ -178,12 +165,11 @@ impl Database {
             [],
         )?;
 
-        // Messages table (supports both conversations and legacy topics)
+        // Messages table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT,
-                topic_id TEXT,
                 sender_type TEXT NOT NULL,
                 sender_id TEXT,
                 role TEXT NOT NULL,
@@ -191,8 +177,7 @@ impl Database {
                 thinking_content TEXT,
                 tokens INTEGER,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-                FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             )",
             [],
         )?;
@@ -673,87 +658,153 @@ impl Database {
         Ok(())
     }
 
-    // Topic CRUD operations
-    pub fn create_topic(&self, req: CreateTopicRequest) -> Result<Topic> {
+    // Conversation CRUD operations
+    pub fn create_conversation(&self, req: CreateConversationRequest) -> Result<Conversation> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO topics (id, assistant_id, title, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![id, req.assistant_id, req.title, now, now],
+                "INSERT INTO conversations (id, title, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![id, req.title, now, now],
             )?;
         }
 
-        self.get_topic(&id)?
-            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created topic"))
+        self.get_conversation(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created conversation"))
     }
 
-    pub fn get_topic(&self, id: &str) -> Result<Option<Topic>> {
+    pub fn get_conversation(&self, id: &str) -> Result<Option<Conversation>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, assistant_id, title, created_at, updated_at
-             FROM topics WHERE id = ?1",
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?1",
         )?;
 
-        let topic = stmt
+        let conversation = stmt
             .query_row(params![id], |row| {
-                Ok(Topic {
+                Ok(Conversation {
                     id: row.get(0)?,
-                    assistant_id: row.get(1)?,
-                    title: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
+                    title: row.get(1)?,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
                 })
             })
             .optional()?;
 
-        Ok(topic)
+        Ok(conversation)
     }
 
-    pub fn list_topics(&self, assistant_id: &str) -> Result<Vec<Topic>> {
+    pub fn list_conversations(&self) -> Result<Vec<Conversation>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, assistant_id, title, created_at, updated_at
-             FROM topics WHERE assistant_id = ?1 ORDER BY updated_at DESC",
+            "SELECT id, title, created_at, updated_at
+             FROM conversations ORDER BY updated_at DESC",
         )?;
 
-        let topics = stmt
-            .query_map(params![assistant_id], |row| {
-                Ok(Topic {
+        let conversations = stmt
+            .query_map([], |row| {
+                Ok(Conversation {
                     id: row.get(0)?,
-                    assistant_id: row.get(1)?,
-                    title: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
+                    title: row.get(1)?,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(topics)
+        Ok(conversations)
     }
 
-    pub fn update_topic(&self, id: &str, title: &str) -> Result<Topic> {
+    pub fn update_conversation(&self, id: &str, title: &str) -> Result<Conversation> {
         let now = Utc::now().to_rfc3339();
 
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "UPDATE topics SET title = ?1, updated_at = ?2 WHERE id = ?3",
+                "UPDATE conversations SET title = ?1, updated_at = ?2 WHERE id = ?3",
                 params![title, now, id],
             )?;
-            // Lock released here
         }
 
-        self.get_topic(id)?
-            .ok_or_else(|| anyhow::anyhow!("Topic not found"))
+        self.get_conversation(id)?
+            .ok_or_else(|| anyhow::anyhow!("Conversation not found"))
     }
 
-    pub fn delete_topic(&self, id: &str) -> Result<()> {
+    pub fn delete_conversation(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM topics WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // Conversation Participant CRUD operations
+    pub fn add_conversation_participant(&self, req: CreateConversationParticipantRequest) -> Result<ConversationParticipant> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO conversation_participants (id, conversation_id, participant_type, participant_id, display_name, joined_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, req.conversation_id, req.participant_type, req.participant_id, req.display_name, now],
+            )?;
+        }
+
+        self.get_conversation_participant(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created participant"))
+    }
+
+    pub fn get_conversation_participant(&self, id: &str) -> Result<Option<ConversationParticipant>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, participant_type, participant_id, display_name, joined_at
+             FROM conversation_participants WHERE id = ?1",
+        )?;
+
+        let participant = stmt
+            .query_row(params![id], |row| {
+                Ok(ConversationParticipant {
+                    id: row.get(0)?,
+                    conversation_id: row.get(1)?,
+                    participant_type: row.get(2)?,
+                    participant_id: row.get(3)?,
+                    display_name: row.get(4)?,
+                    joined_at: row.get(5)?,
+                })
+            })
+            .optional()?;
+
+        Ok(participant)
+    }
+
+    pub fn list_conversation_participants(&self, conversation_id: &str) -> Result<Vec<ConversationParticipant>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, participant_type, participant_id, display_name, joined_at
+             FROM conversation_participants WHERE conversation_id = ?1 ORDER BY joined_at",
+        )?;
+
+        let participants = stmt
+            .query_map(params![conversation_id], |row| {
+                Ok(ConversationParticipant {
+                    id: row.get(0)?,
+                    conversation_id: row.get(1)?,
+                    participant_type: row.get(2)?,
+                    participant_id: row.get(3)?,
+                    display_name: row.get(4)?,
+                    joined_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(participants)
+    }
+
+    pub fn remove_conversation_participant(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM conversation_participants WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -767,17 +818,16 @@ impl Database {
             let conn = self.conn.lock().unwrap();
             println!("✅ [db] Lock acquired");
             
-            let target_id = req.conversation_id.as_ref().or(req.topic_id.as_ref())
+            let target_id = req.conversation_id.as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or("unknown");
-            println!("💾 [db] Executing INSERT for message (target_id: {})", target_id);
+            println!("💾 [db] Executing INSERT for message (conversation_id: {})", target_id);
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     id,
                     req.conversation_id,
-                    req.topic_id,
                     req.sender_type,
                     req.sender_id,
                     req.role,
@@ -801,7 +851,7 @@ impl Database {
     pub fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
              FROM messages WHERE id = ?1",
         )?;
 
@@ -810,14 +860,13 @@ impl Database {
                 Ok(Message {
                     id: row.get(0)?,
                     conversation_id: row.get(1)?,
-                    topic_id: row.get(2)?,
-                    sender_type: row.get(3)?,
-                    sender_id: row.get(4)?,
-                    role: row.get(5)?,
-                    content: row.get(6)?,
-                    thinking_content: row.get(7)?,
-                    tokens: row.get(8)?,
-                    created_at: row.get(9)?,
+                    sender_type: row.get(2)?,
+                    sender_id: row.get(3)?,
+                    role: row.get(4)?,
+                    content: row.get(5)?,
+                    thinking_content: row.get(6)?,
+                    tokens: row.get(7)?,
+                    created_at: row.get(8)?,
                 })
             })
             .optional()?;
@@ -825,37 +874,10 @@ impl Database {
         Ok(message)
     }
 
-    pub fn list_messages(&self, topic_id: &str) -> Result<Vec<Message>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
-             FROM messages WHERE topic_id = ?1 ORDER BY created_at ASC",
-        )?;
-
-        let messages = stmt
-            .query_map(params![topic_id], |row| {
-                Ok(Message {
-                    id: row.get(0)?,
-                    conversation_id: row.get(1)?,
-                    topic_id: row.get(2)?,
-                    sender_type: row.get(3)?,
-                    sender_id: row.get(4)?,
-                    role: row.get(5)?,
-                    content: row.get(6)?,
-                    thinking_content: row.get(7)?,
-                    tokens: row.get(8)?,
-                    created_at: row.get(9)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(messages)
-    }
-
     pub fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, topic_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
              FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
         )?;
 
@@ -864,14 +886,13 @@ impl Database {
                 Ok(Message {
                     id: row.get(0)?,
                     conversation_id: row.get(1)?,
-                    topic_id: row.get(2)?,
-                    sender_type: row.get(3)?,
-                    sender_id: row.get(4)?,
-                    role: row.get(5)?,
-                    content: row.get(6)?,
-                    thinking_content: row.get(7)?,
-                    tokens: row.get(8)?,
-                    created_at: row.get(9)?,
+                    sender_type: row.get(2)?,
+                    sender_id: row.get(3)?,
+                    role: row.get(4)?,
+                    content: row.get(5)?,
+                    thinking_content: row.get(6)?,
+                    tokens: row.get(7)?,
+                    created_at: row.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -879,9 +900,9 @@ impl Database {
         Ok(messages)
     }
 
-    pub fn delete_messages_in_topic(&self, topic_id: &str) -> Result<()> {
+    pub fn delete_messages_in_conversation(&self, conversation_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM messages WHERE topic_id = ?1", params![topic_id])?;
+        conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![conversation_id])?;
         Ok(())
     }
 

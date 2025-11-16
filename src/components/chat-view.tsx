@@ -1,9 +1,8 @@
 import { useEffect } from "react"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
-import { useTopicStore } from "@/stores/topicStore"
+import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
-import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
 
@@ -14,39 +13,45 @@ const CHAT_CONFIG = {
 }
 
 export function ChatView() {
-  const currentTopic = useTopicStore((state) => state.currentTopic)
+  const currentConversation = useConversationStore((state) => state.currentConversation)
+  const selectedModel = useConversationStore((state) => state.selectedModel)
+  const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
   const messages = useMessageStore((state) => state.messages)
   const loadMessages = useMessageStore((state) => state.loadMessages)
   const isStreaming = useMessageStore((state) => state.isStreaming)
   const streamingContent = useMessageStore((state) => state.streamingContent)
   const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
   const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
-  const currentAssistant = useAssistantStore((state) => state.currentAssistant)
   const getModelById = useModelStore((state) => state.getModelById)
 
   // Get model name for display
   const getModelDisplayName = () => {
-    if (!currentAssistant) return "AI Assistant"
-    const model = getModelById(currentAssistant.model_id)
-    if (!model) return currentAssistant.name
-    return `${currentAssistant.name} · ${model.name}`
+    if (selectedAssistant) {
+      const model = getModelById(selectedAssistant.model_id)
+      if (!model) return selectedAssistant.name
+      return `${selectedAssistant.name} · ${model.name}`
+    } else if (selectedModel) {
+      return selectedModel.name
+    }
+    return "AI Assistant"
   }
 
   // Set up event listeners for chat streaming and scraping
-  useChatEvents(currentTopic?.id || null)
+  // For now, use conversationId as topicId (backward compatibility)
+  useChatEvents(currentConversation?.id || null)
 
-  // Load messages when topic changes and cleanup on unmount
+  // Load messages when conversation changes and cleanup on unmount
   useEffect(() => {
-    if (currentTopic) {
-      loadMessages(currentTopic.id)
+    if (currentConversation) {
+      loadMessages(currentConversation.id)
     }
     
-    // Cleanup when topic changes or component unmounts
+    // Cleanup when conversation changes or component unmounts
     return () => {
       const cleanup = useMessageStore.getState().cleanup;
       cleanup();
     };
-  }, [currentTopic, loadMessages])
+  }, [currentConversation, loadMessages])
 
   const handleCopy = () => {
     console.log("Message copied")

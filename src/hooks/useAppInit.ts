@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAssistantStore } from '@/stores/assistantStore';
 import { useModelStore } from '@/stores/modelStore';
-import { useTopicStore } from '@/stores/topicStore';
+import { useConversationStore } from '@/stores/conversationStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export function useAppInit() {
@@ -10,14 +10,9 @@ export function useAppInit() {
 
   const loadAll = useModelStore((state: any) => state.loadAll);
   const loadAssistants = useAssistantStore((state: any) => state.loadAssistants);
-  const assistants = useAssistantStore((state: any) => state.assistants);
-  const setCurrentAssistant = useAssistantStore((state: any) => state.setCurrentAssistant);
-
-  const loadTopics = useTopicStore((state: any) => state.loadTopics);
-  const topics = useTopicStore((state: any) => state.topics);
-  const createTopic = useTopicStore((state: any) => state.createTopic);
-  const setCurrentTopic = useTopicStore((state: any) => state.setCurrentTopic);
-
+  const loadConversations = useConversationStore((state: any) => state.loadConversations);
+  const conversations = useConversationStore((state: any) => state.conversations);
+  const setCurrentConversation = useConversationStore((state: any) => state.setCurrentConversation);
   const loadSettings = useSettingsStore((state: any) => state.loadSettings);
 
   useEffect(() => {
@@ -33,9 +28,13 @@ export function useAppInit() {
         console.log('Loading models and providers...');
         await loadAll();
 
-        // Load assistants
+        // Load assistants (optional - users can use models directly)
         console.log('Loading assistants...');
         await loadAssistants();
+        
+        // Load conversations
+        console.log('Loading conversations...');
+        await loadConversations();
         
         console.log('App initialization complete');
       } catch (err) {
@@ -47,48 +46,15 @@ export function useAppInit() {
     }
 
     initialize();
-  }, [loadSettings, loadAll, loadAssistants]);
+  }, [loadSettings, loadAll, loadAssistants, loadConversations]);
 
-  // Once assistants are loaded, set the first starred assistant as current
+  // Once conversations are loaded, set the first one as current (if any exist)
   useEffect(() => {
-    if (assistants.length > 0 && !useAssistantStore.getState().currentAssistant) {
-      console.log(`Found ${assistants.length} assistants, setting up default assistant...`);
-      const starredAssistant = assistants.find((a: any) => a.is_starred);
-      const defaultAssistant = starredAssistant || assistants[0];
-      console.log('Setting current assistant:', defaultAssistant.name);
-      setCurrentAssistant(defaultAssistant);
-
-      // Load topics for this assistant
-      if (defaultAssistant) {
-        console.log('Loading topics for assistant:', defaultAssistant.id);
-        loadTopics(defaultAssistant.id).then(() => {
-          const loadedTopics = useTopicStore.getState().topics;
-          console.log(`Found ${loadedTopics.length} topics`);
-          
-          // If no topics exist, create a default one
-          if (loadedTopics.length === 0) {
-            console.log('No topics found, creating default conversation...');
-            createTopic({
-              assistant_id: defaultAssistant.id,
-              title: 'New Conversation',
-            }).then((topic: any) => {
-              console.log('Created topic:', topic);
-              setCurrentTopic(topic);
-            }).catch((err: any) => {
-              console.error('Failed to create topic:', err);
-            });
-          } else {
-            // Set the first topic as current
-            console.log('Setting current topic:', loadedTopics[0].title);
-            setCurrentTopic(loadedTopics[0]);
-          }
-        }).catch((err: any) => {
-          console.error('Failed to load topics:', err);
-        });
-      }
+    if (conversations.length > 0 && !useConversationStore.getState().currentConversation) {
+      console.log(`Found ${conversations.length} conversations, setting first as current...`);
+      setCurrentConversation(conversations[0]);
     }
-  }, [assistants, setCurrentAssistant, loadTopics, createTopic, setCurrentTopic]);
+  }, [conversations, setCurrentConversation]);
 
   return { isInitialized, error };
 }
-

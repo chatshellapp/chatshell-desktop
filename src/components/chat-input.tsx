@@ -18,12 +18,11 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { useTopicStore } from "@/stores/topicStore"
+import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
-import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useSettingsStore } from "@/stores/settingsStore"
-import type { Topic, Assistant, Model } from "@/types"
+import type { Model } from "@/types"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
 
@@ -112,31 +111,16 @@ export function ChatInput({}: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Store hooks
-  const currentTopic = useTopicStore((state: any) => state.currentTopic) as Topic | null
-  const currentAssistant = useAssistantStore((state: any) => state.currentAssistant) as Assistant | null
-  const assistants = useAssistantStore((state: any) => state.assistants) as Assistant[]
-  const setCurrentAssistant = useAssistantStore((state: any) => state.setCurrentAssistant)
-  const updateAssistant = useAssistantStore((state: any) => state.updateAssistant)
-  const models = useModelStore((state: any) => state.models) as Model[]
-  const getModelById = useModelStore((state: any) => state.getModelById)
-  const getProviderById = useModelStore((state: any) => state.getProviderById)
-  const sendMessage = useMessageStore((state: any) => state.sendMessage)
-  const isSending = useMessageStore((state: any) => state.isSending) as boolean
-  const getSetting = useSettingsStore((state: any) => state.getSetting)
-
-  // Debug: Log when component mounts
-  React.useEffect(() => {
-    console.log('=== ChatInput component mounted ===')
-    console.log('Current topic:', currentTopic)
-    console.log('Current assistant:', currentAssistant)
-  }, [])
-
-  // Debug: Log when topic or assistant changes
-  React.useEffect(() => {
-    console.log('=== State changed ===')
-    console.log('Current topic:', currentTopic)
-    console.log('Current assistant:', currentAssistant)
-  }, [currentTopic, currentAssistant])
+  const { 
+    currentConversation,
+    selectedModel,
+    selectedAssistant,
+    setSelectedModel,
+  } = useConversationStore()
+  
+  const { models, getModelById, getProviderById } = useModelStore()
+  const { sendMessage, isSending } = useMessageStore()
+  const { getSetting } = useSettingsStore()
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
   const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
@@ -159,27 +143,22 @@ export function ChatInput({}: ChatInputProps) {
   }
 
   const handleFileSelect = () => {
-    // In a real implementation, this would open a file picker
     addAttachment("file", "example-document.pdf")
   }
 
   const handleImageSelect = () => {
-    // In a real implementation, this would open an image picker
     addAttachment("image", "example-image.png")
   }
 
   const handleKnowledgeBaseSelect = () => {
-    // In a real implementation, this would open a knowledge base selector
     addAttachment("knowledge", "Documentation")
   }
 
   const handleToolSelect = () => {
-    // In a real implementation, this would open a tools selector
     addAttachment("tools", "Calculator")
   }
 
   const handleWebPageSelect = () => {
-    // In a real implementation, this would open a URL input dialog
     addAttachment("webpage", "https://example.com")
   }
 
@@ -188,9 +167,7 @@ export function ChatInput({}: ChatInputProps) {
     const urls = pastedText.match(urlRegex)
     
     if (urls && urls.length > 0) {
-      // Add each detected URL as a webpage attachment
       urls.forEach((url) => {
-        // Check if this URL is not already in attachments
         const isDuplicate = attachments.some(
           att => att.type === "webpage" && att.name === url
         )
@@ -204,38 +181,59 @@ export function ChatInput({}: ChatInputProps) {
   const handleSend = async () => {
     console.log("handleSend called", {
       input: input.trim(),
-      hasCurrentTopic: !!currentTopic,
-      hasCurrentAssistant: !!currentAssistant,
-      currentTopic,
-      currentAssistant
+      hasCurrentConversation: !!currentConversation,
+      selectedModel: selectedModel?.name,
+      selectedAssistant: selectedAssistant?.name,
     })
 
-    if (!input.trim() || !currentTopic || !currentAssistant) {
-      console.warn("Cannot send: missing input, topic, or assistant")
+    if (!input.trim()) {
+      console.warn("Cannot send: empty input")
       return
     }
 
-    // Get model info from assistant's model_id
-    const model = getModelById(currentAssistant.model_id)
-    if (!model) {
-      console.error("Model not found for assistant:", currentAssistant.model_id)
-      alert("Error: Model configuration not found")
+    // Check if we have either a model or assistant selected
+    if (!selectedModel && !selectedAssistant) {
+      alert("Please select a model or assistant first")
       return
     }
 
-    // Get provider info from model's provider_id
-    const provider = getProviderById(model.provider_id)
+    // Determine which model to use
+    let modelToUse: Model | undefined
+    let providerType: string
+    let modelIdStr: string
+
+    if (selectedAssistant) {
+      // Use assistant's model
+      modelToUse = getModelById(selectedAssistant.model_id)
+      if (!modelToUse) {
+        console.error("Model not found for assistant:", selectedAssistant.model_id)
+        alert("Error: Model configuration not found for assistant")
+        return
+      }
+    } else if (selectedModel) {
+      // Use selected model directly
+      modelToUse = selectedModel
+    } else {
+      alert("Please select a model or assistant first")
+      return
+    }
+
+    // Get provider info
+    const provider = getProviderById(modelToUse.provider_id)
     if (!provider) {
-      console.error("Provider not found for model:", model.provider_id)
+      console.error("Provider not found for model:", modelToUse.provider_id)
       alert("Error: Provider configuration not found")
       return
     }
+
+    providerType = provider.provider_type
+    modelIdStr = modelToUse.model_id
 
     const content = input.trim()
     setInput("")
 
     try {
-      // Use provider's configuration, fall back to settings for backward compatibility
+      // Get API credentials
       let apiKey: string | undefined = provider.api_key
       let baseUrl: string | undefined = provider.base_url
 
@@ -252,20 +250,18 @@ export function ChatInput({}: ChatInputProps) {
 
       console.log("Sending message:", {
         content,
-        topicId: currentTopic.id,
-        provider: provider.provider_type,
-        model: model.model_id,
+        conversationId: currentConversation?.id,
+        provider: providerType,
+        model: modelIdStr,
         hasApiKey: !!apiKey,
         baseUrl
       })
 
-      // Note: provider and model parameters are kept for backward compatibility
-      // Backend now fetches provider/model info from database via agent
       await sendMessage(
         content,
-        currentTopic.id,
-        provider.provider_type,
-        model.model_id,
+        currentConversation?.id ?? null,
+        providerType,
+        modelIdStr,
         apiKey,
         baseUrl
       )
@@ -273,13 +269,6 @@ export function ChatInput({}: ChatInputProps) {
       console.log("Message sent successfully")
     } catch (error) {
       console.error("Failed to send message:", error)
-      console.error("Error details:", {
-        error,
-        errorString: String(error),
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      })
-      
-      // Show error to user
       alert(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -291,30 +280,30 @@ export function ChatInput({}: ChatInputProps) {
     }
   }
 
-  const handleModelSelect = async (modelId: string) => {
-    if (!currentAssistant) return
+  const handleModelSelect = (modelId: string) => {
+    console.log('handleModelSelect called with modelId:', modelId)
+    const model = getModelById(modelId)
+    if (!model) {
+      console.error('Model not found:', modelId)
+      return
+    }
+    
+    // Simply set the selected model
+    setSelectedModel(model)
+    console.log('Selected model:', model.name)
+  }
 
-    try {
-      await updateAssistant(currentAssistant.id, {
-        name: currentAssistant.name,
-        system_prompt: currentAssistant.system_prompt,
-        model_id: modelId,
-        avatar_bg: currentAssistant.avatar_bg,
-        avatar_text: currentAssistant.avatar_text,
-        is_starred: currentAssistant.is_starred,
-      })
-      console.log('Model updated successfully for assistant:', currentAssistant.name)
-    } catch (error) {
-      console.error('Failed to update assistant model:', error)
-      alert(`Failed to update model: ${error instanceof Error ? error.message : String(error)}`)
+  // Get display text for current selection
+  const getSelectionDisplay = () => {
+    if (selectedAssistant) {
+      const model = getModelById(selectedAssistant.model_id)
+      return model ? `${selectedAssistant.name} · ${model.name}` : selectedAssistant.name
+    } else if (selectedModel) {
+      return selectedModel.name
+    } else {
+      return "Select model or assistant"
     }
   }
-
-  const handleAssistantSelect = (assistant: Assistant) => {
-    setCurrentAssistant(assistant)
-    console.log('Assistant selected:', assistant.name)
-  }
-
 
   return (
     <div className="grid w-full gap-6">
@@ -340,16 +329,10 @@ export function ChatInput({}: ChatInputProps) {
           ref={textareaRef}
           placeholder="Ask, Search or Chat..." 
           value={input}
-          onChange={(e) => {
-            console.log('📝 Input changed:', e.target.value)
-            setInput(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            console.log('⌨️ Key pressed:', e.key)
-            handleKeyDown(e)
-          }}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          disabled={!currentTopic || !currentAssistant}
+          disabled={!selectedModel && !selectedAssistant}
         />
         <InputGroupAddon align="block-end">
           <DropdownMenu>
@@ -397,23 +380,12 @@ export function ChatInput({}: ChatInputProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <InputGroupButton variant="ghost" className="gap-2">
-                {currentAssistant ? (
-                  <>
-                    <Avatar className="h-4 w-4">
-                      <AvatarFallback className="text-[10px]">
-                        {currentAssistant.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-xs">
-                      {(() => {
-                        const model = getModelById(currentAssistant.model_id)
-                        return model ? `${currentAssistant.name} · ${model.name}` : currentAssistant.name
-                      })()}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Select model or assistant</span>
-                )}
+                <Avatar className="h-4 w-4">
+                  <AvatarFallback className="text-[10px]">
+                    {selectedAssistant ? selectedAssistant.name.charAt(0) : selectedModel ? selectedModel.name.charAt(0) : '?'}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs">{getSelectionDisplay()}</span>
               </InputGroupButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -438,7 +410,7 @@ export function ChatInput({}: ChatInputProps) {
                         onClick={() => handleModelSelect(model.id)}
                         className={cn(
                           "gap-2 cursor-pointer",
-                          currentAssistant?.model_id === model.id && "bg-accent"
+                          selectedModel?.id === model.id && "bg-accent"
                         )}
                       >
                         <Avatar className="h-4 w-4">
@@ -461,29 +433,9 @@ export function ChatInput({}: ChatInputProps) {
                   )}
                 </TabsContent>
                 <TabsContent value="assistants" className="mt-0 space-y-1">
-                  {assistants.length > 0 ? (
-                    assistants.map((assistant) => (
-                      <DropdownMenuItem
-                        key={assistant.id}
-                        onClick={() => handleAssistantSelect(assistant)}
-                        className={cn(
-                          "gap-2 cursor-pointer",
-                          currentAssistant?.id === assistant.id && "bg-accent"
-                        )}
-                      >
-                        <Avatar className="h-4 w-4">
-                          <AvatarFallback className="text-[10px]">
-                            {assistant.avatar_text || assistant.name.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-xs">{assistant.name}</span>
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <div className="text-xs text-muted-foreground px-2 py-4 text-center">
-                      No assistants available
-                    </div>
-                  )}
+                  <div className="text-xs text-muted-foreground px-2 py-4 text-center">
+                    Select assistants from the sidebar
+                  </div>
                 </TabsContent>
               </Tabs>
             </DropdownMenuContent>
@@ -497,17 +449,8 @@ export function ChatInput({}: ChatInputProps) {
             variant="default"
             className="rounded-full"
             size="icon-xs"
-            disabled={!input.trim() || !currentTopic || !currentAssistant || isSending}
-            onClick={() => {
-              console.log('🔘 Send button clicked!')
-              console.log('Button state:', {
-                hasInput: !!input.trim(),
-                hasTopic: !!currentTopic,
-                hasAssistant: !!currentAssistant,
-                isSending
-              })
-              handleSend()
-            }}
+            disabled={!input.trim() || (!selectedModel && !selectedAssistant) || isSending}
+            onClick={handleSend}
           >
             <ArrowUpIcon />
             <span className="sr-only">Send</span>
@@ -517,4 +460,3 @@ export function ChatInput({}: ChatInputProps) {
     </div>
   )
 }
-

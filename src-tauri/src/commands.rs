@@ -136,46 +136,70 @@ pub async fn delete_assistant(
     state.db.delete_assistant(&id).map_err(|e| e.to_string())
 }
 
-// Topic commands
+// Conversation commands
 #[tauri::command]
-pub async fn create_topic(
+pub async fn create_conversation(
     state: State<'_, AppState>,
-    req: CreateTopicRequest,
-) -> Result<Topic, String> {
-    state.db.create_topic(req).map_err(|e| e.to_string())
+    req: CreateConversationRequest,
+) -> Result<Conversation, String> {
+    state.db.create_conversation(req).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_topic(
+pub async fn get_conversation(
     state: State<'_, AppState>,
     id: String,
-) -> Result<Option<Topic>, String> {
-    state.db.get_topic(&id).map_err(|e| e.to_string())
+) -> Result<Option<Conversation>, String> {
+    state.db.get_conversation(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn list_topics(
+pub async fn list_conversations(
     state: State<'_, AppState>,
-    assistant_id: String,
-) -> Result<Vec<Topic>, String> {
-    state.db.list_topics(&assistant_id).map_err(|e| e.to_string())
+) -> Result<Vec<Conversation>, String> {
+    state.db.list_conversations().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn update_topic(
+pub async fn update_conversation(
     state: State<'_, AppState>,
     id: String,
     title: String,
-) -> Result<Topic, String> {
-    state.db.update_topic(&id, &title).map_err(|e| e.to_string())
+) -> Result<Conversation, String> {
+    state.db.update_conversation(&id, &title).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_topic(
+pub async fn delete_conversation(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    state.db.delete_topic(&id).map_err(|e| e.to_string())
+    state.db.delete_conversation(&id).map_err(|e| e.to_string())
+}
+
+// Conversation Participant commands
+#[tauri::command]
+pub async fn add_conversation_participant(
+    state: State<'_, AppState>,
+    req: CreateConversationParticipantRequest,
+) -> Result<ConversationParticipant, String> {
+    state.db.add_conversation_participant(req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_conversation_participants(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<ConversationParticipant>, String> {
+    state.db.list_conversation_participants(&conversation_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_conversation_participant(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.db.remove_conversation_participant(&id).map_err(|e| e.to_string())
 }
 
 // Message commands
@@ -188,19 +212,19 @@ pub async fn create_message(
 }
 
 #[tauri::command]
-pub async fn list_messages(
+pub async fn list_messages_by_conversation(
     state: State<'_, AppState>,
-    topic_id: String,
+    conversation_id: String,
 ) -> Result<Vec<Message>, String> {
-    state.db.list_messages(&topic_id).map_err(|e| e.to_string())
+    state.db.list_messages_by_conversation(&conversation_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn clear_messages(
+pub async fn clear_messages_by_conversation(
     state: State<'_, AppState>,
-    topic_id: String,
+    conversation_id: String,
 ) -> Result<(), String> {
-    state.db.delete_messages_in_topic(&topic_id).map_err(|e| e.to_string())
+    state.db.delete_messages_in_conversation(&conversation_id).map_err(|e| e.to_string())
 }
 
 // Settings commands
@@ -274,7 +298,7 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
 pub async fn send_message(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
-    topic_id: String,
+    conversation_id: String,
     content: String,
     provider: String,
     model: String,
@@ -283,7 +307,7 @@ pub async fn send_message(
     include_history: Option<bool>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
-    println!("   topic_id: {}", topic_id);
+    println!("   conversation_id: {}", conversation_id);
     println!("   content: {}", content);
     println!("   provider: {}", provider);
     println!("   model: {}", model);
@@ -295,8 +319,7 @@ pub async fn send_message(
     let user_message = state
         .db
         .create_message(CreateMessageRequest {
-            conversation_id: None,
-            topic_id: Some(topic_id.clone()),
+            conversation_id: Some(conversation_id.clone()),
             sender_type: "user".to_string(),
             sender_id: None,
             role: "user".to_string(),
@@ -315,8 +338,10 @@ pub async fn send_message(
     // This allows the command to return immediately and multiple requests to process concurrently
     println!("🔄 [send_message] Spawning background task...");
     let state_clone = state.inner().clone();
-    let user_message_id = user_message.id.clone(); // Clone to use inside spawn
+    let user_message_id = user_message.id.clone();
     let app_clone = app.clone();
+    let conversation_id_clone = conversation_id.clone();
+    
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
         // Check if message contains URLs and emit scraping started event
@@ -325,7 +350,7 @@ pub async fn send_message(
         if !urls.is_empty() {
             let _ = app_clone.emit("scraping-started", serde_json::json!({
                 "message_id": user_message_id,
-                "topic_id": topic_id,
+                "conversation_id": conversation_id_clone,
             }));
         }
         
@@ -334,12 +359,9 @@ pub async fn send_message(
             Ok((full_content, scraped_only)) => {
                 // Emit scraping complete event
                 if !urls.is_empty() {
-                    // TODO: Create external_resource and link to message via message_external_resources
-                    // For now, just emit the event
-                    
                     let _ = app_clone.emit("scraping-complete", serde_json::json!({
                         "message_id": user_message_id,
-                        "topic_id": topic_id,
+                        "conversation_id": conversation_id_clone,
                         "scraped_content": scraped_only,
                     }));
                 }
@@ -349,11 +371,9 @@ pub async fn send_message(
                 eprintln!("Failed to process URLs: {}, using original", e);
                 // Emit scraping error event
                 if !urls.is_empty() {
-                    // TODO: Store scraping error in external_resource
-                    
                     let _ = app_clone.emit("scraping-error", serde_json::json!({
                         "message_id": user_message_id,
-                        "topic_id": topic_id,
+                        "conversation_id": conversation_id_clone,
                         "error": e.to_string(),
                     }));
                 }
@@ -361,81 +381,17 @@ pub async fn send_message(
             }
         };
         
-        // Get topic and assistant
-        println!("📦 [background_task] Getting topic from database...");
-        let topic = match state_clone.db.get_topic(&topic_id) {
-            Ok(Some(t)) => {
-                println!("✅ [background_task] Got topic: {}", t.title);
-                t
-            },
-            Ok(None) => {
-                eprintln!("❌ [background_task] Topic not found: {}", topic_id);
-                return;
-            },
-            Err(e) => {
-                eprintln!("❌ [background_task] Failed to get topic: {}", e);
-                return;
-            }
-        };
-
-        println!("📦 [background_task] Getting assistant from database...");
-        let assistant = match state_clone.db.get_assistant(&topic.assistant_id) {
-            Ok(Some(a)) => {
-                println!("✅ [background_task] Got assistant: {} (model_id: {})", a.name, a.model_id);
-                a
-            },
-            Ok(None) => {
-                eprintln!("❌ [background_task] Assistant not found: {}", topic.assistant_id);
-                return;
-            },
-            Err(e) => {
-                eprintln!("❌ [background_task] Failed to get assistant: {}", e);
-                return;
-            }
-        };
-
-        println!("📦 [background_task] Getting model from database...");
-        let model_info = match state_clone.db.get_model(&assistant.model_id) {
-            Ok(Some(m)) => {
-                println!("✅ [background_task] Got model: {} ({})", m.name, m.model_id);
-                m
-            },
-            Ok(None) => {
-                eprintln!("❌ [background_task] Model not found: {}", assistant.model_id);
-                return;
-            },
-            Err(e) => {
-                eprintln!("❌ [background_task] Failed to get model: {}", e);
-                return;
-            }
-        };
-
-        println!("📦 [background_task] Getting provider from database...");
-        let provider_info = match state_clone.db.get_provider(&model_info.provider_id) {
-            Ok(Some(p)) => {
-                println!("✅ [background_task] Got provider: {} ({})", p.name, p.provider_type);
-                p
-            },
-            Ok(None) => {
-                eprintln!("❌ [background_task] Provider not found: {}", model_info.provider_id);
-                return;
-            },
-            Err(e) => {
-                eprintln!("❌ [background_task] Failed to get provider: {}", e);
-                return;
-            }
-        };
-
-        // Build chat messages
+        // Build chat messages with a default system prompt
+        // In the new architecture, we don't rely on assistants anymore
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
-            content: assistant.system_prompt.clone(),
+            content: "You are a helpful, harmless, and honest AI assistant.".to_string(),
         }];
 
         // Include message history if requested (default: true)
         let should_include_history = include_history.unwrap_or(true);
         if should_include_history {
-            if let Ok(messages) = state_clone.db.list_messages(&topic_id) {
+            if let Ok(messages) = state_clone.db.list_messages_by_conversation(&conversation_id_clone) {
                 for msg in messages.iter() {
                     // Skip the user message we just saved (it will be added with processed content below)
                     if msg.id == user_message_id {
@@ -457,12 +413,11 @@ pub async fn send_message(
             content: processed_content.clone(),
         });
 
-        // Create LLM provider using provider info from database
-        println!("🤖 [background_task] Creating LLM provider: {}", provider_info.provider_type);
-        let llm_provider: Box<dyn LLMProvider> = match provider_info.provider_type.as_str() {
+        // Create LLM provider directly from parameters
+        println!("🤖 [background_task] Creating LLM provider: {}", provider);
+        let llm_provider: Box<dyn LLMProvider> = match provider.as_str() {
             "openai" => {
-                let key = api_key.or(provider_info.api_key);
-                if let Some(k) = key {
+                if let Some(k) = api_key.clone() {
                     println!("✅ [background_task] Created OpenAI provider");
                     Box::new(llm::openai::OpenAIProvider::new(k))
                 } else {
@@ -471,8 +426,7 @@ pub async fn send_message(
                 }
             }
             "openrouter" => {
-                let key = api_key.or(provider_info.api_key);
-                if let Some(k) = key {
+                if let Some(k) = api_key.clone() {
                     println!("✅ [background_task] Created OpenRouter provider");
                     Box::new(llm::openrouter::OpenRouterProvider::new(k))
                 } else {
@@ -481,33 +435,32 @@ pub async fn send_message(
                 }
             }
             "ollama" => {
-                let url = base_url.or(provider_info.base_url);
-                println!("✅ [background_task] Created Ollama provider with base_url: {:?}", url);
-                Box::new(llm::ollama::OllamaProvider::new(url))
+                println!("✅ [background_task] Created Ollama provider with base_url: {:?}", base_url);
+                Box::new(llm::ollama::OllamaProvider::new(base_url.clone()))
             },
             _ => {
-                eprintln!("❌ [background_task] Unknown provider: {}", provider_info.provider_type);
+                eprintln!("❌ [background_task] Unknown provider: {}", provider);
                 return;
             }
         };
 
-        // Send chat request with streaming using model info from database
-        println!("📤 [background_task] Sending chat request to LLM (model: {})", model_info.model_id);
+        // Send chat request with streaming
+        println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
         let request = ChatRequest {
-            model: model_info.model_id.clone(),
+            model: model.clone(),
             messages: chat_messages.clone(),
             stream: true,
         };
         println!("📤 [background_task] Request has {} messages", chat_messages.len());
 
-        let topic_id_for_stream = topic_id.clone();
+        let conversation_id_for_stream = conversation_id_clone.clone();
         let app_for_stream = app.clone();
         let response = match llm_provider
             .chat_stream(
                 request,
                 Box::new(move |chunk: String| {
                     let payload = serde_json::json!({
-                        "topic_id": topic_id_for_stream,
+                        "conversation_id": conversation_id_for_stream,
                         "content": chunk,
                     });
                     let _ = app_for_stream.emit("chat-stream", payload);
@@ -524,8 +477,7 @@ pub async fn send_message(
 
         // Save assistant message
         let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
-            conversation_id: None,
-            topic_id: Some(topic_id.clone()),
+            conversation_id: Some(conversation_id_clone.clone()),
             sender_type: "assistant".to_string(),
             sender_id: None,
             role: "assistant".to_string(),
@@ -542,7 +494,7 @@ pub async fn send_message(
         
         // Notify frontend that streaming is complete with the saved message
         let completion_payload = serde_json::json!({
-            "topic_id": topic_id,
+            "conversation_id": conversation_id_clone,
             "message": assistant_message,
         });
         let _ = app.emit("chat-complete", completion_payload);

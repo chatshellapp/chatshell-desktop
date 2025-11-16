@@ -89,22 +89,6 @@ pub struct CreateAssistantRequest {
     pub is_starred: Option<bool>,
 }
 
-// Topic (Conversation) models
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Topic {
-    pub id: String,
-    pub assistant_id: String,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateTopicRequest {
-    pub assistant_id: String,
-    pub title: String,
-}
-
 // Knowledge Base models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeBase {
@@ -184,12 +168,11 @@ pub struct CreateConversationParticipantRequest {
     pub display_name: Option<String>,
 }
 
-// Message models (updated for conversation support)
+// Message models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
     pub conversation_id: Option<String>,
-    pub topic_id: Option<String>,
     pub sender_type: String,
     pub sender_id: Option<String>,
     pub role: String,
@@ -202,7 +185,6 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageRequest {
     pub conversation_id: Option<String>,
-    pub topic_id: Option<String>,
     pub sender_type: String,
     pub sender_id: Option<String>,
     pub role: String,

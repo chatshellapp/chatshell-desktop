@@ -50,16 +50,19 @@ pub fn run() {
             commands::list_assistants,
             commands::update_assistant,
             commands::delete_assistant,
-            // Topic commands
-            commands::create_topic,
-            commands::get_topic,
-            commands::list_topics,
-            commands::update_topic,
-            commands::delete_topic,
+            // Conversation commands
+            commands::create_conversation,
+            commands::get_conversation,
+            commands::list_conversations,
+            commands::update_conversation,
+            commands::delete_conversation,
+            commands::add_conversation_participant,
+            commands::list_conversation_participants,
+            commands::remove_conversation_participant,
             // Message commands
             commands::create_message,
-            commands::list_messages,
-            commands::clear_messages,
+            commands::list_messages_by_conversation,
+            commands::clear_messages_by_conversation,
             // Settings commands
             commands::get_setting,
             commands::set_setting,

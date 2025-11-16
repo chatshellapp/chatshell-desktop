@@ -14,15 +14,15 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { useTopicStore } from "@/stores/topicStore"
+import { useConversationStore } from "@/stores/conversationStore"
 import { useAppInit } from "@/hooks/useAppInit"
 import { SimpleSettingsDialog } from "@/components/simple-settings-dialog"
 
 export function ChatPage() {
-  // Initialize app (load agents, topics, settings)
+  // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError } = useAppInit()
 
-  const currentTopic = useTopicStore((state) => state.currentTopic)
+  const currentConversation = useConversationStore((state) => state.currentConversation)
 
   // Show loading screen while initializing
   if (!isInitialized) {
@@ -71,7 +71,7 @@ export function ChatPage() {
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
                 <BreadcrumbPage>
-                  {currentTopic?.title || "Select a conversation"}
+                  {currentConversation?.title || "Select a conversation"}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>

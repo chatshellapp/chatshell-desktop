@@ -76,20 +76,6 @@ export interface CreateAssistantRequest {
   is_starred?: boolean;
 }
 
-// Topic (Conversation) types
-export interface Topic {
-  id: string;
-  assistant_id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateTopicRequest {
-  assistant_id: string;
-  title: string;
-}
-
 // Knowledge Base types
 export interface KnowledgeBase {
   id: string;
@@ -161,11 +147,10 @@ export interface CreateConversationParticipantRequest {
   display_name?: string;
 }
 
-// Message types (updated for conversation support)
+// Message types
 export interface Message {
   id: string;
   conversation_id?: string;
-  topic_id?: string;
   sender_type: string;
   sender_id?: string;
   role: string;
@@ -177,7 +162,6 @@ export interface Message {
 
 export interface CreateMessageRequest {
   conversation_id?: string;
-  topic_id?: string;
   sender_type: string;
   sender_id?: string;
   role: string;
@@ -254,29 +238,29 @@ export interface ModelPricing {
 
 // Event payloads
 export interface ChatStreamEvent {
-  topic_id: string;
+  conversation_id: string;
   content: string;
 }
 
 export interface ChatCompleteEvent {
-  topic_id: string;
+  conversation_id: string;
   message: Message;
 }
 
 export interface ScrapingStartedEvent {
   message_id: string;
-  topic_id: string;
+  conversation_id: string;
 }
 
 export interface ScrapingCompleteEvent {
   message_id: string;
-  topic_id: string;
+  conversation_id: string;
   scraped_content: string;
 }
 
 export interface ScrapingErrorEvent {
   message_id: string;
-  topic_id: string;
+  conversation_id: string;
   error: string;
 }
 

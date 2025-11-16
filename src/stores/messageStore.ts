@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { Message, CreateMessageRequest } from '@/types';
+import type { Message, CreateMessageRequest, Conversation } from '@/types';
 
 interface MessageStore {
   messages: Message[];
@@ -12,17 +12,17 @@ interface MessageStore {
   error: string | null;
   isWaitingForAI: boolean;
 
-  loadMessages: (topicId: string) => Promise<void>;
+  loadMessages: (conversationId: string) => Promise<void>;
   sendMessage: (
     content: string,
-    topicId: string,
+    conversationId: string | null,
     provider: string,
     model: string,
     apiKey?: string,
     baseUrl?: string,
     includeHistory?: boolean
   ) => Promise<void>;
-  clearMessages: (topicId: string) => Promise<void>;
+  clearMessages: (conversationId: string) => Promise<void>;
   addMessage: (message: Message) => void;
   setStreamingContent: (content: string) => void;
   setIsStreaming: (isStreaming: boolean) => void;
@@ -51,10 +51,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   error: null,
   isWaitingForAI: false,
 
-  loadMessages: async (topicId: string) => {
+  loadMessages: async (conversationId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const messages = await invoke<Message[]>('list_messages', { topicId });
+      const messages = await invoke<Message[]>('list_messages_by_conversation', { conversationId });
       // Limit messages in memory to prevent memory leaks
       const limitedMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY);
       set({ messages: limitedMessages, isLoading: false });
@@ -66,7 +66,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
 
   sendMessage: async (
     content: string,
-    topicId: string,
+    conversationId: string | null,
     provider: string,
     model: string,
     apiKey?: string,
@@ -75,8 +75,28 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   ) => {
     set({ isSending: true, error: null, streamingContent: '', isStreaming: true, isWaitingForAI: true });
     try {
+      // If no conversationId, create a new conversation first
+      let targetId = conversationId;
+      if (!targetId) {
+        console.log('[messageStore] No conversation ID provided, creating new conversation...');
+        const newConversation = await invoke<Conversation>('create_conversation', {
+          req: { title: 'New Conversation' }
+        });
+        targetId = newConversation.id;
+        console.log('[messageStore] Created new conversation:', newConversation);
+        
+        // Update conversationStore to set this as current and add to list
+        const { useConversationStore } = await import('./conversationStore');
+        const conversationStore = useConversationStore.getState();
+        conversationStore.setCurrentConversation(newConversation);
+        // Also add to conversations list if not already there
+        if (!conversationStore.conversations.find(c => c.id === newConversation.id)) {
+          conversationStore.loadConversations(); // Reload to include the new one
+        }
+      }
+      
       console.log('[messageStore] Invoking send_message command with params:', {
-        topicId,
+        conversationId: targetId,
         contentLength: content.length,
         provider,
         model,
@@ -87,7 +107,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
 
       // This will return the user message immediately
       const userMessage = await invoke<Message>('send_message', {
-        topicId,
+        conversationId: targetId,
         content,
         provider,
         model,
@@ -121,10 +141,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     }
   },
 
-  clearMessages: async (topicId: string) => {
+  clearMessages: async (conversationId: string) => {
     set({ isLoading: true, error: null });
     try {
-      await invoke('clear_messages', { topicId });
+      await invoke('clear_messages_by_conversation', { conversationId });
       set({ messages: [], isLoading: false });
     } catch (error) {
       set({ error: String(error), isLoading: false });

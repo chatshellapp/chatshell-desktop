@@ -9,13 +9,13 @@ import type {
   ScrapingErrorEvent,
 } from '@/types';
 
-export function useChatEvents(topicId: string | null) {
-  const topicIdRef = useRef(topicId);
+export function useChatEvents(conversationId: string | null) {
+  const conversationIdRef = useRef(conversationId);
   
-  // Update ref when topicId changes
+  // Update ref when conversationId changes
   useEffect(() => {
-    topicIdRef.current = topicId;
-  }, [topicId]);
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   // Create stable callback references using useCallback with no dependencies
   // We use refs to access the latest values without re-creating the callbacks
@@ -24,8 +24,11 @@ export function useChatEvents(topicId: string | null) {
   }, []);
 
   const handleChatComplete = useCallback((message: any) => {
+    console.log('[useChatEvents] handleChatComplete called with message:', message);
     const store = useMessageStore.getState();
+    console.log('[useChatEvents] Current messages count:', store.messages.length);
     store.addMessage(message);
+    console.log('[useChatEvents] After addMessage, messages count:', useMessageStore.getState().messages.length);
     store.setIsStreaming(false);
     store.setStreamingContent('');
   }, []);
@@ -44,21 +47,31 @@ export function useChatEvents(topicId: string | null) {
   }, []);
 
   useEffect(() => {
-    if (!topicId) return;
+    if (!conversationId) return;
 
-    console.log('[useChatEvents] Setting up event listeners for topic:', topicId);
+    console.log('[useChatEvents] Setting up event listeners for conversation:', conversationId);
 
     // Listen for streaming chunks
     const unlistenStream = listen<ChatStreamEvent>('chat-stream', (event) => {
-      if (event.payload.topic_id === topicIdRef.current) {
+      console.log('[useChatEvents] Received chat-stream event:', event.payload);
+      console.log('[useChatEvents] Event conversation_id:', event.payload.conversation_id, 'Current:', conversationIdRef.current);
+      if (event.payload.conversation_id === conversationIdRef.current) {
+        console.log('[useChatEvents] Processing stream chunk');
         handleStreamChunk(event.payload.content);
+      } else {
+        console.log('[useChatEvents] Ignoring event - ID mismatch');
       }
     });
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
-      if (event.payload.topic_id === topicIdRef.current) {
+      console.log('[useChatEvents] Received chat-complete event:', event.payload);
+      console.log('[useChatEvents] Event conversation_id:', event.payload.conversation_id, 'Current:', conversationIdRef.current);
+      if (event.payload.conversation_id === conversationIdRef.current) {
+        console.log('[useChatEvents] Adding completed message to store');
         handleChatComplete(event.payload.message);
+      } else {
+        console.log('[useChatEvents] Ignoring event - ID mismatch');
       }
     });
 
@@ -66,7 +79,7 @@ export function useChatEvents(topicId: string | null) {
     const unlistenScrapingStarted = listen<ScrapingStartedEvent>(
       'scraping-started',
       (event) => {
-        if (event.payload.topic_id === topicIdRef.current) {
+        if (event.payload.conversation_id === conversationIdRef.current) {
           handleScrapingStarted();
         }
       }
@@ -76,7 +89,7 @@ export function useChatEvents(topicId: string | null) {
     const unlistenScrapingComplete = listen<ScrapingCompleteEvent>(
       'scraping-complete',
       (event) => {
-        if (event.payload.topic_id === topicIdRef.current) {
+        if (event.payload.conversation_id === conversationIdRef.current) {
           handleScrapingComplete();
         }
       }
@@ -86,15 +99,15 @@ export function useChatEvents(topicId: string | null) {
     const unlistenScrapingError = listen<ScrapingErrorEvent>(
       'scraping-error',
       (event) => {
-        if (event.payload.topic_id === topicIdRef.current) {
+        if (event.payload.conversation_id === conversationIdRef.current) {
           handleScrapingError(event.payload.error);
         }
       }
     );
 
-    // Cleanup listeners when component unmounts or topicId changes
+    // Cleanup listeners when component unmounts or conversationId changes
     return () => {
-      console.log('[useChatEvents] Cleaning up event listeners for topic:', topicId);
+      console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId);
       unlistenStream.then((fn) => fn());
       unlistenComplete.then((fn) => fn());
       unlistenScrapingStarted.then((fn) => fn());
@@ -102,7 +115,7 @@ export function useChatEvents(topicId: string | null) {
       unlistenScrapingError.then((fn) => fn());
     };
   }, [
-    topicId,
+    conversationId,
     handleStreamChunk,
     handleChatComplete,
     handleScrapingStarted,

@@ -12,8 +12,9 @@ import { PeopleList, type Person, type PersonGroup } from "@/components/people-l
 import { PromptList, type Prompt, type PromptGroup } from "@/components/prompt-list"
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
-import { useTopicStore } from "@/stores/topicStore"
+import { useConversationStore } from "@/stores/conversationStore"
 import { useAssistantStore } from "@/stores/assistantStore"
+import { useModelStore } from "@/stores/modelStore"
 import gptAvatar from "@/assets/models/gpt.png"
 import claudeAvatar from "@/assets/models/claude.png"
 import geminiAvatar from "@/assets/models/gemini.png"
@@ -625,10 +626,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Note: I'm using state to show active item.
   // IRL you should use the url/router.
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const [selectedModelId, setSelectedModelId] = React.useState<string | null>("gpt-4-turbo")
-  const [modelVendors, setModelVendors] = React.useState<ModelVendor[]>(data.aiModels)
-  const [selectedAssistantId, setSelectedAssistantId] = React.useState<string | null>("assistant-1")
-  const [assistantGroups, setAssistantGroups] = React.useState<AssistantGroup[]>(data.assistantGroups)
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(data.peopleGroups)
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>("1")
@@ -637,20 +634,42 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const { setOpen } = useSidebar()
   
-  // Get topic store functions and state
-  const { topics, currentTopic, createTopic, setCurrentTopic, loadTopics, selectTopic } = useTopicStore()
-  const currentAssistant = useAssistantStore((state) => state.currentAssistant)
+  // Get conversation store functions and state
+  const {
+    conversations,
+    currentConversation,
+    createConversation,
+    setCurrentConversation,
+    loadConversations,
+    selectConversation,
+    selectedModel,
+    selectedAssistant,
+    setSelectedModel,
+    setSelectedAssistant,
+  } = useConversationStore()
   
-  // Load topics when currentAssistant changes
+  // Get assistant store functions and state - use real data instead of mock
+  const { assistants } = useAssistantStore()
+  
+  // Get model store functions and state - use real data instead of mock
+  const { models, providers } = useModelStore((state) => ({
+    models: state.models,
+    providers: state.providers,
+  }))
+  
+  // Load conversations when component mounts
   React.useEffect(() => {
-    if (currentAssistant) {
-      loadTopics(currentAssistant.id)
-    }
-  }, [currentAssistant, loadTopics])
+    loadConversations()
+  }, [loadConversations])
 
-  const handleModelClick = (model: Model) => {
-    console.log("Model selected:", model)
-    setSelectedModelId(model.id)
+  const handleModelClick = (model: any) => {
+    console.log("Model selected:", model.name)
+    // Find the real model from store
+    const realModel = models.find((m: any) => m.id === model.id)
+    if (realModel) {
+      // Simply set the selected model
+      setSelectedModel(realModel)
+    }
   }
 
   const handleModelSettings = (model: Model) => {
@@ -658,16 +677,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your model settings logic here
   }
 
-  const handleModelStarToggle = (model: Model) => {
+  const handleModelStarToggle = async (model: Model) => {
     console.log("Toggle star for model:", model)
-    setModelVendors(prevVendors =>
-      prevVendors.map(vendor => ({
-        ...vendor,
-        models: vendor.models.map(m =>
-          m.id === model.id ? { ...m, isStarred: !m.isStarred } : m
-        ),
-      }))
-    )
+    // Find the real model from store
+    const realModel = models.find((m: any) => m.id === model.id)
+    if (realModel) {
+      try {
+        // TODO: Implement update_model backend command to toggle star
+        console.log("Model star toggle not yet implemented in backend")
+      } catch (error) {
+        console.error("Failed to toggle star:", error)
+      }
+    }
   }
 
   const handleVendorSettings = (vendor: ModelVendor) => {
@@ -679,9 +700,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setProviderDialogOpen(true)
   }
 
-  const handleAssistantClick = (assistant: Assistant) => {
+  const handleAssistantClick = (assistant: any) => {
     console.log("Assistant selected:", assistant)
-    setSelectedAssistantId(assistant.id)
+    // Find the real assistant from store and set it as selected
+    const realAssistant = assistants.find((a: any) => a.id === assistant.id)
+    if (realAssistant) {
+      setSelectedAssistant(realAssistant)
+      console.log("Set selected assistant:", realAssistant.name)
+    }
   }
 
   const handleAssistantSettings = (assistant: Assistant) => {
@@ -689,16 +715,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     // Add your assistant settings logic here
   }
 
-  const handleAssistantStarToggle = (assistant: Assistant) => {
+  const handleAssistantStarToggle = async (assistant: any) => {
     console.log("Toggle star for assistant:", assistant)
-    setAssistantGroups(prevGroups =>
-      prevGroups.map(group => ({
-        ...group,
-        assistants: group.assistants.map(a =>
-          a.id === assistant.id ? { ...a, isStarred: !a.isStarred } : a
-        ),
-      }))
-    )
+    // Find the real assistant from store
+    const realAssistant = assistants.find((a: any) => a.id === assistant.id)
+    if (realAssistant) {
+      try {
+        const { updateAssistant } = useAssistantStore.getState()
+        await updateAssistant(realAssistant.id, {
+          name: realAssistant.name,
+          system_prompt: realAssistant.system_prompt,
+          model_id: realAssistant.model_id,
+          avatar_bg: realAssistant.avatar_bg,
+          avatar_text: realAssistant.avatar_text,
+          is_starred: !realAssistant.is_starred,
+        })
+      } catch (error) {
+        console.error("Failed to toggle star:", error)
+      }
+    }
   }
 
   const handleGroupSettings = (group: AssistantGroup) => {
@@ -776,28 +811,32 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }
 
   const handleNewConversation = async () => {
-    if (!currentAssistant) {
-      console.error("No current assistant selected")
-      return
-    }
+    console.log('handleNewConversation called')
+    console.log('selectedModel:', selectedModel?.name)
+    console.log('selectedAssistant:', selectedAssistant?.name)
     
     try {
-      const newTopic = await createTopic({
-        assistant_id: currentAssistant.id,
-        title: "New Conversation",
-      })
-      setCurrentTopic(newTopic)
-      console.log("Created new conversation:", newTopic)
+      // Create a new conversation
+      console.log('Creating new conversation...')
+      const newConversation = await createConversation("New Conversation")
+      console.log("Created new conversation:", newConversation)
+      setCurrentConversation(newConversation)
+      
+      // Switch to conversations view if not already there
+      if (activeItem?.title !== 'Conversations') {
+        setActiveItem(data.navMain[0]) // Conversations is the first item
+      }
     } catch (error) {
       console.error("Failed to create new conversation:", error)
+      alert(`Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  const handleTopicClick = async (topicId: string) => {
+  const handleConversationClick = async (conversationId: string) => {
     try {
-      await selectTopic(topicId)
+      await selectConversation(conversationId)
     } catch (error) {
-      console.error("Failed to select topic:", error)
+      console.error("Failed to select conversation:", error)
     }
   }
 
@@ -824,20 +863,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         return (
           <div className="flex flex-col gap-1">
             <div className="space-y-1 p-2">
-              {topics.length === 0 ? (
+              {conversations.length === 0 ? (
                 <div className="text-center text-muted-foreground text-sm py-4">
                   No conversations yet
                 </div>
               ) : (
-                topics.map((topic) => (
+                conversations.map((conversation) => (
                   <MessageListItem
-                    key={topic.id}
-                    avatars={currentAssistant?.avatar_bg ? [currentAssistant.avatar_bg] : [gptAvatar]}
-                    summary={topic.title}
-                    timestamp={formatTimestamp(topic.updated_at)}
+                    key={conversation.id}
+                    avatars={selectedAssistant?.avatar_bg ? [selectedAssistant.avatar_bg] : [gptAvatar]}
+                    summary={conversation.title}
+                    timestamp={formatTimestamp(conversation.updated_at)}
                     lastMessage="Click to view conversation"
-                    isActive={currentTopic?.id === topic.id}
-                    onClick={() => handleTopicClick(topic.id)}
+                    isActive={currentConversation?.id === conversation.id}
+                    onClick={() => handleConversationClick(conversation.id)}
                   />
                 ))
               )}
@@ -873,8 +912,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </TabsList>
               <TabsContent value="models" className="mt-2">
                 <ModelList
-                  vendors={modelVendors}
-                  selectedModelId={selectedModelId || undefined}
+                  vendors={React.useMemo(() => {
+                    // Convert flat models and providers to grouped format
+                    if (providers.length === 0) return []
+                    
+                    // Group models by provider
+                    return providers.map((provider: any) => {
+                      const providerModels = models
+                        .filter((m: any) => m.provider_id === provider.id)
+                        .map((m: any) => ({
+                          id: m.id,
+                          name: m.name,
+                          modelId: m.model_id,
+                          logo: gptAvatar, // TODO: map model to correct logo
+                          isStarred: m.is_starred || false,
+                        }))
+                      
+                      return {
+                        id: provider.id,
+                        name: provider.name,
+                        models: providerModels,
+                      }
+                    }).filter((vendor: any) => vendor.models.length > 0)
+                  }, [models, providers])}
+                  selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
                   onModelClick={handleModelClick}
                   onModelSettings={handleModelSettings}
                   onModelStarToggle={handleModelStarToggle}
@@ -884,8 +945,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </TabsContent>
               <TabsContent value="assistants" className="mt-2">
                 <AssistantList
-                  groups={assistantGroups}
-                  selectedAssistantId={selectedAssistantId || undefined}
+                  groups={React.useMemo(() => {
+                    // Convert flat assistants list to grouped format
+                    if (assistants.length === 0) return []
+                    return [{
+                      id: "all",
+                      name: "Assistants",
+                      defaultOpen: true,
+                      assistants: assistants.map((a: any) => ({
+                        id: a.id,
+                        name: a.name,
+                        persona: a.system_prompt?.substring(0, 50) + '...' || 'Custom Assistant',
+                        avatarBg: a.avatar_bg || '#3b82f6',
+                        avatarText: a.avatar_text || a.name.charAt(0),
+                        capabilities: {
+                          modelLogo: gptAvatar, // We can improve this later with actual model logos
+                          hasModel: true,
+                          hasFiles: false,
+                          hasKnowledgeBase: false,
+                          hasMcpServer: false,
+                        },
+                        isStarred: a.is_starred || false,
+                      }))
+                    }]
+                  }, [assistants])}
+                  selectedAssistantId={selectedAssistant?.id}
                   onAssistantClick={handleAssistantClick}
                   onAssistantSettings={handleAssistantSettings}
                   onAssistantStarToggle={handleAssistantStarToggle}
