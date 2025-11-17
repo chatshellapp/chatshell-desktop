@@ -359,9 +359,10 @@ export function ChatInput({}: ChatInputProps) {
   const getSelectionDisplay = () => {
     if (selectedAssistant) {
       const model = getModelById(selectedAssistant.model_id)
-      return model ? `${selectedAssistant.name} · ${model.name}` : selectedAssistant.name
+      return model ? `${selectedAssistant.name} - ${model.name}` : selectedAssistant.name
     } else if (selectedModel) {
-      return selectedModel.name
+      const provider = getProviderById(selectedModel.provider_id)
+      return provider ? `${selectedModel.name} - ${provider.name}` : selectedModel.name
     } else {
       return "Select model or assistant"
     }

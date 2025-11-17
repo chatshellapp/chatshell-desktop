@@ -8,6 +8,12 @@ import { useAssistantStore } from "@/stores/assistantStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
 import type { Message } from "@/types"
 
+// Helper function to format model name with provider
+const formatModelDisplayName = (modelName: string, providerId: string, getProviderById: (id: string) => any) => {
+  const provider = getProviderById(providerId)
+  return provider ? `${modelName} - ${provider.name}` : modelName
+}
+
 // Global chat message configuration
 const CHAT_CONFIG = {
   userMessageAlign: "right" as const,
@@ -34,7 +40,8 @@ export function ChatView() {
       if (!model) return selectedAssistant.name
       return `${selectedAssistant.name} · ${model.name}`
     } else if (selectedModel) {
-      return selectedModel.name
+      const getProviderById = useModelStore((state) => state.getProviderById)
+      return formatModelDisplayName(selectedModel.name, selectedModel.provider_id, getProviderById)
     }
     return "AI Assistant"
   }
@@ -50,7 +57,8 @@ export function ChatView() {
       // Direct model chat
       const model = getModelById(message.sender_id)
       if (model) {
-        return { name: model.name }
+        const getProviderById = useModelStore((state) => state.getProviderById)
+        return { name: formatModelDisplayName(model.name, model.provider_id, getProviderById) }
       }
     } else if (message.sender_type === "assistant") {
       // Assistant chat
