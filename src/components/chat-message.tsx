@@ -19,7 +19,7 @@ import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
-import gptAvatar from "@/assets/models/gpt.png"
+import gptAvatar from "@/assets/avatars/models/gpt.png"
 import { Spinner } from "@/components/ui/spinner"
 
 interface ChatMessageProps {

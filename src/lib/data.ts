@@ -1,9 +1,9 @@
 import type { ModelVendor } from "@/components/model-list"
 import type { AssistantGroup } from "@/components/assistant-list"
-import gptAvatar from "@/assets/models/gpt.png"
-import claudeAvatar from "@/assets/models/claude.png"
-import geminiAvatar from "@/assets/models/gemini.png"
-import llamaAvatar from "@/assets/models/llama.png"
+import gptAvatar from "@/assets/avatars/models/gpt.png"
+import claudeAvatar from "@/assets/avatars/models/claude.png"
+import geminiAvatar from "@/assets/avatars/models/gemini.png"
+import llamaAvatar from "@/assets/avatars/models/llama.png"
 
 export const aiModels: ModelVendor[] = [
   {

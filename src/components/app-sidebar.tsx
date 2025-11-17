@@ -16,10 +16,10 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
-import gptAvatar from "@/assets/models/gpt.png"
-import claudeAvatar from "@/assets/models/claude.png"
-import geminiAvatar from "@/assets/models/gemini.png"
-import llamaAvatar from "@/assets/models/llama.png"
+import gptAvatar from "@/assets/avatars/models/gpt.png"
+import claudeAvatar from "@/assets/avatars/models/claude.png"
+import geminiAvatar from "@/assets/avatars/models/gemini.png"
+import llamaAvatar from "@/assets/avatars/models/llama.png"
 import {
   Sidebar,
   SidebarContent,
