@@ -204,7 +204,7 @@ function PersonGroupComponent({
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start font-medium text-sm h-9 px-3"
+            className="w-full justify-start font-normal text-sm h-9 px-3"
           >
             <ChevronDown
               className={cn(
