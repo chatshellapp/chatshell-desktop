@@ -1,5 +1,5 @@
 import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square } from "lucide-react"
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, useMemo } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -24,6 +24,8 @@ import { useModelStore } from "@/stores/modelStore"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import type { Model } from "@/types"
+import { ModelList, type ModelVendor, type Model as ModelListModel } from "@/components/model-list"
+import { AssistantList, type AssistantGroup, type Assistant as AssistantListAssistant } from "@/components/assistant-list"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
 
@@ -368,6 +370,65 @@ export function ChatInput({}: ChatInputProps) {
     }
   }
 
+  // Transform models to ModelVendor groups
+  const modelVendors = useMemo((): ModelVendor[] => {
+    const vendorMap = new Map<string, ModelListModel[]>()
+    
+    models.forEach((model) => {
+      const provider = getProviderById(model.provider_id)
+      if (!provider) return
+      
+      const vendorKey = provider.id
+      if (!vendorMap.has(vendorKey)) {
+        vendorMap.set(vendorKey, [])
+      }
+      
+      vendorMap.get(vendorKey)!.push({
+        id: model.id,
+        name: model.name,
+        modelId: model.model_id,
+        isStarred: model.is_starred,
+      })
+    })
+    
+    return Array.from(vendorMap.entries()).map(([vendorId, models]) => {
+      const provider = getProviderById(vendorId)
+      return {
+        id: vendorId,
+        name: provider?.name || 'Unknown',
+        models,
+      }
+    })
+  }, [models, getProviderById])
+
+  // Transform assistants to AssistantGroup groups
+  const assistantGroups = useMemo((): AssistantGroup[] => {
+    const groupMap = new Map<string, AssistantListAssistant[]>()
+    
+    assistants.forEach((assistant) => {
+      const groupName = assistant.group_name || 'Default'
+      if (!groupMap.has(groupName)) {
+        groupMap.set(groupName, [])
+      }
+      
+      groupMap.get(groupName)!.push({
+        id: assistant.id,
+        name: assistant.name,
+        persona: assistant.role,
+        logo: assistant.avatar_image_url,
+        avatarBg: assistant.avatar_bg,
+        avatarText: assistant.avatar_text,
+        isStarred: assistant.is_starred,
+      })
+    })
+    
+    return Array.from(groupMap.entries()).map(([groupName, assistants]) => ({
+      id: groupName.toLowerCase().replace(/\s+/g, '-'),
+      name: groupName,
+      assistants,
+    }))
+  }, [assistants])
+
   return (
     <div className="grid w-full gap-6">
       <InputGroup>
@@ -454,7 +515,7 @@ export function ChatInput({}: ChatInputProps) {
             <DropdownMenuContent
               side="top"
               align="start"
-              className="[--radius:0.95rem] p-2 w-[280px]"
+              className="[--radius:0.95rem] p-2 w-[320px] max-h-[400px] overflow-y-auto"
             >
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "models" | "assistants")}>
                 <TabsList className="grid w-full grid-cols-2 mb-2">
@@ -465,65 +526,26 @@ export function ChatInput({}: ChatInputProps) {
                     Assistants
                   </TabsTrigger>
                 </TabsList>
-                <TabsContent value="models" className="mt-0 space-y-1">
-                  {models.length > 0 ? (
-                    models.map((model) => (
-                      <DropdownMenuItem
-                        key={model.id}
-                        onClick={() => handleModelSelect(model.id)}
-                        className={cn(
-                          "gap-2 cursor-pointer",
-                          selectedModel?.id === model.id && "bg-accent"
-                        )}
-                      >
-                        <Avatar className="h-4 w-4">
-                          <AvatarFallback className="text-[10px]">
-                            {model.name.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="text-xs">{model.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {getProviderById(model.provider_id)?.name || 'Unknown'}
-                          </span>
-                        </div>
-                      </DropdownMenuItem>
-                    ))
+                <TabsContent value="models" className="mt-0">
+                  {modelVendors.length > 0 ? (
+                    <ModelList
+                      vendors={modelVendors}
+                      selectedModelId={selectedModel?.id}
+                      onModelClick={(model) => handleModelSelect(model.id)}
+                    />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">
                       No models available
                     </div>
                   )}
                 </TabsContent>
-                <TabsContent value="assistants" className="mt-0 space-y-1">
-                  {assistants.length > 0 ? (
-                    assistants.map((assistant) => {
-                      const assistantModel = getModelById(assistant.model_id)
-                      return (
-                        <DropdownMenuItem
-                          key={assistant.id}
-                          onClick={() => handleAssistantSelect(assistant.id)}
-                          className={cn(
-                            "gap-2 cursor-pointer",
-                            selectedAssistant?.id === assistant.id && "bg-accent"
-                          )}
-                        >
-                          <Avatar className="h-4 w-4">
-                            <AvatarFallback className="text-[10px]">
-                              {assistant.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex flex-col">
-                            <span className="text-xs">{assistant.name}</span>
-                            {assistantModel && (
-                              <span className="text-xs text-muted-foreground">
-                                {assistantModel.name}
-                              </span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      )
-                    })
+                <TabsContent value="assistants" className="mt-0">
+                  {assistantGroups.length > 0 ? (
+                    <AssistantList
+                      groups={assistantGroups}
+                      selectedAssistantId={selectedAssistant?.id}
+                      onAssistantClick={(assistant) => handleAssistantSelect(assistant.id)}
+                    />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">
                       No assistants available

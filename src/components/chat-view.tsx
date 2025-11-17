@@ -31,6 +31,7 @@ export function ChatView() {
   const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
   const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
   const getModelById = useModelStore((state) => state.getModelById)
+  const getProviderById = useModelStore((state) => state.getProviderById)
   const getAssistantById = useAssistantStore((state) => state.getAssistantById)
 
   // Get model name for display (for currently selected model/assistant - used for streaming messages)
@@ -40,7 +41,6 @@ export function ChatView() {
       if (!model) return selectedAssistant.name
       return `${selectedAssistant.name} · ${model.name}`
     } else if (selectedModel) {
-      const getProviderById = useModelStore((state) => state.getProviderById)
       return formatModelDisplayName(selectedModel.name, selectedModel.provider_id, getProviderById)
     }
     return "AI Assistant"
@@ -57,7 +57,6 @@ export function ChatView() {
       // Direct model chat
       const model = getModelById(message.sender_id)
       if (model) {
-        const getProviderById = useModelStore((state) => state.getProviderById)
         return { name: formatModelDisplayName(model.name, model.provider_id, getProviderById) }
       }
     } else if (message.sender_type === "assistant") {
