@@ -96,7 +96,7 @@ export function ChatView() {
             {messages.map((message) => (
               <ChatMessage
                 key={message.id}
-                role={message.role as "user" | "assistant"}
+                role={message.sender_type as "user" | "assistant"}
                 content={message.content}
                 timestamp={formatTimestamp(message.created_at)}
                 modelName={getModelDisplayName()}

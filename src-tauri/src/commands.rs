@@ -433,7 +433,6 @@ pub async fn send_message(
             conversation_id: Some(conversation_id.clone()),
             sender_type: "user".to_string(),
             sender_id: None,
-            role: "user".to_string(),
             content: content.clone(),
             thinking_content: None,
             tokens: None,
@@ -520,12 +519,16 @@ pub async fn send_message(
                     if msg.id == user_message_id {
                         continue;
                     }
-                    if msg.role != "system" {
-                        chat_messages.push(ChatMessage {
-                            role: msg.role.clone(),
-                            content: msg.content.clone(),
-                        });
-                    }
+                    // Map sender_type to chat role (user -> user, assistant -> assistant)
+                    let chat_role = match msg.sender_type.as_str() {
+                        "user" => "user",
+                        "assistant" => "assistant",
+                        _ => continue, // Skip unknown types
+                    };
+                    chat_messages.push(ChatMessage {
+                        role: chat_role.to_string(),
+                        content: msg.content.clone(),
+                    });
                 }
             }
         }
@@ -652,7 +655,6 @@ pub async fn send_message(
             conversation_id: Some(conversation_id_clone.clone()),
             sender_type: "assistant".to_string(),
             sender_id: None,
-            role: "assistant".to_string(),
             content: final_content.clone(),
             thinking_content: if was_cancelled { None } else { response.thinking_content },
             tokens: if was_cancelled { None } else { response.tokens },

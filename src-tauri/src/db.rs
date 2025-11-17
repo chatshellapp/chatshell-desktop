@@ -172,7 +172,6 @@ impl Database {
                 conversation_id TEXT,
                 sender_type TEXT NOT NULL,
                 sender_id TEXT,
-                role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 thinking_content TEXT,
                 tokens INTEGER,
@@ -823,14 +822,13 @@ impl Database {
                 .unwrap_or("unknown");
             println!("💾 [db] Executing INSERT for message (conversation_id: {})", target_id);
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     id,
                     req.conversation_id,
                     req.sender_type,
                     req.sender_id,
-                    req.role,
                     req.content,
                     req.thinking_content,
                     req.tokens,
@@ -851,7 +849,7 @@ impl Database {
     pub fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
              FROM messages WHERE id = ?1",
         )?;
 
@@ -862,11 +860,10 @@ impl Database {
                     conversation_id: row.get(1)?,
                     sender_type: row.get(2)?,
                     sender_id: row.get(3)?,
-                    role: row.get(4)?,
-                    content: row.get(5)?,
-                    thinking_content: row.get(6)?,
-                    tokens: row.get(7)?,
-                    created_at: row.get(8)?,
+                    content: row.get(4)?,
+                    thinking_content: row.get(5)?,
+                    tokens: row.get(6)?,
+                    created_at: row.get(7)?,
                 })
             })
             .optional()?;
@@ -877,7 +874,7 @@ impl Database {
     pub fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, sender_type, sender_id, role, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
              FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
         )?;
 
@@ -888,11 +885,10 @@ impl Database {
                     conversation_id: row.get(1)?,
                     sender_type: row.get(2)?,
                     sender_id: row.get(3)?,
-                    role: row.get(4)?,
-                    content: row.get(5)?,
-                    thinking_content: row.get(6)?,
-                    tokens: row.get(7)?,
-                    created_at: row.get(8)?,
+                    content: row.get(4)?,
+                    thinking_content: row.get(5)?,
+                    tokens: row.get(6)?,
+                    created_at: row.get(7)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

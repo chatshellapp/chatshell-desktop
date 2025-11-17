@@ -153,7 +153,6 @@ export interface Message {
   conversation_id?: string;
   sender_type: string;
   sender_id?: string;
-  role: string;
   content: string;
   thinking_content?: string;
   tokens?: number;
@@ -164,7 +163,6 @@ export interface CreateMessageRequest {
   conversation_id?: string;
   sender_type: string;
   sender_id?: string;
-  role: string;
   content: string;
   thinking_content?: string;
   tokens?: number;
