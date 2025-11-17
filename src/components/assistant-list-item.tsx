@@ -186,14 +186,14 @@ export function AssistantListItem({
 
       {/* Action buttons */}
       <div className="flex items-center gap-1">
-        {/* Star button - always visible if starred, otherwise show on hover */}
+        {/* Star button - show on hover */}
         <Button
           variant="ghost"
           size="icon-sm"
           className={cn(
             "size-7 transition-opacity",
             isStarred && "text-yellow-500 hover:text-yellow-600",
-            !isHovered && !isStarred && "opacity-0"
+            !isHovered && "opacity-0"
           )}
           onClick={(e) => {
             e.stopPropagation()
