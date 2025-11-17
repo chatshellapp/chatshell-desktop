@@ -4,7 +4,9 @@ import { ChatMessage } from "@/components/chat-message"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
 import { useModelStore } from "@/stores/modelStore"
+import { useAssistantStore } from "@/stores/assistantStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
+import type { Message } from "@/types"
 
 // Global chat message configuration
 const CHAT_CONFIG = {
@@ -23,8 +25,9 @@ export function ChatView() {
   const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
   const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
   const getModelById = useModelStore((state) => state.getModelById)
+  const getAssistantById = useAssistantStore((state) => state.getAssistantById)
 
-  // Get model name for display
+  // Get model name for display (for currently selected model/assistant - used for streaming messages)
   const getModelDisplayName = () => {
     if (selectedAssistant) {
       const model = getModelById(selectedAssistant.model_id)
@@ -34,6 +37,42 @@ export function ChatView() {
       return selectedModel.name
     }
     return "AI Assistant"
+  }
+
+  // Get model info for a specific message based on its sender_id and sender_type
+  const getMessageModelInfo = (message: Message): { name: string; avatar?: string } => {
+    if (!message.sender_id) {
+      return { name: "AI Assistant" }
+    }
+
+    // Handle different sender types
+    if (message.sender_type === "model") {
+      // Direct model chat
+      const model = getModelById(message.sender_id)
+      if (model) {
+        return { name: model.name }
+      }
+    } else if (message.sender_type === "assistant") {
+      // Assistant chat
+      const assistant = getAssistantById(message.sender_id)
+      if (assistant) {
+        const assistantModel = getModelById(assistant.model_id)
+        const modelName = assistantModel ? assistantModel.name : "Unknown Model"
+        
+        // Get assistant avatar if available
+        let avatar: string | undefined
+        if (assistant.avatar_type === "image") {
+          avatar = assistant.avatar_image_url || assistant.avatar_image_path
+        }
+        
+        return { 
+          name: `${assistant.name} · ${modelName}`,
+          avatar 
+        }
+      }
+    }
+
+    return { name: "AI Assistant" }
   }
 
   // Set up event listeners for chat streaming and scraping
@@ -93,23 +132,29 @@ export function ChatView() {
           </div>
         ) : (
           <>
-            {messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                role={message.sender_type as "user" | "assistant"}
-                content={message.content}
-                timestamp={formatTimestamp(message.created_at)}
-                modelName={getModelDisplayName()}
-                userMessageAlign={CHAT_CONFIG.userMessageAlign}
-                userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-                onCopy={handleCopy}
-                onResend={handleResend}
-                onTranslate={handleTranslate}
-                onExportAll={handleExportAll}
-                onExportConversation={handleExportConversation}
-                onExportMessage={handleExportMessage}
-              />
-            ))}
+            {messages.map((message) => {
+              const modelInfo = getMessageModelInfo(message)
+              // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
+              const role = message.sender_type === "user" ? "user" : "assistant"
+              return (
+                <ChatMessage
+                  key={message.id}
+                  role={role}
+                  content={message.content}
+                  timestamp={formatTimestamp(message.created_at)}
+                  modelName={modelInfo.name}
+                  modelAvatar={modelInfo.avatar}
+                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
+                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                  onCopy={handleCopy}
+                  onResend={handleResend}
+                  onTranslate={handleTranslate}
+                  onExportAll={handleExportAll}
+                  onExportConversation={handleExportConversation}
+                  onExportMessage={handleExportMessage}
+                />
+              )
+            })}
             {isWaitingForAI && (
               <ChatMessage
                 key="waiting"

@@ -284,7 +284,9 @@ export function ChatInput({}: ChatInputProps) {
         baseUrl,
         undefined, // includeHistory
         systemPrompt,
-        userPrompt
+        userPrompt,
+        modelToUse.id, // modelDbId
+        selectedAssistant?.id // assistantDbId
       )
 
       console.log("Message sent successfully")

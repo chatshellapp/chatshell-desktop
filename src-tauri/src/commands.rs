@@ -414,6 +414,8 @@ pub async fn send_message(
     include_history: Option<bool>,
     system_prompt: Option<String>,
     user_prompt: Option<String>,
+    model_db_id: Option<String>,
+    assistant_db_id: Option<String>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
     println!("   conversation_id: {}", conversation_id);
@@ -423,6 +425,8 @@ pub async fn send_message(
     println!("   base_url: {:?}", base_url);
     println!("   has_system_prompt: {}", system_prompt.is_some());
     println!("   has_user_prompt: {}", user_prompt.is_some());
+    println!("   model_db_id: {:?}", model_db_id);
+    println!("   assistant_db_id: {:?}", assistant_db_id);
     
     // Save user message to database with original content first
     // URL processing will happen in background
@@ -460,6 +464,8 @@ pub async fn send_message(
     let user_message_id = user_message.id.clone();
     let app_clone = app.clone();
     let conversation_id_clone = conversation_id.clone();
+    let model_db_id = model_db_id.clone();
+    let assistant_db_id = assistant_db_id.clone();
     
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
@@ -519,10 +525,10 @@ pub async fn send_message(
                     if msg.id == user_message_id {
                         continue;
                     }
-                    // Map sender_type to chat role (user -> user, assistant -> assistant)
+                    // Map sender_type to chat role (user -> user, model/assistant -> assistant)
                     let chat_role = match msg.sender_type.as_str() {
                         "user" => "user",
-                        "assistant" => "assistant",
+                        "model" | "assistant" => "assistant",
                         _ => continue, // Skip unknown types
                     };
                     chat_messages.push(ChatMessage {
@@ -650,11 +656,23 @@ pub async fn send_message(
             return;
         }
         
+        // Determine sender_type and sender_id based on what was used
+        let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
+            // Direct model chat
+            ("model".to_string(), Some(model_id))
+        } else if let Some(assistant_id) = assistant_db_id.clone() {
+            // Assistant chat
+            ("assistant".to_string(), Some(assistant_id))
+        } else {
+            // Fallback (shouldn't happen in normal usage)
+            ("assistant".to_string(), None)
+        };
+        
         // Save assistant message
         let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
             conversation_id: Some(conversation_id_clone.clone()),
-            sender_type: "assistant".to_string(),
-            sender_id: None,
+            sender_type,
+            sender_id,
             content: final_content.clone(),
             thinking_content: if was_cancelled { None } else { response.thinking_content },
             tokens: if was_cancelled { None } else { response.tokens },

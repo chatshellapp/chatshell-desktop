@@ -15,6 +15,7 @@ interface AssistantStore {
   deleteAssistant: (id: string) => Promise<void>;
   setCurrentAssistant: (assistant: Assistant | null) => void;
   getAssistant: (id: string) => Promise<Assistant | null>;
+  getAssistantById: (id: string) => Assistant | undefined;
 }
 
 export const useAssistantStore = create<AssistantStore>((set, get) => ({
@@ -95,6 +96,10 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
       console.error('Failed to get assistant:', error);
       return null;
     }
+  },
+
+  getAssistantById: (id: string) => {
+    return get().assistants.find(a => a.id === id);
   },
 }));
 

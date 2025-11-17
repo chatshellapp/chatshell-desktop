@@ -22,7 +22,9 @@ interface MessageStore {
     baseUrl?: string,
     includeHistory?: boolean,
     systemPrompt?: string,
-    userPrompt?: string
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
@@ -76,7 +78,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     baseUrl?: string,
     includeHistory?: boolean,
     systemPrompt?: string,
-    userPrompt?: string
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string
   ) => {
     set({ isSending: true, error: null, streamingContent: '', isStreaming: true, isWaitingForAI: true });
     try {
@@ -109,7 +113,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         baseUrl,
         includeHistory,
         hasSystemPrompt: !!systemPrompt,
-        hasUserPrompt: !!userPrompt
+        hasUserPrompt: !!userPrompt,
+        modelDbId,
+        assistantDbId
       });
 
       // This will return the user message immediately
@@ -123,6 +129,8 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         includeHistory,
         systemPrompt,
         userPrompt,
+        modelDbId,
+        assistantDbId,
       });
 
       console.log('[messageStore] Received user message:', userMessage);
