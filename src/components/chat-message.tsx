@@ -12,15 +12,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Bot, Copy, Languages, Undo, Scan } from "lucide-react"
+import { Copy, Languages, Undo, Scan } from "lucide-react"
 import { useState, memo, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
-import gptAvatar from "@/assets/avatars/models/gpt.png"
 import { Spinner } from "@/components/ui/spinner"
+import { getModelLogoById } from "@/lib/model-logos"
+import { cn } from "@/lib/utils"
 
 interface ChatMessageProps {
   role: "user" | "assistant"
@@ -28,6 +29,9 @@ interface ChatMessageProps {
   timestamp?: string
   modelName?: string
   modelAvatar?: string
+  avatarBg?: string
+  avatarText?: string
+  avatarType?: string
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
   isLoading?: boolean
@@ -44,7 +48,10 @@ export const ChatMessage = memo(function ChatMessage({
   content,
   timestamp,
   modelName = "GPT-4",
-  modelAvatar = gptAvatar,
+  modelAvatar,
+  avatarBg,
+  avatarText,
+  avatarType,
   userMessageAlign = "right",
   userMessageShowBackground = true,
   isLoading = false,
@@ -56,6 +63,17 @@ export const ChatMessage = memo(function ChatMessage({
   onExportMessage,
 }: ChatMessageProps) {
   const [isExportOpen, setIsExportOpen] = useState(false)
+  
+  // Get display avatar based on type
+  const displayAvatar = avatarType === "image" || !avatarType ? (modelAvatar || getModelLogoById(modelName)) : undefined
+  
+  // Get fallback text: use avatarText if provided, otherwise first character of model name
+  const fallbackText = avatarText || modelName.charAt(0).toUpperCase()
+  
+  // Get avatar background color and style
+  const isHexColor = avatarBg?.startsWith("#")
+  const avatarStyle = isHexColor && avatarBg ? { backgroundColor: avatarBg } : undefined
+  const avatarClassName = !isHexColor && avatarBg ? avatarBg : undefined
   
   // Memoize markdown components to avoid recreating them on every render
   const markdownComponents = useMemo(() => ({
@@ -204,10 +222,10 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <div className="group px-4 py-2 mx-4 my-1">
       <div className="flex items-center gap-2 mb-2">
-        <Avatar className="h-4 w-4">
-          <AvatarImage src={modelAvatar} />
-          <AvatarFallback className="bg-green-500/10">
-            <Bot className="h-3 w-3 text-green-600" />
+        <Avatar className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
+          {displayAvatar && <AvatarImage src={displayAvatar} />}
+          <AvatarFallback className={cn("text-white text-[10px]", avatarClassName)} style={avatarStyle}>
+            {fallbackText}
           </AvatarFallback>
         </Avatar>
         <span className="text-xs text-muted-foreground">{modelName}</span>

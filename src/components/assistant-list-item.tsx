@@ -13,8 +13,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star, Sparkles, FileText, Database, Boxes, Bot } from "lucide-react"
+import { MoreVertical, Star, Sparkles, FileText, Database, Boxes } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getModelLogoById } from "@/lib/model-logos"
 
 export interface AssistantCapabilities {
   /**
@@ -289,13 +290,18 @@ export function AssistantListItem({
           <div className="flex items-center gap-1.5">
             {capabilities.hasModel && (
               <Avatar className="size-3 rounded-sm">
-                {capabilities.modelLogo ? (
-                  <AvatarImage src={capabilities.modelLogo} alt="Model" />
-                ) : (
-                  <AvatarFallback className="rounded-sm">
-                    <Bot className="size-2" />
-                  </AvatarFallback>
-                )}
+                {(() => {
+                  const modelLogo = capabilities.modelLogo || (modelName ? getModelLogoById(modelName) : undefined)
+                  const modelInitial = modelName?.charAt(0).toUpperCase() || 'M'
+                  return (
+                    <>
+                      {modelLogo && <AvatarImage src={modelLogo} alt="Model" />}
+                      <AvatarFallback className="rounded-sm text-[8px]">
+                        {modelInitial}
+                      </AvatarFallback>
+                    </>
+                  )
+                })()}
               </Avatar>
             )}
             {capabilities.hasFiles && (

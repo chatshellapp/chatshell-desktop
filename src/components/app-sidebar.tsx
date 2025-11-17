@@ -16,6 +16,7 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
+import { getModelLogo } from "@/lib/model-logos"
 import gptAvatar from "@/assets/avatars/models/gpt.png"
 import claudeAvatar from "@/assets/avatars/models/claude.png"
 import geminiAvatar from "@/assets/avatars/models/gemini.png"
@@ -637,6 +638,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeLibraryTab, setActiveLibraryTab] = React.useState("prompts")
   const { setOpen } = useSidebar()
   
+  // Store participants for all conversations
+  const [conversationParticipantsMap, setConversationParticipantsMap] = React.useState<Map<string, any[]>>(new Map())
+  
   // Get conversation store functions and state
   const {
     conversations,
@@ -655,15 +659,50 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const assistants = useAssistantStore((state) => state.assistants)
   
   // Get model store functions and state - use real data instead of mock
-  const { models, providers } = useModelStore((state) => ({
+  const { models, providers, getModelById } = useModelStore((state) => ({
     models: state.models,
     providers: state.providers,
+    getModelById: state.getModelById,
   }))
   
   // Load conversations when component mounts
   React.useEffect(() => {
     loadConversations()
   }, [loadConversations])
+
+  // Load participants for all conversations
+  React.useEffect(() => {
+    const loadAllParticipants = async () => {
+      if (conversations.length === 0) {
+        console.log('[Load Participants] No conversations to load')
+        return
+      }
+      
+      console.log('[Load Participants] Loading participants for', conversations.length, 'conversations')
+      const participantsMap = new Map()
+      
+      // Load participants for each conversation
+      await Promise.all(
+        conversations.map(async (conversation) => {
+          try {
+            const participants = await invoke<any[]>('list_conversation_participants', { 
+              conversationId: conversation.id 
+            })
+            console.log(`[Load Participants] Conversation ${conversation.id}:`, participants)
+            participantsMap.set(conversation.id, participants)
+          } catch (error) {
+            console.error(`[Load Participants] Failed to load participants for conversation ${conversation.id}:`, error)
+            participantsMap.set(conversation.id, [])
+          }
+        })
+      )
+      
+      console.log('[Load Participants] participantsMap:', participantsMap)
+      setConversationParticipantsMap(participantsMap)
+    }
+    
+    loadAllParticipants()
+  }, [conversations])
 
   // Memoize vendors list - must be at top level to avoid hook ordering issues
   const vendorsList = React.useMemo(() => {
@@ -678,7 +717,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           id: m.id,
           name: m.name,
           modelId: m.model_id,
-          logo: gptAvatar, // TODO: map model to correct logo
+          logo: getModelLogo(m), // Use dynamic model logo resolution
           isStarred: m.is_starred || false,
         }))
       
@@ -698,23 +737,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       id: "all",
       name: "Assistants",
       defaultOpen: true,
-      assistants: assistants.map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        persona: a.system_prompt?.substring(0, 50) + '...' || 'Custom Assistant',
-        avatarBg: a.avatar_bg || '#3b82f6',
-        avatarText: a.avatar_text || a.name.charAt(0),
-        capabilities: {
-          modelLogo: gptAvatar, // We can improve this later with actual model logos
-          hasModel: true,
-          hasFiles: false,
-          hasKnowledgeBase: false,
-          hasMcpServer: false,
-        },
-        isStarred: a.is_starred || false,
-      }))
+      assistants: assistants.map((a: any) => {
+        // Get model logo for the assistant's model
+        const assistantModel = getModelById(a.model_id)
+        const modelLogo = assistantModel ? getModelLogo(assistantModel) : undefined
+        
+        return {
+          id: a.id,
+          name: a.name,
+          modelName: assistantModel?.name,
+          persona: a.system_prompt?.substring(0, 50) + '...' || 'Custom Assistant',
+          avatarBg: a.avatar_bg || '#3b82f6',
+          avatarText: a.avatar_text || a.name.charAt(0),
+          capabilities: {
+            modelLogo: modelLogo, // Use dynamic model logo resolution
+            hasModel: true,
+            hasFiles: false,
+            hasKnowledgeBase: false,
+            hasMcpServer: false,
+          },
+          isStarred: a.is_starred || false,
+        }
+      })
     }]
-  }, [assistants])
+  }, [assistants, getModelById])
 
   const handleModelClick = async (model: any) => {
     console.log("Model selected:", model.name)
@@ -1093,17 +1139,71 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 No conversations yet
               </div>
             ) : (
-              conversations.map((conversation) => (
-                <MessageListItem
-                  key={conversation.id}
-                  avatars={selectedAssistant?.avatar_bg ? [selectedAssistant.avatar_bg] : [gptAvatar]}
-                  summary={conversation.title}
-                  timestamp={formatTimestamp(conversation.updated_at)}
-                  lastMessage="Click to view conversation"
-                  isActive={currentConversation?.id === conversation.id}
-                  onClick={() => handleConversationClick(conversation.id)}
-                />
-              ))
+              conversations.map((conversation) => {
+                // Get avatars from conversation participants
+                const participants = conversationParticipantsMap.get(conversation.id) || []
+                const avatars: string[] = []
+                
+                console.log('[Conversation Avatar] conversation:', conversation.id, 'participants:', participants)
+                
+                participants.forEach((participant: any) => {
+                  console.log('[Conversation Avatar] processing participant:', participant)
+                  
+                  if (participant.participant_type === 'model' && participant.participant_id) {
+                    // Get model avatar
+                    const model = getModelById(participant.participant_id)
+                    console.log('[Conversation Avatar] model participant:', model)
+                    if (model) {
+                      const modelLogo = getModelLogo(model)
+                      console.log('[Conversation Avatar] model logo:', modelLogo)
+                      if (modelLogo) {
+                        avatars.push(modelLogo)
+                      }
+                    }
+                  } else if (participant.participant_type === 'assistant' && participant.participant_id) {
+                    // Get assistant avatar
+                    const assistant = assistants.find(a => a.id === participant.participant_id)
+                    console.log('[Conversation Avatar] assistant participant:', assistant)
+                    if (assistant) {
+                      // Check if assistant has custom image
+                      if (assistant.avatar_type === 'image' && (assistant.avatar_image_url || assistant.avatar_image_path)) {
+                        const avatarUrl = assistant.avatar_image_url || assistant.avatar_image_path || ''
+                        console.log('[Conversation Avatar] assistant custom image:', avatarUrl)
+                        avatars.push(avatarUrl)
+                      } else {
+                        // For text/emoji avatars, we'll need to show them differently
+                        // For now, try to get the model logo
+                        const assistantModel = getModelById(assistant.model_id)
+                        console.log('[Conversation Avatar] assistant model:', assistantModel)
+                        if (assistantModel) {
+                          const modelLogo = getModelLogo(assistantModel)
+                          console.log('[Conversation Avatar] assistant model logo:', modelLogo)
+                          if (modelLogo) {
+                            avatars.push(modelLogo)
+                          }
+                        }
+                      }
+                    }
+                  }
+                })
+                
+                console.log('[Conversation Avatar] final avatars:', avatars)
+                
+                // Fallback to default avatar if no avatars found
+                const displayAvatars = avatars.length > 0 ? avatars : [gptAvatar]
+                
+                return (
+                  <MessageListItem
+                    key={conversation.id}
+                    avatars={displayAvatars}
+                    summary={conversation.title}
+                    timestamp={formatTimestamp(conversation.updated_at)}
+                    lastMessage="Click to view conversation"
+                    isActive={currentConversation?.id === conversation.id}
+                    onClick={() => handleConversationClick(conversation.id)}
+                  />
+                )
+              })
             )}
           </div>
         )

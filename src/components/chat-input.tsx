@@ -1,6 +1,6 @@
 import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square } from "lucide-react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ import { useAssistantStore } from "@/stores/assistantStore"
 import type { Model } from "@/types"
 import { ModelList, type ModelVendor, type Model as ModelListModel } from "@/components/model-list"
 import { AssistantList, type AssistantGroup, type Assistant as AssistantListAssistant } from "@/components/assistant-list"
+import { getModelLogo } from "@/lib/model-logos"
 
 type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
 
@@ -298,7 +299,7 @@ export function ChatInput({}: ChatInputProps) {
         undefined, // includeHistory
         systemPrompt,
         userPrompt,
-        modelToUse.id, // modelDbId
+        selectedAssistant ? undefined : modelToUse.id, // modelDbId - only send if not using assistant
         selectedAssistant?.id // assistantDbId
       )
 
@@ -556,12 +557,48 @@ export function ChatInput({}: ChatInputProps) {
           <DropdownMenu open={isModelMenuOpen} onOpenChange={setIsModelMenuOpen}>
             <DropdownMenuTrigger asChild>
               <InputGroupButton variant="ghost" className="gap-2">
-                <Avatar className="h-4 w-4">
-                  <AvatarFallback className="text-[10px]">
-                    {selectedAssistant ? selectedAssistant.name.charAt(0) : selectedModel ? selectedModel.name.charAt(0) : '?'}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs">{getSelectionDisplay()}</span>
+                {(() => {
+                  if (selectedAssistant) {
+                    // For assistants, show their avatar (custom image or text/emoji with background)
+                    const hasCustomImage = selectedAssistant.avatar_type === "image" && 
+                                          (selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path)
+                    const avatarBg = selectedAssistant.avatar_bg || "#3b82f6"
+                    const isHexColor = avatarBg.startsWith("#")
+                    const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
+                    const avatarClassName = !isHexColor ? avatarBg : undefined
+                    
+                    return (
+                      <>
+                        <Avatar key={`assistant-${selectedAssistant.id}`} className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
+                          {hasCustomImage && (
+                            <AvatarImage src={selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path} alt={selectedAssistant.name} />
+                          )}
+                          <AvatarFallback className={cn("text-white text-[8px]", avatarClassName)} style={avatarStyle}>
+                            {selectedAssistant.avatar_text || selectedAssistant.name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs">{getSelectionDisplay()}</span>
+                      </>
+                    )
+                  } else if (selectedModel) {
+                    // For models, show model logo with first character fallback
+                    const modelLogo = getModelLogo(selectedModel)
+                    
+                    return (
+                      <>
+                        <Avatar key={`model-${selectedModel.id}`} className="h-4 w-4">
+                          {modelLogo && <AvatarImage src={modelLogo} alt={selectedModel.name} />}
+                          <AvatarFallback className="text-[10px]">
+                            {selectedModel.name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs">{getSelectionDisplay()}</span>
+                      </>
+                    )
+                  } else {
+                    return <span className="text-xs">{getSelectionDisplay()}</span>
+                  }
+                })()}
               </InputGroupButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent

@@ -8,13 +8,14 @@ import {
 } from "@/components/ui/item"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { getModelLogoById } from "@/lib/model-logos"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star, Bot } from "lucide-react"
+import { MoreVertical, Star } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ModelListItemProps {
@@ -79,6 +80,9 @@ export function ModelListItem({
 }: ModelListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
 
+  // Get logo with fallback logic
+  const displayLogo = logo || getModelLogoById(modelId) || getModelLogoById(name)
+
   if (compact) {
     return (
       <Item
@@ -102,9 +106,9 @@ export function ModelListItem({
       >
         {/* Model logo - smaller in compact mode */}
         <Avatar className="size-4">
-          {logo && <AvatarImage src={logo} alt={name} />}
-          <AvatarFallback>
-            <Bot className="size-2" />
+          {displayLogo && <AvatarImage src={displayLogo} alt={name} />}
+          <AvatarFallback className="text-[10px]">
+            {name.charAt(0).toUpperCase()}
           </AvatarFallback>
         </Avatar>
 
@@ -162,9 +166,9 @@ export function ModelListItem({
     >
       {/* Model logo */}
       <Avatar className="size-8">
-        {logo && <AvatarImage src={logo} alt={name} />}
-        <AvatarFallback>
-          <Bot className="size-4" />
+        {displayLogo && <AvatarImage src={displayLogo} alt={name} />}
+        <AvatarFallback className="text-xs">
+          {name.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>
 
