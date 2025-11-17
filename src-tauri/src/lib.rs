@@ -1,8 +1,8 @@
 mod commands;
 mod crypto;
-mod db;
+pub mod db;
 mod llm;
-mod models;
+pub mod models;
 mod scraper;
 mod thinking_parser;
 
@@ -24,8 +24,11 @@ pub fn run() {
     
     println!("Database initialized successfully");
     
-    // Seed database with default assistants
-    db.seed_default_data().expect("Failed to seed database");
+    // Seed database with default assistants (async operation)
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    rt.block_on(async {
+        db.seed_default_data().await.expect("Failed to seed database");
+    });
     
     println!("Database seeded with default assistants");
     
