@@ -4,6 +4,7 @@ import {
   ItemContent,
   ItemTitle,
   ItemDescription,
+  ItemHeader,
 } from "@/components/ui/item"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -98,62 +99,67 @@ export function ModelListItem({
 
       {/* Model info */}
       <ItemContent>
-        <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
-        <ItemDescription className="text-xs text-muted-foreground line-clamp-1">
-          {modelId}
-        </ItemDescription>
-      </ItemContent>
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-1">
-        {/* Star button - show on hover */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={cn(
-            "size-7 transition-opacity",
-            isStarred && "text-yellow-500 hover:text-yellow-600",
-            !isHovered && "opacity-0"
-          )}
-          onClick={(e) => {
-            e.stopPropagation()
-            onStarClick?.(e)
-          }}
-        >
-          <Star
-            className={cn("size-4", isStarred && "fill-current")}
-          />
-        </Button>
-
-        {/* Menu button - only visible on hover */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        {/* First row: Name and Action buttons */}
+        <ItemHeader>
+          <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
+          
+          {/* Action buttons */}
+          <div className="flex items-center gap-1">
+            {/* Star button - show on hover */}
             <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
                 "size-7 transition-opacity",
+                isStarred && "text-yellow-500 hover:text-yellow-600",
                 !isHovered && "opacity-0"
               )}
               onClick={(e) => {
                 e.stopPropagation()
+                onStarClick?.(e)
               }}
             >
-              <MoreVertical className="size-4" />
+              <Star
+                className={cn("size-4", isStarred && "fill-current")}
+              />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onSettingsClick?.(e)
-              }}
-            >
-              Configuration
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+
+            {/* Menu button - only visible on hover */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    "size-7 transition-opacity",
+                    !isHovered && "opacity-0"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                  }}
+                >
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSettingsClick?.(e)
+                  }}
+                >
+                  Configuration
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </ItemHeader>
+
+        {/* Second row: Model ID */}
+        <ItemDescription className="text-xs text-muted-foreground line-clamp-1">
+          {modelId}
+        </ItemDescription>
+      </ItemContent>
     </Item>
   )
 }
