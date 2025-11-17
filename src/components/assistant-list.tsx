@@ -29,6 +29,10 @@ export interface Assistant {
    */
   persona?: string
   /**
+   * Model name to display
+   */
+  modelName?: string
+  /**
    * URL or path to the assistant logo image
    */
   logo?: string
@@ -98,6 +102,10 @@ interface AssistantListProps {
    * Optional className for customization
    */
   className?: string
+  /**
+   * Use compact mode for list items
+   */
+  compact?: boolean
 }
 
 export function AssistantList({
@@ -108,6 +116,7 @@ export function AssistantList({
   onAssistantStarToggle,
   onGroupSettings,
   className,
+  compact = false,
 }: AssistantListProps) {
   // Collect all starred assistants from all groups
   const starredAssistants = React.useMemo(() => {
@@ -145,6 +154,7 @@ export function AssistantList({
           onGroupSettings={onGroupSettings}
           hideGroupMenu
           forceDefaultOpen
+          compact={compact}
         />
       )}
 
@@ -160,6 +170,7 @@ export function AssistantList({
           onGroupSettings={onGroupSettings}
           forceDefaultOpen={!hasStarredAssistants && index === 0}
           ignoreGroupDefault={hasStarredAssistants}
+          compact={compact}
         />
       ))}
     </div>
@@ -176,6 +187,7 @@ interface AssistantGroupComponentProps {
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
   ignoreGroupDefault?: boolean
+  compact?: boolean
 }
 
 function AssistantGroupComponent({
@@ -188,6 +200,7 @@ function AssistantGroupComponent({
   hideGroupMenu = false,
   forceDefaultOpen = false,
   ignoreGroupDefault = false,
+  compact = false,
 }: AssistantGroupComponentProps) {
   // Determine initial open state: 
   // - If forceDefaultOpen is true, always open
@@ -208,11 +221,15 @@ function AssistantGroupComponent({
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start font-normal text-sm h-9 px-3"
+            className={cn(
+              "w-full justify-start font-normal px-3",
+              compact ? "text-xs h-7" : "text-sm h-9"
+            )}
           >
             <ChevronDown
               className={cn(
-                "size-4 transition-transform duration-200",
+                "transition-transform duration-200",
+                compact ? "size-3" : "size-4",
                 !isOpen && "-rotate-90"
               )}
             />
@@ -265,12 +282,14 @@ function AssistantGroupComponent({
             avatarText={assistant.avatarText}
             name={assistant.name}
             persona={assistant.persona}
+            modelName={assistant.modelName}
             capabilities={assistant.capabilities}
             isStarred={assistant.isStarred}
             isActive={selectedAssistantId === assistant.id}
             onClick={() => onAssistantClick?.(assistant)}
             onSettingsClick={() => onAssistantSettings?.(assistant)}
             onStarClick={() => onAssistantStarToggle?.(assistant)}
+            compact={compact}
           />
         ))}
       </CollapsibleContent>

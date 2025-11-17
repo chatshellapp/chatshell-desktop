@@ -31,6 +31,10 @@ interface ModelListItemProps {
    */
   modelId: string
   /**
+   * Provider name to display alongside model name
+   */
+  providerName?: string
+  /**
    * Whether the model is starred
    */
   isStarred?: boolean
@@ -54,20 +58,87 @@ interface ModelListItemProps {
    * Whether the item is selected/active
    */
   isActive?: boolean
+  /**
+   * Use compact mode (smaller avatar, inline provider name, only star button)
+   */
+  compact?: boolean
 }
 
 export function ModelListItem({
   logo,
   name,
   modelId,
+  providerName,
   isStarred = false,
   onClick,
   onSettingsClick,
   onStarClick,
   className,
   isActive = false,
+  compact = false,
 }: ModelListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
+
+  if (compact) {
+    return (
+      <Item
+        className={cn(
+          "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
+          isActive && "bg-accent",
+          className
+        )}
+        onClick={onClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        tabIndex={0}
+        role="button"
+        size="sm"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onClick?.()
+          }
+        }}
+      >
+        {/* Model logo - smaller in compact mode */}
+        <Avatar className="size-4">
+          {logo && <AvatarImage src={logo} alt={name} />}
+          <AvatarFallback>
+            <Bot className="size-2" />
+          </AvatarFallback>
+        </Avatar>
+
+        {/* Model info */}
+        <ItemContent>
+          <ItemHeader>
+            {/* Model name and provider name on same line */}
+            <ItemTitle className="text-xs font-medium leading-tight">
+              {name}{providerName && ` - ${providerName}`}
+            </ItemTitle>
+            
+            {/* Only star button in compact mode */}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "size-6 transition-opacity",
+                isStarred && "text-yellow-500 hover:text-yellow-600",
+                !isHovered && "opacity-0"
+              )}
+              onClick={(e) => {
+                e.stopPropagation()
+                onStarClick?.(e)
+              }}
+            >
+              <Star
+                className={cn("size-3.5", isStarred && "fill-current")}
+              />
+            </Button>
+          </ItemHeader>
+        </ItemContent>
+      </Item>
+    )
+  }
 
   return (
     <Item

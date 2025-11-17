@@ -61,6 +61,10 @@ interface AssistantListItemProps {
    */
   persona?: string
   /**
+   * Model name to display alongside assistant name
+   */
+  modelName?: string
+  /**
    * Assistant capabilities
    */
   capabilities?: AssistantCapabilities
@@ -88,6 +92,10 @@ interface AssistantListItemProps {
    * Whether the item is selected/active
    */
   isActive?: boolean
+  /**
+   * Use compact mode (smaller avatar, inline model name, only star button)
+   */
+  compact?: boolean
 }
 
 export function AssistantListItem({
@@ -96,6 +104,7 @@ export function AssistantListItem({
   avatarText,
   name,
   persona,
+  modelName,
   capabilities = {},
   isStarred = false,
   onClick,
@@ -103,6 +112,7 @@ export function AssistantListItem({
   onStarClick,
   className,
   isActive = false,
+  compact = false,
 }: AssistantListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
 
@@ -113,6 +123,70 @@ export function AssistantListItem({
   const isHexColor = avatarBg.startsWith("#")
   const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
   const avatarClassName = !isHexColor ? avatarBg : undefined
+
+  if (compact) {
+    return (
+      <Item
+        className={cn(
+          "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
+          isActive && "bg-accent",
+          className
+        )}
+        onClick={onClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        tabIndex={0}
+        role="button"
+        size="sm"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onClick?.()
+          }
+        }}
+      >
+        {/* Assistant logo - smaller in compact mode */}
+        <Avatar className={cn("size-4", avatarClassName)} style={avatarStyle}>
+          {logo ? (
+            <AvatarImage src={logo} alt={name} />
+          ) : (
+            <AvatarFallback className={cn("text-white text-[8px]", avatarClassName)} style={avatarStyle}>
+              {avatarText || <Sparkles className="size-2" />}
+            </AvatarFallback>
+          )}
+        </Avatar>
+
+        {/* Assistant info */}
+        <ItemContent>
+          <ItemHeader>
+            {/* Assistant name and model name on same line */}
+            <ItemTitle className="text-xs font-medium leading-tight">
+              {name}{modelName && ` - ${modelName}`}
+            </ItemTitle>
+            
+            {/* Only star button in compact mode */}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "size-6 transition-opacity",
+                isStarred && "text-yellow-500 hover:text-yellow-600",
+                !isHovered && "opacity-0"
+              )}
+              onClick={(e) => {
+                e.stopPropagation()
+                onStarClick?.(e)
+              }}
+            >
+              <Star
+                className={cn("size-3.5", isStarred && "fill-current")}
+              />
+            </Button>
+          </ItemHeader>
+        </ItemContent>
+      </Item>
+    )
+  }
 
   return (
     <Item

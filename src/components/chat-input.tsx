@@ -435,6 +435,7 @@ export function ChatInput({}: ChatInputProps) {
         id: model.id,
         name: model.name,
         modelId: model.model_id,
+        providerName: provider.name,
         isStarred: model.is_starred,
       })
     })
@@ -459,10 +460,13 @@ export function ChatInput({}: ChatInputProps) {
         groupMap.set(groupName, [])
       }
       
+      const model = getModelById(assistant.model_id)
+      
       groupMap.get(groupName)!.push({
         id: assistant.id,
         name: assistant.name,
         persona: assistant.role,
+        modelName: model?.name,
         logo: assistant.avatar_image_url,
         avatarBg: assistant.avatar_bg,
         avatarText: assistant.avatar_text,
@@ -475,7 +479,7 @@ export function ChatInput({}: ChatInputProps) {
       name: groupName,
       assistants,
     }))
-  }, [assistants])
+  }, [assistants, getModelById])
 
   return (
     <div className="grid w-full gap-6">
@@ -581,6 +585,7 @@ export function ChatInput({}: ChatInputProps) {
                       selectedModelId={selectedModel?.id}
                       onModelClick={(model) => handleModelSelect(model.id)}
                       onModelStarToggle={handleModelStarToggle}
+                      compact={true}
                     />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">
@@ -595,6 +600,7 @@ export function ChatInput({}: ChatInputProps) {
                       selectedAssistantId={selectedAssistant?.id}
                       onAssistantClick={(assistant) => handleAssistantSelect(assistant.id)}
                       onAssistantStarToggle={handleAssistantStarToggle}
+                      compact={true}
                     />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">

@@ -29,6 +29,10 @@ export interface Model {
    */
   modelId: string
   /**
+   * Provider name to display
+   */
+  providerName?: string
+  /**
    * URL or path to the model logo
    */
   logo?: string
@@ -86,6 +90,10 @@ interface ModelListProps {
    * Optional className for customization
    */
   className?: string
+  /**
+   * Use compact mode for list items
+   */
+  compact?: boolean
 }
 
 export function ModelList({
@@ -96,6 +104,7 @@ export function ModelList({
   onModelStarToggle,
   onVendorSettings,
   className,
+  compact = false,
 }: ModelListProps) {
   // Collect all starred models from all vendors
   const starredModels = React.useMemo(() => {
@@ -133,6 +142,7 @@ export function ModelList({
           onVendorSettings={onVendorSettings}
           hideVendorMenu
           forceDefaultOpen
+          compact={compact}
         />
       )}
 
@@ -148,6 +158,7 @@ export function ModelList({
           onVendorSettings={onVendorSettings}
           forceDefaultOpen={!hasStarredModels && index === 0}
           ignoreVendorDefault={hasStarredModels}
+          compact={compact}
         />
       ))}
     </div>
@@ -164,6 +175,7 @@ interface ModelVendorGroupProps {
   hideVendorMenu?: boolean
   forceDefaultOpen?: boolean
   ignoreVendorDefault?: boolean
+  compact?: boolean
 }
 
 function ModelVendorGroup({
@@ -176,6 +188,7 @@ function ModelVendorGroup({
   hideVendorMenu = false,
   forceDefaultOpen = false,
   ignoreVendorDefault = false,
+  compact = false,
 }: ModelVendorGroupProps) {
   // Determine initial open state: 
   // - If forceDefaultOpen is true, always open
@@ -196,11 +209,15 @@ function ModelVendorGroup({
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start font-normal text-sm h-9 px-3"
+            className={cn(
+              "w-full justify-start font-normal px-3",
+              compact ? "text-xs h-7" : "text-sm h-9"
+            )}
           >
             <ChevronDown
               className={cn(
-                "size-4 transition-transform duration-200",
+                "transition-transform duration-200",
+                compact ? "size-3" : "size-4",
                 !isOpen && "-rotate-90"
               )}
             />
@@ -251,11 +268,13 @@ function ModelVendorGroup({
             logo={model.logo}
             name={model.name}
             modelId={model.modelId}
+            providerName={model.providerName}
             isStarred={model.isStarred}
             isActive={selectedModelId === model.id}
             onClick={() => onModelClick?.(model)}
             onSettingsClick={() => onModelSettings?.(model)}
             onStarClick={() => onModelStarToggle?.(model)}
+            compact={compact}
           />
         ))}
       </CollapsibleContent>
