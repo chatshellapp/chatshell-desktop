@@ -652,7 +652,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   } = useConversationStore()
   
   // Get assistant store functions and state - use real data instead of mock
-  const { assistants } = useAssistantStore()
+  const assistants = useAssistantStore((state) => state.assistants)
   
   // Get model store functions and state - use real data instead of mock
   const { models, providers } = useModelStore((state) => ({
@@ -776,8 +776,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const realModel = models.find((m: any) => m.id === model.id)
     if (realModel) {
       try {
-        // TODO: Implement update_model backend command to toggle star
-        console.log("Model star toggle not yet implemented in backend")
+        const { updateModel } = useModelStore.getState()
+        await updateModel(realModel.id, {
+          name: realModel.name,
+          provider_id: realModel.provider_id,
+          model_id: realModel.model_id,
+          description: realModel.description,
+          is_starred: !realModel.is_starred,
+        })
       } catch (error) {
         console.error("Failed to toggle star:", error)
       }

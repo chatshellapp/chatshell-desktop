@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
-import type { Model, Provider } from '@/types'
+import type { Model, Provider, CreateModelRequest } from '@/types'
 
 interface ModelState {
   models: Model[]
@@ -11,6 +11,7 @@ interface ModelState {
   loadModels: () => Promise<void>
   loadProviders: () => Promise<void>
   loadAll: () => Promise<void>
+  updateModel: (id: string, req: CreateModelRequest) => Promise<Model>
   getModelById: (id: string) => Model | undefined
   getProviderById: (id: string) => Provider | undefined
 }
@@ -58,6 +59,21 @@ export const useModelStore = create<ModelState>((set, get) => ({
     } catch (error) {
       console.error('[modelStore] Failed to load models and providers:', error)
       set({ error: String(error), isLoading: false })
+    }
+  },
+
+  updateModel: async (id: string, req: CreateModelRequest) => {
+    set({ isLoading: true, error: null })
+    try {
+      const model = await invoke<Model>('update_model', { id, req })
+      set((state) => ({
+        models: state.models.map((m) => (m.id === id ? model : m)),
+        isLoading: false,
+      }))
+      return model
+    } catch (error) {
+      set({ error: String(error), isLoading: false })
+      throw error
     }
   },
 

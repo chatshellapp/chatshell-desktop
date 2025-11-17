@@ -111,6 +111,7 @@ export function ChatInput({}: ChatInputProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [hoveredBadgeId, setHoveredBadgeId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"models" | "assistants">("models")
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Store hooks
@@ -123,7 +124,7 @@ export function ChatInput({}: ChatInputProps) {
   } = useConversationStore()
   
   const { models, getModelById, getProviderById } = useModelStore()
-  const { assistants } = useAssistantStore()
+  const assistants = useAssistantStore((state) => state.assistants)
   const { sendMessage, stopGeneration, isSending, isStreaming, isWaitingForAI } = useMessageStore()
   const { getSetting } = useSettingsStore()
 
@@ -342,6 +343,9 @@ export function ChatInput({}: ChatInputProps) {
     // Simply set the selected model
     setSelectedModel(model)
     console.log('Selected model:', model.name)
+    
+    // Close the dropdown menu
+    setIsModelMenuOpen(false)
   }
 
   const handleAssistantSelect = (assistantId: string) => {
@@ -355,6 +359,50 @@ export function ChatInput({}: ChatInputProps) {
     // Set the selected assistant (this will clear model selection automatically)
     setSelectedAssistant(assistant)
     console.log('Selected assistant:', assistant.name)
+    
+    // Close the dropdown menu
+    setIsModelMenuOpen(false)
+  }
+
+  const handleModelStarToggle = async (model: ModelListModel) => {
+    console.log("Toggle star for model:", model)
+    // Find the real model from store
+    const realModel = models.find((m) => m.id === model.id)
+    if (realModel) {
+      try {
+        const { updateModel } = useModelStore.getState()
+        await updateModel(realModel.id, {
+          name: realModel.name,
+          provider_id: realModel.provider_id,
+          model_id: realModel.model_id,
+          description: realModel.description,
+          is_starred: !realModel.is_starred,
+        })
+      } catch (error) {
+        console.error("Failed to toggle star:", error)
+      }
+    }
+  }
+
+  const handleAssistantStarToggle = async (assistant: AssistantListAssistant) => {
+    console.log("Toggle star for assistant:", assistant)
+    // Find the real assistant from store
+    const realAssistant = assistants.find((a) => a.id === assistant.id)
+    if (realAssistant) {
+      try {
+        const { updateAssistant } = useAssistantStore.getState()
+        await updateAssistant(realAssistant.id, {
+          name: realAssistant.name,
+          system_prompt: realAssistant.system_prompt,
+          model_id: realAssistant.model_id,
+          avatar_bg: realAssistant.avatar_bg,
+          avatar_text: realAssistant.avatar_text,
+          is_starred: !realAssistant.is_starred,
+        })
+      } catch (error) {
+        console.error("Failed to toggle star:", error)
+      }
+    }
   }
 
   // Get display text for current selection
@@ -501,7 +549,7 @@ export function ChatInput({}: ChatInputProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <DropdownMenu>
+          <DropdownMenu open={isModelMenuOpen} onOpenChange={setIsModelMenuOpen}>
             <DropdownMenuTrigger asChild>
               <InputGroupButton variant="ghost" className="gap-2">
                 <Avatar className="h-4 w-4">
@@ -532,6 +580,7 @@ export function ChatInput({}: ChatInputProps) {
                       vendors={modelVendors}
                       selectedModelId={selectedModel?.id}
                       onModelClick={(model) => handleModelSelect(model.id)}
+                      onModelStarToggle={handleModelStarToggle}
                     />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">
@@ -545,6 +594,7 @@ export function ChatInput({}: ChatInputProps) {
                       groups={assistantGroups}
                       selectedAssistantId={selectedAssistant?.id}
                       onAssistantClick={(assistant) => handleAssistantSelect(assistant.id)}
+                      onAssistantStarToggle={handleAssistantStarToggle}
                     />
                   ) : (
                     <div className="text-xs text-muted-foreground px-2 py-4 text-center">
