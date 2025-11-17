@@ -1,5 +1,5 @@
 import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square } from "lucide-react"
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -124,6 +124,16 @@ export function ChatInput({}: ChatInputProps) {
   const { assistants } = useAssistantStore()
   const { sendMessage, stopGeneration, isSending, isStreaming, isWaitingForAI } = useMessageStore()
   const { getSetting } = useSettingsStore()
+
+  // Auto-focus textarea when conversation changes
+  useEffect(() => {
+    if (currentConversation && textareaRef.current) {
+      // Use a small delay to ensure the component is fully rendered
+      setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 100)
+    }
+  }, [currentConversation])
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
   const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g

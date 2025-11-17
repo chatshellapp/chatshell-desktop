@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Plug, BookOpen, Plus } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
 
 import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
@@ -715,13 +716,52 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }]
   }, [assistants])
 
-  const handleModelClick = (model: any) => {
+  const handleModelClick = async (model: any) => {
     console.log("Model selected:", model.name)
     // Find the real model from store
     const realModel = models.find((m: any) => m.id === model.id)
-    if (realModel) {
-      // Simply set the selected model
+    if (!realModel) return
+    
+    try {
+      // Check if the latest conversation has any messages
+      let targetConversation = null
+      
+      if (conversations.length > 0) {
+        // Get the most recent conversation (first one in the list)
+        const latestConversation = conversations[0]
+        
+        // Check if it has any messages
+        const messages = await invoke<any[]>('list_messages_by_conversation', {
+          conversationId: latestConversation.id
+        })
+        
+        if (messages.length === 0) {
+          // Use the latest empty conversation
+          targetConversation = latestConversation
+          console.log("Using latest empty conversation:", latestConversation.id)
+        }
+      }
+      
+      // If no empty conversation found, create a new one
+      if (!targetConversation) {
+        console.log('Creating new conversation for model...')
+        targetConversation = await createConversation("New Conversation")
+        console.log("Created new conversation:", targetConversation)
+      }
+      
+      // Set the selected model
       setSelectedModel(realModel)
+      
+      // Set the conversation as current
+      setCurrentConversation(targetConversation)
+      
+      // Switch to conversations view if not already there
+      if (activeItem?.title !== 'Conversations') {
+        setActiveItem(data.navMain[0]) // Conversations is the first item
+      }
+    } catch (error) {
+      console.error("Failed to handle model click:", error)
+      alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -753,13 +793,53 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setProviderDialogOpen(true)
   }
 
-  const handleAssistantClick = (assistant: any) => {
+  const handleAssistantClick = async (assistant: any) => {
     console.log("Assistant selected:", assistant)
-    // Find the real assistant from store and set it as selected
+    // Find the real assistant from store
     const realAssistant = assistants.find((a: any) => a.id === assistant.id)
-    if (realAssistant) {
+    if (!realAssistant) return
+    
+    try {
+      // Check if the latest conversation has any messages
+      let targetConversation = null
+      
+      if (conversations.length > 0) {
+        // Get the most recent conversation (first one in the list)
+        const latestConversation = conversations[0]
+        
+        // Check if it has any messages
+        const messages = await invoke<any[]>('list_messages_by_conversation', {
+          conversationId: latestConversation.id
+        })
+        
+        if (messages.length === 0) {
+          // Use the latest empty conversation
+          targetConversation = latestConversation
+          console.log("Using latest empty conversation:", latestConversation.id)
+        }
+      }
+      
+      // If no empty conversation found, create a new one
+      if (!targetConversation) {
+        console.log('Creating new conversation for assistant...')
+        targetConversation = await createConversation("New Conversation")
+        console.log("Created new conversation:", targetConversation)
+      }
+      
+      // Set the selected assistant
       setSelectedAssistant(realAssistant)
       console.log("Set selected assistant:", realAssistant.name)
+      
+      // Set the conversation as current
+      setCurrentConversation(targetConversation)
+      
+      // Switch to conversations view if not already there
+      if (activeItem?.title !== 'Conversations') {
+        setActiveItem(data.navMain[0]) // Conversations is the first item
+      }
+    } catch (error) {
+      console.error("Failed to handle assistant click:", error)
+      alert(`Failed to select assistant: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
