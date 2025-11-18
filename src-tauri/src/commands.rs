@@ -451,6 +451,50 @@ async fn generate_conversation_title(
     Ok(title)
 }
 
+// Helper function to auto-generate title for new conversations
+async fn auto_generate_title_if_needed(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    conversation_id: &str,
+    user_content: &str,
+    assistant_content: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) {
+    if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id) {
+        if conversation.title == "New Conversation" {
+            println!("🏷️ [auto_title] Generating title for new conversation...");
+            match generate_conversation_title(
+                state,
+                conversation_id,
+                user_content,
+                assistant_content,
+                provider,
+                model,
+                api_key,
+                base_url,
+            ).await {
+                Ok(title) => {
+                    match state.db.update_conversation(conversation_id, &title) {
+                        Ok(_) => {
+                            println!("✅ [auto_title] Conversation title updated to: {}", title);
+                            // Notify frontend of title update
+                            let _ = app.emit("conversation-updated", serde_json::json!({
+                                "conversation_id": conversation_id,
+                                "title": title,
+                            }));
+                        },
+                        Err(e) => eprintln!("⚠️  [auto_title] Failed to update conversation title: {}", e),
+                    }
+                },
+                Err(e) => eprintln!("⚠️  [auto_title] Failed to generate title: {}", e),
+            }
+        }
+    }
+}
+
 // Chat command - now returns immediately and processes in background
 #[tauri::command]
 pub async fn send_message(
@@ -804,6 +848,19 @@ pub async fn send_message(
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
             
+            // Auto-generate title for new conversations
+            auto_generate_title_if_needed(
+                &state_clone,
+                &app,
+                &conversation_id_clone,
+                &content,
+                &final_content,
+                &provider,
+                &model,
+                api_key.clone(),
+                base_url.clone(),
+            ).await;
+            
             // Notify frontend that streaming is complete
             let completion_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
@@ -924,6 +981,19 @@ pub async fn send_message(
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
             
+            // Auto-generate title for new conversations
+            auto_generate_title_if_needed(
+                &state_clone,
+                &app,
+                &conversation_id_clone,
+                &content,
+                &final_content,
+                &provider,
+                &model,
+                api_key.clone(),
+                base_url.clone(),
+            ).await;
+            
             // Notify frontend that streaming is complete
             let completion_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
@@ -1043,6 +1113,19 @@ pub async fn send_message(
             };
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
+            
+            // Auto-generate title for new conversations
+            auto_generate_title_if_needed(
+                &state_clone,
+                &app,
+                &conversation_id_clone,
+                &content,
+                &final_content,
+                &provider,
+                &model,
+                api_key.clone(),
+                base_url.clone(),
+            ).await;
             
             // Notify frontend that streaming is complete
             let completion_payload = serde_json::json!({
