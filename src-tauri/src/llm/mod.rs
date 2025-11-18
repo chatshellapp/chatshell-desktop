@@ -1,9 +1,8 @@
 pub mod models;
-pub mod ollama;
-pub mod openai;
-pub mod openrouter;
+pub mod ollama_rig;
+pub mod openai_rig;
+pub mod openrouter_rig;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,15 +23,5 @@ pub struct ChatResponse {
     pub content: String,
     pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
-}
-
-/// Trait for LLM providers
-#[async_trait::async_trait]
-pub trait LLMProvider: Send + Sync {
-    async fn chat_stream(
-        &self,
-        request: ChatRequest,
-        callback: Box<dyn Fn(String) -> bool + Send>,
-    ) -> Result<ChatResponse>;
 }
 
