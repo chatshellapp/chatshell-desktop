@@ -361,9 +361,9 @@ export function ChatView() {
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
                 setIsAtBottom(true)
               }}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-colors flex items-center gap-2 pointer-events-auto"
+              className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs"
             >
-              <span>↓</span>
+              <span className="text-sm">↓</span>
               <span>New messages</span>
             </button>
           </div>
