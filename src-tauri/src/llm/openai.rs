@@ -26,7 +26,7 @@ impl OpenAIRigProvider {
         cancel_token: CancellationToken,
         mut callback: impl FnMut(String) -> bool + Send,
     ) -> Result<ChatResponse> {
-        println!("🌐 [openai_rig] Creating OpenAI client");
+        println!("🌐 [openai] Creating OpenAI client");
         
         // Create OpenAI client
         let client = openai::Client::new(&self.api_key);
@@ -34,7 +34,7 @@ impl OpenAIRigProvider {
         // Get completion model
         let model = client.completion_model(&request.model);
         
-        println!("🤖 [openai_rig] Model created: {}", request.model);
+        println!("🤖 [openai] Model created: {}", request.model);
         
         // Convert messages to rig's Message format
         let mut chat_history = Vec::new();
@@ -64,7 +64,7 @@ impl OpenAIRigProvider {
             content: OneOrMany::one(UserContent::Text(prompt_msg.content.clone().into())),
         };
         
-        println!("📝 [openai_rig] Prompt: {} chars, history: {} messages", 
+        println!("📝 [openai] Prompt: {} chars, history: {} messages", 
                  prompt_msg.content.len(), 
                  chat_history.len());
         
@@ -84,7 +84,7 @@ impl OpenAIRigProvider {
             additional_params: None,
         };
         
-        println!("📤 [openai_rig] Starting streaming request...");
+        println!("📤 [openai] Starting streaming request...");
         
         // Create stream
         let mut stream = model.stream(completion_request).await?;
@@ -92,12 +92,12 @@ impl OpenAIRigProvider {
         let mut full_content = String::new();
         let mut cancelled = false;
         
-        println!("📥 [openai_rig] Processing stream...");
+        println!("📥 [openai] Processing stream...");
         
         // Process stream with cancellation support
         while let Some(result) = stream.next().await {
             if cancel_token.is_cancelled() {
-                println!("🛑 [openai_rig] Cancellation detected, stopping stream");
+                println!("🛑 [openai] Cancellation detected, stopping stream");
                 cancelled = true;
                 drop(stream);
                 break;
@@ -111,7 +111,7 @@ impl OpenAIRigProvider {
                         
                         // Call callback and check if it signals cancellation
                         if !callback(text_str.to_string()) {
-                            println!("🛑 [openai_rig] Callback signaled cancellation");
+                            println!("🛑 [openai] Callback signaled cancellation");
                             cancelled = true;
                             break;
                         }
@@ -121,22 +121,22 @@ impl OpenAIRigProvider {
                     // Ignore tool calls, reasoning, and final responses
                 }
                 Err(e) => {
-                    eprintln!("❌ [openai_rig] Stream error: {}", e);
+                    eprintln!("❌ [openai] Stream error: {}", e);
                     return Err(e.into());
                 }
             }
         }
         
         if cancelled {
-            println!("⚠️ [openai_rig] Stream was cancelled");
+            println!("⚠️ [openai] Stream was cancelled");
         } else {
-            println!("✅ [openai_rig] Stream completed successfully");
+            println!("✅ [openai] Stream completed successfully");
         }
         
         // Parse thinking content
         let parsed = thinking_parser::parse_thinking_content(&full_content);
         
-        println!("📊 [openai_rig] Parsed content: {} chars, thinking: {}", 
+        println!("📊 [openai] Parsed content: {} chars, thinking: {}", 
                  parsed.content.len(), 
                  parsed.thinking_content.is_some());
         
