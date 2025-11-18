@@ -144,6 +144,37 @@ pub async fn delete_assistant(
     state.db.delete_assistant(&id).map_err(|e| e.to_string())
 }
 
+// User commands
+#[tauri::command]
+pub async fn create_user(
+    state: State<'_, AppState>,
+    req: CreateUserRequest,
+) -> Result<User, String> {
+    state.db.create_user(req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_user(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<User>, String> {
+    state.db.get_user(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_self_user(
+    state: State<'_, AppState>,
+) -> Result<Option<User>, String> {
+    state.db.get_self_user().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_users(
+    state: State<'_, AppState>,
+) -> Result<Vec<User>, String> {
+    state.db.list_users().map_err(|e| e.to_string())
+}
+
 // Conversation commands
 #[tauri::command]
 pub async fn create_conversation(
@@ -200,6 +231,15 @@ pub async fn list_conversation_participants(
     conversation_id: String,
 ) -> Result<Vec<ConversationParticipant>, String> {
     state.db.list_conversation_participants(&conversation_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_conversation_participant_summary(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    current_user_id: String,
+) -> Result<Vec<ParticipantSummary>, String> {
+    state.db.get_conversation_participant_summary(&conversation_id, &current_user_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -447,6 +487,111 @@ pub async fn send_message(
         })?;
     
     println!("✅ [send_message] User message created with id: {}", user_message.id);
+
+    // Auto-add participants - supports multiple models/assistants in same conversation
+    // This ensures conversation_participants table is populated for UI display
+    let existing_participants = state.db
+        .list_conversation_participants(&conversation_id)
+        .map_err(|e| e.to_string())?;
+    
+    // Check if we need to add participants
+    let has_user = existing_participants.iter().any(|p| p.participant_type == "user");
+    
+    // Check if the SPECIFIC model or assistant is already a participant
+    let current_model_exists = if let Some(ref model_id) = model_db_id {
+        existing_participants.iter().any(|p| 
+            p.participant_type == "model" && 
+            p.participant_id.as_ref() == Some(model_id)
+        )
+    } else {
+        false
+    };
+    
+    let current_assistant_exists = if let Some(ref assistant_id) = assistant_db_id {
+        existing_participants.iter().any(|p| 
+            p.participant_type == "assistant" && 
+            p.participant_id.as_ref() == Some(assistant_id)
+        )
+    } else {
+        false
+    };
+    
+    println!("📋 [send_message] Current participants: {} total", existing_participants.len());
+    println!("   has_user: {}", has_user);
+    println!("   current_model_exists: {} (model_db_id: {:?})", current_model_exists, model_db_id);
+    println!("   current_assistant_exists: {} (assistant_db_id: {:?})", current_assistant_exists, assistant_db_id);
+    
+    // Add self user if not present
+    if !has_user {
+        println!("👤 [send_message] Adding self user as participant...");
+        match state.db.get_self_user() {
+            Ok(Some(self_user)) => {
+                match state.db.add_conversation_participant(
+                    CreateConversationParticipantRequest {
+                        conversation_id: conversation_id.clone(),
+                        participant_type: "user".to_string(),
+                        participant_id: Some(self_user.id.clone()),
+                        display_name: Some(self_user.display_name.clone()),
+                    }
+                ) {
+                    Ok(_) => println!("✅ [send_message] Added self user as participant"),
+                    Err(e) => println!("⚠️  [send_message] Failed to add self user: {}", e),
+                }
+            }
+            Ok(None) => println!("⚠️  [send_message] No self user found"),
+            Err(e) => println!("⚠️  [send_message] Error getting self user: {}", e),
+        }
+    }
+    
+    // Add assistant if the SPECIFIC one is not present
+    if let Some(assistant_id) = &assistant_db_id {
+        if !current_assistant_exists {
+            println!("🤖 [send_message] Adding NEW assistant as participant (assistant_id: {})...", assistant_id);
+            match state.db.get_assistant(assistant_id) {
+                Ok(Some(assistant)) => {
+                    match state.db.add_conversation_participant(
+                        CreateConversationParticipantRequest {
+                            conversation_id: conversation_id.clone(),
+                            participant_type: "assistant".to_string(),
+                            participant_id: Some(assistant.id.clone()),
+                            display_name: Some(assistant.name.clone()),
+                        }
+                    ) {
+                        Ok(_) => println!("✅ [send_message] Added assistant '{}' as participant", assistant.name),
+                        Err(e) => println!("⚠️  [send_message] Failed to add assistant: {}", e),
+                    }
+                }
+                Ok(None) => println!("⚠️  [send_message] Assistant not found: {}", assistant_id),
+                Err(e) => println!("⚠️  [send_message] Error getting assistant: {}", e),
+            }
+        } else {
+            println!("✅ [send_message] Assistant already exists as participant");
+        }
+    } else if let Some(model_id) = &model_db_id {
+        // Add model if the SPECIFIC one is not present
+        if !current_model_exists {
+            println!("🤖 [send_message] Adding NEW model as participant (model_id: {})...", model_id);
+            match state.db.get_model(model_id) {
+                Ok(Some(model)) => {
+                    match state.db.add_conversation_participant(
+                        CreateConversationParticipantRequest {
+                            conversation_id: conversation_id.clone(),
+                            participant_type: "model".to_string(),
+                            participant_id: Some(model.id.clone()),
+                            display_name: Some(model.name.clone()),
+                        }
+                    ) {
+                        Ok(_) => println!("✅ [send_message] Added model '{}' as participant", model.name),
+                        Err(e) => println!("⚠️  [send_message] Failed to add model: {}", e),
+                    }
+                }
+                Ok(None) => println!("⚠️  [send_message] Model not found: {}", model_id),
+                Err(e) => println!("⚠️  [send_message] Error getting model: {}", e),
+            }
+        } else {
+            println!("✅ [send_message] Model already exists as participant");
+        }
+    }
 
     // Create cancellation token for this generation
     let cancel_token = CancellationToken::new();

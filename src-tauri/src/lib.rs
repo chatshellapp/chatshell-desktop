@@ -59,6 +59,11 @@ pub fn run() {
             commands::list_assistants,
             commands::update_assistant,
             commands::delete_assistant,
+            // User commands
+            commands::create_user,
+            commands::get_user,
+            commands::get_self_user,
+            commands::list_users,
             // Conversation commands
             commands::create_conversation,
             commands::get_conversation,
@@ -67,6 +72,7 @@ pub fn run() {
             commands::delete_conversation,
             commands::add_conversation_participant,
             commands::list_conversation_participants,
+            commands::get_conversation_participant_summary,
             commands::remove_conversation_participant,
             // Message commands
             commands::create_message,

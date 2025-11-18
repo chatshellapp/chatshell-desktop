@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { Conversation, CreateConversationRequest, ConversationParticipant, CreateConversationParticipantRequest, Model, Assistant } from '@/types';
+import type { 
+  Conversation, 
+  CreateConversationRequest, 
+  ConversationParticipant, 
+  CreateConversationParticipantRequest, 
+  ParticipantSummary,
+  User,
+  Model, 
+  Assistant 
+} from '@/types';
 import { useMessageStore } from './messageStore';
 
 interface ConversationStore {

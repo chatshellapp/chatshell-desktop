@@ -8,11 +8,24 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 
+export interface AvatarData {
+  type: 'text' | 'image'
+  // For text avatars
+  text?: string
+  backgroundColor?: string
+  // For image avatars
+  imageUrl?: string
+  // Common
+  fallback?: string
+  // Special flag for placeholder avatars
+  isPlaceholder?: boolean
+}
+
 interface MessageListItemProps {
   /**
-   * Array of avatar URLs or single avatar URL
+   * Array of avatar URLs or avatar data objects
    */
-  avatars: string | string[]
+  avatars: (string | AvatarData)[]
   /**
    * Message summary or conversation title
    */
@@ -25,10 +38,6 @@ interface MessageListItemProps {
    * Content of the last message
    */
   lastMessage: string
-  /**
-   * Optional fallback text for avatars
-   */
-  avatarFallbacks?: string[]
   /**
    * Optional click handler
    */
@@ -48,14 +57,101 @@ export function MessageListItem({
   summary,
   timestamp,
   lastMessage,
-  avatarFallbacks,
   onClick,
   className,
   isActive = false,
 }: MessageListItemProps) {
-  // Normalize avatars to array
-  const avatarList = Array.isArray(avatars) ? avatars : [avatars]
   const maxVisibleAvatars = 3
+
+  // Helper function to render an avatar
+  const renderAvatar = (avatar: string | AvatarData, index: number) => {
+    // If it's a string, treat it as an image URL (backward compatibility)
+    if (typeof avatar === 'string') {
+      return (
+        <Avatar
+          key={index}
+          className={cn(
+            "size-4 ring-1 ring-background",
+            index > 0 && "ml-[-6px]"
+          )}
+        >
+          <AvatarImage src={avatar} alt={`Avatar ${index + 1}`} />
+          <AvatarFallback className="text-[10px]">
+            {summary.charAt(index)}
+          </AvatarFallback>
+        </Avatar>
+      )
+    }
+
+    // If it's an AvatarData object
+    if (avatar.type === 'text') {
+      const displayText = avatar.text || avatar.fallback || '?'
+      const isPlaceholder = avatar.isPlaceholder === true
+      
+      console.log('[MessageListItem] Rendering text avatar:', {
+        text: avatar.text,
+        backgroundColor: avatar.backgroundColor,
+        displayText,
+        isPlaceholder
+      })
+      
+      // For placeholder avatars, use Tailwind's bg-muted class
+      if (isPlaceholder) {
+        return (
+          <Avatar
+            key={index}
+            className={cn(
+              "size-4 ring-1 ring-background bg-muted",
+              index > 0 && "ml-[-6px]"
+            )}
+          >
+            <AvatarFallback className="text-[10px] bg-muted opacity-0">
+              {displayText}
+            </AvatarFallback>
+          </Avatar>
+        )
+      }
+      
+      // For normal text/emoji avatars
+      return (
+        <Avatar
+          key={index}
+          className={cn(
+            "size-4 ring-1 ring-background",
+            index > 0 && "ml-[-6px]"
+          )}
+          style={{
+            backgroundColor: avatar.backgroundColor || '#6366f1'
+          }}
+        >
+          <AvatarFallback
+            className="text-[10px] text-white"
+            style={{
+              backgroundColor: avatar.backgroundColor || '#6366f1'
+            }}
+          >
+            {displayText}
+          </AvatarFallback>
+        </Avatar>
+      )
+    }
+
+    // Image avatar
+    return (
+      <Avatar
+        key={index}
+        className={cn(
+          "size-4 ring-1 ring-background",
+          index > 0 && "ml-[-6px]"
+        )}
+      >
+        <AvatarImage src={avatar.imageUrl} alt={`Avatar ${index + 1}`} />
+        <AvatarFallback className="text-[10px]">
+          {avatar.fallback || summary.charAt(index)}
+        </AvatarFallback>
+      </Avatar>
+    )
+  }
 
   return (
     <Item
@@ -92,24 +188,13 @@ export function MessageListItem({
           
           {/* Small avatars on the right */}
           <div className="flex -space-x-1.5">
-            {avatarList.slice(0, maxVisibleAvatars).map((avatar, index) => (
-              <Avatar
-                key={index}
-                className={cn(
-                  "size-4 ring-1 ring-background",
-                  index > 0 && "ml-[-6px]"
-                )}
-              >
-                <AvatarImage src={avatar} alt={`Avatar ${index + 1}`} />
-                <AvatarFallback className="text-[10px]">
-                  {avatarFallbacks?.[index] || summary.charAt(index)}
-                </AvatarFallback>
-              </Avatar>
-            ))}
-            {avatarList.length > maxVisibleAvatars && (
+            {avatars.slice(0, maxVisibleAvatars).map((avatar, index) => 
+              renderAvatar(avatar, index)
+            )}
+            {avatars.length > maxVisibleAvatars && (
               <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
                 <AvatarFallback className="text-[10px]">
-                  +{avatarList.length - maxVisibleAvatars}
+                  +{avatars.length - maxVisibleAvatars}
                 </AvatarFallback>
               </Avatar>
             )}

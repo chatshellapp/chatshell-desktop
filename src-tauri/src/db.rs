@@ -80,6 +80,43 @@ impl Database {
             [],
         )?;
 
+        // Users table (for current user and future friends feature)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                email TEXT UNIQUE,
+                avatar_type TEXT DEFAULT 'text',
+                avatar_bg TEXT,
+                avatar_text TEXT,
+                avatar_image_path TEXT,
+                avatar_image_url TEXT,
+                is_self INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'active',
+                last_seen_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // User relationships table (for friends feature)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS user_relationships (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                related_user_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (related_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(user_id, related_user_id)
+            )",
+            [],
+        )?;
+
         // Conversations table (replaces topics for multi-participant support)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS conversations (
@@ -99,10 +136,32 @@ impl Database {
                 participant_type TEXT NOT NULL,
                 participant_id TEXT,
                 display_name TEXT,
+                role TEXT DEFAULT 'member',
+                status TEXT DEFAULT 'active',
                 joined_at TEXT NOT NULL,
+                left_at TEXT,
+                last_read_at TEXT,
+                metadata TEXT,
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
                 UNIQUE(conversation_id, participant_type, participant_id)
             )",
+            [],
+        )?;
+
+        // Indexes for better query performance
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_participants_conversation 
+             ON conversation_participants(conversation_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_participants_status 
+             ON conversation_participants(conversation_id, status)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_relationships_user 
+             ON user_relationships(user_id, relationship_type)",
             [],
         )?;
 
@@ -737,6 +796,136 @@ impl Database {
         Ok(())
     }
 
+    // User CRUD operations
+    pub fn create_user(&self, req: CreateUserRequest) -> Result<User> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let is_self = req.is_self.unwrap_or(false);
+        let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
+
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO users (id, username, display_name, email, avatar_type, avatar_bg, 
+                 avatar_text, avatar_image_path, avatar_image_url, is_self, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12)",
+                params![
+                    id,
+                    req.username,
+                    req.display_name,
+                    req.email,
+                    avatar_type,
+                    req.avatar_bg,
+                    req.avatar_text,
+                    req.avatar_image_path,
+                    req.avatar_image_url,
+                    is_self as i32,
+                    now,
+                    now
+                ],
+            )?;
+        }
+
+        self.get_user(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created user"))
+    }
+
+    pub fn get_user(&self, id: &str) -> Result<Option<User>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
+             avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
+             FROM users WHERE id = ?1",
+        )?;
+
+        let user = stmt
+            .query_row(params![id], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    display_name: row.get(2)?,
+                    email: row.get(3)?,
+                    avatar_type: row.get(4)?,
+                    avatar_bg: row.get(5)?,
+                    avatar_text: row.get(6)?,
+                    avatar_image_path: row.get(7)?,
+                    avatar_image_url: row.get(8)?,
+                    is_self: row.get::<_, i32>(9)? != 0,
+                    status: row.get(10)?,
+                    last_seen_at: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
+                })
+            })
+            .optional()?;
+
+        Ok(user)
+    }
+
+    pub fn get_self_user(&self) -> Result<Option<User>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
+             avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
+             FROM users WHERE is_self = 1 LIMIT 1",
+        )?;
+
+        let user = stmt
+            .query_row([], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    display_name: row.get(2)?,
+                    email: row.get(3)?,
+                    avatar_type: row.get(4)?,
+                    avatar_bg: row.get(5)?,
+                    avatar_text: row.get(6)?,
+                    avatar_image_path: row.get(7)?,
+                    avatar_image_url: row.get(8)?,
+                    is_self: row.get::<_, i32>(9)? != 0,
+                    status: row.get(10)?,
+                    last_seen_at: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
+                })
+            })
+            .optional()?;
+
+        Ok(user)
+    }
+
+    pub fn list_users(&self) -> Result<Vec<User>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
+             avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
+             FROM users ORDER BY is_self DESC, display_name ASC",
+        )?;
+
+        let users = stmt
+            .query_map([], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    display_name: row.get(2)?,
+                    email: row.get(3)?,
+                    avatar_type: row.get(4)?,
+                    avatar_bg: row.get(5)?,
+                    avatar_text: row.get(6)?,
+                    avatar_image_path: row.get(7)?,
+                    avatar_image_url: row.get(8)?,
+                    is_self: row.get::<_, i32>(9)? != 0,
+                    status: row.get(10)?,
+                    last_seen_at: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(users)
+    }
+
     // Conversation Participant CRUD operations
     pub fn add_conversation_participant(&self, req: CreateConversationParticipantRequest) -> Result<ConversationParticipant> {
         let id = Uuid::now_v7().to_string();
@@ -745,8 +934,9 @@ impl Database {
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO conversation_participants (id, conversation_id, participant_type, participant_id, display_name, joined_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO conversation_participants 
+                 (id, conversation_id, participant_type, participant_id, display_name, role, status, joined_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'member', 'active', ?6)",
                 params![id, req.conversation_id, req.participant_type, req.participant_id, req.display_name, now],
             )?;
         }
@@ -758,7 +948,8 @@ impl Database {
     pub fn get_conversation_participant(&self, id: &str) -> Result<Option<ConversationParticipant>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, participant_type, participant_id, display_name, joined_at
+            "SELECT id, conversation_id, participant_type, participant_id, display_name, 
+             role, status, joined_at, left_at, last_read_at, metadata
              FROM conversation_participants WHERE id = ?1",
         )?;
 
@@ -770,7 +961,12 @@ impl Database {
                     participant_type: row.get(2)?,
                     participant_id: row.get(3)?,
                     display_name: row.get(4)?,
-                    joined_at: row.get(5)?,
+                    role: row.get(5)?,
+                    status: row.get(6)?,
+                    joined_at: row.get(7)?,
+                    left_at: row.get(8)?,
+                    last_read_at: row.get(9)?,
+                    metadata: row.get(10)?,
                 })
             })
             .optional()?;
@@ -781,7 +977,8 @@ impl Database {
     pub fn list_conversation_participants(&self, conversation_id: &str) -> Result<Vec<ConversationParticipant>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, participant_type, participant_id, display_name, joined_at
+            "SELECT id, conversation_id, participant_type, participant_id, display_name, 
+             role, status, joined_at, left_at, last_read_at, metadata
              FROM conversation_participants WHERE conversation_id = ?1 ORDER BY joined_at",
         )?;
 
@@ -793,12 +990,83 @@ impl Database {
                     participant_type: row.get(2)?,
                     participant_id: row.get(3)?,
                     display_name: row.get(4)?,
-                    joined_at: row.get(5)?,
+                    role: row.get(5)?,
+                    status: row.get(6)?,
+                    joined_at: row.get(7)?,
+                    left_at: row.get(8)?,
+                    last_read_at: row.get(9)?,
+                    metadata: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(participants)
+    }
+
+    pub fn get_conversation_participant_summary(
+        &self,
+        conversation_id: &str,
+        current_user_id: &str,
+    ) -> Result<Vec<ParticipantSummary>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT
+                cp.participant_type,
+                cp.participant_id,
+                COALESCE(cp.display_name, u.display_name, a.name, m.name, 'Unknown') as display_name,
+                COALESCE(
+                    CASE cp.participant_type
+                        WHEN 'user' THEN u.avatar_type
+                        WHEN 'assistant' THEN a.avatar_type
+                        ELSE 'text'
+                    END, 'text'
+                ) as avatar_type,
+                CASE cp.participant_type
+                    WHEN 'user' THEN u.avatar_bg
+                    WHEN 'assistant' THEN a.avatar_bg
+                    ELSE NULL
+                END as avatar_bg,
+                CASE cp.participant_type
+                    WHEN 'user' THEN u.avatar_text
+                    WHEN 'assistant' THEN a.avatar_text
+                    ELSE NULL
+                END as avatar_text,
+                CASE cp.participant_type
+                    WHEN 'user' THEN u.avatar_image_path
+                    WHEN 'assistant' THEN a.avatar_image_path
+                    ELSE NULL
+                END as avatar_image_path,
+                CASE cp.participant_type
+                    WHEN 'user' THEN u.avatar_image_url
+                    WHEN 'assistant' THEN a.avatar_image_url
+                    ELSE NULL
+                END as avatar_image_url
+             FROM conversation_participants cp
+             LEFT JOIN users u ON cp.participant_type = 'user' AND cp.participant_id = u.id
+             LEFT JOIN assistants a ON cp.participant_type = 'assistant' AND cp.participant_id = a.id
+             LEFT JOIN models m ON cp.participant_type = 'model' AND cp.participant_id = m.id
+             WHERE cp.conversation_id = ?1 
+               AND cp.status = 'active'
+               AND NOT (cp.participant_type = 'user' AND cp.participant_id = ?2)
+             ORDER BY cp.joined_at",
+        )?;
+
+        let summaries = stmt
+            .query_map(params![conversation_id, current_user_id], |row| {
+                Ok(ParticipantSummary {
+                    participant_type: row.get(0)?,
+                    participant_id: row.get(1)?,
+                    display_name: row.get(2)?,
+                    avatar_type: row.get(3)?,
+                    avatar_bg: row.get(4)?,
+                    avatar_text: row.get(5)?,
+                    avatar_image_path: row.get(6)?,
+                    avatar_image_url: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(summaries)
     }
 
     pub fn remove_conversation_participant(&self, id: &str) -> Result<()> {
@@ -949,6 +1217,30 @@ impl Database {
 
     // Seed database with default assistants if empty
     pub async fn seed_default_data(&self) -> Result<()> {
+        // Ensure self user exists
+        let self_user = match self.get_self_user()? {
+            Some(user) => {
+                println!("✅ [db] Self user already exists: {}", user.display_name);
+                user
+            }
+            None => {
+                println!("🌱 [db] Creating default self user...");
+                let user = self.create_user(CreateUserRequest {
+                    username: "self".to_string(),
+                    display_name: "You".to_string(),
+                    email: None,
+                    avatar_type: Some("text".to_string()),
+                    avatar_bg: Some("#6366f1".to_string()),
+                    avatar_text: Some("👤".to_string()),
+                    avatar_image_path: None,
+                    avatar_image_url: None,
+                    is_self: Some(true),
+                })?;
+                println!("✅ [db] Created self user: {}", user.display_name);
+                user
+            }
+        };
+
         // Check if default ollama provider already exists
         let providers = self.list_providers()?;
         let has_ollama = providers.iter().any(|p| p.provider_type == "ollama");

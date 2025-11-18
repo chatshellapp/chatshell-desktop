@@ -3,6 +3,7 @@ import { useAssistantStore } from '@/stores/assistantStore';
 import { useModelStore } from '@/stores/modelStore';
 import { useConversationStore } from '@/stores/conversationStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUserStore } from '@/stores/userStore';
 
 export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -14,6 +15,7 @@ export function useAppInit() {
   const conversations = useConversationStore((state: any) => state.conversations);
   const setCurrentConversation = useConversationStore((state: any) => state.setCurrentConversation);
   const loadSettings = useSettingsStore((state: any) => state.loadSettings);
+  const loadSelfUser = useUserStore((state: any) => state.loadSelfUser);
 
   useEffect(() => {
     async function initialize() {
@@ -23,6 +25,10 @@ export function useAppInit() {
         // Load settings
         console.log('Loading settings...');
         await loadSettings();
+
+        // Load self user (needed for participant queries)
+        console.log('Loading self user...');
+        await loadSelfUser();
 
         // Load models and providers first (assistants reference models)
         console.log('Loading models and providers...');
@@ -46,7 +52,7 @@ export function useAppInit() {
     }
 
     initialize();
-  }, [loadSettings, loadAll, loadAssistants, loadConversations]);
+  }, [loadSettings, loadSelfUser, loadAll, loadAssistants, loadConversations]);
 
   // Once conversations are loaded, set the first one as current (if any exist)
   useEffect(() => {

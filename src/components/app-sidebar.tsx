@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Bot, Command, Drama, File, Library, MessageSquare, Settings, Users, Sparkles, Plug, BookOpen, Plus } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 
 import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,10 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import { useModelStore } from "@/stores/modelStore"
+import { useUserStore } from "@/stores/userStore"
 import { getModelLogo } from "@/lib/model-logos"
+import type { ParticipantSummary } from "@/types"
+import type { AvatarData } from "@/components/message-list-item"
 import gptAvatar from "@/assets/avatars/models/gpt.png"
 import claudeAvatar from "@/assets/avatars/models/claude.png"
 import geminiAvatar from "@/assets/avatars/models/gemini.png"
@@ -654,6 +658,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setSelectedModel,
     setSelectedAssistant,
   } = useConversationStore()
+
+  // Import user store
+  const { selfUser, loadSelfUser } = useUserStore()
   
   // Get assistant store functions and state - use real data instead of mock
   const assistants = useAssistantStore((state) => state.assistants)
@@ -665,28 +672,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     getModelById: state.getModelById,
   }))
   
+  // Load self user when component mounts
+  React.useEffect(() => {
+    loadSelfUser()
+  }, [loadSelfUser])
+
   // Load conversations when component mounts
   React.useEffect(() => {
     loadConversations()
   }, [loadConversations])
 
-  // Load participants for all conversations
+  // Load participants for all conversations using the new summary API
   React.useEffect(() => {
     const loadAllParticipants = async () => {
-      if (conversations.length === 0) {
-        console.log('[Load Participants] No conversations to load')
+      if (conversations.length === 0 || !selfUser) {
+        console.log('[Load Participants] No conversations to load or self user not loaded')
         return
       }
       
-      console.log('[Load Participants] Loading participants for', conversations.length, 'conversations')
+      console.log('[Load Participants] Loading participant summaries for', conversations.length, 'conversations')
       const participantsMap = new Map()
       
-      // Load participants for each conversation
+      // Load participant summaries for each conversation
       await Promise.all(
         conversations.map(async (conversation) => {
           try {
-            const participants = await invoke<any[]>('list_conversation_participants', { 
-              conversationId: conversation.id 
+            const participants = await invoke<ParticipantSummary[]>('get_conversation_participant_summary', { 
+              conversationId: conversation.id,
+              currentUserId: selfUser.id
             })
             console.log(`[Load Participants] Conversation ${conversation.id}:`, participants)
             participantsMap.set(conversation.id, participants)
@@ -702,7 +715,51 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
     
     loadAllParticipants()
-  }, [conversations])
+  }, [conversations, selfUser])
+
+  // Function to refresh participants for a specific conversation
+  const refreshConversationParticipants = React.useCallback(async (conversationId: string) => {
+    if (!selfUser) return
+    
+    try {
+      console.log('[Refresh Participants] Refreshing for conversation:', conversationId)
+      const participants = await invoke<ParticipantSummary[]>('get_conversation_participant_summary', { 
+        conversationId: conversationId,
+        currentUserId: selfUser.id
+      })
+      console.log('[Refresh Participants] Updated participants:', participants)
+      
+      // Update the map with new participants
+      setConversationParticipantsMap(prev => {
+        const newMap = new Map(prev)
+        newMap.set(conversationId, participants)
+        return newMap
+      })
+    } catch (error) {
+      console.error('[Refresh Participants] Failed to refresh participants:', error)
+    }
+  }, [selfUser])
+
+  // Listen for chat-complete event to refresh participants when new messages are sent
+  React.useEffect(() => {
+    console.log('[Participants Event] Setting up chat-complete listener')
+    
+    const unlistenComplete = listen('chat-complete', (event: any) => {
+      console.log('[Participants Event] Received chat-complete event:', event.payload)
+      if (event.payload.conversation_id) {
+        // Refresh participants for this conversation after a short delay
+        // to ensure the backend has finished adding participants
+        setTimeout(() => {
+          refreshConversationParticipants(event.payload.conversation_id)
+        }, 100)
+      }
+    })
+
+    return () => {
+      console.log('[Participants Event] Cleaning up chat-complete listener')
+      unlistenComplete.then(fn => fn())
+    }
+  }, [refreshConversationParticipants])
 
   // Memoize vendors list - must be at top level to avoid hook ordering issues
   const vendorsList = React.useMemo(() => {
@@ -1005,6 +1062,53 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       console.log('Creating new conversation...')
       const newConversation = await createConversation("New Conversation")
       console.log("Created new conversation:", newConversation)
+      
+      // Add participants to the conversation
+      console.log('[handleNewConversation] Adding participants...')
+      const { addParticipant } = useConversationStore.getState()
+      
+      // Add self user as participant
+      if (selfUser) {
+        try {
+          await addParticipant(
+            newConversation.id,
+            'user',
+            selfUser.id,
+            selfUser.display_name
+          )
+          console.log('[handleNewConversation] Added self user as participant')
+        } catch (error) {
+          console.error('[handleNewConversation] Failed to add self user:', error)
+        }
+      }
+      
+      // Add selected model or assistant as participant
+      if (selectedAssistant) {
+        try {
+          await addParticipant(
+            newConversation.id,
+            'assistant',
+            selectedAssistant.id,
+            selectedAssistant.name
+          )
+          console.log('[handleNewConversation] Added assistant as participant:', selectedAssistant.name)
+        } catch (error) {
+          console.error('[handleNewConversation] Failed to add assistant:', error)
+        }
+      } else if (selectedModel) {
+        try {
+          await addParticipant(
+            newConversation.id,
+            'model',
+            selectedModel.id,
+            selectedModel.name
+          )
+          console.log('[handleNewConversation] Added model as participant:', selectedModel.name)
+        } catch (error) {
+          console.error('[handleNewConversation] Failed to add model:', error)
+        }
+      }
+      
       setCurrentConversation(newConversation)
       
       // Switch to conversations view if not already there
@@ -1140,57 +1244,114 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </div>
             ) : (
               conversations.map((conversation) => {
-                // Get avatars from conversation participants
+                // Get participant summaries from the map
                 const participants = conversationParticipantsMap.get(conversation.id) || []
-                const avatars: string[] = []
+                const avatars: (string | AvatarData)[] = []
                 
                 console.log('[Conversation Avatar] conversation:', conversation.id, 'participants:', participants)
                 
-                participants.forEach((participant: any) => {
-                  console.log('[Conversation Avatar] processing participant:', participant)
+                participants.forEach((participant: ParticipantSummary) => {
+                  console.log('[Conversation Avatar] processing participant:', {
+                    type: participant.participant_type,
+                    id: participant.participant_id,
+                    name: participant.display_name,
+                    avatar_type: participant.avatar_type,
+                    avatar_bg: participant.avatar_bg,
+                    avatar_text: participant.avatar_text,
+                  })
                   
-                  if (participant.participant_type === 'model' && participant.participant_id) {
-                    // Get model avatar
+                  console.log('[Conversation Avatar] participant_type check:', {
+                    value: participant.participant_type,
+                    typeof: typeof participant.participant_type,
+                    isAssistant: participant.participant_type === 'assistant',
+                    isModel: participant.participant_type === 'model',
+                    isUser: participant.participant_type === 'user',
+                  })
+                  
+                  // Handle different participant types with their specific avatar logic
+                  if (participant.participant_type === 'assistant') {
+                    console.log('[Conversation Avatar] ✅ Handling as ASSISTANT')
+                    // For assistants, use the logic from chat-input.tsx
+                    const hasCustomImage = participant.avatar_type === 'image' && 
+                                          (participant.avatar_image_url || participant.avatar_image_path)
+                    
+                    if (hasCustomImage) {
+                      // Image avatar for assistant
+                      avatars.push({
+                        type: 'image',
+                        imageUrl: participant.avatar_image_url || participant.avatar_image_path || '',
+                        fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase()
+                      })
+                    } else {
+                      // Text/emoji avatar for assistant (with background color)
+                      const avatarBg = participant.avatar_bg || '#3b82f6'
+                      avatars.push({
+                        type: 'text',
+                        text: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
+                        backgroundColor: avatarBg,
+                        fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase()
+                      })
+                    }
+                  } else if (participant.participant_type === 'model' && participant.participant_id) {
+                    console.log('[Conversation Avatar] ✅ Handling as MODEL')
+                    // For models, get the model logo using getModelLogo
                     const model = getModelById(participant.participant_id)
-                    console.log('[Conversation Avatar] model participant:', model)
                     if (model) {
                       const modelLogo = getModelLogo(model)
-                      console.log('[Conversation Avatar] model logo:', modelLogo)
                       if (modelLogo) {
-                        avatars.push(modelLogo)
-                      }
-                    }
-                  } else if (participant.participant_type === 'assistant' && participant.participant_id) {
-                    // Get assistant avatar
-                    const assistant = assistants.find(a => a.id === participant.participant_id)
-                    console.log('[Conversation Avatar] assistant participant:', assistant)
-                    if (assistant) {
-                      // Check if assistant has custom image
-                      if (assistant.avatar_type === 'image' && (assistant.avatar_image_url || assistant.avatar_image_path)) {
-                        const avatarUrl = assistant.avatar_image_url || assistant.avatar_image_path || ''
-                        console.log('[Conversation Avatar] assistant custom image:', avatarUrl)
-                        avatars.push(avatarUrl)
+                        console.log('[Conversation Avatar] Using model logo:', modelLogo)
+                        avatars.push({
+                          type: 'image',
+                          imageUrl: modelLogo,
+                          fallback: participant.display_name.charAt(0).toUpperCase()
+                        })
                       } else {
-                        // For text/emoji avatars, we'll need to show them differently
-                        // For now, try to get the model logo
-                        const assistantModel = getModelById(assistant.model_id)
-                        console.log('[Conversation Avatar] assistant model:', assistantModel)
-                        if (assistantModel) {
-                          const modelLogo = getModelLogo(assistantModel)
-                          console.log('[Conversation Avatar] assistant model logo:', modelLogo)
-                          if (modelLogo) {
-                            avatars.push(modelLogo)
-                          }
-                        }
+                        // Fallback to text avatar if no logo
+                        avatars.push({
+                          type: 'text',
+                          text: participant.display_name.charAt(0).toUpperCase(),
+                          backgroundColor: '#6366f1',
+                          fallback: participant.display_name.charAt(0).toUpperCase()
+                        })
                       }
                     }
+                  } else if (participant.participant_type === 'user') {
+                    console.log('[Conversation Avatar] ✅ Handling as USER')
+                    // For users, use their avatar data
+                    if (participant.avatar_type === 'image') {
+                      const imageUrl = participant.avatar_image_url || participant.avatar_image_path
+                      if (imageUrl) {
+                        avatars.push({
+                          type: 'image',
+                          imageUrl,
+                          fallback: participant.display_name.charAt(0).toUpperCase()
+                        })
+                      }
+                    } else {
+                      // Text/emoji avatar for user
+                      avatars.push({
+                        type: 'text',
+                        text: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
+                        backgroundColor: participant.avatar_bg || '#6366f1',
+                        fallback: participant.display_name.charAt(0).toUpperCase()
+                      })
+                    }
+                  } else {
+                    console.warn('[Conversation Avatar] ⚠️  Unknown participant type:', participant.participant_type)
                   }
                 })
                 
                 console.log('[Conversation Avatar] final avatars:', avatars)
                 
-                // Fallback to default avatar if no avatars found
-                const displayAvatars = avatars.length > 0 ? avatars : [gptAvatar]
+                // Fallback to placeholder avatar if no avatars found (loading state)
+                const displayAvatars = avatars.length > 0 ? avatars : [{
+                  type: 'text' as const,
+                  text: '',
+                  fallback: '',
+                  isPlaceholder: true  // Use Tailwind's bg-muted class
+                }]
+                
+                console.log('[Conversation Avatar] displayAvatars for', conversation.title, ':', displayAvatars)
                 
                 return (
                   <MessageListItem

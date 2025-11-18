@@ -286,7 +286,12 @@ export function ChatInput({}: ChatInputProps) {
         hasApiKey: !!apiKey,
         baseUrl,
         hasSystemPrompt: !!systemPrompt,
-        hasUserPrompt: !!userPrompt
+        hasUserPrompt: !!userPrompt,
+        modelDbId: selectedAssistant ? undefined : modelToUse.id,
+        assistantDbId: selectedAssistant?.id,
+        selectedAssistant: selectedAssistant?.name,
+        selectedModel: selectedModel?.name,
+        modelToUse: modelToUse?.name
       })
 
       await sendMessage(
