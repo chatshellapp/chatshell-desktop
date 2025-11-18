@@ -56,8 +56,8 @@ export function ChatPage() {
       }
     >
       <AppSidebar />
-      <SidebarInset className="flex flex-col relative">
-        <header className="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4 z-10">
+      <SidebarInset className="flex flex-col h-screen overflow-hidden">
+        <header className="bg-background flex shrink-0 items-center gap-2 border-b p-4">
           <SidebarTrigger className="-ml-1" />
           <Separator
             orientation="vertical"

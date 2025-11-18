@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
 import { useConversationStore } from "@/stores/conversationStore"
@@ -35,6 +35,17 @@ export function ChatView() {
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const getAssistantById = useAssistantStore((state) => state.getAssistantById)
+
+  // Ref for auto-scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  
+  // Track if user is at bottom
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  
+  // Track if user is actively scrolling (user scroll lock)
+  const isUserScrollingRef = useRef(false)
+  const scrollTimeoutRef = useRef<number | null>(null)
 
   // Extract values from conversation state with defaults
   const messages = conversationState?.messages || []
@@ -154,6 +165,65 @@ export function ChatView() {
     };
   }, [])
 
+  // Check if user is near bottom (within 100px threshold)
+  const checkIfAtBottom = () => {
+    const container = messagesContainerRef.current
+    if (!container) return true
+    
+    const threshold = 100
+    const isNearBottom = 
+      container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    
+    return isNearBottom
+  }
+
+  // Handle scroll events to track user position
+  const handleScroll = () => {
+    // Mark that user is actively scrolling
+    isUserScrollingRef.current = true
+    
+    // Clear any existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+    
+    // Set a timeout to mark scroll as finished (user stopped scrolling)
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      isUserScrollingRef.current = false
+      // Update position only after user stops scrolling
+      setIsAtBottom(checkIfAtBottom())
+    }, 150) // 150ms debounce - adjust if needed
+  }
+
+  // Auto-scroll to bottom ONLY if user is at bottom AND not actively scrolling
+  useEffect(() => {
+    // Don't auto-scroll if user is actively scrolling
+    if (isUserScrollingRef.current) {
+      return
+    }
+    
+    if (isAtBottom && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [messages.length, streamingContent, isStreaming, isWaitingForAI, isAtBottom])
+
+  // Reset to bottom when conversation changes
+  useEffect(() => {
+    if (currentConversation) {
+      setIsAtBottom(true)
+      isUserScrollingRef.current = false
+    }
+  }, [currentConversation?.id])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleCopy = () => {
     console.log("Message copied")
   }
@@ -185,15 +255,19 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col flex-1 overflow-hidden">
       {/* Messages Area */}
-      <div className="flex flex-1 flex-col overflow-auto">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto px-4 relative"
+        onScroll={handleScroll}
+      >
         {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <p>No messages yet. Start a conversation!</p>
           </div>
         ) : (
-          <>
+          <div className="max-w-4xl mx-auto py-4">
             {messages.map((message) => {
               const modelInfo = getMessageModelInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
@@ -269,17 +343,35 @@ export function ChatView() {
                 />
               )
             })()}
-          </>
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
+          </div>
         )}
         {scrapingStatus === 'scraping' && (
           <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
             <span>Fetching webpage content...</span>
           </div>
         )}
+        
+        {/* Scroll to bottom button - shown when user scrolls up */}
+        {!isAtBottom && (
+          <div className="sticky bottom-4 left-1/2 -translate-x-1/2 z-20 w-fit mx-auto pointer-events-none">
+            <button
+              onClick={() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+                setIsAtBottom(true)
+              }}
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-colors flex items-center gap-2 pointer-events-auto"
+            >
+              <span>↓</span>
+              <span>New messages</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
-      <div className="bg-background border-t p-4 flex justify-center sticky bottom-0 z-10">
+      <div className="shrink-0 bg-background border-t p-4 flex justify-center">
         <ChatInput />
       </div>
     </div>
