@@ -1,10 +1,14 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::Chat;
+use rig::client::CompletionClient;
+use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::message::{AssistantContent, UserContent};
 use rig::providers::openai;
+use rig::streaming::StreamedAssistantContent;
+use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::{ChatMessage, ChatRequest, ChatResponse};
+use crate::llm::{ChatRequest, ChatResponse};
 use crate::thinking_parser;
 
 pub struct OpenAIRigProvider {
@@ -27,49 +31,63 @@ impl OpenAIRigProvider {
         // Create OpenAI client
         let client = openai::Client::new(&self.api_key);
         
-        // Build agent with model
-        let agent = client.agent(&request.model).build();
+        // Get completion model
+        let model = client.completion_model(&request.model);
         
-        println!("🤖 [openai_rig] Agent created for model: {}", request.model);
+        println!("🤖 [openai_rig] Model created: {}", request.model);
         
-        // Convert messages to rig's Chat format
-        let mut chat = Chat::default();
+        // Convert messages to rig's Message format
+        let mut chat_history = Vec::new();
         
         for (i, msg) in request.messages.iter().enumerate() {
-            if i == request.messages.len() - 1 {
-                // Last message is the current prompt
-                println!("📝 [openai_rig] Setting prompt: {} chars", msg.content.len());
-                chat = chat.prompt(&msg.content);
-            } else {
+            if i < request.messages.len() - 1 {
                 // Earlier messages are history
-                match msg.role.as_str() {
-                    "user" => {
-                        chat = chat.history(rig::completion::Message {
-                            role: "user".to_string(),
-                            content: msg.content.clone(),
-                        });
-                    }
-                    "assistant" => {
-                        chat = chat.history(rig::completion::Message {
-                            role: "assistant".to_string(),
-                            content: msg.content.clone(),
-                        });
-                    }
-                    _ => {
-                        // Other roles treated as user
-                        chat = chat.history(rig::completion::Message {
-                            role: "user".to_string(),
-                            content: msg.content.clone(),
-                        });
-                    }
-                }
+                let rig_msg = match msg.role.as_str() {
+                    "user" => Message::User {
+                        content: OneOrMany::one(UserContent::Text(msg.content.clone().into())),
+                    },
+                    "assistant" => Message::Assistant {
+                        id: None,
+                        content: OneOrMany::one(AssistantContent::Text(msg.content.clone().into())),
+                    },
+                    _ => Message::User {
+                        content: OneOrMany::one(UserContent::Text(msg.content.clone().into())),
+                    },
+                };
+                chat_history.push(rig_msg);
             }
         }
+        
+        // Last message is the current prompt
+        let prompt_msg = request.messages.last().unwrap();
+        let prompt = Message::User {
+            content: OneOrMany::one(UserContent::Text(prompt_msg.content.clone().into())),
+        };
+        
+        println!("📝 [openai_rig] Prompt: {} chars, history: {} messages", 
+                 prompt_msg.content.len(), 
+                 chat_history.len());
+        
+        // Build completion request
+        let completion_request = CompletionRequest {
+            preamble: None,
+            chat_history: {
+                let mut all_messages = chat_history;
+                all_messages.push(prompt);
+                OneOrMany::many(all_messages).unwrap()
+            },
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
         
         println!("📤 [openai_rig] Starting streaming request...");
         
         // Create stream
-        let mut stream = chat.stream(&agent).await?;
+        let mut stream = model.stream(completion_request).await?;
         
         let mut full_content = String::new();
         let mut cancelled = false;
@@ -86,17 +104,21 @@ impl OpenAIRigProvider {
             }
             
             match result {
-                Ok(chunk) => {
-                    if !chunk.is_empty() {
-                        full_content.push_str(&chunk);
+                Ok(StreamedAssistantContent::Text(text)) => {
+                    let text_str = &text.text;
+                    if !text_str.is_empty() {
+                        full_content.push_str(text_str);
                         
                         // Call callback and check if it signals cancellation
-                        if !callback(chunk) {
+                        if !callback(text_str.to_string()) {
                             println!("🛑 [openai_rig] Callback signaled cancellation");
                             cancelled = true;
                             break;
                         }
                     }
+                }
+                Ok(_) => {
+                    // Ignore tool calls, reasoning, and final responses
                 }
                 Err(e) => {
                     eprintln!("❌ [openai_rig] Stream error: {}", e);

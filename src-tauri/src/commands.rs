@@ -1058,51 +1058,10 @@ pub async fn send_message(
             return;
         }
         
-        // Unknown provider
+        // Unknown provider - clean up and exit
         eprintln!("❌ [background_task] Unknown provider: {}. Available providers: openai_rig, openrouter_rig, ollama_rig", provider);
         
-        // Check if this is the first assistant reply and generate title if needed
-        let should_generate_title = match state_clone.db.get_conversation(&conversation_id_clone) {
-            Ok(Some(conv)) => conv.title == "New Conversation",
-            _ => false,
-        };
-        
-        if should_generate_title {
-            println!("🏷️ [background_task] Generating conversation title{}", if was_cancelled { " (from partial content)" } else { "" });
-            let title_result = generate_conversation_title(
-                &state_clone,
-                &conversation_id_clone,
-                &processed_content,
-                &final_content,
-                &provider,
-                &model,
-                api_key.clone(),
-                base_url.clone(),
-            ).await;
-            
-            match title_result {
-                Ok(title) => {
-                    println!("✅ [background_task] Generated title: {}", title);
-                    match state_clone.db.update_conversation(&conversation_id_clone, &title) {
-                        Ok(_) => {
-                            // Emit event to notify frontend about the title update
-                            let _ = app.emit("conversation-updated", serde_json::json!({
-                                "conversation_id": conversation_id_clone,
-                                "title": title,
-                            }));
-                        },
-                        Err(e) => {
-                            eprintln!("❌ [background_task] Failed to update conversation title: {}", e);
-                        }
-                    }
-                },
-                Err(e) => {
-                    eprintln!("❌ [background_task] Failed to generate title: {}", e);
-                }
-            }
-        }
-        
-        // Remove task from tracking when done
+        // Remove task from tracking
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
     });
