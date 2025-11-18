@@ -2,16 +2,38 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation } from '@/types';
 
-interface MessageStore {
+// Per-conversation state
+interface ConversationState {
   messages: Message[];
   isLoading: boolean;
-  isSending: boolean;
   isStreaming: boolean;
   streamingContent: string;
-  scrapingStatus: 'idle' | 'scraping' | 'complete' | 'error';
-  error: string | null;
   isWaitingForAI: boolean;
+  scrapingStatus: 'idle' | 'scraping' | 'complete' | 'error';
+}
 
+// Default state for a new conversation
+const createDefaultConversationState = (): ConversationState => ({
+  messages: [],
+  isLoading: false,
+  isStreaming: false,
+  streamingContent: '',
+  isWaitingForAI: false,
+  scrapingStatus: 'idle',
+});
+
+interface MessageStore {
+  // Map of conversationId -> state
+  conversationStates: Map<string, ConversationState>;
+  
+  // Global states
+  isSending: boolean;
+  error: string | null;
+
+  // Get state for specific conversation (creates if doesn't exist)
+  getConversationState: (conversationId: string) => ConversationState;
+  
+  // Actions with conversationId
   loadMessages: (conversationId: string) => Promise<void>;
   sendMessage: (
     content: string,
@@ -28,43 +50,66 @@ interface MessageStore {
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
-  addMessage: (message: Message) => void;
-  setStreamingContent: (content: string) => void;
-  setIsStreaming: (isStreaming: boolean) => void;
-  setScrapingStatus: (status: 'idle' | 'scraping' | 'complete' | 'error') => void;
-  appendStreamingChunk: (chunk: string) => void;
-  setIsWaitingForAI: (isWaiting: boolean) => void;
-  cleanup: () => void;
+  addMessage: (conversationId: string, message: Message) => void;
+  setStreamingContent: (conversationId: string, content: string) => void;
+  setIsStreaming: (conversationId: string, isStreaming: boolean) => void;
+  setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => void;
+  appendStreamingChunk: (conversationId: string, chunk: string) => void;
+  setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void;
+  cleanupConversation: (conversationId: string) => void;
 }
 
 // Throttling mechanism for streaming updates
-let pendingChunks: string[] = [];
-let updateScheduled = false;
-let updateTimeoutId: NodeJS.Timeout | null = null;
+const pendingChunks: Map<string, string[]> = new Map();
+const updateScheduled: Map<string, boolean> = new Map();
+const updateTimeoutIds: Map<string, NodeJS.Timeout> = new Map();
 const THROTTLE_MS = 50; // Update UI every 50ms for smooth rendering
 
 // Maximum messages to keep in memory to prevent memory leaks
 const MAX_MESSAGES_IN_MEMORY = 100;
 
 export const useMessageStore = create<MessageStore>((set, get) => ({
-  messages: [],
-  isLoading: false,
+  conversationStates: new Map(),
   isSending: false,
-  isStreaming: false,
-  streamingContent: '',
-  scrapingStatus: 'idle',
   error: null,
-  isWaitingForAI: false,
+
+  getConversationState: (conversationId: string) => {
+    const state = get();
+    let convState = state.conversationStates.get(conversationId);
+    
+    if (!convState) {
+      // Create new state for this conversation
+      convState = createDefaultConversationState();
+      const newMap = new Map(state.conversationStates);
+      newMap.set(conversationId, convState);
+      set({ conversationStates: newMap });
+    }
+    
+    return convState;
+  },
 
   loadMessages: async (conversationId: string) => {
-    set({ isLoading: true, error: null });
+    const currentState = get().getConversationState(conversationId);
+    
+    // Update the state to loading
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, isLoading: true });
+    set({ conversationStates: newMap, error: null });
+    
     try {
       const messages = await invoke<Message[]>('list_messages_by_conversation', { conversationId });
       // Limit messages in memory to prevent memory leaks
       const limitedMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY);
-      set({ messages: limitedMessages, isLoading: false });
+      
+      const updatedMap = new Map(get().conversationStates);
+      const state = updatedMap.get(conversationId) || createDefaultConversationState();
+      updatedMap.set(conversationId, { ...state, messages: limitedMessages, isLoading: false });
+      set({ conversationStates: updatedMap });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      const updatedMap = new Map(get().conversationStates);
+      const state = updatedMap.get(conversationId) || createDefaultConversationState();
+      updatedMap.set(conversationId, { ...state, isLoading: false });
+      set({ conversationStates: updatedMap, error: String(error) });
       console.error('Failed to load messages:', error);
     }
   },
@@ -82,7 +127,8 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     modelDbId?: string,
     assistantDbId?: string
   ) => {
-    set({ isSending: true, error: null, streamingContent: '', isStreaming: true, isWaitingForAI: true });
+    set({ isSending: true, error: null });
+    
     try {
       // If no conversationId, create a new conversation first
       let targetId = conversationId;
@@ -103,6 +149,17 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
           conversationStore.loadConversations(); // Reload to include the new one
         }
       }
+      
+      // Set waiting state for this conversation
+      const currentState = get().getConversationState(targetId);
+      const newMap = new Map(get().conversationStates);
+      newMap.set(targetId, {
+        ...currentState,
+        isStreaming: true,
+        isWaitingForAI: true,
+        streamingContent: '',
+      });
+      set({ conversationStates: newMap });
       
       console.log('[messageStore] Invoking send_message command with params:', {
         conversationId: targetId,
@@ -135,11 +192,14 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
 
       console.log('[messageStore] Received user message:', userMessage);
 
-      // Add user message to the list
-      set((state) => ({
-        messages: [...state.messages, userMessage],
-        isSending: false,
-      }));
+      // Add user message to the conversation
+      const updatedState = get().getConversationState(targetId);
+      const updatedMap = new Map(get().conversationStates);
+      updatedMap.set(targetId, {
+        ...updatedState,
+        messages: [...updatedState.messages, userMessage],
+      });
+      set({ conversationStates: updatedMap, isSending: false });
 
       console.log('[messageStore] User message added to store, waiting for assistant response...');
 
@@ -153,7 +213,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         errorKeys: error ? Object.keys(error) : 'null'
       });
       
-      set({ error: String(error), isSending: false, isStreaming: false, isWaitingForAI: false });
+      set({ error: String(error), isSending: false });
       throw error;
     }
   },
@@ -163,11 +223,8 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       console.log('[messageStore] Stopping generation for conversation:', conversationId);
       await invoke('stop_generation', { conversationId });
       
-      // Only reset flags, keep streamingContent visible until chat-complete event
-      set({
-        isSending: false,
-        isWaitingForAI: false,
-      });
+      // Only reset sending flag
+      set({ isSending: false });
       
       console.log('[messageStore] Generation stopped successfully');
     } catch (error) {
@@ -176,84 +233,131 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   },
 
   clearMessages: async (conversationId: string) => {
-    set({ isLoading: true, error: null });
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, isLoading: true });
+    set({ conversationStates: newMap, error: null });
+    
     try {
       await invoke('clear_messages_by_conversation', { conversationId });
-      set({ messages: [], isLoading: false });
+      
+      const updatedMap = new Map(get().conversationStates);
+      const state = updatedMap.get(conversationId) || createDefaultConversationState();
+      updatedMap.set(conversationId, { ...state, messages: [], isLoading: false });
+      set({ conversationStates: updatedMap });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      const updatedMap = new Map(get().conversationStates);
+      const state = updatedMap.get(conversationId) || createDefaultConversationState();
+      updatedMap.set(conversationId, { ...state, isLoading: false });
+      set({ conversationStates: updatedMap, error: String(error) });
       throw error;
     }
   },
 
-  addMessage: (message: Message) => {
-    set((state) => ({
-      messages: [...state.messages, message],
+  addMessage: (conversationId: string, message: Message) => {
+    console.log('[messageStore] Adding message to conversation:', conversationId);
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, {
+      ...currentState,
+      messages: [...currentState.messages, message],
       isWaitingForAI: false,
-    }));
+    });
+    set({ conversationStates: newMap });
   },
 
-  setStreamingContent: (content: string) => {
-    set({ streamingContent: content });
+  setStreamingContent: (conversationId: string, content: string) => {
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, streamingContent: content });
+    set({ conversationStates: newMap });
   },
 
-  setIsStreaming: (isStreaming: boolean) => {
-    set({ isStreaming });
+  setIsStreaming: (conversationId: string, isStreaming: boolean) => {
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, isStreaming });
+    set({ conversationStates: newMap });
   },
 
-  setScrapingStatus: (status: 'idle' | 'scraping' | 'complete' | 'error') => {
-    set({ scrapingStatus: status });
+  setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => {
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, scrapingStatus: status });
+    set({ conversationStates: newMap });
   },
 
-  appendStreamingChunk: (chunk: string) => {
-    pendingChunks.push(chunk);
+  appendStreamingChunk: (conversationId: string, chunk: string) => {
+    // Initialize arrays for this conversation if needed
+    if (!pendingChunks.has(conversationId)) {
+      pendingChunks.set(conversationId, []);
+    }
+    if (!updateScheduled.has(conversationId)) {
+      updateScheduled.set(conversationId, false);
+    }
     
-    if (!updateScheduled) {
-      updateScheduled = true;
+    pendingChunks.get(conversationId)!.push(chunk);
+    
+    if (!updateScheduled.get(conversationId)) {
+      updateScheduled.set(conversationId, true);
       
       // Clear any existing timeout to prevent leaks
-      if (updateTimeoutId !== null) {
-        clearTimeout(updateTimeoutId);
+      const existingTimeout = updateTimeoutIds.get(conversationId);
+      if (existingTimeout !== undefined) {
+        clearTimeout(existingTimeout);
       }
       
       // Use setTimeout for consistent throttling
-      updateTimeoutId = setTimeout(() => {
-        const currentState = get();
-        const allChunks = pendingChunks.join('');
-        pendingChunks = [];
-        updateScheduled = false;
-        updateTimeoutId = null;
+      const timeoutId = setTimeout(() => {
+        const currentState = get().getConversationState(conversationId);
+        const chunks = pendingChunks.get(conversationId) || [];
+        const allChunks = chunks.join('');
+        pendingChunks.set(conversationId, []);
+        updateScheduled.set(conversationId, false);
+        updateTimeoutIds.delete(conversationId);
         
-        set({
+        const newMap = new Map(get().conversationStates);
+        newMap.set(conversationId, {
+          ...currentState,
           streamingContent: currentState.streamingContent + allChunks,
           isWaitingForAI: false,
         });
+        set({ conversationStates: newMap });
       }, THROTTLE_MS);
+      
+      updateTimeoutIds.set(conversationId, timeoutId);
     }
   },
 
-  setIsWaitingForAI: (isWaiting: boolean) => {
-    set({ isWaitingForAI: isWaiting });
+  setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => {
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, { ...currentState, isWaitingForAI: isWaiting });
+    set({ conversationStates: newMap });
   },
 
-  cleanup: () => {
-    // Clear any pending timeouts
-    if (updateTimeoutId !== null) {
-      clearTimeout(updateTimeoutId);
-      updateTimeoutId = null;
+  cleanupConversation: (conversationId: string) => {
+    // Clear any pending timeouts for this conversation
+    const timeoutId = updateTimeoutIds.get(conversationId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+      updateTimeoutIds.delete(conversationId);
     }
     
     // Clear pending chunks
-    pendingChunks = [];
-    updateScheduled = false;
+    pendingChunks.delete(conversationId);
+    updateScheduled.delete(conversationId);
     
-    // Reset streaming state
-    set({
+    // Reset streaming state for this conversation
+    const currentState = get().getConversationState(conversationId);
+    const newMap = new Map(get().conversationStates);
+    newMap.set(conversationId, {
+      ...currentState,
       streamingContent: '',
       isStreaming: false,
       isWaitingForAI: false,
       scrapingStatus: 'idle',
     });
+    set({ conversationStates: newMap });
   },
 }));
-

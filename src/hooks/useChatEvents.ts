@@ -27,32 +27,34 @@ export function useChatEvents(conversationId: string | null) {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  // Create stable callback references using useCallback with no dependencies
-  // We use refs to access the latest values without re-creating the callbacks
-  const handleStreamChunk = useCallback((chunk: string) => {
-    useMessageStore.getState().appendStreamingChunk(chunk);
+  // Create stable callback references using useCallback
+  // These now take conversationId as parameter
+  const handleStreamChunk = useCallback((convId: string, chunk: string) => {
+    console.log('[useChatEvents] Appending chunk to conversation:', convId);
+    useMessageStore.getState().appendStreamingChunk(convId, chunk);
   }, []);
 
-  const handleChatComplete = useCallback((message: any) => {
-    console.log('[useChatEvents] handleChatComplete called with message:', message);
+  const handleChatComplete = useCallback((convId: string, message: any) => {
+    console.log('[useChatEvents] handleChatComplete called for conversation:', convId, 'message:', message);
     const store = useMessageStore.getState();
-    console.log('[useChatEvents] Current messages count:', store.messages.length);
-    store.addMessage(message);
-    console.log('[useChatEvents] After addMessage, messages count:', useMessageStore.getState().messages.length);
-    store.setIsStreaming(false);
-    store.setStreamingContent('');
+    const convState = store.getConversationState(convId);
+    console.log('[useChatEvents] Current messages count for conversation:', convState.messages.length);
+    store.addMessage(convId, message);
+    console.log('[useChatEvents] After addMessage, messages count:', store.getConversationState(convId).messages.length);
+    store.setIsStreaming(convId, false);
+    store.setStreamingContent(convId, '');
   }, []);
 
-  const handleScrapingStarted = useCallback(() => {
-    useMessageStore.getState().setScrapingStatus('scraping');
+  const handleScrapingStarted = useCallback((convId: string) => {
+    useMessageStore.getState().setScrapingStatus(convId, 'scraping');
   }, []);
 
-  const handleScrapingComplete = useCallback(() => {
-    useMessageStore.getState().setScrapingStatus('complete');
+  const handleScrapingComplete = useCallback((convId: string) => {
+    useMessageStore.getState().setScrapingStatus(convId, 'complete');
   }, []);
 
-  const handleScrapingError = useCallback((error: string) => {
-    useMessageStore.getState().setScrapingStatus('error');
+  const handleScrapingError = useCallback((convId: string, error: string) => {
+    useMessageStore.getState().setScrapingStatus(convId, 'error');
     console.error('Scraping error:', error);
   }, []);
 
@@ -76,8 +78,8 @@ export function useChatEvents(conversationId: string | null) {
     }
   }, []);
 
-  const handleGenerationStopped = useCallback(() => {
-    console.log('[useChatEvents] Generation stopped, keeping content visible until chat-complete');
+  const handleGenerationStopped = useCallback((convId: string) => {
+    console.log('[useChatEvents] Generation stopped for conversation:', convId);
     // Don't clear anything here - let the chat-complete event handle the final state
     // This prevents the message from disappearing before it's saved
   }, []);
@@ -91,33 +93,23 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenStream = listen<ChatStreamEvent>('chat-stream', (event) => {
       console.log('[useChatEvents] Received chat-stream event:', event.payload);
       console.log('[useChatEvents] Event conversation_id:', event.payload.conversation_id, 'Current:', conversationIdRef.current);
-      if (event.payload.conversation_id === conversationIdRef.current) {
-        console.log('[useChatEvents] Processing stream chunk');
-        handleStreamChunk(event.payload.content);
-      } else {
-        console.log('[useChatEvents] Ignoring event - ID mismatch');
-      }
+      // Process the event for the specific conversation (no need to check if it's current)
+      handleStreamChunk(event.payload.conversation_id, event.payload.content);
     });
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
       console.log('[useChatEvents] Received chat-complete event:', event.payload);
       console.log('[useChatEvents] Event conversation_id:', event.payload.conversation_id, 'Current:', conversationIdRef.current);
-      if (event.payload.conversation_id === conversationIdRef.current) {
-        console.log('[useChatEvents] Adding completed message to store');
-        handleChatComplete(event.payload.message);
-      } else {
-        console.log('[useChatEvents] Ignoring event - ID mismatch');
-      }
+      // Process the event for the specific conversation (no need to check if it's current)
+      handleChatComplete(event.payload.conversation_id, event.payload.message);
     });
 
     // Listen for scraping started
     const unlistenScrapingStarted = listen<ScrapingStartedEvent>(
       'scraping-started',
       (event) => {
-        if (event.payload.conversation_id === conversationIdRef.current) {
-          handleScrapingStarted();
-        }
+        handleScrapingStarted(event.payload.conversation_id);
       }
     );
 
@@ -125,9 +117,7 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenScrapingComplete = listen<ScrapingCompleteEvent>(
       'scraping-complete',
       (event) => {
-        if (event.payload.conversation_id === conversationIdRef.current) {
-          handleScrapingComplete();
-        }
+        handleScrapingComplete(event.payload.conversation_id);
       }
     );
 
@@ -135,9 +125,7 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenScrapingError = listen<ScrapingErrorEvent>(
       'scraping-error',
       (event) => {
-        if (event.payload.conversation_id === conversationIdRef.current) {
-          handleScrapingError(event.payload.error);
-        }
+        handleScrapingError(event.payload.conversation_id, event.payload.error);
       }
     );
 
@@ -155,9 +143,7 @@ export function useChatEvents(conversationId: string | null) {
       'generation-stopped',
       (event) => {
         console.log('[useChatEvents] Received generation-stopped event:', event.payload);
-        if (event.payload.conversation_id === conversationIdRef.current) {
-          handleGenerationStopped();
-        }
+        handleGenerationStopped(event.payload.conversation_id);
       }
     );
 
@@ -183,4 +169,3 @@ export function useChatEvents(conversationId: string | null) {
     handleGenerationStopped,
   ]);
 }
-

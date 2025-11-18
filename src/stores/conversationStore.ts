@@ -126,8 +126,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   selectConversation: async (id: string) => {
     try {
-      // Cleanup message store before switching conversations
-      useMessageStore.getState().cleanup();
+      // Don't cleanup here - preserve streaming state across conversation switches
+      // The streaming state is now tracked per conversation ID
       
       const conversation = await invoke<Conversation | null>('get_conversation', { id });
       console.log('[conversationStore] Selected conversation:', conversation);
@@ -181,8 +181,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   setCurrentConversation: (conversation: Conversation | null) => {
-    // Cleanup message store before switching conversations
-    useMessageStore.getState().cleanup();
+    // Don't cleanup here - preserve streaming state across conversation switches
+    // The streaming state is now tracked per conversation ID
     set({ currentConversation: conversation });
   },
 

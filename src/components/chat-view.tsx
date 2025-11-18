@@ -25,15 +25,23 @@ export function ChatView() {
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
-  const messages = useMessageStore((state) => state.messages)
+  
+  // Get conversation-specific state
+  const conversationState = useMessageStore((state) => 
+    currentConversation ? state.getConversationState(currentConversation.id) : null
+  )
+  
   const loadMessages = useMessageStore((state) => state.loadMessages)
-  const isStreaming = useMessageStore((state) => state.isStreaming)
-  const streamingContent = useMessageStore((state) => state.streamingContent)
-  const scrapingStatus = useMessageStore((state) => state.scrapingStatus)
-  const isWaitingForAI = useMessageStore((state) => state.isWaitingForAI)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const getAssistantById = useAssistantStore((state) => state.getAssistantById)
+
+  // Extract values from conversation state with defaults
+  const messages = conversationState?.messages || []
+  const isStreaming = conversationState?.isStreaming || false
+  const streamingContent = conversationState?.streamingContent || ''
+  const scrapingStatus = conversationState?.scrapingStatus || 'idle'
+  const isWaitingForAI = conversationState?.isWaitingForAI || false
 
   // Get model name and avatar for display (for currently selected model/assistant - used for streaming messages)
   const getModelDisplayInfo = (): { 
@@ -126,21 +134,25 @@ export function ChatView() {
   }
 
   // Set up event listeners for chat streaming and scraping
-  // For now, use conversationId as topicId (backward compatibility)
   useChatEvents(currentConversation?.id || null)
 
-  // Load messages when conversation changes and cleanup on unmount
+  // Load messages when conversation changes
   useEffect(() => {
     if (currentConversation) {
       loadMessages(currentConversation.id)
     }
-    
-    // Cleanup when conversation changes or component unmounts
-    return () => {
-      const cleanup = useMessageStore.getState().cleanup;
-      cleanup();
-    };
   }, [currentConversation, loadMessages])
+
+  // Cleanup conversation state on unmount (optional - could keep state cached)
+  useEffect(() => {
+    return () => {
+      // Optionally cleanup conversation state when component unmounts
+      // For now, we'll keep the state cached for better UX
+      // if (currentConversation) {
+      //   useMessageStore.getState().cleanupConversation(currentConversation.id);
+      // }
+    };
+  }, [])
 
   const handleCopy = () => {
     console.log("Message copied")
@@ -273,4 +285,3 @@ export function ChatView() {
     </div>
   )
 }
-

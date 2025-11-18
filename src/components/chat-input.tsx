@@ -126,7 +126,19 @@ export function ChatInput({}: ChatInputProps) {
   
   const { models, getModelById, getProviderById } = useModelStore()
   const assistants = useAssistantStore((state) => state.assistants)
-  const { sendMessage, stopGeneration, isSending, isStreaming, isWaitingForAI } = useMessageStore()
+  
+  // Get conversation-specific state
+  const conversationState = useMessageStore((state) => 
+    currentConversation ? state.getConversationState(currentConversation.id) : null
+  )
+  const sendMessage = useMessageStore((state) => state.sendMessage)
+  const stopGeneration = useMessageStore((state) => state.stopGeneration)
+  const isSending = useMessageStore((state) => state.isSending)
+  
+  // Get streaming state from current conversation
+  const isStreaming = conversationState?.isStreaming || false
+  const isWaitingForAI = conversationState?.isWaitingForAI || false
+  
   const { getSetting } = useSettingsStore()
 
   // Auto-focus textarea when conversation changes
