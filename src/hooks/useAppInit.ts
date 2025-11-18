@@ -54,11 +54,45 @@ export function useAppInit() {
     initialize();
   }, [loadSettings, loadSelfUser, loadAll, loadAssistants, loadConversations]);
 
-  // Once conversations are loaded, set the first one as current (if any exist)
+  // Once conversations are loaded, handle initial model/assistant selection
   useEffect(() => {
-    if (conversations.length > 0 && !useConversationStore.getState().currentConversation) {
-      console.log(`Found ${conversations.length} conversations, setting first as current...`);
-      setCurrentConversation(conversations[0]);
+    const conversationStore = useConversationStore.getState();
+    const modelStore = useModelStore.getState();
+    
+    if (conversations.length > 0 && !conversationStore.currentConversation) {
+      // Case 1: Has conversation history - select the most recent conversation
+      // The conversation's last joined model/assistant will be auto-selected by selectConversation
+      console.log(`[useAppInit] Found ${conversations.length} conversations, selecting most recent...`);
+      const mostRecentConv = conversations[0]; // Already sorted by updated_at DESC
+      useConversationStore.getState().selectConversation(mostRecentConv.id);
+      console.log('[useAppInit] Selected most recent conversation, last joined model/assistant will be used');
+    } else if (conversations.length === 0) {
+      // No conversation history - determine default model selection
+      console.log('[useAppInit] No conversation history, determining default model...');
+      const models = modelStore.models;
+      
+      if (models.length === 0) {
+        // Case 4: No models at all - don't select anything
+        console.log('[useAppInit] No models available, no selection');
+      } else {
+        const starredModels = models.filter((m: any) => m.is_starred);
+        
+        if (starredModels.length > 0) {
+          // Case 2: Has starred models - select the last starred model
+          const lastStarredModel = starredModels[starredModels.length - 1];
+          console.log('[useAppInit] Selecting last starred model:', lastStarredModel.name);
+          conversationStore.setSelectedModel(lastStarredModel);
+          // Mark as initialized since we've set a default
+          useConversationStore.setState({ isFirstConversationSinceStartup: false });
+        } else {
+          // Case 3: No starred models - select the last added model
+          const lastAddedModel = models[models.length - 1];
+          console.log('[useAppInit] No starred models, selecting last added model:', lastAddedModel.name);
+          conversationStore.setSelectedModel(lastAddedModel);
+          // Mark as initialized since we've set a default
+          useConversationStore.setState({ isFirstConversationSinceStartup: false });
+        }
+      }
     }
   }, [conversations, setCurrentConversation]);
 

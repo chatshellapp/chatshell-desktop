@@ -21,6 +21,11 @@ interface ConversationStore {
   selectedModel: Model | null;
   selectedAssistant: Assistant | null;
   
+  // Track last used model/assistant for default selection
+  lastUsedModel: Model | null;
+  lastUsedAssistant: Assistant | null;
+  isFirstConversationSinceStartup: boolean;
+  
   isLoading: boolean;
   error: string | null;
 
@@ -51,6 +56,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   currentParticipants: [],
   selectedModel: null,
   selectedAssistant: null,
+  lastUsedModel: null,
+  lastUsedAssistant: null,
+  isFirstConversationSinceStartup: true,
   isLoading: false,
   error: null,
 
@@ -128,6 +136,41 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         set({ currentConversation: conversation });
         // Load participants for this conversation
         await get().loadParticipants(id);
+        
+        // Set selected model/assistant based on conversation participants (select the LAST joined one)
+        const participants = get().currentParticipants;
+        const modelOrAssistantParticipants = participants.filter(
+          p => p.participant_type === 'model' || p.participant_type === 'assistant'
+        );
+        const modelOrAssistantParticipant = modelOrAssistantParticipants.length > 0 
+          ? modelOrAssistantParticipants[modelOrAssistantParticipants.length - 1]
+          : null;
+        
+        if (modelOrAssistantParticipant) {
+          // Import stores dynamically to avoid circular dependencies
+          const { useModelStore } = await import('./modelStore');
+          const { useAssistantStore } = await import('./assistantStore');
+          
+          if (modelOrAssistantParticipant.participant_type === 'model' && modelOrAssistantParticipant.participant_id) {
+            const model = useModelStore.getState().getModelById(modelOrAssistantParticipant.participant_id);
+            if (model) {
+              get().setSelectedModel(model);
+              console.log('[conversationStore] Set selected model from conversation:', model.name);
+            }
+          } else if (modelOrAssistantParticipant.participant_type === 'assistant' && modelOrAssistantParticipant.participant_id) {
+            const assistant = useAssistantStore.getState().assistants.find(
+              (a: Assistant) => a.id === modelOrAssistantParticipant.participant_id
+            );
+            if (assistant) {
+              get().setSelectedAssistant(assistant);
+              console.log('[conversationStore] Set selected assistant from conversation:', assistant.name);
+            }
+          }
+        } else {
+          // Clear selection if no model/assistant participant
+          set({ selectedModel: null, selectedAssistant: null });
+          console.log('[conversationStore] No model/assistant participant found, cleared selection');
+        }
       } else {
         set({ currentConversation: null, currentParticipants: [] });
       }
@@ -194,6 +237,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       selectedModel: model,
       // When selecting a model, clear assistant selection
       selectedAssistant: null,
+      // Track as last used for future conversations
+      lastUsedModel: model,
+      lastUsedAssistant: null,
     });
   },
 
@@ -203,6 +249,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       selectedAssistant: assistant,
       // When selecting an assistant, clear model selection
       selectedModel: null,
+      // Track as last used for future conversations
+      lastUsedAssistant: assistant,
+      lastUsedModel: null,
     });
   },
 

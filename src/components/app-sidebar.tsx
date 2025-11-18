@@ -1053,11 +1053,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }
 
   const handleNewConversation = async () => {
-    console.log('handleNewConversation called')
-    console.log('selectedModel:', selectedModel?.name)
-    console.log('selectedAssistant:', selectedAssistant?.name)
+    console.log('[handleNewConversation] called')
+    console.log('[handleNewConversation] selectedModel:', selectedModel?.name)
+    console.log('[handleNewConversation] selectedAssistant:', selectedAssistant?.name)
     
     try {
+      // Use currently selected model/assistant
+      // The initialization logic already ensures a model is selected if available
+      let modelToUse = selectedModel
+      let assistantToUse = selectedAssistant
+      
       // Create a new conversation
       console.log('Creating new conversation...')
       const newConversation = await createConversation("New Conversation")
@@ -1083,27 +1088,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
       
       // Add selected model or assistant as participant
-      if (selectedAssistant) {
+      if (assistantToUse) {
         try {
           await addParticipant(
             newConversation.id,
             'assistant',
-            selectedAssistant.id,
-            selectedAssistant.name
+            assistantToUse.id,
+            assistantToUse.name
           )
-          console.log('[handleNewConversation] Added assistant as participant:', selectedAssistant.name)
+          console.log('[handleNewConversation] Added assistant as participant:', assistantToUse.name)
         } catch (error) {
           console.error('[handleNewConversation] Failed to add assistant:', error)
         }
-      } else if (selectedModel) {
+      } else if (modelToUse) {
         try {
           await addParticipant(
             newConversation.id,
             'model',
-            selectedModel.id,
-            selectedModel.name
+            modelToUse.id,
+            modelToUse.name
           )
-          console.log('[handleNewConversation] Added model as participant:', selectedModel.name)
+          console.log('[handleNewConversation] Added model as participant:', modelToUse.name)
         } catch (error) {
           console.error('[handleNewConversation] Failed to add model:', error)
         }
