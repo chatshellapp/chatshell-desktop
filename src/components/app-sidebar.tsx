@@ -1058,61 +1058,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     console.log('[handleNewConversation] selectedAssistant:', selectedAssistant?.name)
     
     try {
-      // Use currently selected model/assistant
-      // The initialization logic already ensures a model is selected if available
-      let modelToUse = selectedModel
-      let assistantToUse = selectedAssistant
-      
       // Create a new conversation
       console.log('Creating new conversation...')
       const newConversation = await createConversation("New Conversation")
       console.log("Created new conversation:", newConversation)
       
-      // Add participants to the conversation
-      console.log('[handleNewConversation] Adding participants...')
-      const { addParticipant } = useConversationStore.getState()
-      
-      // Add self user as participant
-      if (selfUser) {
-        try {
-          await addParticipant(
-            newConversation.id,
-            'user',
-            selfUser.id,
-            selfUser.display_name
-          )
-          console.log('[handleNewConversation] Added self user as participant')
-        } catch (error) {
-          console.error('[handleNewConversation] Failed to add self user:', error)
-        }
-      }
-      
-      // Add selected model or assistant as participant
-      if (assistantToUse) {
-        try {
-          await addParticipant(
-            newConversation.id,
-            'assistant',
-            assistantToUse.id,
-            assistantToUse.name
-          )
-          console.log('[handleNewConversation] Added assistant as participant:', assistantToUse.name)
-        } catch (error) {
-          console.error('[handleNewConversation] Failed to add assistant:', error)
-        }
-      } else if (modelToUse) {
-        try {
-          await addParticipant(
-            newConversation.id,
-            'model',
-            modelToUse.id,
-            modelToUse.name
-          )
-          console.log('[handleNewConversation] Added model as participant:', modelToUse.name)
-        } catch (error) {
-          console.error('[handleNewConversation] Failed to add model:', error)
-        }
-      }
+      // Participants will be automatically added by backend when first message is sent
+      // This ensures only models/assistants that are actually used are recorded
       
       setCurrentConversation(newConversation)
       
