@@ -395,9 +395,9 @@ async fn generate_conversation_title(
     
     // Generate title using rig providers
     let response = match summary_provider.as_str() {
-        "openai_rig" | "openai" => {
+        "openai" => {
             let api_key_val = summary_api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            let provider = llm::openai_rig::OpenAIRigProvider::new(api_key_val);
+            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
             let request = ChatRequest {
                 model: summary_model,
                 messages: vec![ChatMessage {
@@ -409,9 +409,9 @@ async fn generate_conversation_title(
             let cancel_token = tokio_util::sync::CancellationToken::new();
             provider.chat_stream(request, cancel_token, |_| true).await?
         }
-        "openrouter_rig" | "openrouter" => {
+        "openrouter" => {
             let api_key_val = summary_api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            let provider = llm::openrouter_rig::OpenRouterRigProvider::new(api_key_val);
+            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
             let request = ChatRequest {
                 model: summary_model,
                 messages: vec![ChatMessage {
@@ -423,8 +423,8 @@ async fn generate_conversation_title(
             let cancel_token = tokio_util::sync::CancellationToken::new();
             provider.chat_stream(request, cancel_token, |_| true).await?
         }
-        "ollama_rig" | "ollama" => {
-            let provider = llm::ollama_rig::OllamaRigProvider::new(summary_base_url);
+        "ollama" => {
+            let provider = llm::ollama::OllamaRigProvider::new(summary_base_url);
             let request = ChatRequest {
                 model: summary_model,
                 messages: vec![ChatMessage {
@@ -437,7 +437,7 @@ async fn generate_conversation_title(
             provider.chat_stream(request, cancel_token, |_| true).await?
         }
         _ => {
-            return Err(anyhow::anyhow!("Unknown provider: {}. Use openai_rig, openrouter_rig, or ollama_rig", summary_provider));
+            return Err(anyhow::anyhow!("Unknown provider: {}. Use openai, openrouter, or ollama", summary_provider));
         }
     };
     
@@ -708,11 +708,11 @@ pub async fn send_message(
             content: final_user_content,
         });
 
-        // Handle ollama_rig separately as it uses a different API pattern
-        if provider == "ollama_rig" {
+        // Handle ollama separately as it uses a different API pattern
+        if provider == "ollama" {
             println!("✅ [background_task] Using Ollama Rig provider with base_url: {:?}", base_url);
             
-            let ollama_provider = llm::ollama_rig::OllamaRigProvider::new(base_url.clone());
+            let ollama_provider = llm::ollama::OllamaRigProvider::new(base_url.clone());
             
             // Send chat request with streaming
             println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
@@ -818,8 +818,8 @@ pub async fn send_message(
             return;
         }
         
-        // Handle openrouter_rig separately as it uses a different API pattern
-        if provider == "openrouter_rig" {
+        // Handle openrouter separately as it uses a different API pattern
+        if provider == "openrouter" {
             println!("✅ [background_task] Using OpenRouter Rig provider");
             
             let api_key_val = match api_key.clone() {
@@ -832,7 +832,7 @@ pub async fn send_message(
                 }
             };
             
-            let openrouter_provider = llm::openrouter_rig::OpenRouterRigProvider::new(api_key_val);
+            let openrouter_provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
             
             // Send chat request with streaming
             println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
@@ -938,8 +938,8 @@ pub async fn send_message(
             return;
         }
         
-        // Handle openai_rig separately as it uses a different API pattern
-        if provider == "openai_rig" {
+        // Handle openai separately as it uses a different API pattern
+        if provider == "openai" {
             println!("✅ [background_task] Using OpenAI Rig provider");
             
             let api_key_val = match api_key.clone() {
@@ -952,7 +952,7 @@ pub async fn send_message(
                 }
             };
             
-            let openai_provider = llm::openai_rig::OpenAIRigProvider::new(api_key_val);
+            let openai_provider = llm::openai::OpenAIRigProvider::new(api_key_val);
             
             // Send chat request with streaming
             println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
@@ -1059,7 +1059,7 @@ pub async fn send_message(
         }
         
         // Unknown provider - clean up and exit
-        eprintln!("❌ [background_task] Unknown provider: {}. Available providers: openai_rig, openrouter_rig, ollama_rig", provider);
+        eprintln!("❌ [background_task] Unknown provider: {}. Available providers: openai, openrouter, ollama", provider);
         
         // Remove task from tracking
         let mut tasks = state_clone.generation_tasks.write().await;

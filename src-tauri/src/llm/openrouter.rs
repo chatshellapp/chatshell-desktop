@@ -3,7 +3,7 @@ use futures::StreamExt;
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
-use rig::providers::ollama;
+use rig::providers::openai;
 use rig::streaming::StreamedAssistantContent;
 use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
@@ -11,15 +11,13 @@ use tokio_util::sync::CancellationToken;
 use crate::llm::{ChatRequest, ChatResponse};
 use crate::thinking_parser;
 
-pub struct OllamaRigProvider {
-    base_url: String,
+pub struct OpenRouterRigProvider {
+    api_key: String,
 }
 
-impl OllamaRigProvider {
-    pub fn new(base_url: Option<String>) -> Self {
-        Self {
-            base_url: base_url.unwrap_or_else(|| "http://localhost:11434".to_string()),
-        }
+impl OpenRouterRigProvider {
+    pub fn new(api_key: String) -> Self {
+        Self { api_key }
     }
 
     pub async fn chat_stream(
@@ -28,17 +26,17 @@ impl OllamaRigProvider {
         cancel_token: CancellationToken,
         mut callback: impl FnMut(String) -> bool + Send,
     ) -> Result<ChatResponse> {
-        println!("🌐 [ollama_rig] Creating client with base_url: {}", self.base_url);
+        println!("🌐 [openrouter] Creating client with custom base URL");
         
-        // Create Ollama client with custom base URL
-        let client = ollama::Client::builder()
-            .base_url(&self.base_url)
+        // Create OpenAI-compatible client with OpenRouter base URL
+        let client = openai::Client::builder(&self.api_key)
+            .base_url("https://openrouter.ai/api/v1")
             .build();
         
         // Get completion model
         let model = client.completion_model(&request.model);
         
-        println!("🤖 [ollama_rig] Model created: {}", request.model);
+        println!("🤖 [openrouter] Model created: {}", request.model);
         
         // Convert messages to rig's Message format
         let mut chat_history = Vec::new();
@@ -68,7 +66,7 @@ impl OllamaRigProvider {
             content: OneOrMany::one(UserContent::Text(prompt_msg.content.clone().into())),
         };
         
-        println!("📝 [ollama_rig] Prompt: {} chars, history: {} messages", 
+        println!("📝 [openrouter] Prompt: {} chars, history: {} messages", 
                  prompt_msg.content.len(), 
                  chat_history.len());
         
@@ -88,7 +86,7 @@ impl OllamaRigProvider {
             additional_params: None,
         };
         
-        println!("📤 [ollama_rig] Starting streaming request...");
+        println!("📤 [openrouter] Starting streaming request...");
         
         // Create stream
         let mut stream = model.stream(completion_request).await?;
@@ -96,12 +94,12 @@ impl OllamaRigProvider {
         let mut full_content = String::new();
         let mut cancelled = false;
         
-        println!("📥 [ollama_rig] Processing stream...");
+        println!("📥 [openrouter] Processing stream...");
         
         // Process stream with cancellation support
         while let Some(result) = stream.next().await {
             if cancel_token.is_cancelled() {
-                println!("🛑 [ollama_rig] Cancellation detected, stopping stream");
+                println!("🛑 [openrouter] Cancellation detected, stopping stream");
                 cancelled = true;
                 drop(stream);
                 break;
@@ -115,7 +113,7 @@ impl OllamaRigProvider {
                         
                         // Call callback and check if it signals cancellation
                         if !callback(text_str.to_string()) {
-                            println!("🛑 [ollama_rig] Callback signaled cancellation");
+                            println!("🛑 [openrouter] Callback signaled cancellation");
                             cancelled = true;
                             break;
                         }
@@ -125,22 +123,22 @@ impl OllamaRigProvider {
                     // Ignore tool calls, reasoning, and final responses
                 }
                 Err(e) => {
-                    eprintln!("❌ [ollama_rig] Stream error: {}", e);
+                    eprintln!("❌ [openrouter] Stream error: {}", e);
                     return Err(e.into());
                 }
             }
         }
         
         if cancelled {
-            println!("⚠️ [ollama_rig] Stream was cancelled");
+            println!("⚠️ [openrouter] Stream was cancelled");
         } else {
-            println!("✅ [ollama_rig] Stream completed successfully");
+            println!("✅ [openrouter] Stream completed successfully");
         }
         
         // Parse thinking content
         let parsed = thinking_parser::parse_thinking_content(&full_content);
         
-        println!("📊 [ollama_rig] Parsed content: {} chars, thinking: {}", 
+        println!("📊 [openrouter] Parsed content: {} chars, thinking: {}", 
                  parsed.content.len(), 
                  parsed.thinking_content.is_some());
         

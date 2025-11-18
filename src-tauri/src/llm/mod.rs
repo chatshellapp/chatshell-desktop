@@ -1,7 +1,7 @@
 pub mod models;
-pub mod ollama_rig;
-pub mod openai_rig;
-pub mod openrouter_rig;
+pub mod ollama;
+pub mod openai;
+pub mod openrouter;
 
 use serde::{Deserialize, Serialize};
 
