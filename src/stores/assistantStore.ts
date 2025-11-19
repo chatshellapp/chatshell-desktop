@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { Assistant, CreateAssistantRequest } from '@/types';
 
@@ -17,72 +18,109 @@ interface AssistantStore {
   getAssistantById: (id: string) => Assistant | undefined;
 }
 
-export const useAssistantStore = create<AssistantStore>((set, get) => ({
+export const useAssistantStore = create<AssistantStore>()(
+  immer((set, get) => ({
   assistants: [],
   currentAssistant: null,
   isLoading: false,
   error: null,
 
   loadAssistants: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const assistants = await invoke<Assistant[]>('list_assistants');
-      set({ assistants, isLoading: false });
+      set((draft) => {
+        draft.assistants = assistants;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load assistants:', error);
     }
   },
 
   createAssistant: async (req: CreateAssistantRequest) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const assistant = await invoke<Assistant>('create_assistant', { req });
-      set((state) => ({
-        assistants: [...state.assistants, assistant],
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.assistants.push(assistant);
+        draft.isLoading = false;
+      });
       return assistant;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   updateAssistant: async (id: string, req: CreateAssistantRequest) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const assistant = await invoke<Assistant>('update_assistant', { id, req });
-      set((state) => ({
-        assistants: state.assistants.map((a) => (a.id === id ? assistant : a)),
-        currentAssistant: state.currentAssistant?.id === id ? assistant : state.currentAssistant,
-        isLoading: false,
-      }));
+      set((draft) => {
+        const index = draft.assistants.findIndex((a: Assistant) => a.id === id);
+        if (index >= 0) {
+          draft.assistants[index] = assistant;
+        }
+        if (draft.currentAssistant?.id === id) {
+          draft.currentAssistant = assistant;
+        }
+        draft.isLoading = false;
+      });
       return assistant;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   deleteAssistant: async (id: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       await invoke('delete_assistant', { id });
-      set((state) => ({
-        assistants: state.assistants.filter((a) => a.id !== id),
-        currentAssistant: state.currentAssistant?.id === id ? null : state.currentAssistant,
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.assistants = draft.assistants.filter((a: Assistant) => a.id !== id);
+        if (draft.currentAssistant?.id === id) {
+          draft.currentAssistant = null;
+        }
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   setCurrentAssistant: (assistant: Assistant | null) => {
     // Note: No cleanup needed - messages are per-conversation, not per-assistant
-    set({ currentAssistant: assistant });
+    set((draft) => {
+      draft.currentAssistant = assistant;
+    });
   },
 
   getAssistant: async (id: string) => {
@@ -98,5 +136,4 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   getAssistantById: (id: string) => {
     return get().assistants.find(a => a.id === id);
   },
-}));
-
+})));

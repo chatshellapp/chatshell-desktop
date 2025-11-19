@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { Message, Conversation } from '@/types';
 
@@ -23,8 +24,8 @@ const createDefaultConversationState = (): ConversationState => ({
 });
 
 interface MessageStore {
-  // Map of conversationId -> state
-  conversationStates: Map<string, ConversationState>;
+  // Record of conversationId -> state
+  conversationStates: Record<string, ConversationState>;
   
   // Global states
   isSending: boolean;
@@ -71,49 +72,60 @@ const THROTTLE_MS = 50; // Update UI every 50ms for smooth rendering
 // Maximum messages to keep in memory to prevent memory leaks
 const MAX_MESSAGES_IN_MEMORY = 100;
 
-export const useMessageStore = create<MessageStore>((set, get) => ({
-  conversationStates: new Map(),
+export const useMessageStore = create<MessageStore>()(
+  immer((set, get) => ({
+  conversationStates: {},
   isSending: false,
   error: null,
   onNewConversationCreated: undefined,
 
   getConversationState: (conversationId: string) => {
     const state = get();
-    let convState = state.conversationStates.get(conversationId);
+    let convState = state.conversationStates[conversationId];
     
     if (!convState) {
       // Create new state for this conversation
       convState = createDefaultConversationState();
-      const newMap = new Map(state.conversationStates);
-      newMap.set(conversationId, convState);
-      set({ conversationStates: newMap });
+      set((draft) => {
+        draft.conversationStates[conversationId] = convState!;
+      });
     }
     
     return convState;
   },
 
   loadMessages: async (conversationId: string) => {
-    const currentState = get().getConversationState(conversationId);
+    get().getConversationState(conversationId); // Ensure state exists
     
     // Update the state to loading
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, isLoading: true });
-    set({ conversationStates: newMap, error: null });
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.isLoading = true;
+      }
+      draft.error = null;
+    });
     
     try {
       const messages = await invoke<Message[]>('list_messages_by_conversation', { conversationId });
       // Limit messages in memory to prevent memory leaks
       const limitedMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY);
       
-      const updatedMap = new Map(get().conversationStates);
-      const state = updatedMap.get(conversationId) || createDefaultConversationState();
-      updatedMap.set(conversationId, { ...state, messages: limitedMessages, isLoading: false });
-      set({ conversationStates: updatedMap });
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId];
+        if (convState) {
+          convState.messages = limitedMessages;
+          convState.isLoading = false;
+        }
+      });
     } catch (error) {
-      const updatedMap = new Map(get().conversationStates);
-      const state = updatedMap.get(conversationId) || createDefaultConversationState();
-      updatedMap.set(conversationId, { ...state, isLoading: false });
-      set({ conversationStates: updatedMap, error: String(error) });
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId];
+        if (convState) {
+          convState.isLoading = false;
+        }
+        draft.error = String(error);
+      });
       console.error('Failed to load messages:', error);
     }
   },
@@ -131,7 +143,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     modelDbId?: string,
     assistantDbId?: string
   ) => {
-    set({ isSending: true, error: null });
+    set((draft) => {
+      draft.isSending = true;
+      draft.error = null;
+    });
     
     try {
       // If no conversationId, create a new conversation first
@@ -152,15 +167,15 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       }
       
       // Set waiting state for this conversation
-      const currentState = get().getConversationState(targetId);
-      const newMap = new Map(get().conversationStates);
-      newMap.set(targetId, {
-        ...currentState,
-        isStreaming: true,
-        isWaitingForAI: true,
-        streamingContent: '',
+      get().getConversationState(targetId); // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[targetId];
+        if (convState) {
+          convState.isStreaming = true;
+          convState.isWaitingForAI = true;
+          convState.streamingContent = '';
+        }
       });
-      set({ conversationStates: newMap });
       
       console.log('[messageStore] Invoking send_message command with params:', {
         conversationId: targetId,
@@ -194,13 +209,13 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       console.log('[messageStore] Received user message:', userMessage);
 
       // Add user message to the conversation
-      const updatedState = get().getConversationState(targetId);
-      const updatedMap = new Map(get().conversationStates);
-      updatedMap.set(targetId, {
-        ...updatedState,
-        messages: [...updatedState.messages, userMessage],
+      set((draft) => {
+        const convState = draft.conversationStates[targetId];
+        if (convState) {
+          convState.messages.push(userMessage);
+        }
+        draft.isSending = false;
       });
-      set({ conversationStates: updatedMap, isSending: false });
 
       console.log('[messageStore] User message added to store, waiting for assistant response...');
 
@@ -214,7 +229,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         errorKeys: error ? Object.keys(error) : 'null'
       });
       
-      set({ error: String(error), isSending: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isSending = false;
+      });
       throw error;
     }
   },
@@ -225,7 +243,9 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       await invoke('stop_generation', { conversationId });
       
       // Only reset sending flag
-      set({ isSending: false });
+      set((draft) => {
+        draft.isSending = false;
+      });
       
       console.log('[messageStore] Generation stopped successfully');
     } catch (error) {
@@ -234,73 +254,90 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   },
 
   clearMessages: async (conversationId: string) => {
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, isLoading: true });
-    set({ conversationStates: newMap, error: null });
+    get().getConversationState(conversationId); // Ensure state exists
+    
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.isLoading = true;
+      }
+      draft.error = null;
+    });
     
     try {
       await invoke('clear_messages_by_conversation', { conversationId });
       
-      const updatedMap = new Map(get().conversationStates);
-      const state = updatedMap.get(conversationId) || createDefaultConversationState();
-      updatedMap.set(conversationId, { ...state, messages: [], isLoading: false });
-      set({ conversationStates: updatedMap });
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId];
+        if (convState) {
+          convState.messages = [];
+          convState.isLoading = false;
+        }
+      });
     } catch (error) {
-      const updatedMap = new Map(get().conversationStates);
-      const state = updatedMap.get(conversationId) || createDefaultConversationState();
-      updatedMap.set(conversationId, { ...state, isLoading: false });
-      set({ conversationStates: updatedMap, error: String(error) });
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId];
+        if (convState) {
+          convState.isLoading = false;
+        }
+        draft.error = String(error);
+      });
       throw error;
     }
   },
 
   addMessage: (conversationId: string, message: Message) => {
     console.log('[messageStore] Adding message to conversation:', conversationId);
-    const currentState = get().getConversationState(conversationId);
+    get().getConversationState(conversationId); // Ensure state exists
     
-    // Check if message already exists (Entity Adapter pattern from Cherry Studio)
-    const existingIndex = currentState.messages.findIndex(m => m.id === message.id);
-    
-    let updatedMessages;
-    if (existingIndex >= 0) {
-      // Replace existing message (idempotent behavior)
-      console.log('[messageStore] Message exists, replacing:', message.id);
-      updatedMessages = [...currentState.messages];
-      updatedMessages[existingIndex] = message;
-    } else {
-      // Add new message
-      updatedMessages = [...currentState.messages, message];
-    }
-    
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, {
-      ...currentState,
-      messages: updatedMessages,
-      isWaitingForAI: false,
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        // Check if message already exists (Entity Adapter pattern from Cherry Studio)
+        const existingIndex = convState.messages.findIndex((m: Message) => m.id === message.id);
+        
+        if (existingIndex >= 0) {
+          // Replace existing message (idempotent behavior)
+          console.log('[messageStore] Message exists, replacing:', message.id);
+          convState.messages[existingIndex] = message;
+        } else {
+          // Add new message
+          convState.messages.push(message);
+        }
+        
+        convState.isWaitingForAI = false;
+      }
     });
-    set({ conversationStates: newMap });
   },
 
   setStreamingContent: (conversationId: string, content: string) => {
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, streamingContent: content });
-    set({ conversationStates: newMap });
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.streamingContent = content;
+      }
+    });
   },
 
   setIsStreaming: (conversationId: string, isStreaming: boolean) => {
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, isStreaming });
-    set({ conversationStates: newMap });
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.isStreaming = isStreaming;
+      }
+    });
   },
 
   setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => {
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, scrapingStatus: status });
-    set({ conversationStates: newMap });
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.scrapingStatus = status;
+      }
+    });
   },
 
   appendStreamingChunk: (conversationId: string, chunk: string) => {
@@ -325,20 +362,20 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       
       // Use setTimeout for consistent throttling
       const timeoutId = setTimeout(() => {
-        const currentState = get().getConversationState(conversationId);
+        get().getConversationState(conversationId); // Ensure state exists
         const chunks = pendingChunks.get(conversationId) || [];
         const allChunks = chunks.join('');
         pendingChunks.set(conversationId, []);
         updateScheduled.set(conversationId, false);
         updateTimeoutIds.delete(conversationId);
         
-        const newMap = new Map(get().conversationStates);
-        newMap.set(conversationId, {
-          ...currentState,
-          streamingContent: currentState.streamingContent + allChunks,
-          isWaitingForAI: false,
+        set((draft) => {
+          const convState = draft.conversationStates[conversationId];
+          if (convState) {
+            convState.streamingContent = convState.streamingContent + allChunks;
+            convState.isWaitingForAI = false;
+          }
         });
-        set({ conversationStates: newMap });
       }, THROTTLE_MS);
       
       updateTimeoutIds.set(conversationId, timeoutId);
@@ -346,10 +383,13 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   },
 
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => {
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, { ...currentState, isWaitingForAI: isWaiting });
-    set({ conversationStates: newMap });
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.isWaitingForAI = isWaiting;
+      }
+    });
   },
 
   cleanupConversation: (conversationId: string) => {
@@ -365,15 +405,15 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
     updateScheduled.delete(conversationId);
     
     // Reset streaming state for this conversation
-    const currentState = get().getConversationState(conversationId);
-    const newMap = new Map(get().conversationStates);
-    newMap.set(conversationId, {
-      ...currentState,
-      streamingContent: '',
-      isStreaming: false,
-      isWaitingForAI: false,
-      scrapingStatus: 'idle',
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.streamingContent = '';
+        convState.isStreaming = false;
+        convState.isWaitingForAI = false;
+        convState.scrapingStatus = 'idle';
+      }
     });
-    set({ conversationStates: newMap });
   },
-}));
+})));

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { User } from '@/types';
 
@@ -14,32 +15,51 @@ interface UserStore {
   getSelfUserId: () => string | null;
 }
 
-export const useUserStore = create<UserStore>((set, get) => ({
+export const useUserStore = create<UserStore>()(
+  immer((set, get) => ({
   selfUser: null,
   users: [],
   isLoading: false,
   error: null,
 
   loadSelfUser: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const selfUser = await invoke<User | null>('get_self_user');
       console.log('[userStore] Loaded self user:', selfUser);
-      set({ selfUser, isLoading: false });
+      set((draft) => {
+        draft.selfUser = selfUser;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load self user:', error);
     }
   },
 
   loadUsers: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const users = await invoke<User[]>('list_users');
       console.log('[userStore] Loaded users:', users);
-      set({ users, isLoading: false });
+      set((draft) => {
+        draft.users = users;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load users:', error);
     }
   },
@@ -48,5 +68,4 @@ export const useUserStore = create<UserStore>((set, get) => ({
     const { selfUser } = get();
     return selfUser?.id || null;
   },
-}));
-
+})));

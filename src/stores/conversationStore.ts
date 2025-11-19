@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { 
   Conversation, 
@@ -49,7 +50,8 @@ interface ConversationStore {
   getCurrentModel: () => Model | null;
 }
 
-export const useConversationStore = create<ConversationStore>((set, get) => ({
+export const useConversationStore = create<ConversationStore>()(
+  immer((set, get) => ({
   conversations: [],
   currentConversation: null,
   currentParticipants: [],
@@ -62,63 +64,97 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   error: null,
 
   loadConversations: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const conversations = await invoke<Conversation[]>('list_conversations');
       console.log('[conversationStore] Loaded conversations:', conversations);
-      set({ conversations, isLoading: false });
+      set((draft) => {
+        draft.conversations = conversations;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load conversations:', error);
     }
   },
 
   createConversation: async (title: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const req: CreateConversationRequest = { title };
       const conversation = await invoke<Conversation>('create_conversation', { req });
       console.log('[conversationStore] Created conversation:', conversation);
       
-      set((state) => ({
-        conversations: [conversation, ...state.conversations],
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.conversations.unshift(conversation);
+        draft.isLoading = false;
+      });
       
       return conversation;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   updateConversation: async (id: string, title: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const conversation = await invoke<Conversation>('update_conversation', { id, title });
-      set((state) => ({
-        conversations: state.conversations.map((c) => (c.id === id ? conversation : c)),
-        currentConversation: state.currentConversation?.id === id ? conversation : state.currentConversation,
-        isLoading: false,
-      }));
+      set((draft) => {
+        const index = draft.conversations.findIndex((c: Conversation) => c.id === id);
+        if (index >= 0) {
+          draft.conversations[index] = conversation;
+        }
+        if (draft.currentConversation?.id === id) {
+          draft.currentConversation = conversation;
+        }
+        draft.isLoading = false;
+      });
       return conversation;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   deleteConversation: async (id: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       await invoke('delete_conversation', { id });
-      set((state) => ({
-        conversations: state.conversations.filter((c) => c.id !== id),
-        currentConversation: state.currentConversation?.id === id ? null : state.currentConversation,
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.conversations = draft.conversations.filter((c: Conversation) => c.id !== id);
+        if (draft.currentConversation?.id === id) {
+          draft.currentConversation = null;
+        }
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
@@ -132,7 +168,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       console.log('[conversationStore] Selected conversation:', conversation);
       
       if (conversation) {
-        set({ currentConversation: conversation });
+        set((draft) => {
+          draft.currentConversation = conversation;
+        });
         // Load participants for this conversation
         await get().loadParticipants(id);
         
@@ -176,33 +214,47 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             console.log('[conversationStore] No participant found, using lastUsedAssistant:', state.lastUsedAssistant.name);
           } else {
             // Only clear if we have no lastUsed either
-            set({ selectedModel: null, selectedAssistant: null });
+            set((draft) => {
+              draft.selectedModel = null;
+              draft.selectedAssistant = null;
+            });
             console.log('[conversationStore] No model/assistant found, cleared selection');
           }
         }
       } else {
-        set({ currentConversation: null, currentParticipants: [] });
+        set((draft) => {
+          draft.currentConversation = null;
+          draft.currentParticipants = [];
+        });
       }
     } catch (error) {
       console.error('Failed to select conversation:', error);
-      set({ error: String(error) });
+      set((draft) => {
+        draft.error = String(error);
+      });
     }
   },
 
   setCurrentConversation: (conversation: Conversation | null) => {
     // Don't cleanup here - preserve streaming state across conversation switches
     // The streaming state is now tracked per conversation ID
-    set({ currentConversation: conversation });
+    set((draft) => {
+      draft.currentConversation = conversation;
+    });
   },
 
   loadParticipants: async (conversationId: string) => {
     try {
       const participants = await invoke<ConversationParticipant[]>('list_conversation_participants', { conversationId });
       console.log('[conversationStore] Loaded participants:', participants);
-      set({ currentParticipants: participants });
+      set((draft) => {
+        draft.currentParticipants = participants;
+      });
     } catch (error) {
       console.error('Failed to load participants:', error);
-      set({ error: String(error) });
+      set((draft) => {
+        draft.error = String(error);
+      });
     }
   },
 
@@ -217,12 +269,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const participant = await invoke<ConversationParticipant>('add_conversation_participant', { req });
       console.log('[conversationStore] Added participant:', participant);
       
-      set((state) => ({
-        currentParticipants: [...state.currentParticipants, participant],
-      }));
+      set((draft) => {
+        draft.currentParticipants.push(participant);
+      });
     } catch (error) {
       console.error('Failed to add participant:', error);
-      set({ error: String(error) });
+      set((draft) => {
+        draft.error = String(error);
+      });
       throw error;
     }
   },
@@ -230,37 +284,35 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   removeParticipant: async (participantId: string) => {
     try {
       await invoke('remove_conversation_participant', { id: participantId });
-      set((state) => ({
-        currentParticipants: state.currentParticipants.filter((p) => p.id !== participantId),
-      }));
+      set((draft) => {
+        draft.currentParticipants = draft.currentParticipants.filter((p: ConversationParticipant) => p.id !== participantId);
+      });
     } catch (error) {
       console.error('Failed to remove participant:', error);
-      set({ error: String(error) });
+      set((draft) => {
+        draft.error = String(error);
+      });
       throw error;
     }
   },
 
   setSelectedModel: (model: Model | null) => {
     console.log('[conversationStore] Setting selected model:', model?.name);
-    set({ 
-      selectedModel: model,
-      // When selecting a model, clear assistant selection
-      selectedAssistant: null,
-      // Track as last used for future conversations
-      lastUsedModel: model,
-      lastUsedAssistant: null,
+    set((draft) => {
+      draft.selectedModel = model;
+      draft.selectedAssistant = null;
+      draft.lastUsedModel = model;
+      draft.lastUsedAssistant = null;
     });
   },
 
   setSelectedAssistant: (assistant: Assistant | null) => {
     console.log('[conversationStore] Setting selected assistant:', assistant?.name);
-    set({ 
-      selectedAssistant: assistant,
-      // When selecting an assistant, clear model selection
-      selectedModel: null,
-      // Track as last used for future conversations
-      lastUsedAssistant: assistant,
-      lastUsedModel: null,
+    set((draft) => {
+      draft.selectedAssistant = assistant;
+      draft.selectedModel = null;
+      draft.lastUsedAssistant = assistant;
+      draft.lastUsedModel = null;
     });
   },
 
@@ -270,5 +322,5 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // If model is selected, return it directly
     return state.selectedModel;
   },
-}));
+})));
 

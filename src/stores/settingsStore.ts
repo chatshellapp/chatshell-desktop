@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { Setting, ModelInfo } from '@/types';
 
@@ -14,23 +15,33 @@ interface SettingsStore {
   fetchModels: (provider: string, apiKeyOrUrl?: string) => Promise<void>;
 }
 
-export const useSettingsStore = create<SettingsStore>((set, get) => ({
+export const useSettingsStore = create<SettingsStore>()(
+  immer((set, get) => ({
   settings: {},
   models: {},
   isLoading: false,
   error: null,
 
   loadSettings: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const settingsArray = await invoke<Setting[]>('get_all_settings');
       const settingsMap: Record<string, string> = {};
       settingsArray.forEach((setting) => {
         settingsMap[setting.key] = setting.value;
       });
-      set({ settings: settingsMap, isLoading: false });
+      set((draft) => {
+        draft.settings = settingsMap;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load settings:', error);
     }
   },
@@ -46,21 +57,30 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   saveSetting: async (key: string, value: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       await invoke('set_setting', { key, value });
-      set((state) => ({
-        settings: { ...state.settings, [key]: value },
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.settings[key] = value;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   fetchModels: async (provider: string, apiKeyOrUrl?: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       let models: ModelInfo[] = [];
 
@@ -79,15 +99,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         });
       }
 
-      set((state) => ({
-        models: { ...state.models, [provider]: models },
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.models[provider] = models;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to fetch models:', error);
       throw error;
     }
   },
-}));
-
+})));

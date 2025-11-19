@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import { invoke } from '@tauri-apps/api/core';
 import type { Provider, CreateProviderRequest } from '@/types';
 
@@ -14,62 +15,93 @@ interface ProviderStore {
   getProviderById: (id: string) => Provider | undefined;
 }
 
-export const useProviderStore = create<ProviderStore>((set, get) => ({
+export const useProviderStore = create<ProviderStore>()(
+  immer((set, get) => ({
   providers: [],
   isLoading: false,
   error: null,
 
   loadProviders: async () => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const providers = await invoke<Provider[]>('list_providers');
-      set({ providers, isLoading: false });
+      set((draft) => {
+        draft.providers = providers;
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       console.error('Failed to load providers:', error);
     }
   },
 
   createProvider: async (req: CreateProviderRequest) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const provider = await invoke<Provider>('create_provider', { req });
-      set((state) => ({
-        providers: [...state.providers, provider],
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.providers.push(provider);
+        draft.isLoading = false;
+      });
       return provider;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   updateProvider: async (id: string, req: CreateProviderRequest) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       const provider = await invoke<Provider>('update_provider', { id, req });
-      set((state) => ({
-        providers: state.providers.map((p) => (p.id === id ? provider : p)),
-        isLoading: false,
-      }));
+      set((draft) => {
+        const index = draft.providers.findIndex((p: Provider) => p.id === id);
+        if (index >= 0) {
+          draft.providers[index] = provider;
+        }
+        draft.isLoading = false;
+      });
       return provider;
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
 
   deleteProvider: async (id: string) => {
-    set({ isLoading: true, error: null });
+    set((draft) => {
+      draft.isLoading = true;
+      draft.error = null;
+    });
     try {
       await invoke('delete_provider', { id });
-      set((state) => ({
-        providers: state.providers.filter((p) => p.id !== id),
-        isLoading: false,
-      }));
+      set((draft) => {
+        draft.providers = draft.providers.filter((p: Provider) => p.id !== id);
+        draft.isLoading = false;
+      });
     } catch (error) {
-      set({ error: String(error), isLoading: false });
+      set((draft) => {
+        draft.error = String(error);
+        draft.isLoading = false;
+      });
       throw error;
     }
   },
@@ -77,5 +109,4 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   getProviderById: (id: string) => {
     return get().providers.find((p) => p.id === id);
   },
-}));
-
+})));
