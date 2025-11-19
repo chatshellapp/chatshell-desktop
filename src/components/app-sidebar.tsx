@@ -663,11 +663,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   
   // Get assistant store functions and state - use real data instead of mock
   const assistants = useAssistantStore((state) => state.assistants)
+  const updateAssistant = useAssistantStore((state) => state.updateAssistant)
   
   // Get model store functions and state - use real data instead of mock
   const models = useModelStore((state) => state.models)
   const providers = useModelStore((state) => state.providers)
   const getModelById = useModelStore((state) => state.getModelById)
+  const updateModel = useModelStore((state) => state.updateModel)
   
   // Load self user when component mounts
   React.useEffect(() => {
@@ -876,7 +878,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const realModel = models.find((m: any) => m.id === model.id)
     if (realModel) {
       try {
-        const { updateModel } = useModelStore.getState()
         await updateModel(realModel.id, {
           name: realModel.name,
           provider_id: realModel.provider_id,
@@ -960,7 +961,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const realAssistant = assistants.find((a: any) => a.id === assistant.id)
     if (realAssistant) {
       try {
-        const { updateAssistant } = useAssistantStore.getState()
         await updateAssistant(realAssistant.id, {
           name: realAssistant.name,
           system_prompt: realAssistant.system_prompt,

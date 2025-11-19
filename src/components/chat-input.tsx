@@ -125,7 +125,9 @@ export function ChatInput({}: ChatInputProps) {
   const models = useModelStore((state) => state.models)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
+  const updateModel = useModelStore((state) => state.updateModel)
   const assistants = useAssistantStore((state) => state.assistants)
+  const updateAssistant = useAssistantStore((state) => state.updateAssistant)
   
   // Get conversation-specific state
   const conversationState = useMessageStore((state) => 
@@ -411,7 +413,6 @@ export function ChatInput({}: ChatInputProps) {
     const realModel = models.find((m) => m.id === model.id)
     if (realModel) {
       try {
-        const { updateModel } = useModelStore.getState()
         await updateModel(realModel.id, {
           name: realModel.name,
           provider_id: realModel.provider_id,
@@ -431,7 +432,6 @@ export function ChatInput({}: ChatInputProps) {
     const realAssistant = assistants.find((a) => a.id === assistant.id)
     if (realAssistant) {
       try {
-        const { updateAssistant } = useAssistantStore.getState()
         await updateAssistant(realAssistant.id, {
           name: realAssistant.name,
           system_prompt: realAssistant.system_prompt,
