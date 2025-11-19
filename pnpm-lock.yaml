@@ -53,6 +53,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      immer:
+        specifier: ^10.2.0
+        version: 10.2.0
       katex:
         specifier: ^0.16.25
         version: 0.16.25
@@ -88,7 +91,7 @@ importers:
         version: 4.1.17
       zustand:
         specifier: ^4.5.0
-        version: 4.5.7(@types/react@19.2.4)(react@19.2.0)
+        version: 4.5.7(@types/react@19.2.4)(immer@10.2.0)(react@19.2.0)
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2
@@ -1325,6 +1328,9 @@ packages:
 
   html-url-attributes@3.0.1:
     resolution: {integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==}
+
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
 
   inline-style-parser@0.2.6:
     resolution: {integrity: sha512-gtGXVaBdl5mAes3rPcMedEBm12ibjt1kDMFfheul1wUAOVEJW60voNdMVzVkfLN06O7ZaD/rxhfKgtlgtTbMjg==}
@@ -2977,6 +2983,8 @@ snapshots:
 
   html-url-attributes@3.0.1: {}
 
+  immer@10.2.0: {}
+
   inline-style-parser@0.2.6: {}
 
   is-alphabetical@2.0.1: {}
@@ -3752,11 +3760,12 @@ snapshots:
 
   yallist@3.1.1: {}
 
-  zustand@4.5.7(@types/react@19.2.4)(react@19.2.0):
+  zustand@4.5.7(@types/react@19.2.4)(immer@10.2.0)(react@19.2.0):
     dependencies:
       use-sync-external-store: 1.6.0(react@19.2.0)
     optionalDependencies:
       '@types/react': 19.2.4
+      immer: 10.2.0
       react: 19.2.0
 
   zwitch@2.0.4: {}
