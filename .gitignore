@@ -27,8 +27,8 @@ dist-ssr
 src/components/demo
 src-tauri/src/demo
 
-# Temp directory
-temp
+# Docs directory
+docs
 
 # Database files
 src-tauri/chatshell.db
