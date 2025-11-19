@@ -1058,6 +1058,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     console.log('[handleNewConversation] selectedAssistant:', selectedAssistant?.name)
     
     try {
+      // Save current selection before creating conversation
+      const currentModel = selectedModel
+      const currentAssistant = selectedAssistant
+      
       // Create a new conversation
       console.log('Creating new conversation...')
       const newConversation = await createConversation("New Conversation")
@@ -1067,6 +1071,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       // This ensures only models/assistants that are actually used are recorded
       
       setCurrentConversation(newConversation)
+      
+      // Restore the selection after setting current conversation
+      // This ensures the new conversation inherits the last used model/assistant
+      if (currentModel) {
+        console.log('[handleNewConversation] Restoring selectedModel:', currentModel.name)
+        setSelectedModel(currentModel)
+      } else if (currentAssistant) {
+        console.log('[handleNewConversation] Restoring selectedAssistant:', currentAssistant.name)
+        setSelectedAssistant(currentAssistant)
+      }
       
       // Switch to conversations view if not already there
       if (activeItem?.title !== 'Conversations') {

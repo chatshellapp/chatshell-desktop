@@ -167,9 +167,19 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             }
           }
         } else {
-          // Clear selection if no model/assistant participant
-          set({ selectedModel: null, selectedAssistant: null });
-          console.log('[conversationStore] No model/assistant participant found, cleared selection');
+          // No participants yet - use lastUsed model/assistant to maintain continuity
+          const state = get();
+          if (state.lastUsedModel) {
+            get().setSelectedModel(state.lastUsedModel);
+            console.log('[conversationStore] No participant found, using lastUsedModel:', state.lastUsedModel.name);
+          } else if (state.lastUsedAssistant) {
+            get().setSelectedAssistant(state.lastUsedAssistant);
+            console.log('[conversationStore] No participant found, using lastUsedAssistant:', state.lastUsedAssistant.name);
+          } else {
+            // Only clear if we have no lastUsed either
+            set({ selectedModel: null, selectedAssistant: null });
+            console.log('[conversationStore] No model/assistant found, cleared selection');
+          }
         }
       } else {
         set({ currentConversation: null, currentParticipants: [] });

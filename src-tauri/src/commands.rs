@@ -848,20 +848,7 @@ pub async fn send_message(
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
             
-            // Auto-generate title for new conversations
-            auto_generate_title_if_needed(
-                &state_clone,
-                &app,
-                &conversation_id_clone,
-                &content,
-                &final_content,
-                &provider,
-                &model,
-                api_key.clone(),
-                base_url.clone(),
-            ).await;
-            
-            // Notify frontend that streaming is complete
+            // Notify frontend that streaming is complete (do this first, before title generation)
             let completion_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
                 "message": assistant_message,
@@ -869,8 +856,32 @@ pub async fn send_message(
             let _ = app.emit("chat-complete", completion_payload);
             
             // Remove task from tracking
-            let mut tasks = state_clone.generation_tasks.write().await;
-            tasks.remove(&conversation_id_clone);
+            {
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
+            }
+            
+            // Auto-generate title for new conversations (async, doesn't block the response)
+            let state_for_title = state_clone.clone();
+            let app_for_title = app.clone();
+            let conversation_id_for_title = conversation_id_clone.clone();
+            let content_for_title = content.clone();
+            let final_content_for_title = final_content.clone();
+            let provider_for_title = provider.clone();
+            let model_for_title = model.clone();
+            tokio::spawn(async move {
+                auto_generate_title_if_needed(
+                    &state_for_title,
+                    &app_for_title,
+                    &conversation_id_for_title,
+                    &content_for_title,
+                    &final_content_for_title,
+                    &provider_for_title,
+                    &model_for_title,
+                    api_key,
+                    base_url,
+                ).await;
+            });
             
             return;
         }
@@ -981,20 +992,7 @@ pub async fn send_message(
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
             
-            // Auto-generate title for new conversations
-            auto_generate_title_if_needed(
-                &state_clone,
-                &app,
-                &conversation_id_clone,
-                &content,
-                &final_content,
-                &provider,
-                &model,
-                api_key.clone(),
-                base_url.clone(),
-            ).await;
-            
-            // Notify frontend that streaming is complete
+            // Notify frontend that streaming is complete (do this first, before title generation)
             let completion_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
                 "message": assistant_message,
@@ -1002,8 +1000,32 @@ pub async fn send_message(
             let _ = app.emit("chat-complete", completion_payload);
             
             // Remove task from tracking
-            let mut tasks = state_clone.generation_tasks.write().await;
-            tasks.remove(&conversation_id_clone);
+            {
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
+            }
+            
+            // Auto-generate title for new conversations (async, doesn't block the response)
+            let state_for_title = state_clone.clone();
+            let app_for_title = app.clone();
+            let conversation_id_for_title = conversation_id_clone.clone();
+            let content_for_title = content.clone();
+            let final_content_for_title = final_content.clone();
+            let provider_for_title = provider.clone();
+            let model_for_title = model.clone();
+            tokio::spawn(async move {
+                auto_generate_title_if_needed(
+                    &state_for_title,
+                    &app_for_title,
+                    &conversation_id_for_title,
+                    &content_for_title,
+                    &final_content_for_title,
+                    &provider_for_title,
+                    &model_for_title,
+                    api_key,
+                    base_url,
+                ).await;
+            });
             
             return;
         }
@@ -1114,20 +1136,7 @@ pub async fn send_message(
             
             println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
             
-            // Auto-generate title for new conversations
-            auto_generate_title_if_needed(
-                &state_clone,
-                &app,
-                &conversation_id_clone,
-                &content,
-                &final_content,
-                &provider,
-                &model,
-                api_key.clone(),
-                base_url.clone(),
-            ).await;
-            
-            // Notify frontend that streaming is complete
+            // Notify frontend that streaming is complete (do this first, before title generation)
             let completion_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
                 "message": assistant_message,
@@ -1135,8 +1144,32 @@ pub async fn send_message(
             let _ = app.emit("chat-complete", completion_payload);
             
             // Remove task from tracking
-            let mut tasks = state_clone.generation_tasks.write().await;
-            tasks.remove(&conversation_id_clone);
+            {
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
+            }
+            
+            // Auto-generate title for new conversations (async, doesn't block the response)
+            let state_for_title = state_clone.clone();
+            let app_for_title = app.clone();
+            let conversation_id_for_title = conversation_id_clone.clone();
+            let content_for_title = content.clone();
+            let final_content_for_title = final_content.clone();
+            let provider_for_title = provider.clone();
+            let model_for_title = model.clone();
+            tokio::spawn(async move {
+                auto_generate_title_if_needed(
+                    &state_for_title,
+                    &app_for_title,
+                    &conversation_id_for_title,
+                    &content_for_title,
+                    &final_content_for_title,
+                    &provider_for_title,
+                    &model_for_title,
+                    api_key,
+                    base_url,
+                ).await;
+            });
             
             return;
         }

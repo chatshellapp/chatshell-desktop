@@ -257,10 +257,25 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   addMessage: (conversationId: string, message: Message) => {
     console.log('[messageStore] Adding message to conversation:', conversationId);
     const currentState = get().getConversationState(conversationId);
+    
+    // Check if message already exists (Entity Adapter pattern from Cherry Studio)
+    const existingIndex = currentState.messages.findIndex(m => m.id === message.id);
+    
+    let updatedMessages;
+    if (existingIndex >= 0) {
+      // Replace existing message (idempotent behavior)
+      console.log('[messageStore] Message exists, replacing:', message.id);
+      updatedMessages = [...currentState.messages];
+      updatedMessages[existingIndex] = message;
+    } else {
+      // Add new message
+      updatedMessages = [...currentState.messages, message];
+    }
+    
     const newMap = new Map(get().conversationStates);
     newMap.set(conversationId, {
       ...currentState,
-      messages: [...currentState.messages, message],
+      messages: updatedMessages,
       isWaitingForAI: false,
     });
     set({ conversationStates: newMap });
