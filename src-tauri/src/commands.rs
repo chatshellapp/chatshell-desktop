@@ -2,7 +2,7 @@ use tauri::{State, Emitter};
 use crate::db::Database;
 use crate::models::*;
 use crate::crypto;
-use crate::llm::{self, ChatRequest, ChatMessage};
+use crate::llm::{self, ChatMessage};
 use crate::scraper;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -341,6 +341,40 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .map_err(|e| e.to_string())
 }
 
+// Helper function to call LLM provider (unified for all providers)
+async fn call_llm_provider(
+    provider: &str,
+    model: String,
+    messages: Vec<ChatMessage>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<llm::ChatResponse> {
+    let request = llm::ChatRequest {
+        model,
+        messages,
+        stream: false,
+    };
+    let cancel_token = CancellationToken::new();
+    
+    match provider {
+        "openai" => {
+            let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
+            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
+            provider.chat_stream(request, cancel_token, |_| true).await
+        }
+        "openrouter" => {
+            let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
+            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
+            provider.chat_stream(request, cancel_token, |_| true).await
+        }
+        "ollama" => {
+            let provider = llm::ollama::OllamaRigProvider::new(base_url);
+            provider.chat_stream(request, cancel_token, |_| true).await
+        }
+        _ => Err(anyhow::anyhow!("Unknown provider: {}. Use openai, openrouter, or ollama", provider)),
+    }
+}
+
 // Helper function to generate conversation title
 async fn generate_conversation_title(
     state: &AppState,
@@ -393,53 +427,17 @@ async fn generate_conversation_title(
         assistant_message
     );
     
-    // Generate title using rig providers
-    let response = match summary_provider.as_str() {
-        "openai" => {
-            let api_key_val = summary_api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
-            let request = ChatRequest {
-                model: summary_model,
-                messages: vec![ChatMessage {
-                    role: "user".to_string(),
-                    content: title_prompt.clone(),
-                }],
-                stream: false,
-            };
-            let cancel_token = tokio_util::sync::CancellationToken::new();
-            provider.chat_stream(request, cancel_token, |_| true).await?
-        }
-        "openrouter" => {
-            let api_key_val = summary_api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
-            let request = ChatRequest {
-                model: summary_model,
-                messages: vec![ChatMessage {
-                    role: "user".to_string(),
-                    content: title_prompt.clone(),
-                }],
-                stream: false,
-            };
-            let cancel_token = tokio_util::sync::CancellationToken::new();
-            provider.chat_stream(request, cancel_token, |_| true).await?
-        }
-        "ollama" => {
-            let provider = llm::ollama::OllamaRigProvider::new(summary_base_url);
-            let request = ChatRequest {
-                model: summary_model,
-                messages: vec![ChatMessage {
-                    role: "user".to_string(),
-                    content: title_prompt.clone(),
-                }],
-                stream: false,
-            };
-            let cancel_token = tokio_util::sync::CancellationToken::new();
-            provider.chat_stream(request, cancel_token, |_| true).await?
-        }
-        _ => {
-            return Err(anyhow::anyhow!("Unknown provider: {}. Use openai, openrouter, or ollama", summary_provider));
-        }
-    };
+    // Generate title using unified provider handler
+    let response = call_llm_provider(
+        &summary_provider,
+        summary_model,
+        vec![ChatMessage {
+            role: "user".to_string(),
+            content: title_prompt,
+        }],
+        summary_api_key,
+        summary_base_url,
+    ).await?;
     
     // Clean up the title (remove quotes, extra whitespace, etc.)
     let title = response.content.trim()
@@ -493,6 +491,237 @@ async fn auto_generate_title_if_needed(
             }
         }
     }
+}
+
+// Helper function to handle streaming for any provider (eliminates duplication)
+async fn handle_provider_streaming(
+    provider: String,
+    model: String,
+    chat_messages: Vec<ChatMessage>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    cancel_token: CancellationToken,
+    state_clone: AppState,
+    app: tauri::AppHandle,
+    conversation_id_clone: String,
+    content: String,
+    model_db_id: Option<String>,
+    assistant_db_id: Option<String>,
+) {
+    println!("✅ [background_task] Using {} provider", provider);
+    
+    // Create the appropriate provider
+    let request = llm::ChatRequest {
+        model: model.clone(),
+        messages: chat_messages.clone(),
+        stream: true,
+    };
+    
+    // Track accumulated content for cancellation handling
+    let accumulated_content = Arc::new(RwLock::new(String::new()));
+    let accumulated_content_clone = accumulated_content.clone();
+    let conversation_id_for_stream = conversation_id_clone.clone();
+    let app_for_stream = app.clone();
+    let cancel_token_for_callback = cancel_token.clone();
+    
+    // Call the appropriate provider and handle streaming
+    let response = match provider.as_str() {
+        "openai" => {
+            let api_key_val = match api_key.clone() {
+                Some(k) => k,
+                None => {
+                    eprintln!("❌ [background_task] OpenAI API key required");
+                    let mut tasks = state_clone.generation_tasks.write().await;
+                    tasks.remove(&conversation_id_clone);
+                    return;
+                }
+            };
+            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
+            provider
+                .chat_stream(
+                    request,
+                    cancel_token.clone(),
+                    move |chunk: String| -> bool {
+                        // Check if cancelled
+                        if cancel_token_for_callback.is_cancelled() {
+                            println!("🛑 [streaming] Generation cancelled, stopping stream");
+                            return false;
+                        }
+                        
+                        // Accumulate content
+                        if let Ok(mut content) = accumulated_content_clone.try_write() {
+                            content.push_str(&chunk);
+                        }
+                        
+                        let payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                            "content": chunk,
+                        });
+                        let _ = app_for_stream.emit("chat-stream", payload);
+                        
+                        true // Continue streaming
+                    },
+                )
+                .await
+        }
+        "openrouter" => {
+            let api_key_val = match api_key.clone() {
+                Some(k) => k,
+                None => {
+                    eprintln!("❌ [background_task] OpenRouter API key required");
+                    let mut tasks = state_clone.generation_tasks.write().await;
+                    tasks.remove(&conversation_id_clone);
+                    return;
+                }
+            };
+            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
+            provider
+                .chat_stream(
+                    request,
+                    cancel_token.clone(),
+                    move |chunk: String| -> bool {
+                        // Check if cancelled
+                        if cancel_token_for_callback.is_cancelled() {
+                            println!("🛑 [streaming] Generation cancelled, stopping stream");
+                            return false;
+                        }
+                        
+                        // Accumulate content
+                        if let Ok(mut content) = accumulated_content_clone.try_write() {
+                            content.push_str(&chunk);
+                        }
+                        
+                        let payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                            "content": chunk,
+                        });
+                        let _ = app_for_stream.emit("chat-stream", payload);
+                        
+                        true // Continue streaming
+                    },
+                )
+                .await
+        }
+        "ollama" => {
+            let provider = llm::ollama::OllamaRigProvider::new(base_url.clone());
+            provider
+                .chat_stream(
+                    request,
+                    cancel_token.clone(),
+                    move |chunk: String| -> bool {
+                        // Check if cancelled
+                        if cancel_token_for_callback.is_cancelled() {
+                            println!("🛑 [streaming] Generation cancelled, stopping stream");
+                            return false;
+                        }
+                        
+                        // Accumulate content
+                        if let Ok(mut content) = accumulated_content_clone.try_write() {
+                            content.push_str(&chunk);
+                        }
+                        
+                        let payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                            "content": chunk,
+                        });
+                        let _ = app_for_stream.emit("chat-stream", payload);
+                        
+                        true // Continue streaming
+                    },
+                )
+                .await
+        }
+        _ => {
+            eprintln!("❌ [background_task] Unknown provider: {}", provider);
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+    
+    let response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("LLM request failed: {}", e);
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+    
+    // Use response content directly
+    let final_content = response.content.clone();
+    
+    if final_content.is_empty() {
+        println!("⚠️ [background_task] No content to save, skipping");
+        let mut tasks = state_clone.generation_tasks.write().await;
+        tasks.remove(&conversation_id_clone);
+        return;
+    }
+    
+    // Determine sender_type and sender_id
+    let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
+        ("model".to_string(), Some(model_id))
+    } else if let Some(assistant_id) = assistant_db_id.clone() {
+        ("assistant".to_string(), Some(assistant_id))
+    } else {
+        ("assistant".to_string(), None)
+    };
+    
+    // Save assistant message
+    let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
+        conversation_id: Some(conversation_id_clone.clone()),
+        sender_type,
+        sender_id,
+        content: final_content.clone(),
+        thinking_content: response.thinking_content,
+        tokens: response.tokens,
+    }) {
+        Ok(msg) => msg,
+        Err(e) => {
+            eprintln!("Failed to save assistant message: {}", e);
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+    
+    println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
+    
+    // Notify frontend that streaming is complete (do this first, before title generation)
+    let completion_payload = serde_json::json!({
+        "conversation_id": conversation_id_clone,
+        "message": assistant_message,
+    });
+    let _ = app.emit("chat-complete", completion_payload);
+    
+    // Remove task from tracking
+    {
+        let mut tasks = state_clone.generation_tasks.write().await;
+        tasks.remove(&conversation_id_clone);
+    }
+    
+    // Auto-generate title for new conversations (async, doesn't block the response)
+    let state_for_title = state_clone.clone();
+    let app_for_title = app.clone();
+    let conversation_id_for_title = conversation_id_clone.clone();
+    let content_for_title = content.clone();
+    let final_content_for_title = final_content.clone();
+    let provider_for_title = provider.clone();
+    let model_for_title = model.clone();
+    tokio::spawn(async move {
+        auto_generate_title_if_needed(
+            &state_for_title,
+            &app_for_title,
+            &conversation_id_for_title,
+            &content_for_title,
+            &final_content_for_title,
+            &provider_for_title,
+            &model_for_title,
+            api_key,
+            base_url,
+        ).await;
+    });
 }
 
 // Chat command - now returns immediately and processes in background
@@ -752,434 +981,22 @@ pub async fn send_message(
             content: final_user_content,
         });
 
-        // Handle ollama separately as it uses a different API pattern
-        if provider == "ollama" {
-            println!("✅ [background_task] Using Ollama Rig provider with base_url: {:?}", base_url);
-            
-            let ollama_provider = llm::ollama::OllamaRigProvider::new(base_url.clone());
-            
-            // Send chat request with streaming
-            println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
-            let request = ChatRequest {
-                model: model.clone(),
-                messages: chat_messages.clone(),
-                stream: true,
-            };
-            
-            // Track accumulated content for cancellation handling
-            let accumulated_content = Arc::new(RwLock::new(String::new()));
-            let accumulated_content_clone = accumulated_content.clone();
-            let conversation_id_for_stream = conversation_id_clone.clone();
-            let app_for_stream = app.clone();
-            let cancel_token_for_callback = cancel_token.clone();
-            
-            let response = match ollama_provider
-                .chat_stream(
-                    request,
-                    cancel_token.clone(),
-                    move |chunk: String| -> bool {
-                        // Check if cancelled
-                        if cancel_token_for_callback.is_cancelled() {
-                            println!("🛑 [streaming] Generation cancelled, stopping stream");
-                            return false;
-                        }
-                        
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
-                        
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
-                        
-                        true // Continue streaming
-                    },
-                )
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("LLM request failed: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            // Use response content directly (already handles cancellation internally)
-            let final_content = response.content.clone();
-            
-            if final_content.is_empty() {
-                println!("⚠️ [background_task] No content to save, skipping");
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-                return;
-            }
-            
-            // Determine sender_type and sender_id
-            let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
-                ("model".to_string(), Some(model_id))
-            } else if let Some(assistant_id) = assistant_db_id.clone() {
-                ("assistant".to_string(), Some(assistant_id))
-            } else {
-                ("assistant".to_string(), None)
-            };
-            
-            // Save assistant message
-            let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
-                conversation_id: Some(conversation_id_clone.clone()),
-                sender_type,
-                sender_id,
-                content: final_content.clone(),
-                thinking_content: response.thinking_content,
-                tokens: response.tokens,
-            }) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    eprintln!("Failed to save assistant message: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
-            
-            // Notify frontend that streaming is complete (do this first, before title generation)
-            let completion_payload = serde_json::json!({
-                "conversation_id": conversation_id_clone,
-                "message": assistant_message,
-            });
-            let _ = app.emit("chat-complete", completion_payload);
-            
-            // Remove task from tracking
-            {
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-            }
-            
-            // Auto-generate title for new conversations (async, doesn't block the response)
-            let state_for_title = state_clone.clone();
-            let app_for_title = app.clone();
-            let conversation_id_for_title = conversation_id_clone.clone();
-            let content_for_title = content.clone();
-            let final_content_for_title = final_content.clone();
-            let provider_for_title = provider.clone();
-            let model_for_title = model.clone();
-            tokio::spawn(async move {
-                auto_generate_title_if_needed(
-                    &state_for_title,
-                    &app_for_title,
-                    &conversation_id_for_title,
-                    &content_for_title,
-                    &final_content_for_title,
-                    &provider_for_title,
-                    &model_for_title,
-                    api_key,
-                    base_url,
-                ).await;
-            });
-            
-            return;
-        }
-        
-        // Handle openrouter separately as it uses a different API pattern
-        if provider == "openrouter" {
-            println!("✅ [background_task] Using OpenRouter Rig provider");
-            
-            let api_key_val = match api_key.clone() {
-                Some(k) => k,
-                None => {
-                    eprintln!("❌ [background_task] OpenRouter API key required");
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            let openrouter_provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
-            
-            // Send chat request with streaming
-            println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
-            let request = ChatRequest {
-                model: model.clone(),
-                messages: chat_messages.clone(),
-                stream: true,
-            };
-            
-            // Track accumulated content for cancellation handling
-            let accumulated_content = Arc::new(RwLock::new(String::new()));
-            let accumulated_content_clone = accumulated_content.clone();
-            let conversation_id_for_stream = conversation_id_clone.clone();
-            let app_for_stream = app.clone();
-            let cancel_token_for_callback = cancel_token.clone();
-            
-            let response = match openrouter_provider
-                .chat_stream(
-                    request,
-                    cancel_token.clone(),
-                    move |chunk: String| -> bool {
-                        // Check if cancelled
-                        if cancel_token_for_callback.is_cancelled() {
-                            println!("🛑 [streaming] Generation cancelled, stopping stream");
-                            return false;
-                        }
-                        
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
-                        
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
-                        
-                        true // Continue streaming
-                    },
-                )
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("LLM request failed: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            // Use response content directly
-            let final_content = response.content.clone();
-            
-            if final_content.is_empty() {
-                println!("⚠️ [background_task] No content to save, skipping");
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-                return;
-            }
-            
-            // Determine sender_type and sender_id
-            let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
-                ("model".to_string(), Some(model_id))
-            } else if let Some(assistant_id) = assistant_db_id.clone() {
-                ("assistant".to_string(), Some(assistant_id))
-            } else {
-                ("assistant".to_string(), None)
-            };
-            
-            // Save assistant message
-            let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
-                conversation_id: Some(conversation_id_clone.clone()),
-                sender_type,
-                sender_id,
-                content: final_content.clone(),
-                thinking_content: response.thinking_content,
-                tokens: response.tokens,
-            }) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    eprintln!("Failed to save assistant message: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
-            
-            // Notify frontend that streaming is complete (do this first, before title generation)
-            let completion_payload = serde_json::json!({
-                "conversation_id": conversation_id_clone,
-                "message": assistant_message,
-            });
-            let _ = app.emit("chat-complete", completion_payload);
-            
-            // Remove task from tracking
-            {
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-            }
-            
-            // Auto-generate title for new conversations (async, doesn't block the response)
-            let state_for_title = state_clone.clone();
-            let app_for_title = app.clone();
-            let conversation_id_for_title = conversation_id_clone.clone();
-            let content_for_title = content.clone();
-            let final_content_for_title = final_content.clone();
-            let provider_for_title = provider.clone();
-            let model_for_title = model.clone();
-            tokio::spawn(async move {
-                auto_generate_title_if_needed(
-                    &state_for_title,
-                    &app_for_title,
-                    &conversation_id_for_title,
-                    &content_for_title,
-                    &final_content_for_title,
-                    &provider_for_title,
-                    &model_for_title,
-                    api_key,
-                    base_url,
-                ).await;
-            });
-            
-            return;
-        }
-        
-        // Handle openai separately as it uses a different API pattern
-        if provider == "openai" {
-            println!("✅ [background_task] Using OpenAI Rig provider");
-            
-            let api_key_val = match api_key.clone() {
-                Some(k) => k,
-                None => {
-                    eprintln!("❌ [background_task] OpenAI API key required");
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            let openai_provider = llm::openai::OpenAIRigProvider::new(api_key_val);
-            
-            // Send chat request with streaming
-            println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
-            let request = ChatRequest {
-                model: model.clone(),
-                messages: chat_messages.clone(),
-                stream: true,
-            };
-            
-            // Track accumulated content for cancellation handling
-            let accumulated_content = Arc::new(RwLock::new(String::new()));
-            let accumulated_content_clone = accumulated_content.clone();
-            let conversation_id_for_stream = conversation_id_clone.clone();
-            let app_for_stream = app.clone();
-            let cancel_token_for_callback = cancel_token.clone();
-            
-            let response = match openai_provider
-                .chat_stream(
-                    request,
-                    cancel_token.clone(),
-                    move |chunk: String| -> bool {
-                        // Check if cancelled
-                        if cancel_token_for_callback.is_cancelled() {
-                            println!("🛑 [streaming] Generation cancelled, stopping stream");
-                            return false;
-                        }
-                        
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
-                        
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
-                        
-                        true // Continue streaming
-                    },
-                )
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("LLM request failed: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            // Use response content directly
-            let final_content = response.content.clone();
-            
-            if final_content.is_empty() {
-                println!("⚠️ [background_task] No content to save, skipping");
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-                return;
-            }
-            
-            // Determine sender_type and sender_id
-            let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
-                ("model".to_string(), Some(model_id))
-            } else if let Some(assistant_id) = assistant_db_id.clone() {
-                ("assistant".to_string(), Some(assistant_id))
-            } else {
-                ("assistant".to_string(), None)
-            };
-            
-            // Save assistant message
-            let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
-                conversation_id: Some(conversation_id_clone.clone()),
-                sender_type,
-                sender_id,
-                content: final_content.clone(),
-                thinking_content: response.thinking_content,
-                tokens: response.tokens,
-            }) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    eprintln!("Failed to save assistant message: {}", e);
-                    let mut tasks = state_clone.generation_tasks.write().await;
-                    tasks.remove(&conversation_id_clone);
-                    return;
-                }
-            };
-            
-            println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
-            
-            // Notify frontend that streaming is complete (do this first, before title generation)
-            let completion_payload = serde_json::json!({
-                "conversation_id": conversation_id_clone,
-                "message": assistant_message,
-            });
-            let _ = app.emit("chat-complete", completion_payload);
-            
-            // Remove task from tracking
-            {
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-            }
-            
-            // Auto-generate title for new conversations (async, doesn't block the response)
-            let state_for_title = state_clone.clone();
-            let app_for_title = app.clone();
-            let conversation_id_for_title = conversation_id_clone.clone();
-            let content_for_title = content.clone();
-            let final_content_for_title = final_content.clone();
-            let provider_for_title = provider.clone();
-            let model_for_title = model.clone();
-            tokio::spawn(async move {
-                auto_generate_title_if_needed(
-                    &state_for_title,
-                    &app_for_title,
-                    &conversation_id_for_title,
-                    &content_for_title,
-                    &final_content_for_title,
-                    &provider_for_title,
-                    &model_for_title,
-                    api_key,
-                    base_url,
-                ).await;
-            });
-            
-            return;
-        }
-        
-        // Unknown provider - clean up and exit
-        eprintln!("❌ [background_task] Unknown provider: {}. Available providers: openai, openrouter, ollama", provider);
-        
-        // Remove task from tracking
-        let mut tasks = state_clone.generation_tasks.write().await;
-        tasks.remove(&conversation_id_clone);
+        // Send chat request with streaming (unified handler for all providers)
+        println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
+        handle_provider_streaming(
+            provider,
+            model,
+            chat_messages,
+            api_key,
+            base_url,
+            cancel_token,
+            state_clone,
+            app,
+            conversation_id_clone,
+            content,
+            model_db_id,
+            assistant_db_id,
+        ).await;
     });
 
     // Return user message immediately

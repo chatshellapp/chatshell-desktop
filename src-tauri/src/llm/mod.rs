@@ -1,3 +1,4 @@
+pub mod common;
 pub mod models;
 pub mod ollama;
 pub mod openai;
