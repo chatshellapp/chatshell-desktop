@@ -10,7 +10,6 @@ import type {
   Model, 
   Assistant 
 } from '@/types';
-import { useMessageStore } from './messageStore';
 
 interface ConversationStore {
   conversations: Conversation[];

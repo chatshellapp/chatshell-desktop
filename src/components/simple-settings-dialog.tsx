@@ -30,7 +30,9 @@ export function SimpleSettingsDialog() {
 
   const saveSetting = useSettingsStore((state: any) => state.saveSetting)
   const getSetting = useSettingsStore((state: any) => state.getSetting)
-  const { models, loadModels, getModelById } = useModelStore()
+  const models = useModelStore((state) => state.models)
+  const loadModels = useModelStore((state) => state.loadModels)
+  const getModelById = useModelStore((state) => state.getModelById)
   
   // Load models when dialog opens
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAssistantStore } from '@/stores/assistantStore';
 import { useModelStore } from '@/stores/modelStore';
 import { useConversationStore } from '@/stores/conversationStore';
+import { useMessageStore } from '@/stores/messageStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUserStore } from '@/stores/userStore';
 
@@ -53,6 +54,27 @@ export function useAppInit() {
 
     initialize();
   }, [loadSettings, loadSelfUser, loadAll, loadAssistants, loadConversations]);
+
+  // Set up inter-store communication callbacks (runs once on mount)
+  useEffect(() => {
+    const messageStore = useMessageStore.getState();
+    const conversationStore = useConversationStore.getState();
+    
+    // When messageStore creates a new conversation, update conversationStore
+    messageStore.onNewConversationCreated = (conversation) => {
+      console.log('[useAppInit] New conversation created via callback:', conversation.id);
+      conversationStore.setCurrentConversation(conversation);
+      // Also add to conversations list if not already there
+      if (!conversationStore.conversations.find(c => c.id === conversation.id)) {
+        conversationStore.loadConversations();
+      }
+    };
+    
+    // Cleanup on unmount
+    return () => {
+      messageStore.onNewConversationCreated = undefined;
+    };
+  }, []);
 
   // Once conversations are loaded, handle initial model/assistant selection
   useEffect(() => {

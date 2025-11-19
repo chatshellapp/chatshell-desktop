@@ -115,16 +115,16 @@ export function ChatInput({}: ChatInputProps) {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Store hooks
-  const { 
-    currentConversation,
-    selectedModel,
-    selectedAssistant,
-    setSelectedModel,
-    setSelectedAssistant,
-  } = useConversationStore()
+  // Store hooks - use granular selectors to avoid unnecessary re-renders
+  const currentConversation = useConversationStore((state) => state.currentConversation)
+  const selectedModel = useConversationStore((state) => state.selectedModel)
+  const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+  const setSelectedModel = useConversationStore((state) => state.setSelectedModel)
+  const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
   
-  const { models, getModelById, getProviderById } = useModelStore()
+  const models = useModelStore((state) => state.models)
+  const getModelById = useModelStore((state) => state.getModelById)
+  const getProviderById = useModelStore((state) => state.getProviderById)
   const assistants = useAssistantStore((state) => state.assistants)
   
   // Get conversation-specific state
@@ -139,7 +139,7 @@ export function ChatInput({}: ChatInputProps) {
   const isStreaming = conversationState?.isStreaming || false
   const isWaitingForAI = conversationState?.isWaitingForAI || false
   
-  const { getSetting } = useSettingsStore()
+  const getSetting = useSettingsStore((state) => state.getSetting)
 
   // Auto-focus textarea when conversation changes
   useEffect(() => {

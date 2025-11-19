@@ -645,32 +645,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Store participants for all conversations
   const [conversationParticipantsMap, setConversationParticipantsMap] = React.useState<Map<string, any[]>>(new Map())
   
-  // Get conversation store functions and state
-  const {
-    conversations,
-    currentConversation,
-    createConversation,
-    setCurrentConversation,
-    loadConversations,
-    selectConversation,
-    selectedModel,
-    selectedAssistant,
-    setSelectedModel,
-    setSelectedAssistant,
-  } = useConversationStore()
+  // Get conversation store functions and state - use granular selectors
+  const conversations = useConversationStore((state) => state.conversations)
+  const currentConversation = useConversationStore((state) => state.currentConversation)
+  const createConversation = useConversationStore((state) => state.createConversation)
+  const setCurrentConversation = useConversationStore((state) => state.setCurrentConversation)
+  const loadConversations = useConversationStore((state) => state.loadConversations)
+  const selectConversation = useConversationStore((state) => state.selectConversation)
+  const selectedModel = useConversationStore((state) => state.selectedModel)
+  const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+  const setSelectedModel = useConversationStore((state) => state.setSelectedModel)
+  const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
 
-  // Import user store
-  const { selfUser, loadSelfUser } = useUserStore()
+  // Import user store - use granular selectors
+  const selfUser = useUserStore((state) => state.selfUser)
+  const loadSelfUser = useUserStore((state) => state.loadSelfUser)
   
   // Get assistant store functions and state - use real data instead of mock
   const assistants = useAssistantStore((state) => state.assistants)
   
   // Get model store functions and state - use real data instead of mock
-  const { models, providers, getModelById } = useModelStore((state) => ({
-    models: state.models,
-    providers: state.providers,
-    getModelById: state.getModelById,
-  }))
+  const models = useModelStore((state) => state.models)
+  const providers = useModelStore((state) => state.providers)
+  const getModelById = useModelStore((state) => state.getModelById)
   
   // Load self user when component mounts
   React.useEffect(() => {

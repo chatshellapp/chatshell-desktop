@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { Assistant, CreateAssistantRequest } from '@/types';
-import { useMessageStore } from './messageStore';
 
 interface AssistantStore {
   assistants: Assistant[];
@@ -82,9 +81,7 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   },
 
   setCurrentAssistant: (assistant: Assistant | null) => {
-    // Cleanup message store before switching assistants to prevent memory leaks
-    useMessageStore.getState().cleanup();
-    
+    // Note: No cleanup needed - messages are per-conversation, not per-assistant
     set({ currentAssistant: assistant });
   },
 

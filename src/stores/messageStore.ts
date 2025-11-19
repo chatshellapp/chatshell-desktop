@@ -30,6 +30,9 @@ interface MessageStore {
   isSending: boolean;
   error: string | null;
 
+  // Callback for inter-store communication (avoids direct store imports)
+  onNewConversationCreated?: (conversation: Conversation) => void;
+
   // Get state for specific conversation (creates if doesn't exist)
   getConversationState: (conversationId: string) => ConversationState;
   
@@ -72,6 +75,7 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
   conversationStates: new Map(),
   isSending: false,
   error: null,
+  onNewConversationCreated: undefined,
 
   getConversationState: (conversationId: string) => {
     const state = get();
@@ -140,13 +144,10 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
         targetId = newConversation.id;
         console.log('[messageStore] Created new conversation:', newConversation);
         
-        // Update conversationStore to set this as current and add to list
-        const { useConversationStore } = await import('./conversationStore');
-        const conversationStore = useConversationStore.getState();
-        conversationStore.setCurrentConversation(newConversation);
-        // Also add to conversations list if not already there
-        if (!conversationStore.conversations.find(c => c.id === newConversation.id)) {
-          conversationStore.loadConversations(); // Reload to include the new one
+        // Notify via callback (avoids direct store coupling)
+        const callback = get().onNewConversationCreated;
+        if (callback) {
+          callback(newConversation);
         }
       }
       
