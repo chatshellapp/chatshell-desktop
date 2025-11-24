@@ -1,8 +1,28 @@
 import { MessageSquare, Users, Library, Settings } from "lucide-react"
 import type { ModelVendor } from "@/components/model-list"
 import type { PromptGroup } from "@/components/prompt-list"
+import type { NavItem } from "@/components/sidebar/sidebar-navigation"
 
-export const SIDEBAR_DATA = {
+export const SIDEBAR_DATA: {
+  user: { name: string; email: string; avatar: string }
+  navMain: NavItem[]
+  peopleGroups: Array<{
+    id: string
+    name: string
+    defaultOpen: boolean
+    people: Array<{
+      id: string
+      name: string
+      email: string
+      phone?: string
+      bio: string
+      isStarred: boolean
+    }>
+  }>
+  promptGroups: PromptGroup[]
+  files: Array<{ id: string; name: string; type: string; size: string; lastModified: string }>
+  tools: Array<{ id: string; name: string; description: string; status: string; lastSync: string }>
+} = {
   user: {
     name: "shadcn",
     email: "m@example.com",
@@ -33,7 +53,7 @@ export const SIDEBAR_DATA = {
       icon: Settings,
       isActive: false,
     }
-  ],
+  ] as NavItem[],
   peopleGroups: [
     {
       id: "team",

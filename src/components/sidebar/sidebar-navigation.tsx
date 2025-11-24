@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-interface NavItem {
+export interface NavItem {
   title: string
   url: string
   icon: React.ComponentType<{ className?: string }>

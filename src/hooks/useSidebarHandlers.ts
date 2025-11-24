@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
-import type { Model, Assistant } from '@/types'
+import type { Model as ModelListItem } from '@/components/model-list'
+import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 
 export function useSidebarHandlers() {
   const conversations = useConversationStore((state) => state.conversations)
@@ -12,14 +13,17 @@ export function useSidebarHandlers() {
   const selectConversation = useConversationStore((state) => state.selectConversation)
   const setSelectedModel = useConversationStore((state) => state.setSelectedModel)
   const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
-  const models = useModelStore((state) => state.models)
+  const getModelById = useModelStore((state) => state.getModelById)
   const assistants = useAssistantStore((state) => state.assistants)
   const updateModel = useModelStore((state) => state.updateModel)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
 
-  const handleModelClick = useCallback(async (model: Model) => {
-    const realModel = models.find((m) => m.id === model.id)
-    if (!realModel) return
+  const handleModelClick = useCallback(async (model: ModelListItem) => {
+    const realModel = getModelById(model.id)
+    if (!realModel) {
+      console.error("Model not found:", model.id)
+      return
+    }
     
     try {
       let targetConversation = null
@@ -45,11 +49,14 @@ export function useSidebarHandlers() {
       console.error("Failed to handle model click:", error)
       alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
     }
-  }, [conversations, models, createConversation, setSelectedModel, setCurrentConversation])
+  }, [conversations, getModelById, createConversation, setSelectedModel, setCurrentConversation])
 
-  const handleAssistantClick = useCallback(async (assistant: Assistant) => {
+  const handleAssistantClick = useCallback(async (assistant: AssistantListItem) => {
     const realAssistant = assistants.find((a) => a.id === assistant.id)
-    if (!realAssistant) return
+    if (!realAssistant) {
+      console.error("Assistant not found:", assistant.id)
+      return
+    }
     
     try {
       let targetConversation = null
@@ -77,8 +84,8 @@ export function useSidebarHandlers() {
     }
   }, [conversations, assistants, createConversation, setSelectedAssistant, setCurrentConversation])
 
-  const handleModelStarToggle = useCallback(async (model: Model) => {
-    const realModel = models.find((m) => m.id === model.id)
+  const handleModelStarToggle = useCallback(async (model: ModelListItem) => {
+    const realModel = getModelById(model.id)
     if (realModel) {
       try {
         await updateModel(realModel.id, {
@@ -92,9 +99,9 @@ export function useSidebarHandlers() {
         console.error("Failed to toggle star:", error)
       }
     }
-  }, [models, updateModel])
+  }, [getModelById, updateModel])
 
-  const handleAssistantStarToggle = useCallback(async (assistant: Assistant) => {
+  const handleAssistantStarToggle = useCallback(async (assistant: AssistantListItem) => {
     const realAssistant = assistants.find((a) => a.id === assistant.id)
     if (realAssistant) {
       try {

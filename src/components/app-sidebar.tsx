@@ -20,9 +20,10 @@ import type { Person, PersonGroup } from "@/components/people-list"
 import type { Prompt, PromptGroup } from "@/components/prompt-list"
 import type { Model as ModelListItem } from "@/components/model-list"
 import type { Assistant as AssistantListItem } from "@/components/assistant-list"
+import type { NavItem } from "@/components/sidebar/sidebar-navigation"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [activeItem, setActiveItem] = React.useState(SIDEBAR_DATA.navMain[0])
+  const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(SIDEBAR_DATA.peopleGroups)
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>("1")
@@ -62,13 +63,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
             selectedAssistantId={selectedAssistant?.id}
             selectedPersonId={selectedPersonId || undefined}
-            onModelClick={(model: ModelListItem) => handlers.handleModelClick(model as any)}
+            onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
             onModelSettings={() => {}}
-            onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model as any)}
+            onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
             onVendorSettings={() => {}}
-            onAssistantClick={(assistant: AssistantListItem) => handlers.handleAssistantClick(assistant as any)}
+            onAssistantClick={(assistant: AssistantListItem) => handlers.handleAssistantClick(assistant)}
             onAssistantSettings={() => {}}
-            onAssistantStarToggle={(assistant: AssistantListItem) => handlers.handleAssistantStarToggle(assistant as any)}
+            onAssistantStarToggle={(assistant: AssistantListItem) => handlers.handleAssistantStarToggle(assistant)}
             onGroupSettings={() => {}}
             onPersonClick={(person: Person) => setSelectedPersonId(person.id)}
             onPersonSettings={() => {}}
@@ -214,10 +215,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {...props}
     >
       <SidebarNavigation
-        navItems={SIDEBAR_DATA.navMain as any}
-        activeItem={activeItem as any}
+        navItems={SIDEBAR_DATA.navMain}
+        activeItem={activeItem}
         onItemClick={(item) => {
-          setActiveItem(item as any)
+          setActiveItem(item)
           setOpen(true)
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
