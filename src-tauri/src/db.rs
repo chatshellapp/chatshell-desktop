@@ -164,6 +164,11 @@ impl Database {
              ON user_relationships(user_id, relationship_type)",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created 
+             ON messages(conversation_id, created_at DESC)",
+            [],
+        )?;
 
         // Knowledge bases table
         conn.execute(
@@ -737,7 +742,18 @@ impl Database {
     pub fn get_conversation(&self, id: &str) -> Result<Option<Conversation>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?1",
+            "SELECT 
+                c.id, 
+                c.title, 
+                c.created_at, 
+                c.updated_at,
+                (SELECT m.content 
+                 FROM messages m 
+                 WHERE m.conversation_id = c.id 
+                 ORDER BY m.created_at DESC 
+                 LIMIT 1) as last_message
+             FROM conversations c 
+             WHERE c.id = ?1",
         )?;
 
         let conversation = stmt
@@ -747,6 +763,7 @@ impl Database {
                     title: row.get(1)?,
                     created_at: row.get(2)?,
                     updated_at: row.get(3)?,
+                    last_message: row.get(4)?,
                 })
             })
             .optional()?;
@@ -757,8 +774,18 @@ impl Database {
     pub fn list_conversations(&self) -> Result<Vec<Conversation>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at
-             FROM conversations ORDER BY updated_at DESC",
+            "SELECT 
+                c.id, 
+                c.title, 
+                c.created_at, 
+                c.updated_at,
+                (SELECT m.content 
+                 FROM messages m 
+                 WHERE m.conversation_id = c.id 
+                 ORDER BY m.created_at DESC 
+                 LIMIT 1) as last_message
+             FROM conversations c 
+             ORDER BY c.updated_at DESC",
         )?;
 
         let conversations = stmt
@@ -768,6 +795,7 @@ impl Database {
                     title: row.get(1)?,
                     created_at: row.get(2)?,
                     updated_at: row.get(3)?,
+                    last_message: row.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

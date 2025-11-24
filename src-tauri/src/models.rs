@@ -192,6 +192,8 @@ pub struct Conversation {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -739,7 +739,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }, [selfUser])
 
-  // Listen for chat-complete event to refresh participants when new messages are sent
+  // Listen for chat-complete event to refresh participants and conversation list when new messages are sent
   React.useEffect(() => {
     console.log('[Participants Event] Setting up chat-complete listener')
     
@@ -750,6 +750,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         // to ensure the backend has finished adding participants
         setTimeout(() => {
           refreshConversationParticipants(event.payload.conversation_id)
+          // Reload conversations to update last_message
+          loadConversations()
         }, 100)
       }
     })
@@ -758,7 +760,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       console.log('[Participants Event] Cleaning up chat-complete listener')
       unlistenComplete.then(fn => fn())
     }
-  }, [refreshConversationParticipants])
+  }, [refreshConversationParticipants, loadConversations])
 
   // Memoize vendors list - must be at top level to avoid hook ordering issues
   const vendorsList = React.useMemo(() => {
@@ -1321,13 +1323,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 
                 console.log('[Conversation Avatar] displayAvatars for', conversation.title, ':', displayAvatars)
                 
+                // Get last message from backend (with truncation for display)
+                const lastMessage = conversation.last_message 
+                  ? (conversation.last_message.length > 50 
+                      ? conversation.last_message.substring(0, 50) + '...'
+                      : conversation.last_message)
+                  : 'No messages yet'
+                
                 return (
                   <MessageListItem
                     key={conversation.id}
                     avatars={displayAvatars}
                     summary={conversation.title}
                     timestamp={formatTimestamp(conversation.updated_at)}
-                    lastMessage="Click to view conversation"
+                    lastMessage={lastMessage}
                     isActive={currentConversation?.id === conversation.id}
                     onClick={() => handleConversationClick(conversation.id)}
                   />
