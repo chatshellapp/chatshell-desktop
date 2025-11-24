@@ -21,8 +21,15 @@ impl Database {
         Ok(db)
     }
 
+    /// Safely acquire database lock, converting poison errors to anyhow::Error
+    fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+        self.conn.lock().map_err(|e| {
+            anyhow::anyhow!("Database lock poisoned: {}", e)
+        })
+    }
+
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
 
         // Providers table
         conn.execute(
@@ -357,7 +364,7 @@ impl Database {
         let is_enabled = req.is_enabled.unwrap_or(true);
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO providers (id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -380,7 +387,7 @@ impl Database {
     }
 
     pub fn get_provider(&self, id: &str) -> Result<Option<Provider>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
              FROM providers WHERE id = ?1",
@@ -406,7 +413,7 @@ impl Database {
     }
 
     pub fn list_providers(&self) -> Result<Vec<Provider>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
              FROM providers ORDER BY created_at ASC",
@@ -436,7 +443,7 @@ impl Database {
         let is_enabled = req.is_enabled.unwrap_or(true);
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "UPDATE providers SET name = ?1, provider_type = ?2, api_key = ?3, base_url = ?4, description = ?5, is_enabled = ?6, updated_at = ?7 WHERE id = ?8",
                 params![
@@ -457,7 +464,7 @@ impl Database {
     }
 
     pub fn delete_provider(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -469,7 +476,7 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -491,7 +498,7 @@ impl Database {
     }
 
     pub fn get_model(&self, id: &str) -> Result<Option<Model>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
              FROM models WHERE id = ?1",
@@ -516,7 +523,7 @@ impl Database {
     }
 
     pub fn list_models(&self) -> Result<Vec<Model>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
              FROM models ORDER BY created_at ASC",
@@ -545,7 +552,7 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "UPDATE models SET name = ?1, provider_id = ?2, model_id = ?3, description = ?4, is_starred = ?5, updated_at = ?6 WHERE id = ?7",
                 params![
@@ -565,7 +572,7 @@ impl Database {
     }
 
     pub fn delete_model(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM models WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -578,7 +585,7 @@ impl Database {
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO assistants (id, name, role, description, system_prompt, user_prompt, model_id, 
                  avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
@@ -610,7 +617,7 @@ impl Database {
     }
 
     pub fn get_assistant(&self, id: &str) -> Result<Option<Assistant>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
@@ -645,7 +652,7 @@ impl Database {
     }
 
     pub fn list_assistants(&self) -> Result<Vec<Assistant>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
@@ -685,7 +692,7 @@ impl Database {
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "UPDATE assistants SET name = ?1, role = ?2, description = ?3, system_prompt = ?4, 
                  user_prompt = ?5, model_id = ?6, avatar_type = ?7, avatar_bg = ?8, avatar_text = ?9, 
@@ -716,7 +723,7 @@ impl Database {
     }
 
     pub fn delete_assistant(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM assistants WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -727,7 +734,7 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO conversations (id, title, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4)",
@@ -740,7 +747,7 @@ impl Database {
     }
 
     pub fn get_conversation(&self, id: &str) -> Result<Option<Conversation>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT 
                 c.id, 
@@ -772,7 +779,7 @@ impl Database {
     }
 
     pub fn list_conversations(&self) -> Result<Vec<Conversation>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT 
                 c.id, 
@@ -807,7 +814,7 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "UPDATE conversations SET title = ?1, updated_at = ?2 WHERE id = ?3",
                 params![title, now, id],
@@ -819,7 +826,7 @@ impl Database {
     }
 
     pub fn delete_conversation(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -832,7 +839,7 @@ impl Database {
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO users (id, username, display_name, email, avatar_type, avatar_bg, 
                  avatar_text, avatar_image_path, avatar_image_url, is_self, status, created_at, updated_at)
@@ -859,7 +866,7 @@ impl Database {
     }
 
     pub fn get_user(&self, id: &str) -> Result<Option<User>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
              avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
@@ -891,7 +898,7 @@ impl Database {
     }
 
     pub fn get_self_user(&self) -> Result<Option<User>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
              avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
@@ -923,7 +930,7 @@ impl Database {
     }
 
     pub fn list_users(&self) -> Result<Vec<User>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, username, display_name, email, avatar_type, avatar_bg, avatar_text, 
              avatar_image_path, avatar_image_url, is_self, status, last_seen_at, created_at, updated_at
@@ -960,7 +967,7 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO conversation_participants 
                  (id, conversation_id, participant_type, participant_id, display_name, role, status, joined_at)
@@ -974,7 +981,7 @@ impl Database {
     }
 
     pub fn get_conversation_participant(&self, id: &str) -> Result<Option<ConversationParticipant>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
@@ -1003,7 +1010,7 @@ impl Database {
     }
 
     pub fn list_conversation_participants(&self, conversation_id: &str) -> Result<Vec<ConversationParticipant>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
@@ -1036,7 +1043,7 @@ impl Database {
         conversation_id: &str,
         current_user_id: &str,
     ) -> Result<Vec<ParticipantSummary>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT DISTINCT
                 cp.participant_type,
@@ -1098,7 +1105,7 @@ impl Database {
     }
 
     pub fn remove_conversation_participant(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM conversation_participants WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -1110,7 +1117,7 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         
         {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.lock_conn()?;
             println!("✅ [db] Lock acquired");
             
             let target_id = req.conversation_id.as_ref()
@@ -1143,7 +1150,7 @@ impl Database {
     }
 
     pub fn get_message(&self, id: &str) -> Result<Option<Message>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
              FROM messages WHERE id = ?1",
@@ -1168,7 +1175,7 @@ impl Database {
     }
 
     pub fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
              FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
@@ -1193,7 +1200,7 @@ impl Database {
     }
 
     pub fn delete_messages_in_conversation(&self, conversation_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![conversation_id])?;
         Ok(())
     }
@@ -1203,7 +1210,7 @@ impl Database {
 
     // Settings operations
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
 
         let value = stmt
@@ -1214,7 +1221,7 @@ impl Database {
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -1226,7 +1233,7 @@ impl Database {
     }
 
     pub fn get_all_settings(&self) -> Result<Vec<Setting>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt =
             conn.prepare("SELECT key, value, updated_at FROM settings ORDER BY key")?;
 
@@ -1277,7 +1284,7 @@ impl Database {
             // Use existing ollama provider
             providers.into_iter()
                 .find(|p| p.provider_type == "ollama")
-                .unwrap()
+                .ok_or_else(|| anyhow::anyhow!("Ollama provider not found despite has_ollama check"))?
         } else {
             // Create default Ollama provider
             println!("🌱 [db] Seeding default Ollama provider...");

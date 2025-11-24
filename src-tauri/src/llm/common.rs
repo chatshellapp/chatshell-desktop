@@ -43,7 +43,8 @@ pub async fn chat_stream_common<M: CompletionModel>(
     }
     
     // Last message is the current prompt
-    let prompt_msg = request.messages.last().unwrap();
+    let prompt_msg = request.messages.last()
+        .ok_or_else(|| anyhow::anyhow!("No messages in request"))?;
     let prompt = Message::User {
         content: OneOrMany::one(UserContent::Text(prompt_msg.content.clone().into())),
     };
@@ -59,7 +60,8 @@ pub async fn chat_stream_common<M: CompletionModel>(
         chat_history: {
             let mut all_messages = chat_history;
             all_messages.push(prompt);
-            OneOrMany::many(all_messages).unwrap()
+            OneOrMany::many(all_messages)
+                .map_err(|e| anyhow::anyhow!("Failed to create message list: {:?}", e))?
         },
         documents: vec![],
         tools: vec![],

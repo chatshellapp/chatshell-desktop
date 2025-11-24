@@ -1,8 +1,28 @@
 use anyhow::Result;
+use lazy_static::lazy_static;
 use regex::Regex;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use std::time::Duration;
+
+// Compile-time validated regex patterns
+lazy_static! {
+    static ref SCRIPT_REGEX: Regex = Regex::new(r"(?s)<script[^>]*>.*?</script>")
+        .expect("Invalid script regex pattern");
+    static ref STYLE_REGEX: Regex = Regex::new(r"(?s)<style[^>]*>.*?</style>")
+        .expect("Invalid style regex pattern");
+    static ref NAV_REGEX: Regex = Regex::new(r"(?s)<nav[^>]*>.*?</nav>")
+        .expect("Invalid nav regex pattern");
+    static ref HEADER_REGEX: Regex = Regex::new(r"(?s)<header[^>]*>.*?</header>")
+        .expect("Invalid header regex pattern");
+    static ref FOOTER_REGEX: Regex = Regex::new(r"(?s)<footer[^>]*>.*?</footer>")
+        .expect("Invalid footer regex pattern");
+    static ref ASIDE_REGEX: Regex = Regex::new(r"(?s)<aside[^>]*>.*?</aside>")
+        .expect("Invalid aside regex pattern");
+    static ref URL_REGEX: Regex = Regex::new(
+        r"https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)"
+    ).expect("Invalid URL regex pattern");
+}
 
 /// Clean HTML content by removing unnecessary elements and extracting main content
 fn clean_html(html: &str) -> String {
@@ -37,39 +57,29 @@ fn clean_html(html: &str) -> String {
     let mut cleaned = html.to_string();
     
     // Remove script tags with content
-    let script_regex = Regex::new(r"(?s)<script[^>]*>.*?</script>").unwrap();
-    cleaned = script_regex.replace_all(&cleaned, "").to_string();
+    cleaned = SCRIPT_REGEX.replace_all(&cleaned, "").to_string();
     
     // Remove style tags with content
-    let style_regex = Regex::new(r"(?s)<style[^>]*>.*?</style>").unwrap();
-    cleaned = style_regex.replace_all(&cleaned, "").to_string();
+    cleaned = STYLE_REGEX.replace_all(&cleaned, "").to_string();
     
     // Remove nav tags
-    let nav_regex = Regex::new(r"(?s)<nav[^>]*>.*?</nav>").unwrap();
-    cleaned = nav_regex.replace_all(&cleaned, "").to_string();
+    cleaned = NAV_REGEX.replace_all(&cleaned, "").to_string();
     
     // Remove header tags
-    let header_regex = Regex::new(r"(?s)<header[^>]*>.*?</header>").unwrap();
-    cleaned = header_regex.replace_all(&cleaned, "").to_string();
+    cleaned = HEADER_REGEX.replace_all(&cleaned, "").to_string();
     
     // Remove footer tags
-    let footer_regex = Regex::new(r"(?s)<footer[^>]*>.*?</footer>").unwrap();
-    cleaned = footer_regex.replace_all(&cleaned, "").to_string();
+    cleaned = FOOTER_REGEX.replace_all(&cleaned, "").to_string();
     
     // Remove aside tags
-    let aside_regex = Regex::new(r"(?s)<aside[^>]*>.*?</aside>").unwrap();
-    cleaned = aside_regex.replace_all(&cleaned, "").to_string();
+    cleaned = ASIDE_REGEX.replace_all(&cleaned, "").to_string();
     
     cleaned
 }
 
 /// Extract URLs from text
 pub fn extract_urls(text: &str) -> Vec<String> {
-    let url_regex = Regex::new(
-        r"https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)"
-    ).unwrap();
-    
-    url_regex
+    URL_REGEX
         .find_iter(text)
         .map(|m| m.as_str().to_string())
         .collect()

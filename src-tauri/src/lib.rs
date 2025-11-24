@@ -18,16 +18,34 @@ pub fn run() {
     // For development, use current directory. For production, use app data directory
     let db_path = std::path::PathBuf::from("chatshell.db");
     
-    println!("Database path: {:?}", db_path.canonicalize().unwrap_or(db_path.clone()));
+    let canonical_path = db_path.canonicalize().unwrap_or_else(|_| db_path.clone());
+    println!("Database path: {:?}", canonical_path);
 
-    let db = Database::new(db_path.to_str().unwrap()).expect("Failed to initialize database");
+    let db_path_str = db_path.to_str()
+        .unwrap_or_else(|| {
+            eprintln!("FATAL: Invalid database path");
+            std::process::exit(1);
+        });
+    let db = Database::new(db_path_str)
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: Failed to initialize database: {}", e);
+            std::process::exit(1);
+        });
     
     println!("Database initialized successfully");
     
     // Seed database with default assistants (async operation)
-    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let rt = tokio::runtime::Runtime::new()
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: Failed to create tokio runtime: {}", e);
+            std::process::exit(1);
+        });
     rt.block_on(async {
-        db.seed_default_data().await.expect("Failed to seed database");
+        db.seed_default_data().await
+            .unwrap_or_else(|e| {
+                eprintln!("FATAL: Failed to seed database: {}", e);
+                std::process::exit(1);
+            });
     });
     
     println!("Database seeded with default assistants");
@@ -95,5 +113,8 @@ pub fn run() {
             commands::stop_generation,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("FATAL: Error while running tauri application: {}", e);
+            std::process::exit(1);
+        });
 }
