@@ -39,10 +39,18 @@ export function ChatView() {
   // Ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const inputAreaRef = useRef<HTMLDivElement>(null)
+  const messagesContentRef = useRef<HTMLDivElement>(null)
   
   // Track if user is at bottom
   const [isAtBottom, setIsAtBottom] = useState(true)
   
+  // Track input area height for button positioning
+  const [inputAreaHeight, setInputAreaHeight] = useState(0)
+  
+  // Track messages content container position for button centering
+  const [buttonLeft, setButtonLeft] = useState<string | number>('50%')
+
   // Track if user is actively scrolling (user scroll lock)
   const isUserScrollingRef = useRef(false)
   const scrollTimeoutRef = useRef<number | null>(null)
@@ -165,6 +173,56 @@ export function ChatView() {
     };
   }, [])
 
+  // Measure input area height and update on resize
+  useEffect(() => {
+    const inputArea = inputAreaRef.current
+    if (!inputArea) return
+
+    // Initial measurement
+    const updateHeight = () => {
+      setInputAreaHeight(inputArea.offsetHeight)
+    }
+    
+    updateHeight()
+
+    // Use ResizeObserver to watch for height changes
+    const resizeObserver = new ResizeObserver(() => {
+      updateHeight()
+    })
+
+    resizeObserver.observe(inputArea)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [])
+
+  // Calculate button position based on messages content container
+  useEffect(() => {
+    if (isAtBottom) return // Only update when button is visible
+
+    const updateButtonPosition = () => {
+      const messagesContent = messagesContentRef.current
+      if (!messagesContent) {
+        setButtonLeft(prev => prev !== '50%' ? '50%' : prev)
+        return
+      }
+
+      const rect = messagesContent.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      setButtonLeft(prev => prev !== centerX ? centerX : prev)
+    }
+
+    updateButtonPosition()
+
+    // Update on window resize only (scroll listener removed - not needed for fixed positioning)
+    window.addEventListener('resize', updateButtonPosition, { passive: true })
+
+    return () => {
+      window.removeEventListener('resize', updateButtonPosition)
+    }
+  }, [messages.length, isAtBottom])
+
   // Check if user is near bottom (within 100px threshold)
   const checkIfAtBottom = () => {
     const container = messagesContainerRef.current
@@ -259,7 +317,7 @@ export function ChatView() {
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4 relative"
+        className="flex-1 overflow-y-auto px-4"
         onScroll={handleScroll}
       >
         {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
@@ -267,7 +325,7 @@ export function ChatView() {
             <p>No messages yet. Start a conversation!</p>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto py-4">
+          <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
             {messages.map((message) => {
               const modelInfo = getMessageModelInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
@@ -353,25 +411,36 @@ export function ChatView() {
           </div>
         )}
         
-        {/* Scroll to bottom button - shown when user scrolls up */}
-        {!isAtBottom && (
-          <div className="sticky bottom-4 left-1/2 -translate-x-1/2 z-20 w-fit mx-auto pointer-events-none">
-            <button
-              onClick={() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-                setIsAtBottom(true)
-              }}
-              className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs"
-            >
-              <span className="text-sm">↓</span>
-              <span>New messages</span>
-            </button>
-          </div>
-        )}
       </div>
 
+      {/* Scroll to bottom button - fixed positioning relative to viewport */}
+      {!isAtBottom && (
+        <div 
+          className="fixed z-20 pointer-events-none"
+          style={{ 
+            bottom: `${inputAreaHeight + 16}px`,
+            left: typeof buttonLeft === 'number' ? `${buttonLeft}px` : buttonLeft,
+            transform: typeof buttonLeft === 'number' ? 'translateX(-50%)' : '-translate-x-1/2'
+          }}
+        >
+          <button
+            onClick={() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+              setIsAtBottom(true)
+            }}
+            className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs"
+          >
+            <span className="text-sm">↓</span>
+            <span>New messages</span>
+          </button>
+        </div>
+      )}
+
       {/* Input Area */}
-      <div className="shrink-0 bg-background border-t p-4 flex justify-center">
+      <div 
+        ref={inputAreaRef}
+        className="shrink-0 bg-background border-t p-4 flex justify-center"
+      >
         <ChatInput />
       </div>
     </div>
