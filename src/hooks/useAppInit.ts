@@ -10,38 +10,41 @@ export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAll = useModelStore((state: any) => state.loadAll);
-  const loadAssistants = useAssistantStore((state: any) => state.loadAssistants);
-  const loadConversations = useConversationStore((state: any) => state.loadConversations);
+  // Use selector only for reactive state (conversations)
   const conversations = useConversationStore((state: any) => state.conversations);
-  const setCurrentConversation = useConversationStore((state: any) => state.setCurrentConversation);
-  const loadSettings = useSettingsStore((state: any) => state.loadSettings);
-  const loadSelfUser = useUserStore((state: any) => state.loadSelfUser);
 
+  // Initialize once on mount - use getState() to avoid dependency issues
   useEffect(() => {
     async function initialize() {
       try {
         console.log('Initializing app...');
         
+        // Get store actions directly (stable references)
+        const settingsStore = useSettingsStore.getState();
+        const userStore = useUserStore.getState();
+        const modelStore = useModelStore.getState();
+        const assistantStore = useAssistantStore.getState();
+        const conversationStore = useConversationStore.getState();
+        
         // Load settings
         console.log('Loading settings...');
-        await loadSettings();
+        await settingsStore.loadSettings();
 
         // Load self user (needed for participant queries)
         console.log('Loading self user...');
-        await loadSelfUser();
+        await userStore.loadSelfUser();
 
         // Load models and providers first (assistants reference models)
         console.log('Loading models and providers...');
-        await loadAll();
+        await modelStore.loadAll();
 
         // Load assistants (optional - users can use models directly)
         console.log('Loading assistants...');
-        await loadAssistants();
+        await assistantStore.loadAssistants();
         
         // Load conversations
         console.log('Loading conversations...');
-        await loadConversations();
+        await conversationStore.loadConversations();
         
         console.log('App initialization complete');
       } catch (err) {
@@ -53,7 +56,9 @@ export function useAppInit() {
     }
 
     initialize();
-  }, [loadSettings, loadSelfUser, loadAll, loadAssistants, loadConversations]);
+    // Empty deps - run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Set up inter-store communication callbacks (runs once on mount)
   useEffect(() => {
@@ -116,7 +121,7 @@ export function useAppInit() {
         }
       }
     }
-  }, [conversations, setCurrentConversation]);
+  }, [conversations]);
 
   return { isInitialized, error };
 }

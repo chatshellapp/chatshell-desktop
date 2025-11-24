@@ -61,6 +61,7 @@ interface MessageStore {
   appendStreamingChunk: (conversationId: string, chunk: string) => void;
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void;
   cleanupConversation: (conversationId: string) => void;
+  removeConversationState: (conversationId: string) => void;
 }
 
 // Throttling mechanism for streaming updates
@@ -415,5 +416,25 @@ export const useMessageStore = create<MessageStore>()(
         convState.scrapingStatus = 'idle';
       }
     });
+  },
+
+  removeConversationState: (conversationId: string) => {
+    // Clear any pending timeouts for this conversation
+    const timeoutId = updateTimeoutIds.get(conversationId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+      updateTimeoutIds.delete(conversationId);
+    }
+    
+    // Clear pending chunks
+    pendingChunks.delete(conversationId);
+    updateScheduled.delete(conversationId);
+    
+    // Completely remove conversation state from memory
+    set((draft) => {
+      delete draft.conversationStates[conversationId];
+    });
+    
+    console.log('[messageStore] Removed conversation state for:', conversationId);
   },
 })));
