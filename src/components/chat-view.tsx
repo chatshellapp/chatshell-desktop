@@ -199,27 +199,33 @@ export function ChatView() {
 
   // Calculate button position based on messages content container
   useEffect(() => {
-    if (isAtBottom) return // Only update when button is visible
-
     const updateButtonPosition = () => {
       const messagesContent = messagesContentRef.current
       if (!messagesContent) {
-        setButtonLeft(prev => prev !== '50%' ? '50%' : prev)
+        setButtonLeft('50%')
         return
       }
 
       const rect = messagesContent.getBoundingClientRect()
       const centerX = rect.left + rect.width / 2
-      setButtonLeft(prev => prev !== centerX ? centerX : prev)
+      setButtonLeft(centerX)
     }
 
     updateButtonPosition()
 
-    // Update on window resize only (scroll listener removed - not needed for fixed positioning)
-    window.addEventListener('resize', updateButtonPosition, { passive: true })
+    // Update on window resize
+    window.addEventListener('resize', updateButtonPosition)
+    // Update on scroll (in case layout shifts)
+    const container = messagesContainerRef.current
+    if (container) {
+      container.addEventListener('scroll', updateButtonPosition)
+    }
 
     return () => {
       window.removeEventListener('resize', updateButtonPosition)
+      if (container) {
+        container.removeEventListener('scroll', updateButtonPosition)
+      }
     }
   }, [messages.length, isAtBottom])
 
@@ -414,27 +420,29 @@ export function ChatView() {
       </div>
 
       {/* Scroll to bottom button - fixed positioning relative to viewport */}
-      {!isAtBottom && (
-        <div 
-          className="fixed z-20 pointer-events-none"
-          style={{ 
-            bottom: `${inputAreaHeight + 16}px`,
-            left: typeof buttonLeft === 'number' ? `${buttonLeft}px` : buttonLeft,
-            transform: typeof buttonLeft === 'number' ? 'translateX(-50%)' : '-translate-x-1/2'
+      <div 
+        className={`fixed z-20 pointer-events-none transition-opacity duration-150 ease-in-out ${
+          !isAtBottom ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ 
+          bottom: `${inputAreaHeight + 16}px`,
+          left: typeof buttonLeft === 'number' ? `${buttonLeft}px` : buttonLeft,
+          transform: typeof buttonLeft === 'number' ? 'translateX(-50%)' : '-translate-x-1/2'
+        }}
+      >
+        <button
+          onClick={() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+            setIsAtBottom(true)
           }}
+          className={`bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs ${
+            !isAtBottom ? '' : 'pointer-events-none'
+          }`}
         >
-          <button
-            onClick={() => {
-              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-              setIsAtBottom(true)
-            }}
-            className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs"
-          >
-            <span className="text-sm">↓</span>
-            <span>New messages</span>
-          </button>
-        </div>
-      )}
+          <span className="text-sm">↓</span>
+          <span>New messages</span>
+        </button>
+      </div>
 
       {/* Input Area */}
       <div 
