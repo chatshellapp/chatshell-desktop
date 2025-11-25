@@ -171,11 +171,6 @@ impl Database {
              ON user_relationships(user_id, relationship_type)",
             [],
         )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created 
-             ON messages(conversation_id, created_at DESC)",
-            [],
-        )?;
 
         // Knowledge bases table
         conn.execute(
@@ -249,6 +244,13 @@ impl Database {
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             )",
+            [],
+        )?;
+
+        // Index for messages table
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created 
+             ON messages(conversation_id, created_at DESC)",
             [],
         )?;
 
