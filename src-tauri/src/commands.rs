@@ -275,6 +275,15 @@ pub async fn clear_messages_by_conversation(
     state.db.delete_messages_in_conversation(&conversation_id).map_err(|e| e.to_string())
 }
 
+// External resources commands
+#[tauri::command]
+pub async fn get_message_external_resources(
+    state: State<'_, AppState>,
+    message_id: String,
+) -> Result<Vec<ExternalResource>, String> {
+    state.db.get_message_external_resources(&message_id).map_err(|e| e.to_string())
+}
+
 // Settings commands
 #[tauri::command]
 pub async fn get_setting(
@@ -905,35 +914,59 @@ pub async fn send_message(
             let _ = app_clone.emit("scraping-started", serde_json::json!({
                 "message_id": user_message_id,
                 "conversation_id": conversation_id_clone,
+                "urls": urls,
             }));
         }
         
-        // Process URLs in background (not blocking the command return)
-        let processed_content = match scraper::process_message_with_urls(&content).await {
-            Ok((full_content, scraped_only)) => {
-                // Emit scraping complete event
-                if !urls.is_empty() {
-                    let _ = app_clone.emit("scraping-complete", serde_json::json!({
-                        "message_id": user_message_id,
-                        "conversation_id": conversation_id_clone,
-                        "scraped_content": scraped_only,
-                    }));
+        // Process URLs and get structured webpage data
+        let scraped_pages = scraper::process_message_with_urls(&content).await;
+        println!("📄 [background_task] Scraped {} pages", scraped_pages.len());
+        
+        // Store scraped pages as external resources and link to message
+        let mut external_resource_ids: Vec<String> = Vec::new();
+        for page in &scraped_pages {
+            // Create external resource record
+            let metadata_json = serde_json::to_string(&page.metadata).ok();
+            let extraction_status = if page.extraction_error.is_some() { "failed" } else { "success" };
+            
+            match state_clone.db.create_external_resource(CreateExternalResourceRequest {
+                resource_type: "webpage".to_string(),
+                url: Some(page.url.clone()),
+                title: page.title.clone(),
+                description: page.description.clone(),
+                file_path: None,
+                file_name: None,
+                file_size: None,
+                mime_type: Some(page.mime_type.clone()),
+                extracted_content: Some(page.extracted_content.clone()),
+                extraction_status: Some(extraction_status.to_string()),
+                extraction_error: page.extraction_error.clone(),
+                metadata: metadata_json,
+            }) {
+                Ok(resource) => {
+                    // Link resource to message
+                    if let Err(e) = state_clone.db.link_message_external_resource(&user_message_id, &resource.id) {
+                        eprintln!("Failed to link external resource to message: {}", e);
+                    }
+                    external_resource_ids.push(resource.id);
                 }
-                full_content
-            },
-            Err(e) => {
-                eprintln!("Failed to process URLs: {}, using original", e);
-                // Emit scraping error event
-                if !urls.is_empty() {
-                    let _ = app_clone.emit("scraping-error", serde_json::json!({
-                        "message_id": user_message_id,
-                        "conversation_id": conversation_id_clone,
-                        "error": e.to_string(),
-                    }));
+                Err(e) => {
+                    eprintln!("Failed to create external resource for {}: {}", page.url, e);
                 }
-                content.clone()
             }
-        };
+        }
+        
+        // Emit scraping complete event with resource IDs
+        if !urls.is_empty() {
+            let _ = app_clone.emit("scraping-complete", serde_json::json!({
+                "message_id": user_message_id,
+                "conversation_id": conversation_id_clone,
+                "external_resource_ids": external_resource_ids,
+            }));
+        }
+        
+        // Build LLM content by combining original message with scraped content
+        let processed_content = scraper::build_llm_content_with_resources(&content, &scraped_pages);
         
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default

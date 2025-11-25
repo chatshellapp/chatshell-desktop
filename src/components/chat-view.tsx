@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
 import { useConversationStore } from "@/stores/conversationStore"
@@ -7,7 +8,7 @@ import { useModelStore } from "@/stores/modelStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
 import { getModelLogo } from "@/lib/model-logos"
-import type { Message } from "@/types"
+import type { Message, ExternalResource } from "@/types"
 
 // Helper function to format model name with provider
 const formatModelDisplayName = (modelName: string, providerId: string, getProviderById: (id: string) => any) => {
@@ -61,6 +62,10 @@ export function ChatView() {
   const streamingContent = conversationState?.streamingContent || ''
   const scrapingStatus = conversationState?.scrapingStatus || 'idle'
   const isWaitingForAI = conversationState?.isWaitingForAI || false
+  const scrapingUrls = conversationState?.scrapingUrls || {}
+
+  // Store external resources for each message (keyed by message id)
+  const [messageResources, setMessageResources] = useState<Record<string, ExternalResource[]>>({})
 
   // Get display info for currently selected model/assistant (used for streaming messages)
   const getDisplayInfo = (): { 
@@ -163,6 +168,47 @@ export function ChatView() {
       loadMessages(currentConversation.id)
     }
   }, [currentConversation, loadMessages])
+
+  // Fetch external resources for user messages
+  // Re-run when scrapingStatus changes to 'complete' to pick up newly scraped resources
+  useEffect(() => {
+    const fetchResources = async () => {
+      const userMessages = messages.filter(m => m.sender_type === "user")
+      const resourceMap: Record<string, ExternalResource[]> = {}
+      
+      for (const msg of userMessages) {
+        // When scraping just completed, always re-fetch for the latest message
+        // Otherwise, skip if we already have resources for this message
+        const isLatestMessage = userMessages.indexOf(msg) === userMessages.length - 1
+        const shouldRefetch = scrapingStatus === 'complete' && isLatestMessage
+        
+        if (messageResources[msg.id] && !shouldRefetch) {
+          resourceMap[msg.id] = messageResources[msg.id]
+          continue
+        }
+        
+        try {
+          const resources = await invoke<ExternalResource[]>("get_message_external_resources", {
+            messageId: msg.id
+          })
+          if (resources.length > 0) {
+            resourceMap[msg.id] = resources
+          }
+        } catch (e) {
+          console.error("Failed to fetch resources for message:", msg.id, e)
+        }
+      }
+      
+      // Only update if there are changes
+      if (Object.keys(resourceMap).length > 0) {
+        setMessageResources(prev => ({ ...prev, ...resourceMap }))
+      }
+    }
+    
+    if (messages.length > 0) {
+      fetchResources()
+    }
+  }, [messages, scrapingStatus])
 
   // Cleanup conversation state on unmount (optional - could keep state cached)
   useEffect(() => {
@@ -352,6 +398,8 @@ export function ChatView() {
                   avatarText={info.avatarText}
                   userMessageAlign={CHAT_CONFIG.userMessageAlign}
                   userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                  externalResources={messageResources[message.id]}
+                  scrapingUrls={scrapingUrls[message.id]}
                   onCopy={handleCopy}
                   onResend={handleResend}
                   onTranslate={handleTranslate}
@@ -414,11 +462,6 @@ export function ChatView() {
             })()}
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
-          </div>
-        )}
-        {scrapingStatus === 'scraping' && (
-          <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
-            <span>Fetching webpage content...</span>
           </div>
         )}
         

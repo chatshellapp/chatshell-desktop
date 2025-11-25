@@ -12,15 +12,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Copy, Languages, Undo, Scan } from "lucide-react"
-import { useState, memo, useMemo } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import remarkMath from "remark-math"
-import rehypeKatex from "rehype-katex"
-import "katex/dist/katex.min.css"
+import { useState, memo } from "react"
 import { Spinner } from "@/components/ui/spinner"
 import { ModelAvatar } from "@/components/model-avatar"
 import { AssistantAvatar } from "@/components/assistant-avatar"
+import { WebpagePreview } from "@/components/webpage-preview"
+import { MarkdownContent } from "@/components/markdown-content"
+import type { ExternalResource } from "@/types"
 
 interface ChatMessageProps {
   role: "user" | "assistant"
@@ -53,6 +51,14 @@ interface ChatMessageProps {
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
   isLoading?: boolean
+  /**
+   * External resources (scraped webpages, files) attached to this message
+   */
+  externalResources?: ExternalResource[]
+  /**
+   * URLs currently being scraped for this message
+   */
+  scrapingUrls?: string[]
   onCopy?: () => void
   onResend?: () => void
   onTranslate?: () => void
@@ -74,6 +80,8 @@ export const ChatMessage = memo(function ChatMessage({
   userMessageAlign = "right",
   userMessageShowBackground = true,
   isLoading = false,
+  externalResources = [],
+  scrapingUrls = [],
   onCopy,
   onResend,
   onTranslate,
@@ -109,173 +117,13 @@ export const ChatMessage = memo(function ChatMessage({
     )
   }
   
-  // Memoize markdown components to avoid recreating them on every render
-  const markdownComponents = useMemo(() => ({
-    // CODE: Fix for react-markdown v10 (no inline prop)
-    code(props: any) {
-      const { className, children, ...rest } = props
-      const languageMatch = /language-([\w-+]+)/.exec(className || '')
-      const content = String(children).replace(/\n$/, '')
-      const isMultiline = content.includes('\n')
-      const isCodeBlock = languageMatch || isMultiline
-
-      if (isCodeBlock) {
-        return (
-          <code
-            className={`${className || ''} block p-3 rounded-md bg-muted overflow-x-auto text-sm`}
-            {...rest}
-          >
-            {children}
-          </code>
-        )
-      }
-
-      // Inline code
-      return (
-        <code
-          className="px-1.5 py-0.5 rounded-md bg-muted text-sm font-mono"
-          {...rest}
-        >
-          {children}
-        </code>
-      )
-    },
-
-    // PRE: Allow visible overflow for code blocks
-    pre({ children }: any) {
-      return <pre className="my-2 overflow-visible">{children}</pre>
-    },
-
-    p({ children }: any) {
-      return <p className="mb-2 last:mb-0">{children}</p>
-    },
-
-    // LISTS: Fix nested list indentation (remove list-inside, add pl-5)
-    ul({ children }: any) {
-      return <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>
-    },
-    ol({ children }: any) {
-      return <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>
-    },
-    li({ children }: any) {
-      return <li className="pl-1">{children}</li>
-    },
-
-    blockquote({ children }: any) {
-      return (
-        <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">
-          {children}
-        </blockquote>
-      )
-    },
-
-    // HEADINGS
-    h1({ children }: any) {
-      return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
-    },
-    h2({ children }: any) {
-      return <h2 className="text-xl font-bold mb-2 mt-3">{children}</h2>
-    },
-    h3({ children }: any) {
-      return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
-    },
-    h4({ children }: any) {
-      return <h4 className="text-base font-bold mb-2 mt-2">{children}</h4>
-    },
-    h5({ children }: any) {
-      return <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>
-    },
-    h6({ children }: any) {
-      return <h6 className="text-sm font-semibold mb-1 mt-2">{children}</h6>
-    },
-
-    // LINKS: Important for clickable links
-    a({ href, children }: any) {
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline underline-offset-2 hover:text-primary/80"
-        >
-          {children}
-        </a>
-      )
-    },
-
-    // IMAGES: Prevent overflow
-    img({ src, alt }: any) {
-      return (
-        <img
-          src={src}
-          alt={alt || ''}
-          className="max-w-full h-auto rounded-md my-2"
-          loading="lazy"
-        />
-      )
-    },
-
-    // TABLES: Add responsive wrapper
-    table({ children }: any) {
-      return (
-        <div className="overflow-x-auto my-2">
-          <table className="w-full border-collapse border border-border">
-            {children}
-          </table>
-        </div>
-      )
-    },
-    thead({ children }: any) {
-      return <thead className="bg-muted">{children}</thead>
-    },
-    tbody({ children }: any) {
-      return <tbody>{children}</tbody>
-    },
-    tr({ children }: any) {
-      return <tr className="border-b border-border">{children}</tr>
-    },
-    th({ children }: any) {
-      return (
-        <th className="border border-border px-3 py-2 text-left font-semibold">
-          {children}
-        </th>
-      )
-    },
-    td({ children }: any) {
-      return <td className="border border-border px-3 py-2">{children}</td>
-    },
-
-    // HORIZONTAL RULE
-    hr() {
-      return <hr className="my-4 border-t border-border" />
-    },
-
-    // TASK LIST CHECKBOX (GFM feature)
-    input({ type, checked, disabled }: any) {
-      if (type === 'checkbox') {
-        return (
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={disabled}
-            className="mr-2 h-4 w-4 rounded border-border"
-            readOnly
-          />
-        )
-      }
-      return <input type={type} />
-    },
-
-    // STRIKETHROUGH (GFM feature)
-    del({ children }: any) {
-      return <del className="text-muted-foreground line-through">{children}</del>
-    },
-  }), [])
-
   const handleCopy = () => {
     navigator.clipboard.writeText(content)
     onCopy?.()
   }
+
+  // Filter webpage resources for display
+  const webpageResources = externalResources.filter(r => r.resource_type === "webpage")
 
   if (role === "user") {
     const alignClass = userMessageAlign === "right" ? "justify-end" : "justify-start"
@@ -293,6 +141,20 @@ export const ChatMessage = memo(function ChatMessage({
         <div className={`flex ${alignClass}`}>
           <div className={`px-4 py-3 ${backgroundClass} rounded-lg max-w-[80%]`}>
             <p className="text-base text-foreground whitespace-pre-wrap">{content}</p>
+            
+            {/* Webpage previews - show both scraped resources and loading URLs */}
+            {(webpageResources.length > 0 || scrapingUrls.length > 0) && (
+              <div className="mt-2 space-y-2">
+                {/* Completed scrapes */}
+                {webpageResources.map((resource) => (
+                  <WebpagePreview key={resource.id} resource={resource} />
+                ))}
+                {/* URLs currently being scraped */}
+                {scrapingUrls.map((url) => (
+                  <WebpagePreview key={url} scrapingUrl={url} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <TooltipProvider delayDuration={300}>
@@ -375,13 +237,7 @@ export const ChatMessage = memo(function ChatMessage({
             <Spinner className="size-4" />
           </div>
         ) : (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-            components={markdownComponents}
-          >
-            {content}
-          </ReactMarkdown>
+          <MarkdownContent content={content} />
         )}
       </div>
       <TooltipProvider delayDuration={300}>

@@ -260,14 +260,18 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 resource_type TEXT NOT NULL,
                 url TEXT,
+                title TEXT,
+                description TEXT,
                 file_path TEXT,
                 file_name TEXT,
                 file_size INTEGER,
                 mime_type TEXT,
-                scraped_content TEXT,
-                scraping_error TEXT,
+                extracted_content TEXT,
+                extraction_status TEXT DEFAULT 'pending',
+                extraction_error TEXT,
                 metadata TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )",
             [],
         )?;
@@ -1207,8 +1211,126 @@ impl Database {
         Ok(())
     }
 
-    // Note: Scraping functionality moved to external_resources table
-    // Use create external resource and link it to message via message_external_resources
+    // ========== External Resources Operations ==========
+
+    pub fn create_external_resource(&self, req: CreateExternalResourceRequest) -> Result<ExternalResource> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let status = req.extraction_status.unwrap_or_else(|| "pending".to_string());
+
+        // 用一个代码块限制 conn 的作用域
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO external_resources
+                 (id, resource_type, url, title, description, file_path, file_name, file_size,
+                  mime_type, extracted_content, extraction_status, extraction_error, metadata,
+                  created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    id,
+                    req.resource_type,
+                    req.url,
+                    req.title,
+                    req.description,
+                    req.file_path,
+                    req.file_name,
+                    req.file_size,
+                    req.mime_type,
+                    req.extracted_content,
+                    status,
+                    req.extraction_error,
+                    req.metadata,
+                    now,
+                    now
+                ],
+            )?;
+        }  // conn 在这里被 drop，锁被释放
+
+        // 现在可以安全地调用 get_external_resource
+        self.get_external_resource(&id)
+    }
+
+    pub fn get_external_resource(&self, id: &str) -> Result<ExternalResource> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, resource_type, url, title, description, file_path, file_name,
+                    file_size, mime_type, extracted_content, extraction_status,
+                    extraction_error, metadata, created_at, updated_at
+             FROM external_resources WHERE id = ?1"
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(ExternalResource {
+                id: row.get(0)?,
+                resource_type: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                file_path: row.get(5)?,
+                file_name: row.get(6)?,
+                file_size: row.get(7)?,
+                mime_type: row.get(8)?,
+                extracted_content: row.get(9)?,
+                extraction_status: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "pending".to_string()),
+                extraction_error: row.get(11)?,
+                metadata: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        }).map_err(|e| anyhow::anyhow!("External resource not found: {}", e))
+    }
+
+    pub fn link_message_external_resource(&self, message_id: &str, resource_id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT OR IGNORE INTO message_external_resources
+             (id, message_id, external_resource_id, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![id, message_id, resource_id, now],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_message_external_resources(&self, message_id: &str) -> Result<Vec<ExternalResource>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT er.id, er.resource_type, er.url, er.title, er.description,
+                    er.file_path, er.file_name, er.file_size, er.mime_type,
+                    er.extracted_content, er.extraction_status, er.extraction_error,
+                    er.metadata, er.created_at, er.updated_at
+             FROM external_resources er
+             JOIN message_external_resources mer ON er.id = mer.external_resource_id
+             WHERE mer.message_id = ?1
+             ORDER BY er.created_at"
+        )?;
+
+        let resources = stmt.query_map(params![message_id], |row| {
+            Ok(ExternalResource {
+                id: row.get(0)?,
+                resource_type: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                file_path: row.get(5)?,
+                file_name: row.get(6)?,
+                file_size: row.get(7)?,
+                mime_type: row.get(8)?,
+                extracted_content: row.get(9)?,
+                extraction_status: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "pending".to_string()),
+                extraction_error: row.get(11)?,
+                metadata: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+
+        Ok(resources)
+    }
 
     // Settings operations
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {

@@ -11,6 +11,8 @@ interface ConversationState {
   streamingContent: string;
   isWaitingForAI: boolean;
   scrapingStatus: 'idle' | 'scraping' | 'complete' | 'error';
+  // Track URLs being scraped for each message: { messageId: [urls] }
+  scrapingUrls: Record<string, string[]>;
 }
 
 // Default state for a new conversation
@@ -21,6 +23,7 @@ const createDefaultConversationState = (): ConversationState => ({
   streamingContent: '',
   isWaitingForAI: false,
   scrapingStatus: 'idle',
+  scrapingUrls: {},
 });
 
 interface MessageStore {
@@ -58,6 +61,8 @@ interface MessageStore {
   setStreamingContent: (conversationId: string, content: string) => void;
   setIsStreaming: (conversationId: string, isStreaming: boolean) => void;
   setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => void;
+  setScrapingUrls: (conversationId: string, messageId: string, urls: string[]) => void;
+  clearScrapingUrls: (conversationId: string, messageId: string) => void;
   appendStreamingChunk: (conversationId: string, chunk: string) => void;
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void;
   cleanupConversation: (conversationId: string) => void;
@@ -337,6 +342,26 @@ export const useMessageStore = create<MessageStore>()(
       const convState = draft.conversationStates[conversationId];
       if (convState) {
         convState.scrapingStatus = status;
+      }
+    });
+  },
+
+  setScrapingUrls: (conversationId: string, messageId: string, urls: string[]) => {
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.scrapingUrls[messageId] = urls;
+      }
+    });
+  },
+
+  clearScrapingUrls: (conversationId: string, messageId: string) => {
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        delete convState.scrapingUrls[messageId];
       }
     });
   },

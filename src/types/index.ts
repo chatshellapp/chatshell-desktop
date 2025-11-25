@@ -237,24 +237,43 @@ export interface ExternalResource {
   id: string;
   resource_type: string; // "webpage", "image", "file"
   url?: string;
+  title?: string;
+  description?: string;
   file_path?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;
-  scraped_content?: string;
-  scraping_error?: string;
-  metadata?: string;
+  extracted_content?: string;
+  extraction_status: string; // "pending", "success", "failed"
+  extraction_error?: string;
+  metadata?: string; // JSON string of WebpageMetadata or FileMetadata
   created_at: string;
+  updated_at: string;
 }
 
 export interface CreateExternalResourceRequest {
   resource_type: string;
   url?: string;
+  title?: string;
+  description?: string;
   file_path?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;
+  extracted_content?: string;
+  extraction_status?: string;
+  extraction_error?: string;
   metadata?: string;
+}
+
+// Metadata for webpage resources (parsed from metadata JSON)
+export interface WebpageMetadata {
+  keywords?: string;
+  headings: string[];
+  scraped_at: string;
+  content_type: string;
+  original_length?: number;
+  truncated: boolean;
 }
 
 // Prompt types
@@ -312,12 +331,13 @@ export interface ChatCompleteEvent {
 export interface ScrapingStartedEvent {
   message_id: string;
   conversation_id: string;
+  urls: string[];
 }
 
 export interface ScrapingCompleteEvent {
   message_id: string;
   conversation_id: string;
-  scraped_content: string;
+  external_resource_ids: string[];
 }
 
 export interface ScrapingErrorEvent {

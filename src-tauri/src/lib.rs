@@ -96,6 +96,8 @@ pub fn run() {
             commands::create_message,
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
+            // External resources commands
+            commands::get_message_external_resources,
             // Settings commands
             commands::get_setting,
             commands::set_setting,

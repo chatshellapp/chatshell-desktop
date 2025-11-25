@@ -1,11 +1,25 @@
 use anyhow::Result;
+use chrono::Utc;
 use lazy_static::lazy_static;
 use regex::Regex;
 use reqwest::Client;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-// Compile-time validated regex patterns
+use crate::models::WebpageMetadata;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScrapedWebpage {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub mime_type: String,
+    pub extracted_content: String,
+    pub extraction_error: Option<String>,
+    pub metadata: WebpageMetadata,
+}
+
 lazy_static! {
     static ref SCRIPT_REGEX: Regex = Regex::new(r"(?s)<script[^>]*>.*?</script>")
         .expect("Invalid script regex pattern");
@@ -24,11 +38,9 @@ lazy_static! {
     ).expect("Invalid URL regex pattern");
 }
 
-/// Clean HTML content by removing unnecessary elements and extracting main content
 fn clean_html(html: &str) -> String {
     let document = Html::parse_document(html);
     
-    // Try to find main content area with common selectors
     let main_content_selectors = vec![
         "main",
         "article",
@@ -43,41 +55,25 @@ fn clean_html(html: &str) -> String {
         ".markdown-body",
     ];
     
-    // Try each selector to find main content
     for selector_str in main_content_selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
             if let Some(main_element) = document.select(&selector).next() {
-                // Found main content, use it
                 return main_element.html();
             }
         }
     }
     
-    // If no main content found, use regex to remove common unwanted elements
     let mut cleaned = html.to_string();
-    
-    // Remove script tags with content
     cleaned = SCRIPT_REGEX.replace_all(&cleaned, "").to_string();
-    
-    // Remove style tags with content
     cleaned = STYLE_REGEX.replace_all(&cleaned, "").to_string();
-    
-    // Remove nav tags
     cleaned = NAV_REGEX.replace_all(&cleaned, "").to_string();
-    
-    // Remove header tags
     cleaned = HEADER_REGEX.replace_all(&cleaned, "").to_string();
-    
-    // Remove footer tags
     cleaned = FOOTER_REGEX.replace_all(&cleaned, "").to_string();
-    
-    // Remove aside tags
     cleaned = ASIDE_REGEX.replace_all(&cleaned, "").to_string();
     
     cleaned
 }
 
-/// Extract URLs from text
 pub fn extract_urls(text: &str) -> Vec<String> {
     URL_REGEX
         .find_iter(text)
@@ -85,146 +81,255 @@ pub fn extract_urls(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Fetch webpage content and convert to markdown
-pub async fn fetch_and_convert_to_markdown(url: &str) -> Result<String> {
-    let client = Client::builder()
+fn extract_title(document: &Html) -> Option<String> {
+    Selector::parse("title")
+        .ok()
+        .and_then(|sel| document.select(&sel).next())
+        .map(|el| el.text().collect::<String>().trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn extract_meta_description(document: &Html) -> Option<String> {
+    Selector::parse(r#"meta[name="description"]"#)
+        .ok()
+        .and_then(|sel| document.select(&sel).next())
+        .and_then(|el| el.value().attr("content"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn extract_meta_keywords(document: &Html) -> Option<String> {
+    Selector::parse(r#"meta[name="keywords"]"#)
+        .ok()
+        .and_then(|sel| document.select(&sel).next())
+        .and_then(|el| el.value().attr("content"))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn extract_headings(document: &Html) -> Vec<String> {
+    Selector::parse("h1, h2, h3")
+        .ok()
+        .map(|sel| {
+            document
+                .select(&sel)
+                .take(10)
+                .map(|el| el.text().collect::<String>().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub async fn fetch_webpage_structured(url: &str) -> ScrapedWebpage {
+    println!("📡 [scraper] Starting fetch for: {}", url);
+    
+    let client = match Client::builder()
         .timeout(Duration::from_secs(10))
         .user_agent("Mozilla/5.0 (compatible; ChatShell/1.0)")
-        .build()?;
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return ScrapedWebpage {
+                url: url.to_string(),
+                title: None,
+                description: None,
+                mime_type: String::new(),
+                extracted_content: String::new(),
+                extraction_error: Some(format!("Failed to create HTTP client: {}", e)),
+                metadata: WebpageMetadata {
+                    keywords: None,
+                    headings: vec![],
+                    scraped_at: Utc::now().to_rfc3339(),
+                    content_type: String::new(),
+                    original_length: None,
+                    truncated: false,
+                },
+            };
+        }
+    };
+
+    println!("📨 [scraper] Sending HTTP request...");
     
-    // Send Accept header with preferred content types in order
-    // text/plain, text/markdown, text/html, application/xhtml+xml, then any
-    let response = client
+    let response = match client
         .get(url)
-        .header("Accept", "text/plain, text/markdown, text/html, application/xhtml+xml, */*;q=0.8")
+        .header("Accept", "text/html, application/xhtml+xml, */*")
         .send()
-        .await?;
-    
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return ScrapedWebpage {
+                url: url.to_string(),
+                title: None,
+                description: None,
+                mime_type: String::new(),
+                extracted_content: String::new(),
+                extraction_error: Some(format!("Failed to fetch URL: {}", e)),
+                metadata: WebpageMetadata {
+                    keywords: None,
+                    headings: vec![],
+                    scraped_at: Utc::now().to_rfc3339(),
+                    content_type: String::new(),
+                    original_length: None,
+                    truncated: false,
+                },
+            };
+        }
+    };
+
+    println!("📥 [scraper] Got response, status: {}", response.status());
+
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to fetch URL: {}", response.status()));
+        return ScrapedWebpage {
+            url: url.to_string(),
+            title: None,
+            description: None,
+            mime_type: String::new(),
+            extracted_content: String::new(),
+            extraction_error: Some(format!("HTTP error: {}", response.status())),
+            metadata: WebpageMetadata {
+                keywords: None,
+                headings: vec![],
+                scraped_at: Utc::now().to_rfc3339(),
+                content_type: String::new(),
+                original_length: None,
+                truncated: false,
+            },
+        };
     }
-    
-    // Check Content-Type and handle accordingly
+
     let content_type = response
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_lowercase();
-    
-    let content = response.text().await?;
-    
-    // Handle different content types based on Accept header preferences
-    let markdown = if content_type.contains("text/plain") {
-        // Plain text - return as-is
-        content
-    } else if content_type.contains("text/markdown") {
-        // Markdown - return as-is
-        content
-    } else if content_type.contains("application/json") || content_type.contains("text/json") {
-        // JSON - return as-is with code block formatting
-        format!("```json\n{}\n```", content)
-    } else if content_type.contains("application/xml") 
-        || content_type.contains("text/xml") 
-        || content_type.contains("application/rss+xml")
-        || content_type.contains("application/atom+xml") {
-        // XML - return as-is with code block formatting
-        format!("```xml\n{}\n```", content)
-    } else if content_type.contains("text/html") || content_type.contains("application/xhtml") {
-        // HTML - convert to markdown
-        
-        // Basic HTML detection
-        let html_lower = content.trim_start().to_lowercase();
-        if !html_lower.starts_with("<!doctype") 
-            && !html_lower.starts_with("<html") 
-            && !html_lower.starts_with("<?xml") {
-            return Err(anyhow::anyhow!("Content does not appear to be valid HTML"));
-        }
-        
-        // Clean HTML to extract main content and remove unnecessary elements
-        let cleaned_html = clean_html(&content);
-        
-        // Convert to markdown
-        html2md::parse_html(&cleaned_html)
-    } else if !content_type.is_empty() {
-        // Unsupported content type
-        return Err(anyhow::anyhow!(
-            "URL returns {} content. Only text, markdown, HTML, JSON, or XML content can be processed.",
-            content_type.split(';').next().unwrap_or("unknown")
-        ));
-    } else {
-        // No content-type, try to detect and process as HTML
-        let content_lower = content.trim_start().to_lowercase();
-        if content_lower.starts_with("<!doctype") 
-            || content_lower.starts_with("<html") 
-            || content_lower.starts_with("<?xml") {
-            // Looks like HTML
-            let cleaned_html = clean_html(&content);
-            html2md::parse_html(&cleaned_html)
-        } else {
-            // Treat as plain text
-            content
+
+    let mime_type = content_type.split(';').next().unwrap_or("").trim().to_string();
+
+    let html_content = match response.text().await {
+        Ok(c) => c,
+        Err(e) => {
+            return ScrapedWebpage {
+                url: url.to_string(),
+                title: None,
+                description: None,
+                mime_type,
+                extracted_content: String::new(),
+                extraction_error: Some(format!("Failed to read response body: {}", e)),
+                metadata: WebpageMetadata {
+                    keywords: None,
+                    headings: vec![],
+                    scraped_at: Utc::now().to_rfc3339(),
+                    content_type: content_type.clone(),
+                    original_length: None,
+                    truncated: false,
+                },
+            };
         }
     };
-    
-    // Limit the content length to avoid overwhelming the AI
-    const MAX_LENGTH: usize = 8000; // characters
-    let trimmed = if markdown.len() > MAX_LENGTH {
-        let truncated = &markdown[..MAX_LENGTH];
-        format!("{}\n\n[Content truncated - original length: {} characters]", truncated, markdown.len())
+
+    let document = Html::parse_document(&html_content);
+    let title = extract_title(&document);
+    let description = extract_meta_description(&document);
+    let keywords = extract_meta_keywords(&document);
+    let headings = extract_headings(&document);
+
+    let cleaned_html = clean_html(&html_content);
+    let markdown = html2md::parse_html(&cleaned_html);
+    let original_length = markdown.len();
+
+    const MAX_LENGTH: usize = 8000;
+    let (extracted_content, truncated) = if markdown.len() > MAX_LENGTH {
+        let truncated_content = format!(
+            "{}\n\n[Content truncated - original length: {} characters]",
+            &markdown[..MAX_LENGTH],
+            markdown.len()
+        );
+        (truncated_content, true)
     } else {
-        markdown
+        (markdown, false)
     };
-    
-    // Clean up excessive whitespace
-    let cleaned = trimmed
+
+    let cleaned_content = extracted_content
         .lines()
         .map(|line| line.trim_end())
         .collect::<Vec<_>>()
         .join("\n");
-    
-    Ok(cleaned)
+
+    ScrapedWebpage {
+        url: url.to_string(),
+        title,
+        description,
+        mime_type,
+        extracted_content: cleaned_content,
+        extraction_error: None,
+        metadata: WebpageMetadata {
+            keywords,
+            headings,
+            scraped_at: Utc::now().to_rfc3339(),
+            content_type,
+            original_length: Some(original_length),
+            truncated,
+        },
+    }
 }
 
-/// Process message content and fetch URLs
-/// Returns (processed_content_for_llm, scraped_content_only)
-pub async fn process_message_with_urls(content: &str) -> Result<(String, String)> {
+pub async fn fetch_and_convert_to_markdown(url: &str) -> Result<String> {
+    let result = fetch_webpage_structured(url).await;
+    if let Some(error) = result.extraction_error {
+        return Err(anyhow::anyhow!("{}", error));
+    }
+    Ok(result.extracted_content)
+}
+
+pub async fn process_message_with_urls(content: &str) -> Vec<ScrapedWebpage> {
     let urls = extract_urls(content);
     
     if urls.is_empty() {
-        return Ok((content.to_string(), String::new()));
+        return vec![];
     }
     
-    let mut processed_content = content.to_string();
-    let mut scraped_only = String::new();
+    println!("🌐 [scraper] Processing {} URLs", urls.len());
+    let mut results = Vec::new();
     
-    for url in urls {
-        match fetch_and_convert_to_markdown(&url).await {
-            Ok(markdown) => {
-                // Add the scraped content after the original message
-                let scraped_section = format!(
-                    "\n\n---\n**Content from {}:**\n\n{}",
-                    url,
-                    markdown.trim()
-                );
-                processed_content.push_str(&scraped_section);
-                scraped_only.push_str(&scraped_section);
-            }
-            Err(e) => {
-                eprintln!("Failed to fetch {}: {}", url, e);
-                // Add a note about the failure
-                let error_note = format!(
-                    "\n\n---\n**Note:** Could not fetch content from {}: {}",
-                    url,
-                    e
-                );
-                processed_content.push_str(&error_note);
-                scraped_only.push_str(&error_note);
-            }
+    for url in &urls {
+        println!("🔗 [scraper] Fetching: {}", url);
+        let scraped = fetch_webpage_structured(url).await;
+        println!("✅ [scraper] Completed: {} (error: {:?})", url, scraped.extraction_error);
+        results.push(scraped);
+    }
+    
+    println!("�� [scraper] All URLs processed");
+    results
+}
+
+pub fn build_llm_content_with_resources(original_content: &str, scraped_pages: &[ScrapedWebpage]) -> String {
+    if scraped_pages.is_empty() {
+        return original_content.to_string();
+    }
+    
+    let mut content = original_content.to_string();
+    
+    for page in scraped_pages {
+        if page.extraction_error.is_some() {
+            content.push_str(&format!(
+                "\n\n---\n**Note:** Could not fetch content from {}: {}",
+                page.url,
+                page.extraction_error.as_deref().unwrap_or("Unknown error")
+            ));
+        } else {
+            content.push_str(&format!(
+                "\n\n---\n**Content from {}:**\n\n{}",
+                page.url,
+                page.extracted_content.trim()
+            ));
         }
     }
     
-    Ok((processed_content, scraped_only))
+    content
 }
 
 #[cfg(test)]
@@ -247,4 +352,3 @@ mod tests {
         assert_eq!(urls.len(), 0);
     }
 }
-

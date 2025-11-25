@@ -45,12 +45,16 @@ export function useChatEvents(conversationId: string | null) {
     store.setStreamingContent(convId, '');
   }, []);
 
-  const handleScrapingStarted = useCallback((convId: string) => {
-    useMessageStore.getState().setScrapingStatus(convId, 'scraping');
+  const handleScrapingStarted = useCallback((convId: string, messageId: string, urls: string[]) => {
+    const store = useMessageStore.getState();
+    store.setScrapingStatus(convId, 'scraping');
+    store.setScrapingUrls(convId, messageId, urls);
   }, []);
 
-  const handleScrapingComplete = useCallback((convId: string) => {
-    useMessageStore.getState().setScrapingStatus(convId, 'complete');
+  const handleScrapingComplete = useCallback((convId: string, messageId: string) => {
+    const store = useMessageStore.getState();
+    store.setScrapingStatus(convId, 'complete');
+    store.clearScrapingUrls(convId, messageId);
   }, []);
 
   const handleScrapingError = useCallback((convId: string, error: string) => {
@@ -109,7 +113,11 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenScrapingStarted = listen<ScrapingStartedEvent>(
       'scraping-started',
       (event) => {
-        handleScrapingStarted(event.payload.conversation_id);
+        handleScrapingStarted(
+          event.payload.conversation_id,
+          event.payload.message_id,
+          event.payload.urls
+        );
       }
     );
 
@@ -117,7 +125,10 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenScrapingComplete = listen<ScrapingCompleteEvent>(
       'scraping-complete',
       (event) => {
-        handleScrapingComplete(event.payload.conversation_id);
+        handleScrapingComplete(
+          event.payload.conversation_id,
+          event.payload.message_id
+        );
       }
     );
 

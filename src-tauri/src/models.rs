@@ -267,25 +267,45 @@ pub struct ExternalResource {
     pub id: String,
     pub resource_type: String,  // "webpage", "image", "file"
     pub url: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
     pub file_path: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<i64>,
     pub mime_type: Option<String>,
-    pub scraped_content: Option<String>,
-    pub scraping_error: Option<String>,
+    pub extracted_content: Option<String>,
+    pub extraction_status: String,
+    pub extraction_error: Option<String>,
     pub metadata: Option<String>,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateExternalResourceRequest {
     pub resource_type: String,
     pub url: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
     pub file_path: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<i64>,
     pub mime_type: Option<String>,
+    pub extracted_content: Option<String>,
+    pub extraction_status: Option<String>,
+    pub extraction_error: Option<String>,
     pub metadata: Option<String>,
+}
+
+/// Metadata for webpage resources (stored as JSON in metadata field)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebpageMetadata {
+    pub keywords: Option<String>,
+    pub headings: Vec<String>,
+    pub scraped_at: String,
+    pub content_type: String,
+    pub original_length: Option<usize>,
+    pub truncated: bool,
 }
 
 // Prompt models
