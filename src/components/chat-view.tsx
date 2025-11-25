@@ -62,53 +62,56 @@ export function ChatView() {
   const scrapingStatus = conversationState?.scrapingStatus || 'idle'
   const isWaitingForAI = conversationState?.isWaitingForAI || false
 
-  // Get model name and avatar for display (for currently selected model/assistant - used for streaming messages)
-  const getModelDisplayInfo = (): { 
-    name: string; 
-    avatar?: string;
+  // Get display info for currently selected model/assistant (used for streaming messages)
+  const getDisplayInfo = (): { 
+    displayName: string; 
+    senderType: "model" | "assistant";
+    modelLogo?: string;
+    assistantLogo?: string;
     avatarBg?: string;
     avatarText?: string;
-    avatarType?: string;
   } => {
     if (selectedAssistant) {
       const model = getModelById(selectedAssistant.model_id)
-      if (!model) return { name: selectedAssistant.name }
+      const modelName = model ? model.name : "Unknown Model"
       
-      // Return assistant avatar info based on type
+      // Return assistant info
       if (selectedAssistant.avatar_type === "image") {
         return { 
-          name: `${selectedAssistant.name} · ${model.name}`,
-          avatar: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path,
-          avatarType: "image"
+          displayName: `${selectedAssistant.name} · ${modelName}`,
+          senderType: "assistant",
+          assistantLogo: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path
         }
       } else {
         // Text/emoji avatar
         return { 
-          name: `${selectedAssistant.name} · ${model.name}`,
+          displayName: `${selectedAssistant.name} · ${modelName}`,
+          senderType: "assistant",
           avatarBg: selectedAssistant.avatar_bg || undefined,
-          avatarText: selectedAssistant.avatar_text || undefined,
-          avatarType: "text"
+          avatarText: selectedAssistant.avatar_text || undefined
         }
       }
     } else if (selectedModel) {
       return { 
-        name: formatModelDisplayName(selectedModel.name, selectedModel.provider_id, getProviderById),
-        avatar: getModelLogo(selectedModel)
+        displayName: formatModelDisplayName(selectedModel.name, selectedModel.provider_id, getProviderById),
+        senderType: "model",
+        modelLogo: getModelLogo(selectedModel)
       }
     }
-    return { name: "AI Assistant" }
+    return { displayName: "AI Assistant", senderType: "model" }
   }
 
-  // Get model info for a specific message based on its sender_id and sender_type
-  const getMessageModelInfo = (message: Message): { 
-    name: string; 
-    avatar?: string;
+  // Get display info for a specific message based on its sender_id and sender_type
+  const getMessageDisplayInfo = (message: Message): { 
+    displayName: string; 
+    senderType: "model" | "assistant";
+    modelLogo?: string;
+    assistantLogo?: string;
     avatarBg?: string;
     avatarText?: string;
-    avatarType?: string;
   } => {
     if (!message.sender_id) {
-      return { name: "AI Assistant" }
+      return { displayName: "AI Assistant", senderType: "model" }
     }
 
     // Handle different sender types
@@ -116,11 +119,10 @@ export function ChatView() {
       // Direct model chat
       const model = getModelById(message.sender_id)
       if (model) {
-        // Get model logo using the new logic
-        const modelLogo = getModelLogo(model)
         return { 
-          name: formatModelDisplayName(model.name, model.provider_id, getProviderById),
-          avatar: modelLogo
+          displayName: formatModelDisplayName(model.name, model.provider_id, getProviderById),
+          senderType: "model",
+          modelLogo: getModelLogo(model)
         }
       }
     } else if (message.sender_type === "assistant") {
@@ -130,26 +132,26 @@ export function ChatView() {
         const assistantModel = getModelById(assistant.model_id)
         const modelName = assistantModel ? assistantModel.name : "Unknown Model"
         
-        // Return assistant avatar info based on type
+        // Return assistant info
         if (assistant.avatar_type === "image") {
           return { 
-            name: `${assistant.name} · ${modelName}`,
-            avatar: assistant.avatar_image_url || assistant.avatar_image_path,
-            avatarType: "image"
+            displayName: `${assistant.name} · ${modelName}`,
+            senderType: "assistant",
+            assistantLogo: assistant.avatar_image_url || assistant.avatar_image_path
           }
         } else {
           // Text/emoji avatar
           return { 
-            name: `${assistant.name} · ${modelName}`,
+            displayName: `${assistant.name} · ${modelName}`,
+            senderType: "assistant",
             avatarBg: assistant.avatar_bg || undefined,
-            avatarText: assistant.avatar_text || undefined,
-            avatarType: "text"
+            avatarText: assistant.avatar_text || undefined
           }
         }
       }
     }
 
-    return { name: "AI Assistant" }
+    return { displayName: "AI Assistant", senderType: "model" }
   }
 
   // Set up event listeners for chat streaming and scraping
@@ -333,7 +335,7 @@ export function ChatView() {
         ) : (
           <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
             {messages.map((message) => {
-              const modelInfo = getMessageModelInfo(message)
+              const info = getMessageDisplayInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               return (
@@ -342,11 +344,12 @@ export function ChatView() {
                   role={role}
                   content={message.content}
                   timestamp={formatTimestamp(message.created_at)}
-                  modelName={modelInfo.name}
-                  modelAvatar={modelInfo.avatar}
-                  avatarBg={modelInfo.avatarBg}
-                  avatarText={modelInfo.avatarText}
-                  avatarType={modelInfo.avatarType}
+                  displayName={info.displayName}
+                  senderType={info.senderType}
+                  modelLogo={info.modelLogo}
+                  assistantLogo={info.assistantLogo}
+                  avatarBg={info.avatarBg}
+                  avatarText={info.avatarText}
                   userMessageAlign={CHAT_CONFIG.userMessageAlign}
                   userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
                   onCopy={handleCopy}
@@ -359,18 +362,19 @@ export function ChatView() {
               )
             })}
             {isWaitingForAI && (() => {
-              const displayInfo = getModelDisplayInfo()
+              const info = getDisplayInfo()
               return (
                 <ChatMessage
                   key="waiting"
                   role="assistant"
                   content=""
                   timestamp="Now"
-                  modelName={displayInfo.name}
-                  modelAvatar={displayInfo.avatar}
-                  avatarBg={displayInfo.avatarBg}
-                  avatarText={displayInfo.avatarText}
-                  avatarType={displayInfo.avatarType}
+                  displayName={info.displayName}
+                  senderType={info.senderType}
+                  modelLogo={info.modelLogo}
+                  assistantLogo={info.assistantLogo}
+                  avatarBg={info.avatarBg}
+                  avatarText={info.avatarText}
                   userMessageAlign={CHAT_CONFIG.userMessageAlign}
                   userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
                   isLoading={true}
@@ -384,18 +388,19 @@ export function ChatView() {
               )
             })()}
             {isStreaming && streamingContent && !isWaitingForAI && (() => {
-              const displayInfo = getModelDisplayInfo()
+              const info = getDisplayInfo()
               return (
                 <ChatMessage
                   key="streaming"
                   role="assistant"
                   content={streamingContent}
                   timestamp="Now"
-                  modelName={displayInfo.name}
-                  modelAvatar={displayInfo.avatar}
-                  avatarBg={displayInfo.avatarBg}
-                  avatarText={displayInfo.avatarText}
-                  avatarType={displayInfo.avatarType}
+                  displayName={info.displayName}
+                  senderType={info.senderType}
+                  modelLogo={info.modelLogo}
+                  assistantLogo={info.assistantLogo}
+                  avatarBg={info.avatarBg}
+                  avatarText={info.avatarText}
                   userMessageAlign={CHAT_CONFIG.userMessageAlign}
                   userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
                   onCopy={handleCopy}

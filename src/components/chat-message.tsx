@@ -1,4 +1,3 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -20,18 +19,37 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
 import { Spinner } from "@/components/ui/spinner"
-import { getModelLogoById } from "@/lib/model-logos"
-import { cn } from "@/lib/utils"
+import { ModelAvatar } from "@/components/model-avatar"
+import { AssistantAvatar } from "@/components/assistant-avatar"
 
 interface ChatMessageProps {
   role: "user" | "assistant"
   content: string
   timestamp?: string
-  modelName?: string
-  modelAvatar?: string
+  /**
+   * Display name for the AI sender (model name or "assistant name · model name")
+   */
+  displayName?: string
+  /**
+   * Type of sender: "model" or "assistant" - used to render the correct avatar
+   */
+  senderType?: "model" | "assistant"
+  /**
+   * For model senders: direct logo URL from getModelLogo()
+   */
+  modelLogo?: string
+  /**
+   * For assistant senders: custom image URL
+   */
+  assistantLogo?: string
+  /**
+   * For assistant senders with text avatars: background color
+   */
   avatarBg?: string
+  /**
+   * For assistant senders with text avatars: text/emoji to display
+   */
   avatarText?: string
-  avatarType?: string
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
   isLoading?: boolean
@@ -47,11 +65,12 @@ export const ChatMessage = memo(function ChatMessage({
   role,
   content,
   timestamp,
-  modelName = "GPT-4",
-  modelAvatar,
+  displayName = "AI Assistant",
+  senderType = "model",
+  modelLogo,
+  assistantLogo,
   avatarBg,
   avatarText,
-  avatarType,
   userMessageAlign = "right",
   userMessageShowBackground = true,
   isLoading = false,
@@ -64,16 +83,31 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const [isExportOpen, setIsExportOpen] = useState(false)
   
-  // Get display avatar based on type
-  const displayAvatar = avatarType === "image" || !avatarType ? (modelAvatar || getModelLogoById(modelName)) : undefined
-  
-  // Get fallback text: use avatarText if provided, otherwise first character of model name
-  const fallbackText = avatarText || modelName.charAt(0).toUpperCase()
-  
-  // Get avatar background color and style
-  const isHexColor = avatarBg?.startsWith("#")
-  const avatarStyle = isHexColor && avatarBg ? { backgroundColor: avatarBg } : undefined
-  const avatarClassName = !isHexColor && avatarBg ? avatarBg : undefined
+  // Render the appropriate avatar based on sender type
+  const renderAvatar = () => {
+    if (senderType === "assistant") {
+      // For assistants: use AssistantAvatar with custom styling
+      return (
+        <AssistantAvatar
+          logo={assistantLogo}
+          avatarBg={avatarBg}
+          avatarText={avatarText}
+          name={displayName}
+          size="xs"
+        />
+      )
+    }
+    // For models: use ModelAvatar
+    // Extract model name from displayName (remove provider part like "Qwen3 - Ollama" -> "Qwen3")
+    const modelName = displayName.split(' - ')[0] || displayName
+    return (
+      <ModelAvatar
+        logo={modelLogo}
+        name={modelName}
+        size="xs"
+      />
+    )
+  }
   
   // Memoize markdown components to avoid recreating them on every render
   const markdownComponents = useMemo(() => ({
@@ -222,13 +256,8 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <div className="group relative isolate px-4 py-2 mx-4 my-1">
       <div className="flex items-center gap-2 mb-2">
-        <Avatar className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
-          {displayAvatar && <AvatarImage src={displayAvatar} />}
-          <AvatarFallback className={cn("text-white text-[10px]", avatarClassName)} style={avatarStyle}>
-            {fallbackText}
-          </AvatarFallback>
-        </Avatar>
-        <span className="text-xs text-muted-foreground">{modelName}</span>
+        {renderAvatar()}
+        <span className="text-xs text-muted-foreground">{displayName}</span>
         {timestamp && (
           <span className="text-xs text-muted-foreground transition-opacity opacity-0 group-hover:opacity-100">
             {timestamp}

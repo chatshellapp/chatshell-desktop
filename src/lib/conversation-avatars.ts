@@ -36,14 +36,15 @@ export function buildConversationAvatars(
           avatars.push({
             type: 'image',
             imageUrl: modelLogo,
-            fallback: participant.display_name.charAt(0).toUpperCase()
+            fallback: model.name.charAt(0).toUpperCase()
           })
         } else {
+          // Don't set backgroundColor - let the Avatar use its default bg-muted styling
+          // This matches the behavior of ModelAvatar component
           avatars.push({
             type: 'text',
-            text: participant.display_name.charAt(0).toUpperCase(),
-            backgroundColor: '#6366f1',
-            fallback: participant.display_name.charAt(0).toUpperCase()
+            text: model.name.charAt(0).toUpperCase(),
+            fallback: model.name.charAt(0).toUpperCase()
           })
         }
       }

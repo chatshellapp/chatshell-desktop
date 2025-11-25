@@ -87,13 +87,7 @@ export function MessageListItem({
     if (avatar.type === 'text') {
       const displayText = avatar.text || avatar.fallback || '?'
       const isPlaceholder = avatar.isPlaceholder === true
-      
-      console.log('[MessageListItem] Rendering text avatar:', {
-        text: avatar.text,
-        backgroundColor: avatar.backgroundColor,
-        displayText,
-        isPlaceholder
-      })
+      const hasCustomBg = !!avatar.backgroundColor
       
       // For placeholder avatars, use Tailwind's bg-muted class
       if (isPlaceholder) {
@@ -112,7 +106,29 @@ export function MessageListItem({
         )
       }
       
-      // For normal text/emoji avatars
+      // For text/emoji avatars with custom background (e.g., assistants)
+      if (hasCustomBg) {
+        return (
+          <Avatar
+            key={index}
+            className={cn(
+              "size-4 ring-1 ring-background",
+              index > 0 && "ml-[-6px]"
+            )}
+            style={{ backgroundColor: avatar.backgroundColor }}
+          >
+            <AvatarFallback
+              className="text-[10px] text-white"
+              style={{ backgroundColor: avatar.backgroundColor }}
+            >
+              {displayText}
+            </AvatarFallback>
+          </Avatar>
+        )
+      }
+      
+      // For text avatars without custom background (e.g., models without logo)
+      // Use default AvatarFallback styling (bg-muted)
       return (
         <Avatar
           key={index}
@@ -120,16 +136,8 @@ export function MessageListItem({
             "size-4 ring-1 ring-background",
             index > 0 && "ml-[-6px]"
           )}
-          style={{
-            backgroundColor: avatar.backgroundColor || '#6366f1'
-          }}
         >
-          <AvatarFallback
-            className="text-[10px] text-white"
-            style={{
-              backgroundColor: avatar.backgroundColor || '#6366f1'
-            }}
-          >
+          <AvatarFallback className="text-[10px]">
             {displayText}
           </AvatarFallback>
         </Avatar>

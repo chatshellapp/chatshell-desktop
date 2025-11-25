@@ -5,7 +5,8 @@ import {
   ItemTitle,
   ItemHeader,
 } from "@/components/ui/item"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { AssistantAvatar } from "@/components/assistant-avatar"
+import { ModelAvatar } from "@/components/model-avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -13,9 +14,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star, Sparkles, FileText, Database, Boxes } from "lucide-react"
+import { MoreVertical, Star, FileText, Database, Boxes } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getModelLogoById } from "@/lib/model-logos"
 
 export interface AssistantCapabilities {
   /**
@@ -120,11 +120,6 @@ export function AssistantListItem({
   // Count active capabilities to determine if we should show them
   const hasCapabilities = Object.values(capabilities).some(Boolean)
 
-  // Determine if avatarBg is a hex color or a Tailwind class
-  const isHexColor = avatarBg.startsWith("#")
-  const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
-  const avatarClassName = !isHexColor ? avatarBg : undefined
-
   if (compact) {
     return (
       <Item
@@ -147,15 +142,7 @@ export function AssistantListItem({
         }}
       >
         {/* Assistant logo - smaller in compact mode */}
-        <Avatar className={cn("size-4", avatarClassName)} style={avatarStyle}>
-          {logo ? (
-            <AvatarImage src={logo} alt={name} />
-          ) : (
-            <AvatarFallback className={cn("text-white text-[8px]", avatarClassName)} style={avatarStyle}>
-              {avatarText || <Sparkles className="size-2" />}
-            </AvatarFallback>
-          )}
-        </Avatar>
+        <AssistantAvatar logo={logo} avatarBg={avatarBg} avatarText={avatarText} name={name} size="xs" />
 
         {/* Assistant info */}
         <ItemContent>
@@ -210,15 +197,7 @@ export function AssistantListItem({
       }}
     >
       {/* Assistant logo */}
-      <Avatar className={cn("size-8", avatarClassName)} style={avatarStyle}>
-        {logo ? (
-          <AvatarImage src={logo} alt={name} />
-        ) : (
-          <AvatarFallback className={cn("text-white", avatarClassName)} style={avatarStyle}>
-            {avatarText || <Sparkles className="size-4" />}
-          </AvatarFallback>
-        )}
-      </Avatar>
+      <AssistantAvatar logo={logo} avatarBg={avatarBg} avatarText={avatarText} name={name} size="md" />
 
       {/* Assistant info */}
       <ItemContent>
@@ -289,20 +268,12 @@ export function AssistantListItem({
         {hasCapabilities && (
           <div className="flex items-center gap-1.5">
             {capabilities.hasModel && (
-              <Avatar className="size-3 rounded-sm">
-                {(() => {
-                  const modelLogo = capabilities.modelLogo || (modelName ? getModelLogoById(modelName) : undefined)
-                  const modelInitial = modelName?.charAt(0).toUpperCase() || 'M'
-                  return (
-                    <>
-                      {modelLogo && <AvatarImage src={modelLogo} alt="Model" />}
-                      <AvatarFallback className="rounded-sm text-[8px]">
-                        {modelInitial}
-                      </AvatarFallback>
-                    </>
-                  )
-                })()}
-              </Avatar>
+              <ModelAvatar 
+                logo={capabilities.modelLogo} 
+                name={modelName} 
+                size="xxs" 
+                className="rounded-sm" 
+              />
             )}
             {capabilities.hasFiles && (
               <FileText className="size-3 text-muted-foreground" />
