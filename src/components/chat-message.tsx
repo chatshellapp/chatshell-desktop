@@ -143,10 +143,10 @@ export const ChatMessage = memo(function ChatMessage({
     const backgroundClass = userMessageShowBackground ? "bg-muted/50" : ""
     
     return (
-      <div className={`group flex flex-col px-4 my-1`}>
+      <div className={`group relative isolate flex flex-col px-4 my-1`}>
         {timestamp && (
           <div className={`flex ${alignClass} mb-1`}>
-            <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-xs text-muted-foreground transition-opacity opacity-0 group-hover:opacity-100">
               {timestamp}
             </span>
           </div>
@@ -220,7 +220,7 @@ export const ChatMessage = memo(function ChatMessage({
   }
 
   return (
-    <div className="group px-4 py-2 mx-4 my-1">
+    <div className="group relative isolate px-4 py-2 mx-4 my-1">
       <div className="flex items-center gap-2 mb-2">
         <Avatar className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
           {displayAvatar && <AvatarImage src={displayAvatar} />}
@@ -230,7 +230,7 @@ export const ChatMessage = memo(function ChatMessage({
         </Avatar>
         <span className="text-xs text-muted-foreground">{modelName}</span>
         {timestamp && (
-          <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs text-muted-foreground transition-opacity opacity-0 group-hover:opacity-100">
             {timestamp}
           </span>
         )}
