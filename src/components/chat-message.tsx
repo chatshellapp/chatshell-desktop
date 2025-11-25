@@ -111,39 +111,65 @@ export const ChatMessage = memo(function ChatMessage({
   
   // Memoize markdown components to avoid recreating them on every render
   const markdownComponents = useMemo(() => ({
+    // CODE: Fix for react-markdown v10 (no inline prop)
     code(props: any) {
-      const { node, inline, className, children, ...rest } = props
+      const { className, children, ...rest } = props
+      const languageMatch = /language-([\w-+]+)/.exec(className || '')
+      const content = String(children).replace(/\n$/, '')
+      const isMultiline = content.includes('\n')
+      const isCodeBlock = languageMatch || isMultiline
+
+      if (isCodeBlock) {
+        return (
+          <code
+            className={`${className || ''} block p-3 rounded-md bg-muted overflow-x-auto text-sm`}
+            {...rest}
+          >
+            {children}
+          </code>
+        )
+      }
+
+      // Inline code
       return (
         <code
-          className={`${className || ''} ${
-            inline
-              ? 'px-1.5 py-0.5 rounded-md bg-muted text-sm'
-              : 'block p-3 rounded-md bg-muted overflow-x-auto'
-          }`}
+          className="px-1.5 py-0.5 rounded-md bg-muted text-sm font-mono"
           {...rest}
         >
           {children}
         </code>
       )
     },
+
+    // PRE: Allow visible overflow for code blocks
     pre({ children }: any) {
-      return <pre className="my-2">{children}</pre>
+      return <pre className="my-2 overflow-visible">{children}</pre>
     },
+
     p({ children }: any) {
       return <p className="mb-2 last:mb-0">{children}</p>
     },
+
+    // LISTS: Fix nested list indentation (remove list-inside, add pl-5)
     ul({ children }: any) {
-      return <ul className="list-disc list-inside mb-2">{children}</ul>
+      return <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>
     },
     ol({ children }: any) {
-      return <ol className="list-decimal list-inside mb-2">{children}</ol>
+      return <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>
     },
     li({ children }: any) {
-      return <li className="mb-1">{children}</li>
+      return <li className="pl-1">{children}</li>
     },
+
     blockquote({ children }: any) {
-      return <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">{children}</blockquote>
+      return (
+        <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">
+          {children}
+        </blockquote>
+      )
     },
+
+    // HEADINGS
     h1({ children }: any) {
       return <h1 className="text-2xl font-bold mb-2 mt-4">{children}</h1>
     },
@@ -153,17 +179,96 @@ export const ChatMessage = memo(function ChatMessage({
     h3({ children }: any) {
       return <h3 className="text-lg font-bold mb-2 mt-2">{children}</h3>
     },
+    h4({ children }: any) {
+      return <h4 className="text-base font-bold mb-2 mt-2">{children}</h4>
+    },
+    h5({ children }: any) {
+      return <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>
+    },
+    h6({ children }: any) {
+      return <h6 className="text-sm font-semibold mb-1 mt-2">{children}</h6>
+    },
+
+    // LINKS: Important for clickable links
+    a({ href, children }: any) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline underline-offset-2 hover:text-primary/80"
+        >
+          {children}
+        </a>
+      )
+    },
+
+    // IMAGES: Prevent overflow
+    img({ src, alt }: any) {
+      return (
+        <img
+          src={src}
+          alt={alt || ''}
+          className="max-w-full h-auto rounded-md my-2"
+          loading="lazy"
+        />
+      )
+    },
+
+    // TABLES: Add responsive wrapper
     table({ children }: any) {
-      return <table className="border-collapse border border-border my-2">{children}</table>
+      return (
+        <div className="overflow-x-auto my-2">
+          <table className="w-full border-collapse border border-border">
+            {children}
+          </table>
+        </div>
+      )
     },
     thead({ children }: any) {
       return <thead className="bg-muted">{children}</thead>
     },
+    tbody({ children }: any) {
+      return <tbody>{children}</tbody>
+    },
+    tr({ children }: any) {
+      return <tr className="border-b border-border">{children}</tr>
+    },
     th({ children }: any) {
-      return <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>
+      return (
+        <th className="border border-border px-3 py-2 text-left font-semibold">
+          {children}
+        </th>
+      )
     },
     td({ children }: any) {
       return <td className="border border-border px-3 py-2">{children}</td>
+    },
+
+    // HORIZONTAL RULE
+    hr() {
+      return <hr className="my-4 border-t border-border" />
+    },
+
+    // TASK LIST CHECKBOX (GFM feature)
+    input({ type, checked, disabled }: any) {
+      if (type === 'checkbox') {
+        return (
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            className="mr-2 h-4 w-4 rounded border-border"
+            readOnly
+          />
+        )
+      }
+      return <input type={type} />
+    },
+
+    // STRIKETHROUGH (GFM feature)
+    del({ children }: any) {
+      return <del className="text-muted-foreground line-through">{children}</del>
     },
   }), [])
 
