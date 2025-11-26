@@ -121,7 +121,25 @@ fn extract_headings(document: &Html) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub async fn fetch_webpage_structured(url: &str) -> ScrapedWebpage {
+/// Truncate string by character count (not bytes), returns (truncated_string, was_truncated)
+fn truncate_by_chars(s: &str, max_chars: usize) -> (String, bool) {
+    let char_count = s.chars().count();
+    if char_count <= max_chars {
+        (s.to_string(), false)
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        (
+            format!(
+                "{}\n\n[Content truncated - original length: {} characters]",
+                truncated, char_count
+            ),
+            true,
+        )
+    }
+}
+
+/// Fetch and parse a webpage. max_chars: None = no truncation, Some(n) = truncate to n characters
+pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> ScrapedWebpage {
     println!("📡 [scraper] Starting fetch for: {}", url);
     
     let client = match Client::builder()
@@ -239,18 +257,11 @@ pub async fn fetch_webpage_structured(url: &str) -> ScrapedWebpage {
 
     let cleaned_html = clean_html(&html_content);
     let markdown = html2md::parse_html(&cleaned_html);
-    let original_length = markdown.len();
+    let original_length = markdown.chars().count();
 
-    const MAX_LENGTH: usize = 8000;
-    let (extracted_content, truncated) = if markdown.len() > MAX_LENGTH {
-        let truncated_content = format!(
-            "{}\n\n[Content truncated - original length: {} characters]",
-            &markdown[..MAX_LENGTH],
-            markdown.len()
-        );
-        (truncated_content, true)
-    } else {
-        (markdown, false)
+    let (extracted_content, truncated) = match max_chars {
+        Some(limit) => truncate_by_chars(&markdown, limit),
+        None => (markdown, false),
     };
 
     let cleaned_content = extracted_content
@@ -277,15 +288,15 @@ pub async fn fetch_webpage_structured(url: &str) -> ScrapedWebpage {
     }
 }
 
-pub async fn fetch_and_convert_to_markdown(url: &str) -> Result<String> {
-    let result = fetch_webpage_structured(url).await;
+pub async fn fetch_and_convert_to_markdown(url: &str, max_chars: Option<usize>) -> Result<String> {
+    let result = fetch_webpage_structured(url, max_chars).await;
     if let Some(error) = result.extraction_error {
         return Err(anyhow::anyhow!("{}", error));
     }
     Ok(result.extracted_content)
 }
 
-pub async fn process_message_with_urls(content: &str) -> Vec<ScrapedWebpage> {
+pub async fn process_message_with_urls(content: &str, max_chars: Option<usize>) -> Vec<ScrapedWebpage> {
     let urls = extract_urls(content);
     
     if urls.is_empty() {
@@ -297,12 +308,12 @@ pub async fn process_message_with_urls(content: &str) -> Vec<ScrapedWebpage> {
     
     for url in &urls {
         println!("🔗 [scraper] Fetching: {}", url);
-        let scraped = fetch_webpage_structured(url).await;
+        let scraped = fetch_webpage_structured(url, max_chars).await;
         println!("✅ [scraper] Completed: {} (error: {:?})", url, scraped.extraction_error);
         results.push(scraped);
     }
     
-    println!("�� [scraper] All URLs processed");
+    println!("📦 [scraper] All URLs processed");
     results
 }
 

@@ -919,7 +919,7 @@ pub async fn send_message(
         }
         
         // Process URLs and get structured webpage data
-        let scraped_pages = scraper::process_message_with_urls(&content).await;
+        let scraped_pages = scraper::process_message_with_urls(&content, None).await;
         println!("📄 [background_task] Scraped {} pages", scraped_pages.len());
         
         // Store scraped pages as external resources and link to message
