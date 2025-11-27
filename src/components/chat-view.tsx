@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
+import { WebpagePreview } from "@/components/webpage-preview"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
 import { useModelStore } from "@/stores/modelStore"
@@ -384,29 +385,46 @@ export function ChatView() {
               const info = getMessageDisplayInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
+              const isUserMessage = message.sender_type === "user"
+              const resources = messageResources[message.id]?.filter(r => r.resource_type === "webpage") || []
+              const urls = scrapingUrls[message.id] || []
+              const hasWebpageContent = isUserMessage && (resources.length > 0 || urls.length > 0)
+              
               return (
-                <ChatMessage
-                  key={message.id}
-                  role={role}
-                  content={message.content}
-                  timestamp={formatTimestamp(message.created_at)}
-                  displayName={info.displayName}
-                  senderType={info.senderType}
-                  modelLogo={info.modelLogo}
-                  assistantLogo={info.assistantLogo}
-                  avatarBg={info.avatarBg}
-                  avatarText={info.avatarText}
-                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
-                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-                  externalResources={messageResources[message.id]}
-                  scrapingUrls={scrapingUrls[message.id]}
-                  onCopy={handleCopy}
-                  onResend={handleResend}
-                  onTranslate={handleTranslate}
-                  onExportAll={handleExportAll}
-                  onExportConversation={handleExportConversation}
-                  onExportMessage={handleExportMessage}
-                />
+                <div key={message.id}>
+                  <ChatMessage
+                    role={role}
+                    content={message.content}
+                    timestamp={formatTimestamp(message.created_at)}
+                    displayName={info.displayName}
+                    senderType={info.senderType}
+                    modelLogo={info.modelLogo}
+                    assistantLogo={info.assistantLogo}
+                    avatarBg={info.avatarBg}
+                    avatarText={info.avatarText}
+                    userMessageAlign={CHAT_CONFIG.userMessageAlign}
+                    userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                    onCopy={handleCopy}
+                    onResend={handleResend}
+                    onTranslate={handleTranslate}
+                    onExportAll={handleExportAll}
+                    onExportConversation={handleExportConversation}
+                    onExportMessage={handleExportMessage}
+                  />
+                  {/* Webpage previews - rendered as separate message block */}
+                  {hasWebpageContent && (
+                    <div className="flex justify-end px-4 my-1">
+                      <div className="max-w-[80%] space-y-1.5">
+                        {resources.map((resource) => (
+                          <WebpagePreview key={resource.id} resource={resource} />
+                        ))}
+                        {urls.map((url) => (
+                          <WebpagePreview key={url} scrapingUrl={url} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )
             })}
             {isWaitingForAI && (() => {

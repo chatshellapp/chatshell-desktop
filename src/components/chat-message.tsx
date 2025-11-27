@@ -16,9 +16,7 @@ import { useState, memo } from "react"
 import { Spinner } from "@/components/ui/spinner"
 import { ModelAvatar } from "@/components/model-avatar"
 import { AssistantAvatar } from "@/components/assistant-avatar"
-import { WebpagePreview } from "@/components/webpage-preview"
 import { MarkdownContent } from "@/components/markdown-content"
-import type { ExternalResource } from "@/types"
 
 interface ChatMessageProps {
   role: "user" | "assistant"
@@ -51,14 +49,6 @@ interface ChatMessageProps {
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
   isLoading?: boolean
-  /**
-   * External resources (scraped webpages, files) attached to this message
-   */
-  externalResources?: ExternalResource[]
-  /**
-   * URLs currently being scraped for this message
-   */
-  scrapingUrls?: string[]
   onCopy?: () => void
   onResend?: () => void
   onTranslate?: () => void
@@ -80,8 +70,6 @@ export const ChatMessage = memo(function ChatMessage({
   userMessageAlign = "right",
   userMessageShowBackground = true,
   isLoading = false,
-  externalResources = [],
-  scrapingUrls = [],
   onCopy,
   onResend,
   onTranslate,
@@ -122,9 +110,6 @@ export const ChatMessage = memo(function ChatMessage({
     onCopy?.()
   }
 
-  // Filter webpage resources for display
-  const webpageResources = externalResources.filter(r => r.resource_type === "webpage")
-
   if (role === "user") {
     const alignClass = userMessageAlign === "right" ? "justify-end" : "justify-start"
     const backgroundClass = userMessageShowBackground ? "bg-muted/50" : ""
@@ -141,20 +126,6 @@ export const ChatMessage = memo(function ChatMessage({
         <div className={`flex ${alignClass}`}>
           <div className={`px-4 py-3 ${backgroundClass} rounded-lg max-w-[80%]`}>
             <p className="text-base text-foreground whitespace-pre-wrap">{content}</p>
-            
-            {/* Webpage previews - show both scraped resources and loading URLs */}
-            {(webpageResources.length > 0 || scrapingUrls.length > 0) && (
-              <div className="mt-2 space-y-2">
-                {/* Completed scrapes */}
-                {webpageResources.map((resource) => (
-                  <WebpagePreview key={resource.id} resource={resource} />
-                ))}
-                {/* URLs currently being scraped */}
-                {scrapingUrls.map((url) => (
-                  <WebpagePreview key={url} scrapingUrl={url} />
-                ))}
-              </div>
-            )}
           </div>
         </div>
         <TooltipProvider delayDuration={300}>
