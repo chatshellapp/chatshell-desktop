@@ -54,6 +54,66 @@ pub fn extract_urls(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Extract favicon URL from HTML document
+fn extract_favicon_from_html(document: &Html, base_url: &Url) -> Option<String> {
+    // Try multiple selectors for favicon
+    let selectors = [
+        r#"link[rel="icon"]"#,
+        r#"link[rel="shortcut icon"]"#,
+        r#"link[rel="apple-touch-icon"]"#,
+        r#"link[rel="apple-touch-icon-precomposed"]"#,
+    ];
+    
+    for selector_str in &selectors {
+        if let Ok(selector) = Selector::parse(selector_str) {
+            for element in document.select(&selector) {
+                if let Some(href) = element.value().attr("href") {
+                    // Resolve relative URL to absolute
+                    if let Ok(favicon_url) = base_url.join(href) {
+                        return Some(favicon_url.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Fetch favicon URL for a given website URL
+/// First tries to extract from HTML, then falls back to /favicon.ico
+async fn fetch_favicon_url(url: &str, html_content: Option<&str>) -> Option<String> {
+    let parsed_url = Url::parse(url).ok()?;
+    
+    // If we have HTML content, try to extract favicon from it
+    if let Some(html) = html_content {
+        let document = Html::parse_document(html);
+        if let Some(favicon) = extract_favicon_from_html(&document, &parsed_url) {
+            println!("✅ [favicon] Found icon in HTML for {}: {}", url, favicon);
+            return Some(favicon);
+        }
+    }
+    
+    // Fallback: try the standard /favicon.ico location
+    let favicon_url = parsed_url.join("/favicon.ico").ok()?;
+    
+    // Check if favicon.ico exists
+    match HTTP_CLIENT
+        .head(favicon_url.as_str())
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            println!("✅ [favicon] Found /favicon.ico for {}", url);
+            Some(favicon_url.to_string())
+        }
+        _ => {
+            println!("⚠️ [favicon] No favicon found for {}", url);
+            None
+        }
+    }
+}
+
 fn extract_meta_description(document: &Html) -> Option<String> {
     // Try standard description meta tag
     let desc = Selector::parse(r#"meta[name="description"]"#)
@@ -117,7 +177,7 @@ fn truncate_by_chars(s: &str, max_chars: usize) -> (String, bool) {
 }
 
 /// Create an error response with default metadata
-fn create_error_response(url: &str, mime_type: String, error: String) -> FetchedWebResource {
+fn create_error_response(url: &str, mime_type: String, error: String, favicon_url: Option<String>) -> FetchedWebResource {
     FetchedWebResource {
         url: url.to_string(),
         title: None,
@@ -132,6 +192,7 @@ fn create_error_response(url: &str, mime_type: String, error: String) -> Fetched
             fetched_at: Utc::now().to_rfc3339(),
             original_length: None,
             truncated: false,
+            favicon_url,
         },
     }
 }
@@ -142,6 +203,7 @@ fn process_html_with_readability(
     html_content: &str,
     mime_type: String,
     max_chars: Option<usize>,
+    favicon_url: Option<String>,
 ) -> FetchedWebResource {
     // Parse document for metadata extraction
     let document = Html::parse_document(html_content);
@@ -153,7 +215,7 @@ fn process_html_with_readability(
     let parsed_url = match Url::parse(url) {
         Ok(u) => u,
         Err(e) => {
-            return create_error_response(url, mime_type, format!("Invalid URL: {}", e));
+            return create_error_response(url, mime_type, format!("Invalid URL: {}", e), favicon_url);
         }
     };
 
@@ -220,6 +282,7 @@ fn process_html_with_readability(
             fetched_at: Utc::now().to_rfc3339(),
             original_length: Some(original_length),
             truncated,
+            favicon_url,
         },
     }
 }
@@ -230,6 +293,7 @@ fn process_text_content(
     text_content: &str,
     mime_type: String,
     max_chars: Option<usize>,
+    favicon_url: Option<String>,
 ) -> FetchedWebResource {
     let original_length = text_content.chars().count();
     let (content, truncated) = match max_chars {
@@ -251,6 +315,7 @@ fn process_text_content(
             fetched_at: Utc::now().to_rfc3339(),
             original_length: Some(original_length),
             truncated,
+            favicon_url,
         },
     }
 }
@@ -260,6 +325,7 @@ fn process_json_content(
     url: &str,
     json_content: &str,
     max_chars: Option<usize>,
+    favicon_url: Option<String>,
 ) -> FetchedWebResource {
     // Pretty-print JSON if possible
     let formatted = serde_json::from_str::<serde_json::Value>(json_content)
@@ -289,6 +355,7 @@ fn process_json_content(
             fetched_at: Utc::now().to_rfc3339(),
             original_length: Some(original_length),
             truncated,
+            favicon_url,
         },
     }
 }
@@ -300,7 +367,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
 
     // Validate URL first
     if Url::parse(url).is_err() {
-        return create_error_response(url, String::new(), format!("Invalid URL: {}", url));
+        return create_error_response(url, String::new(), format!("Invalid URL: {}", url), None);
     }
 
     println!("📨 [fetcher] Sending HTTP request...");
@@ -314,7 +381,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
     {
         Ok(r) => r,
         Err(e) => {
-            return create_error_response(url, String::new(), format!("Failed to fetch URL: {}", e));
+            return create_error_response(url, String::new(), format!("Failed to fetch URL: {}", e), None);
         }
     };
 
@@ -325,6 +392,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
             url,
             String::new(),
             format!("HTTP error: {}", response.status()),
+            None,
         );
     }
 
@@ -344,6 +412,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 url,
                 mime_type,
                 format!("Failed to read response body: {}", e),
+                None,
             );
         }
     };
@@ -352,22 +421,32 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
     match mime_type.clone().as_str() {
         // HTML content - use Readability algorithm for extraction
         "text/html" | "application/xhtml+xml" => {
-            process_html_with_readability(url, &body, mime_type, max_chars)
+            // Extract favicon from HTML content
+            let favicon_url = fetch_favicon_url(url, Some(&body)).await;
+            process_html_with_readability(url, &body, mime_type, max_chars, favicon_url)
         }
 
         // Markdown - return directly
         "text/markdown" | "text/x-markdown" => {
-            process_text_content(url, &body, "text/markdown".to_string(), max_chars)
+            let favicon_url = fetch_favicon_url(url, None).await;
+            process_text_content(url, &body, "text/markdown".to_string(), max_chars, favicon_url)
         }
 
         // Plain text - return directly
-        "text/plain" => process_text_content(url, &body, mime_type, max_chars),
+        "text/plain" => {
+            let favicon_url = fetch_favicon_url(url, None).await;
+            process_text_content(url, &body, mime_type, max_chars, favicon_url)
+        }
 
         // JSON - format as code block
-        "application/json" => process_json_content(url, &body, max_chars),
+        "application/json" => {
+            let favicon_url = fetch_favicon_url(url, None).await;
+            process_json_content(url, &body, max_chars, favicon_url)
+        }
 
         // XML - treat as text with code block
         "application/xml" | "text/xml" => {
+            let favicon_url = fetch_favicon_url(url, None).await;
             let markdown_content = format!("```xml\n{}\n```", body);
             let original_length = markdown_content.chars().count();
             let (content, truncated) = match max_chars {
@@ -388,6 +467,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                     fetched_at: Utc::now().to_rfc3339(),
                     original_length: Some(original_length),
                     truncated,
+                    favicon_url,
                 },
             }
         }
@@ -399,6 +479,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
             || mime == "application/pdf"
             || mime == "application/octet-stream" =>
         {
+            let favicon_url = fetch_favicon_url(url, None).await;
             create_error_response(
                 url,
                 mime_type,
@@ -406,6 +487,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                     "Unsupported content type: {}. Binary content cannot be processed.",
                     mime
                 ),
+                favicon_url,
             )
         }
 
@@ -418,10 +500,12 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 || trimmed.starts_with("<html")
                 || trimmed.starts_with("<HTML")
             {
-                process_html_with_readability(url, &body, "text/html".to_string(), max_chars)
+                let favicon_url = fetch_favicon_url(url, Some(&body)).await;
+                process_html_with_readability(url, &body, "text/html".to_string(), max_chars, favicon_url)
             } else {
+                let favicon_url = fetch_favicon_url(url, None).await;
                 // Treat as plain text
-                process_text_content(url, &body, mime_type, max_chars)
+                process_text_content(url, &body, mime_type, max_chars, favicon_url)
             }
         }
     }

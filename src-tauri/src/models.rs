@@ -316,6 +316,7 @@ pub struct WebFetchMetadata {
     pub fetched_at: String,
     pub original_length: Option<usize>,
     pub truncated: bool,
+    pub favicon_url: Option<String>,
 }
 
 /// Metadata for web search results (stored as JSON in metadata field)

@@ -286,6 +286,7 @@ export interface WebFetchMetadata {
   fetched_at: string;
   original_length?: number;
   truncated: boolean;
+  favicon_url?: string;
 }
 
 // Metadata for web search results

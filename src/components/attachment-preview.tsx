@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { MarkdownContent } from "@/components/markdown-content"
-import type { Attachment } from "@/types"
+import type { Attachment, WebFetchMetadata } from "@/types"
 
 interface AttachmentPreviewProps {
   /** Attachment resource (for completed processing) */
@@ -29,14 +29,35 @@ function getDomain(url: string): string {
   }
 }
 
-// Extract favicon URL from a webpage URL using Google's favicon service
-function getFaviconUrl(url: string): string {
+// Parse metadata JSON and extract favicon_url
+function parseMetadata(metadataJson?: string): WebFetchMetadata | null {
+  if (!metadataJson) return null
   try {
-    const urlObj = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`
+    return JSON.parse(metadataJson) as WebFetchMetadata
   } catch {
-    return ""
+    return null
   }
+}
+
+// Get favicon URL - prefer fetched favicon, fallback to Google service
+function getFaviconUrl(attachment: Attachment): string {
+  // First try to get favicon from metadata (fetched from HTML)
+  const metadata = parseMetadata(attachment.metadata)
+  if (metadata?.favicon_url) {
+    return metadata.favicon_url
+  }
+  
+  // Fallback to Google favicon service
+  if (attachment.url) {
+    try {
+      const urlObj = new URL(attachment.url)
+      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`
+    } catch {
+      return ""
+    }
+  }
+  
+  return ""
 }
 
 // Get icon based on attachment type and content format
@@ -79,9 +100,6 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
         <span className="flex-1 text-sm text-muted-foreground truncate">
           Fetching from {domain}
         </span>
-        
-        {/* External link icon */}
-        <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
       </button>
     )
   }
@@ -92,7 +110,7 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
   }
   
   const isWebAttachment = attachment.origin === "web"
-  const faviconUrl = attachment.url ? getFaviconUrl(attachment.url) : ""
+  const faviconUrl = useMemo(() => getFaviconUrl(attachment), [attachment])
   const domain = attachment.url ? getDomain(attachment.url) : ""
   const title = attachment.title || attachment.file_name || "Unknown"
   const hasContent = attachment.content && attachment.extraction_status === "success"
@@ -212,11 +230,12 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
           <span className="text-muted-foreground ml-1">{title}</span>
         </span>
         
-        {/* Domain/info + external link icon */}
-        <span className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
-          {domain && <span className="text-sm">{domain}</span>}
-          {attachment.url && <ExternalLink className="h-4 w-4" />}
-        </span>
+        {/* Domain info */}
+        {domain && (
+          <span className="text-sm text-muted-foreground flex-shrink-0">
+            {domain}
+          </span>
+        )}
       </button>
       
       {/* Detail Dialog */}
