@@ -533,6 +533,7 @@ dependencies = [
  "html2md",
  "lazy_static",
  "rand 0.8.5",
+ "readability",
  "regex",
  "reqwest 0.11.27",
  "rig-core",
@@ -546,6 +547,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
+ "url",
  "uuid",
 ]
 
@@ -847,7 +849,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1022,7 +1024,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1705,7 +1707,7 @@ dependencies = [
  "html5ever 0.27.0",
  "jni 0.19.0",
  "lazy_static",
- "markup5ever_rcdom",
+ "markup5ever_rcdom 0.3.0",
  "percent-encoding",
  "regex",
 ]
@@ -1927,7 +1929,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "system-configuration 0.6.1",
  "tokio",
  "tower-service",
@@ -2417,6 +2419,18 @@ dependencies = [
 
 [[package]]
 name = "markup5ever_rcdom"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9521dd6750f8e80ee6c53d65e2e4656d7de37064f3a7a5d2d11d05df93839c2"
+dependencies = [
+ "html5ever 0.26.0",
+ "markup5ever 0.11.0",
+ "tendril",
+ "xml5ever 0.17.0",
+]
+
+[[package]]
+name = "markup5ever_rcdom"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edaa21ab3701bfee5099ade5f7e1f84553fd19228cf332f13cd6e964bf59be18"
@@ -2424,7 +2438,7 @@ dependencies = [
  "html5ever 0.27.0",
  "markup5ever 0.12.1",
  "tendril",
- "xml5ever",
+ "xml5ever 0.18.1",
 ]
 
 [[package]]
@@ -3520,6 +3534,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
+name = "readability"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e56596e20a6d3cf715182d9b6829220621e6e985cec04d00410cee29821b4220"
+dependencies = [
+ "html5ever 0.26.0",
+ "lazy_static",
+ "markup5ever_rcdom 0.2.0",
+ "regex",
+ "reqwest 0.11.27",
+ "url",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3750,7 +3778,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4768,7 +4796,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5549,7 +5577,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6152,6 +6180,17 @@ dependencies = [
  "libc",
  "once_cell",
  "pkg-config",
+]
+
+[[package]]
+name = "xml5ever"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4034e1d05af98b51ad7214527730626f019682d797ba38b51689212118d8e650"
+dependencies = [
+ "log",
+ "mac",
+ "markup5ever 0.11.0",
 ]
 
 [[package]]
