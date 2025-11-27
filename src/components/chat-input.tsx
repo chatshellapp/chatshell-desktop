@@ -1,5 +1,6 @@
-import { ArrowUpIcon, Paperclip, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square } from "lucide-react"
+import { ArrowUpIcon, Plus, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Blocks } from "lucide-react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -16,6 +17,7 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { useConversationStore } from "@/stores/conversationStore"
@@ -87,11 +89,7 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
 }
 
 // Helper function to get icon for attachment type
-function getAttachmentIcon(type: AttachmentType, isHovered: boolean = false) {
-  if (isHovered) {
-    return <X className="h-3 w-3" />
-  }
-  
+function getAttachmentIcon(type: AttachmentType) {
   switch (type) {
     case "webpage":
       return <Globe className="h-3 w-3" />
@@ -110,8 +108,9 @@ export function ChatInput({}: ChatInputProps) {
   // State
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [hoveredBadgeId, setHoveredBadgeId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"models" | "assistants">("models")
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
+  const [artifactsEnabled, setArtifactsEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -198,14 +197,24 @@ export function ChatInput({}: ChatInputProps) {
     const urls = pastedText.match(urlRegex)
     
     if (urls && urls.length > 0) {
+      const newAttachments: Attachment[] = []
       urls.forEach((url) => {
         const isDuplicate = attachments.some(
           att => att.type === "webpage" && att.name === url
-        )
+        ) || newAttachments.some(att => att.name === url)
+        
         if (!isDuplicate) {
-          addAttachment("webpage", url)
+          newAttachments.push({
+            id: `webpage-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: "webpage",
+            name: url,
+          })
         }
       })
+      
+      if (newAttachments.length > 0) {
+        setAttachments(prev => [...prev, ...newAttachments])
+      }
     }
   }
 
@@ -308,6 +317,11 @@ export function ChatInput({}: ChatInputProps) {
         modelToUse: modelToUse?.name
       })
 
+      // Extract webpage URLs from attachments
+      const webpageUrls = attachments
+        .filter(att => att.type === "webpage")
+        .map(att => att.name)
+
       await sendMessage(
         content,
         currentConversation?.id ?? null,
@@ -319,8 +333,12 @@ export function ChatInput({}: ChatInputProps) {
         systemPrompt,
         userPrompt,
         selectedAssistant ? undefined : modelToUse.id, // modelDbId - only send if not using assistant
-        selectedAssistant?.id // assistantDbId
+        selectedAssistant?.id, // assistantDbId
+        webpageUrls.length > 0 ? webpageUrls : undefined // urlsToFetch
       )
+
+      // Clear attachments after sending
+      setAttachments([])
 
       console.log("Message sent successfully")
     } catch (error) {
@@ -531,13 +549,27 @@ export function ChatInput({}: ChatInputProps) {
               <Badge
                 key={attachment.id}
                 variant="outline"
-                className="cursor-pointer hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                onMouseEnter={() => setHoveredBadgeId(attachment.id)}
-                onMouseLeave={() => setHoveredBadgeId(null)}
-                onClick={() => removeAttachment(attachment.id)}
+                className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
               >
-                {getAttachmentIcon(attachment.type, hoveredBadgeId === attachment.id)}
-                <span>{attachment.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(attachment.id)}
+                  className="hover:text-destructive transition-colors -ml-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                {getAttachmentIcon(attachment.type)}
+                {attachment.type === "webpage" ? (
+                  <button
+                    type="button"
+                    onClick={() => openUrl(attachment.name)}
+                    className="hover:underline cursor-pointer"
+                  >
+                    {attachment.name}
+                  </button>
+                ) : (
+                  <span>{attachment.name}</span>
+                )}
               </Badge>
             ))}
           </div>
@@ -559,7 +591,7 @@ export function ChatInput({}: ChatInputProps) {
                 className="rounded-full"
                 size="icon-xs"
               >
-                <Paperclip />
+                <Plus />
               </InputGroupButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -591,6 +623,49 @@ export function ChatInput({}: ChatInputProps) {
               <DropdownMenuItem onClick={handleToolSelect} className="gap-2">
                 <Plug className="h-4 w-4" />
                 <span>Tools</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <InputGroupButton
+                variant="outline"
+                className="rounded-full"
+                size="icon-xs"
+              >
+                <Settings2 />
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="[--radius:0.95rem] min-w-[180px]"
+            >
+              <DropdownMenuItem
+                className="gap-2 justify-between"
+                onSelect={(e) => e.preventDefault()}
+              >
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  <span>Web Search</span>
+                </div>
+                <Switch
+                  checked={webSearchEnabled}
+                  onCheckedChange={setWebSearchEnabled}
+                />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2 justify-between"
+                onSelect={(e) => e.preventDefault()}
+              >
+                <div className="flex items-center gap-2">
+                  <Blocks className="h-4 w-4" />
+                  <span>Artifacts</span>
+                </div>
+                <Switch
+                  checked={artifactsEnabled}
+                  onCheckedChange={setArtifactsEnabled}
+                />
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -53,7 +53,8 @@ interface MessageStore {
     systemPrompt?: string,
     userPrompt?: string,
     modelDbId?: string,
-    assistantDbId?: string
+    assistantDbId?: string,
+    urlsToFetch?: string[]
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
@@ -147,7 +148,8 @@ export const useMessageStore = create<MessageStore>()(
     systemPrompt?: string,
     userPrompt?: string,
     modelDbId?: string,
-    assistantDbId?: string
+    assistantDbId?: string,
+    urlsToFetch?: string[]
   ) => {
     set((draft) => {
       draft.isSending = true;
@@ -210,6 +212,7 @@ export const useMessageStore = create<MessageStore>()(
         userPrompt,
         modelDbId,
         assistantDbId,
+        urlsToFetch,
       });
 
       console.log('[messageStore] Received user message:', userMessage);

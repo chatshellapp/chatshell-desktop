@@ -789,6 +789,7 @@ pub async fn send_message(
     user_prompt: Option<String>,
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
+    urls_to_fetch: Option<Vec<String>>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
     println!("   conversation_id: {}", conversation_id);
@@ -800,6 +801,7 @@ pub async fn send_message(
     println!("   has_user_prompt: {}", user_prompt.is_some());
     println!("   model_db_id: {:?}", model_db_id);
     println!("   assistant_db_id: {:?}", assistant_db_id);
+    println!("   urls_to_fetch: {:?}", urls_to_fetch);
     
     // Save user message to database with original content first
     // URL processing will happen in background
@@ -945,11 +947,14 @@ pub async fn send_message(
     let model_db_id = model_db_id.clone();
     let assistant_db_id = assistant_db_id.clone();
     
+    // Clone urls_to_fetch for the background task
+    let urls_to_fetch_clone = urls_to_fetch.clone();
+    
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
-        // Check if message contains URLs and emit attachment processing started event
-        let urls = web_fetch::extract_urls(&content);
-        println!("🔍 [background_task] Found {} URLs", urls.len());
+        // Use provided URLs if available, otherwise extract from content
+        let urls: Vec<String> = urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content));
+        println!("🔍 [background_task] Processing {} URLs", urls.len());
         if !urls.is_empty() {
             let _ = app_clone.emit("attachment-processing-started", serde_json::json!({
                 "message_id": user_message_id,
@@ -959,7 +964,7 @@ pub async fn send_message(
         }
         
         // Process URLs and get fetched web resources
-        let fetched_resources = web_fetch::process_message_urls(&content, None).await;
+        let fetched_resources = web_fetch::fetch_urls(&urls, None).await;
         println!("📄 [background_task] Fetched {} web resources", fetched_resources.len());
         
         // Store fetched resources as fetch_results and link to message

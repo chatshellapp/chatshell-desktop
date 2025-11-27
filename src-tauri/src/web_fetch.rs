@@ -528,13 +528,20 @@ pub async fn fetch_and_convert_to_markdown(url: &str, max_chars: Option<usize>) 
     Ok(result.content)
 }
 
-/// Process multiple URLs in parallel
+/// Process multiple URLs in parallel (extracts URLs from content)
 pub async fn process_message_urls(
     content: &str,
     max_chars: Option<usize>,
 ) -> Vec<FetchedWebResource> {
     let urls = extract_urls(content);
+    fetch_urls(&urls, max_chars).await
+}
 
+/// Fetch multiple URLs in parallel (takes a list of URLs directly)
+pub async fn fetch_urls(
+    urls: &[String],
+    max_chars: Option<usize>,
+) -> Vec<FetchedWebResource> {
     if urls.is_empty() {
         return vec![];
     }
