@@ -59,6 +59,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(app_state)
         .setup(|app| {
             // Initialize storage directories
@@ -112,6 +114,11 @@ pub fn run() {
             commands::get_fetch_results_by_search,
             commands::get_file_attachment,
             commands::read_fetch_content,
+            commands::read_file_content,
+            commands::read_image_base64,
+            // File reading commands (for files selected via dialog)
+            commands::read_text_file_from_path,
+            commands::read_file_as_base64,
             // Settings commands
             commands::get_setting,
             commands::set_setting,

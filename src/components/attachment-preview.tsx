@@ -265,18 +265,52 @@ function SearchResultPreview({ searchResult }: { searchResult: SearchResult }) {
   )
 }
 
-// FileAttachment preview component
+// Helper function to format file size
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// FileAttachment preview component - handles both text files and images
 function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachment }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [imageSrc, setImageSrc] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
   
-  const IconComponent = fileAttachment.mime_type.startsWith("image/") ? Image : 
+  const isImage = fileAttachment.mime_type.startsWith("image/")
+  const IconComponent = isImage ? Image : 
                         fileAttachment.mime_type.startsWith("text/") ? FileText : FileIconLucide
   
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  // Load content/image when dialog opens
+  useEffect(() => {
+    if (isDialogOpen && !content && !imageSrc && !loading) {
+      setLoading(true)
+      
+      if (isImage) {
+        // Load image as base64
+        invoke<string>("read_image_base64", { storagePath: fileAttachment.storage_path })
+          .then((base64) => {
+            setImageSrc(`data:${fileAttachment.mime_type};base64,${base64}`)
+          })
+          .catch((err) => {
+            console.error("Failed to load image:", err)
+            setImageSrc(null)
+          })
+          .finally(() => setLoading(false))
+      } else {
+        // Load text content
+        invoke<string>("read_file_content", { storagePath: fileAttachment.storage_path })
+          .then(setContent)
+          .catch((err) => {
+            console.error("Failed to load file content:", err)
+            setContent(null)
+          })
+          .finally(() => setLoading(false))
+      }
+    }
+  }, [isDialogOpen, content, imageSrc, loading, fileAttachment, isImage])
   
   return (
     <>
@@ -296,7 +330,7 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
       </button>
       
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={isImage ? "max-w-3xl max-h-[90vh] flex flex-col" : "max-w-2xl max-h-[80vh] flex flex-col"}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -304,16 +338,34 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-2">
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm font-medium">File Size</p>
-              <p className="text-sm text-muted-foreground">{formatFileSize(fileAttachment.file_size)}</p>
-            </div>
-            
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm font-medium">Type</p>
-              <p className="text-sm text-muted-foreground">{fileAttachment.mime_type}</p>
-            </div>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>{formatFileSize(fileAttachment.file_size)}</span>
+            <span>{fileAttachment.mime_type}</span>
+          </div>
+          
+          {/* Content preview area */}
+          <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : isImage ? (
+              imageSrc ? (
+                <div className="flex items-center justify-center h-full">
+                  <img 
+                    src={imageSrc} 
+                    alt={fileAttachment.file_name} 
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Failed to load image</p>
+              )
+            ) : (
+              content ? (
+                <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">No content available</p>
+              )
+            )}
           </div>
           
           <DialogFooter>

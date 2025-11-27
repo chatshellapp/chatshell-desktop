@@ -54,7 +54,9 @@ interface MessageStore {
     userPrompt?: string,
     modelDbId?: string,
     assistantDbId?: string,
-    urlsToFetch?: string[]
+    urlsToFetch?: string[],
+    imageBase64s?: string[],
+    files?: { name: string; content: string; mimeType: string }[]
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
@@ -149,7 +151,9 @@ export const useMessageStore = create<MessageStore>()(
     userPrompt?: string,
     modelDbId?: string,
     assistantDbId?: string,
-    urlsToFetch?: string[]
+    urlsToFetch?: string[],
+    imageBase64s?: string[],
+    files?: { name: string; content: string; mimeType: string }[]
   ) => {
     set((draft) => {
       draft.isSending = true;
@@ -196,7 +200,9 @@ export const useMessageStore = create<MessageStore>()(
         hasSystemPrompt: !!systemPrompt,
         hasUserPrompt: !!userPrompt,
         modelDbId,
-        assistantDbId
+        assistantDbId,
+        hasImageBase64s: !!imageBase64s?.length,
+        hasFiles: !!files?.length
       });
 
       // This will return the user message immediately
@@ -213,6 +219,8 @@ export const useMessageStore = create<MessageStore>()(
         modelDbId,
         assistantDbId,
         urlsToFetch,
+        imageBase64s,
+        files,
       });
 
       console.log('[messageStore] Received user message:', userMessage);

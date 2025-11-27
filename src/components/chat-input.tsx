@@ -1,6 +1,8 @@
 import { ArrowUpIcon, Plus, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Blocks } from "lucide-react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
+import { open } from "@tauri-apps/plugin-dialog"
+import { invoke } from "@tauri-apps/api/core"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -36,6 +38,67 @@ interface Attachment {
   id: string
   type: AttachmentType
   name: string
+  // For file attachments
+  content?: string
+  // For image attachments
+  base64?: string
+  // Common metadata
+  mimeType?: string
+  size?: number
+}
+
+// Helper function to get MIME type from file extension
+function getMimeType(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase()
+  const mimeTypes: Record<string, string> = {
+    'md': 'text/markdown',
+    'txt': 'text/plain',
+    'json': 'application/json',
+    'js': 'text/javascript',
+    'ts': 'text/typescript',
+    'tsx': 'text/typescript',
+    'jsx': 'text/javascript',
+    'py': 'text/x-python',
+    'rs': 'text/x-rust',
+    'go': 'text/x-go',
+    'java': 'text/x-java',
+    'c': 'text/x-c',
+    'cpp': 'text/x-c++',
+    'h': 'text/x-c',
+    'css': 'text/css',
+    'html': 'text/html',
+    'xml': 'text/xml',
+    'yaml': 'text/yaml',
+    'yml': 'text/yaml',
+    'toml': 'text/toml',
+    'ini': 'text/plain',
+    'sh': 'text/x-shellscript',
+    'bash': 'text/x-shellscript',
+    'zsh': 'text/x-shellscript',
+    'sql': 'text/x-sql',
+  }
+  return mimeTypes[ext || ''] || 'text/plain'
+}
+
+// Helper function to get image MIME type from file extension
+function getImageMimeType(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase()
+  const mimeTypes: Record<string, string> = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'bmp': 'image/bmp',
+  }
+  return mimeTypes[ext || ''] || 'image/png'
+}
+
+// Helper function to format file size
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 interface ChatInputProps {}
@@ -151,6 +214,11 @@ export function ChatInput({}: ChatInputProps) {
       }, 100)
     }
   }, [currentConversation])
+  
+  // Debug: log attachments changes
+  useEffect(() => {
+    console.log("[ChatInput] Attachments updated:", attachments.length, attachments.map(a => ({ type: a.type, name: a.name })))
+  }, [attachments])
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
   const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
@@ -172,12 +240,106 @@ export function ChatInput({}: ChatInputProps) {
     setAttachments(attachments.filter(att => att.id !== id))
   }
 
-  const handleFileSelect = () => {
-    addAttachment("file", "example-document.pdf")
+  const handleFileSelect = async () => {
+    try {
+      console.log("[handleFileSelect] Opening file dialog...")
+      const selected = await open({
+        multiple: true,
+        filters: [{
+          name: 'Text Files',
+          extensions: ['md', 'txt', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'html', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'bash', 'zsh', 'sql']
+        }]
+      })
+      
+      console.log("[handleFileSelect] Dialog result:", selected)
+      
+      if (!selected) {
+        console.log("[handleFileSelect] No file selected")
+        return
+      }
+      
+      const files = Array.isArray(selected) ? selected : [selected]
+      console.log("[handleFileSelect] Files to process:", files)
+      
+      for (const filePath of files) {
+        console.log("[handleFileSelect] Reading file:", filePath)
+        // Use Rust command to read file (avoids plugin-fs scope issues)
+        const content = await invoke<string>("read_text_file_from_path", { path: filePath })
+        console.log("[handleFileSelect] File read, length:", content.length)
+        
+        const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
+        
+        const newAttachment: Attachment = {
+          id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: "file",
+          name: fileName,
+          content,
+          mimeType: getMimeType(fileName),
+          size: content.length,
+        }
+        console.log("[handleFileSelect] Created attachment:", newAttachment.name, newAttachment.size)
+        setAttachments(prev => {
+          console.log("[handleFileSelect] Updating attachments, prev count:", prev.length)
+          return [...prev, newAttachment]
+        })
+      }
+      console.log("[handleFileSelect] Done processing files")
+    } catch (error) {
+      console.error("[handleFileSelect] Failed to select file:", error)
+    }
   }
 
-  const handleImageSelect = () => {
-    addAttachment("image", "example-image.png")
+  const handleImageSelect = async () => {
+    try {
+      console.log("[handleImageSelect] Opening file dialog...")
+      const selected = await open({
+        multiple: true,
+        filters: [{
+          name: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
+        }]
+      })
+      
+      console.log("[handleImageSelect] Dialog result:", selected)
+      
+      if (!selected) {
+        console.log("[handleImageSelect] No file selected")
+        return
+      }
+      
+      const files = Array.isArray(selected) ? selected : [selected]
+      console.log("[handleImageSelect] Files to process:", files)
+      
+      for (const filePath of files) {
+        console.log("[handleImageSelect] Reading file:", filePath)
+        // Use Rust command to read file as base64 (avoids plugin-fs scope issues)
+        const base64 = await invoke<string>("read_file_as_base64", { path: filePath })
+        console.log("[handleImageSelect] Base64 length:", base64.length)
+        
+        const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image'
+        const mimeType = getImageMimeType(fileName)
+        
+        // Estimate original file size from base64 length
+        const estimatedSize = Math.floor(base64.length * 3 / 4)
+        
+        const newAttachment: Attachment = {
+          id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: "image",
+          name: fileName,
+          base64: `data:${mimeType};base64,${base64}`,
+          mimeType,
+          size: estimatedSize,
+        }
+        console.log("[handleImageSelect] Created attachment:", newAttachment.name, newAttachment.size)
+        setAttachments(prev => {
+          console.log("[handleImageSelect] Updating attachments, prev count:", prev.length)
+          return [...prev, newAttachment]
+        })
+      }
+      console.log("[handleImageSelect] Done processing files")
+    } catch (error) {
+      console.error("[handleImageSelect] Failed to select image:", error)
+    }
   }
 
   const handleKnowledgeBaseSelect = () => {
@@ -301,8 +463,20 @@ export function ChatInput({}: ChatInputProps) {
         })
       }
 
+      // Extract file attachments as structured data (sent via rig's Document)
+      const fileAttachments = attachments.filter(att => att.type === "file" && att.content)
+      const files = fileAttachments.map(file => ({
+        name: file.name,
+        content: file.content!,
+        mimeType: file.mimeType || "text/plain"
+      }))
+      
+      // Extract image base64 data
+      const imageAttachments = attachments.filter(att => att.type === "image" && att.base64)
+      const imageBase64s = imageAttachments.map(img => img.base64!)
+
       console.log("Sending message:", {
-        content,
+        content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
         conversationId: currentConversation?.id,
         provider: providerType,
         model: modelIdStr,
@@ -314,7 +488,9 @@ export function ChatInput({}: ChatInputProps) {
         assistantDbId: selectedAssistant?.id,
         selectedAssistant: selectedAssistant?.name,
         selectedModel: selectedModel?.name,
-        modelToUse: modelToUse?.name
+        modelToUse: modelToUse?.name,
+        fileAttachmentsCount: files.length,
+        imageAttachmentsCount: imageAttachments.length,
       })
 
       // Extract webpage URLs from attachments
@@ -323,7 +499,7 @@ export function ChatInput({}: ChatInputProps) {
         .map(att => att.name)
 
       await sendMessage(
-        content,
+        content, // Send original content, files are sent separately
         currentConversation?.id ?? null,
         providerType,
         modelIdStr,
@@ -334,7 +510,9 @@ export function ChatInput({}: ChatInputProps) {
         userPrompt,
         selectedAssistant ? undefined : modelToUse.id, // modelDbId - only send if not using assistant
         selectedAssistant?.id, // assistantDbId
-        webpageUrls.length > 0 ? webpageUrls : undefined // urlsToFetch
+        webpageUrls.length > 0 ? webpageUrls : undefined, // urlsToFetch
+        imageBase64s.length > 0 ? imageBase64s : undefined, // imageBase64s
+        files.length > 0 ? files : undefined // files
       )
 
       // Clear attachments after sending
@@ -558,7 +736,15 @@ export function ChatInput({}: ChatInputProps) {
                 >
                   <X className="h-3 w-3" />
                 </button>
-                {getAttachmentIcon(attachment.type)}
+                {attachment.type === "image" && attachment.base64 ? (
+                  <img 
+                    src={attachment.base64} 
+                    alt={attachment.name} 
+                    className="h-4 w-4 object-cover rounded"
+                  />
+                ) : (
+                  getAttachmentIcon(attachment.type)
+                )}
                 {attachment.type === "webpage" ? (
                   <button
                     type="button"
@@ -568,7 +754,12 @@ export function ChatInput({}: ChatInputProps) {
                     {attachment.name}
                   </button>
                 ) : (
-                  <span>{attachment.name}</span>
+                  <span className="max-w-[150px] truncate">{attachment.name}</span>
+                )}
+                {attachment.size !== undefined && (
+                  <span className="text-xs opacity-60">
+                    ({formatFileSize(attachment.size)})
+                  </span>
                 )}
               </Badge>
             ))}

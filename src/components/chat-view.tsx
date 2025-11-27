@@ -386,9 +386,9 @@ export function ChatView() {
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
-                              // Filter for fetch_result attachments (web fetched content)
+                              // Filter for fetch_result and file attachments
                               const attachments = messageAttachments[message.id]?.filter(a => 
-                                a.type === "fetch_result"
+                                a.type === "fetch_result" || a.type === "file"
                               ) || []
               const urls = processingUrls[message.id] || []
               const hasAttachments = isUserMessage && (attachments.length > 0 || urls.length > 0)

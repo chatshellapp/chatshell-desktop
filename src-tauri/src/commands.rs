@@ -325,6 +325,44 @@ pub async fn read_fetch_content(
     crate::storage::read_content(&app, &storage_path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn read_file_content(
+    app: tauri::AppHandle,
+    storage_path: String,
+) -> Result<String, String> {
+    crate::storage::read_content(&app, &storage_path).map_err(|e| e.to_string())
+}
+
+// Read arbitrary text file from filesystem (for files selected via dialog)
+#[tauri::command]
+pub async fn read_text_file_from_path(
+    path: String,
+) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file {}: {}", path, e))
+}
+
+// Read arbitrary binary file as base64 (for files selected via dialog)
+#[tauri::command]
+pub async fn read_file_as_base64(
+    path: String,
+) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    
+    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file {}: {}", path, e))?;
+    Ok(STANDARD.encode(&bytes))
+}
+
+#[tauri::command]
+pub async fn read_image_base64(
+    app: tauri::AppHandle,
+    storage_path: String,
+) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    
+    let bytes = crate::storage::read_binary(&app, &storage_path).map_err(|e| e.to_string())?;
+    Ok(STANDARD.encode(&bytes))
+}
+
 // Settings commands
 #[tauri::command]
 pub async fn get_setting(
@@ -478,10 +516,14 @@ async fn generate_conversation_title(
             ChatMessage {
                 role: "system".to_string(),
                 content: prompts::TITLE_GENERATION_SYSTEM_PROMPT.to_string(),
+                images: vec![],
+                files: vec![],
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: prompts::build_title_generation_user_prompt(user_message, assistant_message),
+                images: vec![],
+                files: vec![],
             },
         ],
         summary_api_key,
@@ -773,6 +815,15 @@ async fn handle_provider_streaming(
     });
 }
 
+/// File attachment data from frontend
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FileAttachmentInput {
+    pub name: String,
+    pub content: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+}
+
 // Chat command - now returns immediately and processes in background
 #[tauri::command]
 pub async fn send_message(
@@ -790,6 +841,8 @@ pub async fn send_message(
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
     urls_to_fetch: Option<Vec<String>>,
+    image_base64s: Option<Vec<String>>,
+    files: Option<Vec<FileAttachmentInput>>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
     println!("   conversation_id: {}", conversation_id);
@@ -802,6 +855,8 @@ pub async fn send_message(
     println!("   model_db_id: {:?}", model_db_id);
     println!("   assistant_db_id: {:?}", assistant_db_id);
     println!("   urls_to_fetch: {:?}", urls_to_fetch);
+    println!("   image_base64s count: {:?}", image_base64s.as_ref().map(|v| v.len()));
+    println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
     
     // Save user message to database with original content first
     // URL processing will happen in background
@@ -947,8 +1002,10 @@ pub async fn send_message(
     let model_db_id = model_db_id.clone();
     let assistant_db_id = assistant_db_id.clone();
     
-    // Clone urls_to_fetch for the background task
+    // Clone urls_to_fetch, image_base64s, and files for the background task
     let urls_to_fetch_clone = urls_to_fetch.clone();
+    let image_base64s_clone = image_base64s.clone();
+    let files_clone = files.clone();
     
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
@@ -1032,6 +1089,139 @@ pub async fn send_message(
         // Build LLM content by combining original message with fetched content
         let processed_content = web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
         
+        // Parse image attachments from base64 data URLs
+        let mut user_images: Vec<llm::ImageData> = Vec::new();
+        if let Some(images) = image_base64s_clone {
+            if !images.is_empty() {
+                println!("🖼️  [background_task] Processing {} image attachments", images.len());
+                for image_data_url in images.iter() {
+                    // Parse data URL: "data:image/png;base64,xxxxx"
+                    if let Some(rest) = image_data_url.strip_prefix("data:") {
+                        if let Some((media_type, base64_data)) = rest.split_once(";base64,") {
+                            user_images.push(llm::ImageData {
+                                base64: base64_data.to_string(),
+                                media_type: media_type.to_string(),
+                            });
+                            println!("   - Parsed image: {} ({} chars)", media_type, base64_data.len());
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Convert file attachments to FileData
+        let mut user_files: Vec<llm::FileData> = Vec::new();
+        if let Some(files) = files_clone {
+            if !files.is_empty() {
+                println!("📄 [background_task] Processing {} file attachments", files.len());
+                for file in files.iter() {
+                    user_files.push(llm::FileData {
+                        name: file.name.clone(),
+                        content: file.content.clone(),
+                        media_type: file.mime_type.clone(),
+                    });
+                    println!("   - File: {} ({} chars, {})", file.name, file.content.len(), file.mime_type);
+                }
+            }
+        }
+        
+        // Store file attachments to filesystem and database
+        for file in &user_files {
+            let file_id = uuid::Uuid::now_v7().to_string();
+            
+            // Get extension from filename
+            let ext = std::path::Path::new(&file.name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("txt");
+            
+            let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
+            
+            // Write file content to filesystem
+            if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &file.content) {
+                eprintln!("Failed to save file {}: {}", file.name, e);
+                continue;
+            }
+            
+            // Create file record in database
+            match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
+                file_name: file.name.clone(),
+                file_size: file.content.len() as i64,
+                mime_type: file.media_type.clone(),
+                storage_path: storage_path.clone(),
+            }) {
+                Ok(file_attachment) => {
+                    // Link file to message
+                    if let Err(e) = state_clone.db.link_message_attachment(
+                        &user_message_id,
+                        AttachmentType::File,
+                        &file_attachment.id,
+                        None
+                    ) {
+                        eprintln!("Failed to link file to message: {}", e);
+                    } else {
+                        println!("📎 [background_task] Saved file attachment: {} -> {}", file.name, file_attachment.id);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create file record for {}: {}", file.name, e);
+                    let _ = crate::storage::delete_file(&app_clone, &storage_path);
+                }
+            }
+        }
+        
+        // Store image attachments to filesystem and database
+        for (i, img) in user_images.iter().enumerate() {
+            let file_id = uuid::Uuid::now_v7().to_string();
+            
+            // Get extension from mime type
+            let ext = crate::storage::get_extension_for_content_type(&img.media_type);
+            let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
+            
+            // Decode base64 to bytes
+            let bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &img.base64) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("Failed to decode image {}: {}", i, e);
+                    continue;
+                }
+            };
+            
+            // Write image to filesystem
+            if let Err(e) = crate::storage::write_binary(&app_clone, &storage_path, &bytes) {
+                eprintln!("Failed to save image {}: {}", i, e);
+                continue;
+            }
+            
+            let file_name = format!("image_{}.{}", i + 1, ext);
+            
+            // Create file record in database
+            match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
+                file_name: file_name.clone(),
+                file_size: bytes.len() as i64,
+                mime_type: img.media_type.clone(),
+                storage_path: storage_path.clone(),
+            }) {
+                Ok(file_attachment) => {
+                    // Link file to message
+                    if let Err(e) = state_clone.db.link_message_attachment(
+                        &user_message_id,
+                        AttachmentType::File,
+                        &file_attachment.id,
+                        None
+                    ) {
+                        eprintln!("Failed to link image to message: {}", e);
+                    } else {
+                        println!("🖼️ [background_task] Saved image attachment: {} -> {}", file_name, file_attachment.id);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create file record for image {}: {}", i, e);
+                    let _ = crate::storage::delete_file(&app_clone, &storage_path);
+                }
+            }
+        }
+        
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default
         let system_prompt_content = system_prompt
@@ -1040,6 +1230,8 @@ pub async fn send_message(
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
             content: system_prompt_content,
+            images: vec![],
+            files: vec![],
         }];
 
         // Include message history if requested (default: true)
@@ -1060,6 +1252,8 @@ pub async fn send_message(
                     chat_messages.push(ChatMessage {
                         role: chat_role.to_string(),
                         content: msg.content.clone(),
+                        images: vec![], // History messages don't have images stored
+                        files: vec![],  // History messages don't have files stored
                     });
                 }
             }
@@ -1076,6 +1270,8 @@ pub async fn send_message(
         chat_messages.push(ChatMessage {
             role: "user".to_string(),
             content: final_user_content,
+            images: user_images,
+            files: user_files,
         });
 
         // Send chat request with streaming (unified handler for all providers)
