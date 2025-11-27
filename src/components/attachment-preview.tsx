@@ -272,6 +272,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Helper function to check if file is markdown
+function isMarkdownFile(fileName: string, mimeType: string): boolean {
+  const lowerName = fileName.toLowerCase()
+  return lowerName.endsWith(".md") || 
+         lowerName.endsWith(".markdown") || 
+         mimeType === "text/markdown" || 
+         mimeType === "text/x-markdown"
+}
+
 // FileAttachment preview component - handles both text files and images
 function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachment }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -280,6 +289,7 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
   const [loading, setLoading] = useState(false)
   
   const isImage = fileAttachment.mime_type.startsWith("image/")
+  const isMarkdown = isMarkdownFile(fileAttachment.file_name, fileAttachment.mime_type)
   const IconComponent = isImage ? Image : 
                         fileAttachment.mime_type.startsWith("text/") ? FileText : FileIconLucide
   
@@ -361,7 +371,11 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
               )
             ) : (
               content ? (
-                <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
+                isMarkdown ? (
+                  <MarkdownContent content={content} className="text-sm" />
+                ) : (
+                  <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
+                )
               ) : (
                 <p className="text-sm text-muted-foreground">No content available</p>
               )
