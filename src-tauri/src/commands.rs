@@ -3,6 +3,7 @@ use crate::db::Database;
 use crate::models::*;
 use crate::crypto;
 use crate::llm::{self, ChatMessage};
+use crate::prompts;
 use crate::scraper;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -429,21 +430,20 @@ async fn generate_conversation_title(
         (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
     };
     
-    // Create the title generation prompt
-    let title_prompt = format!(
-        "You are an expert at creating concise conversation titles. Summarize the following conversation into a title within 8 words. Use the same language as the user's message. Do not include punctuation or special symbols.\n\nUser: {}\n\nAssistant: {}",
-        user_message,
-        assistant_message
-    );
-    
     // Generate title using unified provider handler
     let response = call_llm_provider(
         &summary_provider,
         summary_model,
-        vec![ChatMessage {
-            role: "user".to_string(),
-            content: title_prompt,
-        }],
+        vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: prompts::TITLE_GENERATION_SYSTEM_PROMPT.to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: prompts::build_title_generation_user_prompt(user_message, assistant_message),
+            },
+        ],
         summary_api_key,
         summary_base_url,
     ).await?;
@@ -971,7 +971,7 @@ pub async fn send_message(
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default
         let system_prompt_content = system_prompt
-            .unwrap_or_else(|| "You are a helpful, harmless, and honest AI assistant.".to_string());
+            .unwrap_or_else(|| prompts::DEFAULT_ASSISTANT_SYSTEM_PROMPT.to_string());
         
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),

@@ -3,6 +3,7 @@ mod crypto;
 pub mod db;
 mod llm;
 pub mod models;
+mod prompts;
 mod scraper;
 mod thinking_parser;
 
