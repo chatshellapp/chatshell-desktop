@@ -261,51 +261,86 @@ pub struct CreateMessageRequest {
     pub tokens: Option<i64>,
 }
 
-// External resource models
+// Attachment models
+// origin: "web" | "local"
+// attachment_type: "fetch_result" | "search_result" | "file"
+// content_format: MIME type (e.g., "text/html", "image/png", "application/pdf")
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExternalResource {
+pub struct Attachment {
     pub id: String,
-    pub resource_type: String,  // "webpage", "image", "file"
+    pub origin: String,              // "web" | "local"
+    pub attachment_type: String,     // "fetch_result" | "search_result" | "file"
+    pub content_format: Option<String>, // MIME type of extracted/converted content
     pub url: Option<String>,
-    pub title: Option<String>,
-    pub description: Option<String>,
     pub file_path: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<i64>,
-    pub mime_type: Option<String>,
-    pub extracted_content: Option<String>,
-    pub extraction_status: String,
+    pub mime_type: Option<String>,   // Original MIME type from source
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<String>,     // Extracted text content
+    pub thumbnail_path: Option<String>,
+    pub extraction_status: String,   // "pending" | "processing" | "success" | "failed"
     pub extraction_error: Option<String>,
-    pub metadata: Option<String>,
+    pub metadata: Option<String>,    // JSON metadata
+    pub parent_id: Option<String>,   // For search_result children
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateExternalResourceRequest {
-    pub resource_type: String,
+pub struct CreateAttachmentRequest {
+    pub origin: String,
+    pub attachment_type: String,
+    pub content_format: Option<String>,
     pub url: Option<String>,
-    pub title: Option<String>,
-    pub description: Option<String>,
     pub file_path: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<i64>,
     pub mime_type: Option<String>,
-    pub extracted_content: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<String>,
+    pub thumbnail_path: Option<String>,
     pub extraction_status: Option<String>,
     pub extraction_error: Option<String>,
     pub metadata: Option<String>,
+    pub parent_id: Option<String>,
 }
 
-/// Metadata for webpage resources (stored as JSON in metadata field)
+/// Metadata for web fetch results (stored as JSON in metadata field)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebpageMetadata {
+pub struct WebFetchMetadata {
     pub keywords: Option<String>,
     pub headings: Vec<String>,
-    pub scraped_at: String,
-    pub content_type: String,
+    pub fetched_at: String,
     pub original_length: Option<usize>,
     pub truncated: bool,
+}
+
+/// Metadata for web search results (stored as JSON in metadata field)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchMetadata {
+    pub query: String,
+    pub search_engine: String,       // "google" | "bing" | "duckduckgo" etc.
+    pub total_results: Option<i64>,
+    pub searched_at: String,
+}
+
+/// Metadata for local files (stored as JSON in metadata field)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalFileMetadata {
+    pub original_path: Option<String>,
+    pub last_modified: Option<String>,
+    pub page_count: Option<i32>,     // For PDF/Office documents
+    pub dimensions: Option<ImageDimensions>, // For images
+}
+
+/// Image dimensions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageDimensions {
+    pub width: u32,
+    pub height: u32,
 }
 
 // Prompt models

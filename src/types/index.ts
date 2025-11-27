@@ -232,48 +232,82 @@ export interface CreateMessageRequest {
   tokens?: number;
 }
 
-// External resource types
-export interface ExternalResource {
+// Attachment types
+// origin: "web" | "local"
+// attachment_type: "fetch_result" | "search_result" | "file"
+export type AttachmentOrigin = "web" | "local";
+export type AttachmentType = "fetch_result" | "search_result" | "file";
+
+export interface Attachment {
   id: string;
-  resource_type: string; // "webpage", "image", "file"
+  origin: AttachmentOrigin;
+  attachment_type: AttachmentType;
+  content_format?: string; // MIME type of extracted/converted content
   url?: string;
-  title?: string;
-  description?: string;
   file_path?: string;
   file_name?: string;
   file_size?: number;
-  mime_type?: string;
-  extracted_content?: string;
-  extraction_status: string; // "pending", "success", "failed"
+  mime_type?: string; // Original MIME type from source
+  title?: string;
+  description?: string;
+  content?: string; // Extracted text content
+  thumbnail_path?: string;
+  extraction_status: string; // "pending" | "processing" | "success" | "failed"
   extraction_error?: string;
-  metadata?: string; // JSON string of WebpageMetadata or FileMetadata
+  metadata?: string; // JSON string
+  parent_id?: string; // For search_result children
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateExternalResourceRequest {
-  resource_type: string;
+export interface CreateAttachmentRequest {
+  origin: AttachmentOrigin;
+  attachment_type: AttachmentType;
+  content_format?: string;
   url?: string;
-  title?: string;
-  description?: string;
   file_path?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;
-  extracted_content?: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  thumbnail_path?: string;
   extraction_status?: string;
   extraction_error?: string;
   metadata?: string;
+  parent_id?: string;
 }
 
-// Metadata for webpage resources (parsed from metadata JSON)
-export interface WebpageMetadata {
+// Metadata for web fetch results (parsed from metadata JSON)
+export interface WebFetchMetadata {
   keywords?: string;
   headings: string[];
-  scraped_at: string;
-  content_type: string;
+  fetched_at: string;
   original_length?: number;
   truncated: boolean;
+}
+
+// Metadata for web search results
+export interface WebSearchMetadata {
+  query: string;
+  search_engine: string;
+  total_results?: number;
+  searched_at: string;
+}
+
+// Metadata for local files
+export interface LocalFileMetadata {
+  original_path?: string;
+  last_modified?: string;
+  page_count?: number; // For PDF/Office documents
+  dimensions?: ImageDimensions; // For images
+}
+
+// Image dimensions
+export interface ImageDimensions {
+  width: number;
+  height: number;
 }
 
 // Prompt types
@@ -328,21 +362,22 @@ export interface ChatCompleteEvent {
   message: Message;
 }
 
-export interface ScrapingStartedEvent {
+export interface AttachmentProcessingStartedEvent {
   message_id: string;
   conversation_id: string;
   urls: string[];
 }
 
-export interface ScrapingCompleteEvent {
+export interface AttachmentProcessingCompleteEvent {
   message_id: string;
   conversation_id: string;
-  external_resource_ids: string[];
+  attachment_ids: string[];
 }
 
-export interface ScrapingErrorEvent {
+export interface AttachmentProcessingErrorEvent {
   message_id: string;
   conversation_id: string;
+  attachment_id?: string;
   error: string;
 }
 

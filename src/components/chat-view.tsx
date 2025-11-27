@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessage } from "@/components/chat-message"
-import { WebpagePreview } from "@/components/webpage-preview"
+import { AttachmentPreview } from "@/components/attachment-preview"
 import { useConversationStore } from "@/stores/conversationStore"
 import { useMessageStore } from "@/stores/messageStore"
 import { useModelStore } from "@/stores/modelStore"
 import { useAssistantStore } from "@/stores/assistantStore"
 import { useChatEvents } from "@/hooks/useChatEvents"
 import { getModelLogo } from "@/lib/model-logos"
-import type { Message, ExternalResource } from "@/types"
+import type { Message, Attachment } from "@/types"
 
 // Helper function to format model name with provider
 const formatModelDisplayName = (modelName: string, providerId: string, getProviderById: (id: string) => any) => {
@@ -61,12 +61,12 @@ export function ChatView() {
   const messages = conversationState?.messages || []
   const isStreaming = conversationState?.isStreaming || false
   const streamingContent = conversationState?.streamingContent || ''
-  const scrapingStatus = conversationState?.scrapingStatus || 'idle'
+  const attachmentStatus = conversationState?.attachmentStatus || 'idle'
   const isWaitingForAI = conversationState?.isWaitingForAI || false
-  const scrapingUrls = conversationState?.scrapingUrls || {}
+  const processingUrls = conversationState?.processingUrls || {}
 
-  // Store external resources for each message (keyed by message id)
-  const [messageResources, setMessageResources] = useState<Record<string, ExternalResource[]>>({})
+  // Store attachments for each message (keyed by message id)
+  const [messageAttachments, setMessageAttachments] = useState<Record<string, Attachment[]>>({})
 
   // Get display info for currently selected model/assistant (used for streaming messages)
   const getDisplayInfo = (): { 
@@ -170,46 +170,46 @@ export function ChatView() {
     }
   }, [currentConversation, loadMessages])
 
-  // Fetch external resources for user messages
-  // Re-run when scrapingStatus changes to 'complete' to pick up newly scraped resources
+  // Fetch attachments for user messages
+  // Re-run when attachmentStatus changes to 'complete' to pick up newly processed attachments
   useEffect(() => {
-    const fetchResources = async () => {
+    const fetchAttachments = async () => {
       const userMessages = messages.filter(m => m.sender_type === "user")
-      const resourceMap: Record<string, ExternalResource[]> = {}
+      const attachmentMap: Record<string, Attachment[]> = {}
       
       for (const msg of userMessages) {
-        // When scraping just completed, always re-fetch for the latest message
-        // Otherwise, skip if we already have resources for this message
+        // When processing just completed, always re-fetch for the latest message
+        // Otherwise, skip if we already have attachments for this message
         const isLatestMessage = userMessages.indexOf(msg) === userMessages.length - 1
-        const shouldRefetch = scrapingStatus === 'complete' && isLatestMessage
+        const shouldRefetch = attachmentStatus === 'complete' && isLatestMessage
         
-        if (messageResources[msg.id] && !shouldRefetch) {
-          resourceMap[msg.id] = messageResources[msg.id]
+        if (messageAttachments[msg.id] && !shouldRefetch) {
+          attachmentMap[msg.id] = messageAttachments[msg.id]
           continue
         }
         
         try {
-          const resources = await invoke<ExternalResource[]>("get_message_external_resources", {
+          const attachments = await invoke<Attachment[]>("get_message_attachments", {
             messageId: msg.id
           })
-          if (resources.length > 0) {
-            resourceMap[msg.id] = resources
+          if (attachments.length > 0) {
+            attachmentMap[msg.id] = attachments
           }
         } catch (e) {
-          console.error("Failed to fetch resources for message:", msg.id, e)
+          console.error("Failed to fetch attachments for message:", msg.id, e)
         }
       }
       
       // Only update if there are changes
-      if (Object.keys(resourceMap).length > 0) {
-        setMessageResources(prev => ({ ...prev, ...resourceMap }))
+      if (Object.keys(attachmentMap).length > 0) {
+        setMessageAttachments(prev => ({ ...prev, ...attachmentMap }))
       }
     }
     
     if (messages.length > 0) {
-      fetchResources()
+      fetchAttachments()
     }
-  }, [messages, scrapingStatus])
+  }, [messages, attachmentStatus])
 
   // Cleanup conversation state on unmount (optional - could keep state cached)
   useEffect(() => {
@@ -386,9 +386,12 @@ export function ChatView() {
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
-              const resources = messageResources[message.id]?.filter(r => r.resource_type === "webpage") || []
-              const urls = scrapingUrls[message.id] || []
-              const hasWebpageContent = isUserMessage && (resources.length > 0 || urls.length > 0)
+              // Filter for web fetch_result attachments (similar to previous webpage filtering)
+              const attachments = messageAttachments[message.id]?.filter(a => 
+                a.origin === "web" && a.attachment_type === "fetch_result"
+              ) || []
+              const urls = processingUrls[message.id] || []
+              const hasAttachments = isUserMessage && (attachments.length > 0 || urls.length > 0)
               
               return (
                 <div key={message.id}>
@@ -411,15 +414,15 @@ export function ChatView() {
                     onExportConversation={handleExportConversation}
                     onExportMessage={handleExportMessage}
                   />
-                  {/* Webpage previews - rendered as separate message block */}
-                  {hasWebpageContent && (
+                  {/* Attachment previews - rendered as separate message block */}
+                  {hasAttachments && (
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
-                        {resources.map((resource) => (
-                          <WebpagePreview key={resource.id} resource={resource} />
+                        {attachments.map((attachment) => (
+                          <AttachmentPreview key={attachment.id} attachment={attachment} />
                         ))}
                         {urls.map((url) => (
-                          <WebpagePreview key={url} scrapingUrl={url} />
+                          <AttachmentPreview key={url} processingUrl={url} />
                         ))}
                       </div>
                     </div>

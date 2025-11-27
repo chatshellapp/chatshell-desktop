@@ -5,9 +5,9 @@ import { useConversationStore } from '@/stores/conversationStore';
 import type {
   ChatStreamEvent,
   ChatCompleteEvent,
-  ScrapingStartedEvent,
-  ScrapingCompleteEvent,
-  ScrapingErrorEvent,
+  AttachmentProcessingStartedEvent,
+  AttachmentProcessingCompleteEvent,
+  AttachmentProcessingErrorEvent,
 } from '@/types';
 
 interface ConversationUpdatedEvent {
@@ -45,21 +45,21 @@ export function useChatEvents(conversationId: string | null) {
     store.setStreamingContent(convId, '');
   }, []);
 
-  const handleScrapingStarted = useCallback((convId: string, messageId: string, urls: string[]) => {
+  const handleAttachmentProcessingStarted = useCallback((convId: string, messageId: string, urls: string[]) => {
     const store = useMessageStore.getState();
-    store.setScrapingStatus(convId, 'scraping');
-    store.setScrapingUrls(convId, messageId, urls);
+    store.setAttachmentStatus(convId, 'processing');
+    store.setProcessingUrls(convId, messageId, urls);
   }, []);
 
-  const handleScrapingComplete = useCallback((convId: string, messageId: string) => {
+  const handleAttachmentProcessingComplete = useCallback((convId: string, messageId: string) => {
     const store = useMessageStore.getState();
-    store.setScrapingStatus(convId, 'complete');
-    store.clearScrapingUrls(convId, messageId);
+    store.setAttachmentStatus(convId, 'complete');
+    store.clearProcessingUrls(convId, messageId);
   }, []);
 
-  const handleScrapingError = useCallback((convId: string, error: string) => {
-    useMessageStore.getState().setScrapingStatus(convId, 'error');
-    console.error('Scraping error:', error);
+  const handleAttachmentProcessingError = useCallback((convId: string, error: string) => {
+    useMessageStore.getState().setAttachmentStatus(convId, 'error');
+    console.error('Attachment processing error:', error);
   }, []);
 
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
@@ -109,11 +109,11 @@ export function useChatEvents(conversationId: string | null) {
       handleChatComplete(event.payload.conversation_id, event.payload.message);
     });
 
-    // Listen for scraping started
-    const unlistenScrapingStarted = listen<ScrapingStartedEvent>(
-      'scraping-started',
+    // Listen for attachment processing started
+    const unlistenAttachmentStarted = listen<AttachmentProcessingStartedEvent>(
+      'attachment-processing-started',
       (event) => {
-        handleScrapingStarted(
+        handleAttachmentProcessingStarted(
           event.payload.conversation_id,
           event.payload.message_id,
           event.payload.urls
@@ -121,22 +121,22 @@ export function useChatEvents(conversationId: string | null) {
       }
     );
 
-    // Listen for scraping complete
-    const unlistenScrapingComplete = listen<ScrapingCompleteEvent>(
-      'scraping-complete',
+    // Listen for attachment processing complete
+    const unlistenAttachmentComplete = listen<AttachmentProcessingCompleteEvent>(
+      'attachment-processing-complete',
       (event) => {
-        handleScrapingComplete(
+        handleAttachmentProcessingComplete(
           event.payload.conversation_id,
           event.payload.message_id
         );
       }
     );
 
-    // Listen for scraping errors
-    const unlistenScrapingError = listen<ScrapingErrorEvent>(
-      'scraping-error',
+    // Listen for attachment processing errors
+    const unlistenAttachmentError = listen<AttachmentProcessingErrorEvent>(
+      'attachment-processing-error',
       (event) => {
-        handleScrapingError(event.payload.conversation_id, event.payload.error);
+        handleAttachmentProcessingError(event.payload.conversation_id, event.payload.error);
       }
     );
 
@@ -163,9 +163,9 @@ export function useChatEvents(conversationId: string | null) {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId);
       unlistenStream.then((fn) => fn());
       unlistenComplete.then((fn) => fn());
-      unlistenScrapingStarted.then((fn) => fn());
-      unlistenScrapingComplete.then((fn) => fn());
-      unlistenScrapingError.then((fn) => fn());
+      unlistenAttachmentStarted.then((fn) => fn());
+      unlistenAttachmentComplete.then((fn) => fn());
+      unlistenAttachmentError.then((fn) => fn());
       unlistenConversationUpdated.then((fn) => fn());
       unlistenGenerationStopped.then((fn) => fn());
     };
@@ -173,9 +173,9 @@ export function useChatEvents(conversationId: string | null) {
     conversationId,
     handleStreamChunk,
     handleChatComplete,
-    handleScrapingStarted,
-    handleScrapingComplete,
-    handleScrapingError,
+    handleAttachmentProcessingStarted,
+    handleAttachmentProcessingComplete,
+    handleAttachmentProcessingError,
     handleConversationUpdated,
     handleGenerationStopped,
   ]);

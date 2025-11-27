@@ -10,9 +10,9 @@ interface ConversationState {
   isStreaming: boolean;
   streamingContent: string;
   isWaitingForAI: boolean;
-  scrapingStatus: 'idle' | 'scraping' | 'complete' | 'error';
-  // Track URLs being scraped for each message: { messageId: [urls] }
-  scrapingUrls: Record<string, string[]>;
+  attachmentStatus: 'idle' | 'processing' | 'complete' | 'error';
+  // Track URLs being processed for each message: { messageId: [urls] }
+  processingUrls: Record<string, string[]>;
 }
 
 // Default state for a new conversation
@@ -22,8 +22,8 @@ const createDefaultConversationState = (): ConversationState => ({
   isStreaming: false,
   streamingContent: '',
   isWaitingForAI: false,
-  scrapingStatus: 'idle',
-  scrapingUrls: {},
+  attachmentStatus: 'idle',
+  processingUrls: {},
 });
 
 interface MessageStore {
@@ -60,9 +60,9 @@ interface MessageStore {
   addMessage: (conversationId: string, message: Message) => void;
   setStreamingContent: (conversationId: string, content: string) => void;
   setIsStreaming: (conversationId: string, isStreaming: boolean) => void;
-  setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => void;
-  setScrapingUrls: (conversationId: string, messageId: string, urls: string[]) => void;
-  clearScrapingUrls: (conversationId: string, messageId: string) => void;
+  setAttachmentStatus: (conversationId: string, status: 'idle' | 'processing' | 'complete' | 'error') => void;
+  setProcessingUrls: (conversationId: string, messageId: string, urls: string[]) => void;
+  clearProcessingUrls: (conversationId: string, messageId: string) => void;
   appendStreamingChunk: (conversationId: string, chunk: string) => void;
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void;
   cleanupConversation: (conversationId: string) => void;
@@ -336,32 +336,32 @@ export const useMessageStore = create<MessageStore>()(
     });
   },
 
-  setScrapingStatus: (conversationId: string, status: 'idle' | 'scraping' | 'complete' | 'error') => {
+  setAttachmentStatus: (conversationId: string, status: 'idle' | 'processing' | 'complete' | 'error') => {
     get().getConversationState(conversationId); // Ensure state exists
     set((draft) => {
       const convState = draft.conversationStates[conversationId];
       if (convState) {
-        convState.scrapingStatus = status;
+        convState.attachmentStatus = status;
       }
     });
   },
 
-  setScrapingUrls: (conversationId: string, messageId: string, urls: string[]) => {
+  setProcessingUrls: (conversationId: string, messageId: string, urls: string[]) => {
     get().getConversationState(conversationId); // Ensure state exists
     set((draft) => {
       const convState = draft.conversationStates[conversationId];
       if (convState) {
-        convState.scrapingUrls[messageId] = urls;
+        convState.processingUrls[messageId] = urls;
       }
     });
   },
 
-  clearScrapingUrls: (conversationId: string, messageId: string) => {
+  clearProcessingUrls: (conversationId: string, messageId: string) => {
     get().getConversationState(conversationId); // Ensure state exists
     set((draft) => {
       const convState = draft.conversationStates[conversationId];
       if (convState) {
-        delete convState.scrapingUrls[messageId];
+        delete convState.processingUrls[messageId];
       }
     });
   },
@@ -438,7 +438,7 @@ export const useMessageStore = create<MessageStore>()(
         convState.streamingContent = '';
         convState.isStreaming = false;
         convState.isWaitingForAI = false;
-        convState.scrapingStatus = 'idle';
+        convState.attachmentStatus = 'idle';
       }
     });
   },

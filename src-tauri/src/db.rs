@@ -254,39 +254,60 @@ impl Database {
             [],
         )?;
 
-        // External resources table (webpages, images, files)
+        // Attachments table (web resources, local files)
+        // origin: 'web' | 'local'
+        // attachment_type: 'fetch_result' | 'search_result' | 'file'
+        // content_format: MIME type
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS external_resources (
+            "CREATE TABLE IF NOT EXISTS attachments (
                 id TEXT PRIMARY KEY,
-                resource_type TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                attachment_type TEXT NOT NULL,
+                content_format TEXT,
                 url TEXT,
-                title TEXT,
-                description TEXT,
                 file_path TEXT,
                 file_name TEXT,
                 file_size INTEGER,
                 mime_type TEXT,
-                extracted_content TEXT,
+                title TEXT,
+                description TEXT,
+                content TEXT,
+                thumbnail_path TEXT,
                 extraction_status TEXT DEFAULT 'pending',
                 extraction_error TEXT,
                 metadata TEXT,
+                parent_id TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (parent_id) REFERENCES attachments(id) ON DELETE CASCADE
             )",
             [],
         )?;
 
-        // Message-ExternalResource junction table
+        // Index for attachment parent lookups (search_result -> fetch_result children)
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS message_external_resources (
+            "CREATE INDEX IF NOT EXISTS idx_attachments_parent ON attachments(parent_id)",
+            [],
+        )?;
+
+        // Message-Attachment junction table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_attachments (
                 id TEXT PRIMARY KEY,
                 message_id TEXT NOT NULL,
-                external_resource_id TEXT NOT NULL,
+                attachment_id TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-                FOREIGN KEY (external_resource_id) REFERENCES external_resources(id) ON DELETE CASCADE,
-                UNIQUE(message_id, external_resource_id)
+                FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE,
+                UNIQUE(message_id, attachment_id)
             )",
+            [],
+        )?;
+
+        // Index for message attachment lookups
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id)",
             [],
         )?;
 
@@ -1211,125 +1232,173 @@ impl Database {
         Ok(())
     }
 
-    // ========== External Resources Operations ==========
+    // ========== Attachment Operations ==========
 
-    pub fn create_external_resource(&self, req: CreateExternalResourceRequest) -> Result<ExternalResource> {
+    pub fn create_attachment(&self, req: CreateAttachmentRequest) -> Result<Attachment> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let status = req.extraction_status.unwrap_or_else(|| "pending".to_string());
 
-        // 用一个代码块限制 conn 的作用域
         {
             let conn = self.lock_conn()?;
             conn.execute(
-                "INSERT INTO external_resources
-                 (id, resource_type, url, title, description, file_path, file_name, file_size,
-                  mime_type, extracted_content, extraction_status, extraction_error, metadata,
-                  created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                "INSERT INTO attachments
+                 (id, origin, attachment_type, content_format, url, file_path, file_name,
+                  file_size, mime_type, title, description, content, thumbnail_path,
+                  extraction_status, extraction_error, metadata, parent_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     id,
-                    req.resource_type,
+                    req.origin,
+                    req.attachment_type,
+                    req.content_format,
                     req.url,
-                    req.title,
-                    req.description,
                     req.file_path,
                     req.file_name,
                     req.file_size,
                     req.mime_type,
-                    req.extracted_content,
+                    req.title,
+                    req.description,
+                    req.content,
+                    req.thumbnail_path,
                     status,
                     req.extraction_error,
                     req.metadata,
+                    req.parent_id,
                     now,
                     now
                 ],
             )?;
-        }  // conn 在这里被 drop，锁被释放
+        }
 
-        // 现在可以安全地调用 get_external_resource
-        self.get_external_resource(&id)
+        self.get_attachment(&id)
     }
 
-    pub fn get_external_resource(&self, id: &str) -> Result<ExternalResource> {
+    pub fn get_attachment(&self, id: &str) -> Result<Attachment> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, resource_type, url, title, description, file_path, file_name,
-                    file_size, mime_type, extracted_content, extraction_status,
-                    extraction_error, metadata, created_at, updated_at
-             FROM external_resources WHERE id = ?1"
+            "SELECT id, origin, attachment_type, content_format, url, file_path, file_name,
+                    file_size, mime_type, title, description, content, thumbnail_path,
+                    extraction_status, extraction_error, metadata, parent_id, created_at, updated_at
+             FROM attachments WHERE id = ?1"
         )?;
 
         stmt.query_row(params![id], |row| {
-            Ok(ExternalResource {
+            Ok(Attachment {
                 id: row.get(0)?,
-                resource_type: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                description: row.get(4)?,
+                origin: row.get(1)?,
+                attachment_type: row.get(2)?,
+                content_format: row.get(3)?,
+                url: row.get(4)?,
                 file_path: row.get(5)?,
                 file_name: row.get(6)?,
                 file_size: row.get(7)?,
                 mime_type: row.get(8)?,
-                extracted_content: row.get(9)?,
-                extraction_status: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "pending".to_string()),
-                extraction_error: row.get(11)?,
-                metadata: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
+                title: row.get(9)?,
+                description: row.get(10)?,
+                content: row.get(11)?,
+                thumbnail_path: row.get(12)?,
+                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
+                extraction_error: row.get(14)?,
+                metadata: row.get(15)?,
+                parent_id: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
             })
-        }).map_err(|e| anyhow::anyhow!("External resource not found: {}", e))
+        }).map_err(|e| anyhow::anyhow!("Attachment not found: {}", e))
     }
 
-    pub fn link_message_external_resource(&self, message_id: &str, resource_id: &str) -> Result<()> {
+    pub fn get_attachment_children(&self, parent_id: &str) -> Result<Vec<Attachment>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, origin, attachment_type, content_format, url, file_path, file_name,
+                    file_size, mime_type, title, description, content, thumbnail_path,
+                    extraction_status, extraction_error, metadata, parent_id, created_at, updated_at
+             FROM attachments WHERE parent_id = ?1
+             ORDER BY created_at"
+        )?;
+
+        let attachments = stmt.query_map(params![parent_id], |row| {
+            Ok(Attachment {
+                id: row.get(0)?,
+                origin: row.get(1)?,
+                attachment_type: row.get(2)?,
+                content_format: row.get(3)?,
+                url: row.get(4)?,
+                file_path: row.get(5)?,
+                file_name: row.get(6)?,
+                file_size: row.get(7)?,
+                mime_type: row.get(8)?,
+                title: row.get(9)?,
+                description: row.get(10)?,
+                content: row.get(11)?,
+                thumbnail_path: row.get(12)?,
+                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
+                extraction_error: row.get(14)?,
+                metadata: row.get(15)?,
+                parent_id: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+
+        Ok(attachments)
+    }
+
+    pub fn link_message_attachment(&self, message_id: &str, attachment_id: &str, display_order: Option<i32>) -> Result<()> {
         let conn = self.lock_conn()?;
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
+        let order = display_order.unwrap_or(0);
 
         conn.execute(
-            "INSERT OR IGNORE INTO message_external_resources
-             (id, message_id, external_resource_id, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![id, message_id, resource_id, now],
+            "INSERT OR IGNORE INTO message_attachments
+             (id, message_id, attachment_id, display_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, message_id, attachment_id, order, now],
         )?;
 
         Ok(())
     }
 
-    pub fn get_message_external_resources(&self, message_id: &str) -> Result<Vec<ExternalResource>> {
+    pub fn get_message_attachments(&self, message_id: &str) -> Result<Vec<Attachment>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT er.id, er.resource_type, er.url, er.title, er.description,
-                    er.file_path, er.file_name, er.file_size, er.mime_type,
-                    er.extracted_content, er.extraction_status, er.extraction_error,
-                    er.metadata, er.created_at, er.updated_at
-             FROM external_resources er
-             JOIN message_external_resources mer ON er.id = mer.external_resource_id
-             WHERE mer.message_id = ?1
-             ORDER BY er.created_at"
+            "SELECT a.id, a.origin, a.attachment_type, a.content_format, a.url, a.file_path,
+                    a.file_name, a.file_size, a.mime_type, a.title, a.description, a.content,
+                    a.thumbnail_path, a.extraction_status, a.extraction_error, a.metadata,
+                    a.parent_id, a.created_at, a.updated_at
+             FROM attachments a
+             JOIN message_attachments ma ON a.id = ma.attachment_id
+             WHERE ma.message_id = ?1
+             ORDER BY ma.display_order, a.created_at"
         )?;
 
-        let resources = stmt.query_map(params![message_id], |row| {
-            Ok(ExternalResource {
+        let attachments = stmt.query_map(params![message_id], |row| {
+            Ok(Attachment {
                 id: row.get(0)?,
-                resource_type: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                description: row.get(4)?,
+                origin: row.get(1)?,
+                attachment_type: row.get(2)?,
+                content_format: row.get(3)?,
+                url: row.get(4)?,
                 file_path: row.get(5)?,
                 file_name: row.get(6)?,
                 file_size: row.get(7)?,
                 mime_type: row.get(8)?,
-                extracted_content: row.get(9)?,
-                extraction_status: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "pending".to_string()),
-                extraction_error: row.get(11)?,
-                metadata: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
+                title: row.get(9)?,
+                description: row.get(10)?,
+                content: row.get(11)?,
+                thumbnail_path: row.get(12)?,
+                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
+                extraction_error: row.get(14)?,
+                metadata: row.get(15)?,
+                parent_id: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
             })
         })?.collect::<Result<Vec<_>, _>>()?;
 
-        Ok(resources)
+        Ok(attachments)
     }
 
     // Settings operations

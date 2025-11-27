@@ -276,13 +276,29 @@ pub async fn clear_messages_by_conversation(
     state.db.delete_messages_in_conversation(&conversation_id).map_err(|e| e.to_string())
 }
 
-// External resources commands
+// Attachment commands
 #[tauri::command]
-pub async fn get_message_external_resources(
+pub async fn get_message_attachments(
     state: State<'_, AppState>,
     message_id: String,
-) -> Result<Vec<ExternalResource>, String> {
-    state.db.get_message_external_resources(&message_id).map_err(|e| e.to_string())
+) -> Result<Vec<Attachment>, String> {
+    state.db.get_message_attachments(&message_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_attachment(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Attachment, String> {
+    state.db.get_attachment(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_attachment_children(
+    state: State<'_, AppState>,
+    parent_id: String,
+) -> Result<Vec<Attachment>, String> {
+    state.db.get_attachment_children(&parent_id).map_err(|e| e.to_string())
 }
 
 // Settings commands
@@ -907,66 +923,70 @@ pub async fn send_message(
     
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
-        // Check if message contains URLs and emit scraping started event
+        // Check if message contains URLs and emit attachment processing started event
         let urls = scraper::extract_urls(&content);
         println!("🔍 [background_task] Found {} URLs", urls.len());
         if !urls.is_empty() {
-            let _ = app_clone.emit("scraping-started", serde_json::json!({
+            let _ = app_clone.emit("attachment-processing-started", serde_json::json!({
                 "message_id": user_message_id,
                 "conversation_id": conversation_id_clone,
                 "urls": urls,
             }));
         }
         
-        // Process URLs and get structured webpage data
-        let scraped_pages = scraper::process_message_with_urls(&content, None).await;
-        println!("📄 [background_task] Scraped {} pages", scraped_pages.len());
+        // Process URLs and get fetched web resources
+        let fetched_resources = scraper::process_message_urls(&content, None).await;
+        println!("📄 [background_task] Fetched {} web resources", fetched_resources.len());
         
-        // Store scraped pages as external resources and link to message
-        let mut external_resource_ids: Vec<String> = Vec::new();
-        for page in &scraped_pages {
-            // Create external resource record
-            let metadata_json = serde_json::to_string(&page.metadata).ok();
-            let extraction_status = if page.extraction_error.is_some() { "failed" } else { "success" };
+        // Store fetched resources as attachments and link to message
+        let mut attachment_ids: Vec<String> = Vec::new();
+        for resource in &fetched_resources {
+            // Create attachment record
+            let metadata_json = serde_json::to_string(&resource.metadata).ok();
+            let extraction_status = if resource.extraction_error.is_some() { "failed" } else { "success" };
             
-            match state_clone.db.create_external_resource(CreateExternalResourceRequest {
-                resource_type: "webpage".to_string(),
-                url: Some(page.url.clone()),
-                title: page.title.clone(),
-                description: page.description.clone(),
+            match state_clone.db.create_attachment(CreateAttachmentRequest {
+                origin: "web".to_string(),
+                attachment_type: "fetch_result".to_string(),
+                content_format: Some(resource.content_format.clone()),
+                url: Some(resource.url.clone()),
                 file_path: None,
                 file_name: None,
                 file_size: None,
-                mime_type: Some(page.mime_type.clone()),
-                extracted_content: Some(page.extracted_content.clone()),
+                mime_type: Some(resource.mime_type.clone()),
+                title: resource.title.clone(),
+                description: resource.description.clone(),
+                content: Some(resource.content.clone()),
+                thumbnail_path: None,
                 extraction_status: Some(extraction_status.to_string()),
-                extraction_error: page.extraction_error.clone(),
+                extraction_error: resource.extraction_error.clone(),
                 metadata: metadata_json,
+                parent_id: None,
             }) {
-                Ok(resource) => {
-                    // Link resource to message
-                    if let Err(e) = state_clone.db.link_message_external_resource(&user_message_id, &resource.id) {
-                        eprintln!("Failed to link external resource to message: {}", e);
+                Ok(attachment) => {
+                    // Link attachment to message
+                    if let Err(e) = state_clone.db.link_message_attachment(&user_message_id, &attachment.id, None) {
+                        eprintln!("Failed to link attachment to message: {}", e);
                     }
-                    external_resource_ids.push(resource.id);
+                    attachment_ids.push(attachment.id);
                 }
                 Err(e) => {
-                    eprintln!("Failed to create external resource for {}: {}", page.url, e);
+                    eprintln!("Failed to create attachment for {}: {}", resource.url, e);
                 }
             }
         }
         
-        // Emit scraping complete event with resource IDs
+        // Emit attachment processing complete event with attachment IDs
         if !urls.is_empty() {
-            let _ = app_clone.emit("scraping-complete", serde_json::json!({
+            let _ = app_clone.emit("attachment-processing-complete", serde_json::json!({
                 "message_id": user_message_id,
                 "conversation_id": conversation_id_clone,
-                "external_resource_ids": external_resource_ids,
+                "attachment_ids": attachment_ids,
             }));
         }
         
-        // Build LLM content by combining original message with scraped content
-        let processed_content = scraper::build_llm_content_with_resources(&content, &scraped_pages);
+        // Build LLM content by combining original message with fetched content
+        let processed_content = scraper::build_llm_content_with_attachments(&content, &fetched_resources);
         
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default

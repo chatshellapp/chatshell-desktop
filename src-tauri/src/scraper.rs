@@ -7,17 +7,18 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::models::WebpageMetadata;
+use crate::models::WebFetchMetadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScrapedWebpage {
+pub struct FetchedWebResource {
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
     pub mime_type: String,
-    pub extracted_content: String,
+    pub content_format: String,     // MIME type of converted content (e.g., "text/markdown")
+    pub content: String,
     pub extraction_error: Option<String>,
-    pub metadata: WebpageMetadata,
+    pub metadata: WebFetchMetadata,
 }
 
 lazy_static! {
@@ -138,9 +139,9 @@ fn truncate_by_chars(s: &str, max_chars: usize) -> (String, bool) {
     }
 }
 
-/// Fetch and parse a webpage. max_chars: None = no truncation, Some(n) = truncate to n characters
-pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> ScrapedWebpage {
-    println!("📡 [scraper] Starting fetch for: {}", url);
+/// Fetch and parse a web resource. max_chars: None = no truncation, Some(n) = truncate to n characters
+pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
+    println!("📡 [fetcher] Starting fetch for: {}", url);
     
     let client = match Client::builder()
         .timeout(Duration::from_secs(10))
@@ -149,18 +150,18 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
     {
         Ok(c) => c,
         Err(e) => {
-            return ScrapedWebpage {
+            return FetchedWebResource {
                 url: url.to_string(),
                 title: None,
                 description: None,
                 mime_type: String::new(),
-                extracted_content: String::new(),
+                content_format: String::new(),
+                content: String::new(),
                 extraction_error: Some(format!("Failed to create HTTP client: {}", e)),
-                metadata: WebpageMetadata {
+                metadata: WebFetchMetadata {
                     keywords: None,
                     headings: vec![],
-                    scraped_at: Utc::now().to_rfc3339(),
-                    content_type: String::new(),
+                    fetched_at: Utc::now().to_rfc3339(),
                     original_length: None,
                     truncated: false,
                 },
@@ -168,28 +169,28 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
         }
     };
 
-    println!("📨 [scraper] Sending HTTP request...");
+    println!("📨 [fetcher] Sending HTTP request...");
     
     let response = match client
         .get(url)
-        .header("Accept", "text/html, application/xhtml+xml, */*")
+        .header("Accept", "text/markdown, text/html, */*")
         .send()
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            return ScrapedWebpage {
+            return FetchedWebResource {
                 url: url.to_string(),
                 title: None,
                 description: None,
                 mime_type: String::new(),
-                extracted_content: String::new(),
+                content_format: String::new(),
+                content: String::new(),
                 extraction_error: Some(format!("Failed to fetch URL: {}", e)),
-                metadata: WebpageMetadata {
+                metadata: WebFetchMetadata {
                     keywords: None,
                     headings: vec![],
-                    scraped_at: Utc::now().to_rfc3339(),
-                    content_type: String::new(),
+                    fetched_at: Utc::now().to_rfc3339(),
                     original_length: None,
                     truncated: false,
                 },
@@ -197,21 +198,21 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
         }
     };
 
-    println!("📥 [scraper] Got response, status: {}", response.status());
+    println!("📥 [fetcher] Got response, status: {}", response.status());
 
     if !response.status().is_success() {
-        return ScrapedWebpage {
+        return FetchedWebResource {
             url: url.to_string(),
             title: None,
             description: None,
             mime_type: String::new(),
-            extracted_content: String::new(),
+            content_format: String::new(),
+            content: String::new(),
             extraction_error: Some(format!("HTTP error: {}", response.status())),
-            metadata: WebpageMetadata {
+            metadata: WebFetchMetadata {
                 keywords: None,
                 headings: vec![],
-                scraped_at: Utc::now().to_rfc3339(),
-                content_type: String::new(),
+                fetched_at: Utc::now().to_rfc3339(),
                 original_length: None,
                 truncated: false,
             },
@@ -230,18 +231,18 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
     let html_content = match response.text().await {
         Ok(c) => c,
         Err(e) => {
-            return ScrapedWebpage {
+            return FetchedWebResource {
                 url: url.to_string(),
                 title: None,
                 description: None,
-                mime_type,
-                extracted_content: String::new(),
+                mime_type: mime_type.clone(),
+                content_format: mime_type,
+                content: String::new(),
                 extraction_error: Some(format!("Failed to read response body: {}", e)),
-                metadata: WebpageMetadata {
+                metadata: WebFetchMetadata {
                     keywords: None,
                     headings: vec![],
-                    scraped_at: Utc::now().to_rfc3339(),
-                    content_type: content_type.clone(),
+                    fetched_at: Utc::now().to_rfc3339(),
                     original_length: None,
                     truncated: false,
                 },
@@ -270,18 +271,18 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
         .collect::<Vec<_>>()
         .join("\n");
 
-    ScrapedWebpage {
+    FetchedWebResource {
         url: url.to_string(),
         title,
         description,
         mime_type,
-        extracted_content: cleaned_content,
+        content_format: "text/markdown".to_string(), // Converted to markdown
+        content: cleaned_content,
         extraction_error: None,
-        metadata: WebpageMetadata {
+        metadata: WebFetchMetadata {
             keywords,
             headings,
-            scraped_at: Utc::now().to_rfc3339(),
-            content_type,
+            fetched_at: Utc::now().to_rfc3339(),
             original_length: Some(original_length),
             truncated,
         },
@@ -289,53 +290,53 @@ pub async fn fetch_webpage_structured(url: &str, max_chars: Option<usize>) -> Sc
 }
 
 pub async fn fetch_and_convert_to_markdown(url: &str, max_chars: Option<usize>) -> Result<String> {
-    let result = fetch_webpage_structured(url, max_chars).await;
+    let result = fetch_web_resource(url, max_chars).await;
     if let Some(error) = result.extraction_error {
         return Err(anyhow::anyhow!("{}", error));
     }
-    Ok(result.extracted_content)
+    Ok(result.content)
 }
 
-pub async fn process_message_with_urls(content: &str, max_chars: Option<usize>) -> Vec<ScrapedWebpage> {
+pub async fn process_message_urls(content: &str, max_chars: Option<usize>) -> Vec<FetchedWebResource> {
     let urls = extract_urls(content);
     
     if urls.is_empty() {
         return vec![];
     }
     
-    println!("🌐 [scraper] Processing {} URLs", urls.len());
+    println!("🌐 [fetcher] Processing {} URLs", urls.len());
     let mut results = Vec::new();
     
     for url in &urls {
-        println!("🔗 [scraper] Fetching: {}", url);
-        let scraped = fetch_webpage_structured(url, max_chars).await;
-        println!("✅ [scraper] Completed: {} (error: {:?})", url, scraped.extraction_error);
-        results.push(scraped);
+        println!("🔗 [fetcher] Fetching: {}", url);
+        let fetched = fetch_web_resource(url, max_chars).await;
+        println!("✅ [fetcher] Completed: {} (error: {:?})", url, fetched.extraction_error);
+        results.push(fetched);
     }
     
-    println!("📦 [scraper] All URLs processed");
+    println!("📦 [fetcher] All URLs processed");
     results
 }
 
-pub fn build_llm_content_with_resources(original_content: &str, scraped_pages: &[ScrapedWebpage]) -> String {
-    if scraped_pages.is_empty() {
+pub fn build_llm_content_with_attachments(original_content: &str, fetched_resources: &[FetchedWebResource]) -> String {
+    if fetched_resources.is_empty() {
         return original_content.to_string();
     }
     
     let mut content = original_content.to_string();
     
-    for page in scraped_pages {
-        if page.extraction_error.is_some() {
+    for resource in fetched_resources {
+        if resource.extraction_error.is_some() {
             content.push_str(&format!(
                 "\n\n---\n**Note:** Could not fetch content from {}: {}",
-                page.url,
-                page.extraction_error.as_deref().unwrap_or("Unknown error")
+                resource.url,
+                resource.extraction_error.as_deref().unwrap_or("Unknown error")
             ));
         } else {
             content.push_str(&format!(
                 "\n\n---\n**Content from {}:**\n\n{}",
-                page.url,
-                page.extracted_content.trim()
+                resource.url,
+                resource.content.trim()
             ));
         }
     }
