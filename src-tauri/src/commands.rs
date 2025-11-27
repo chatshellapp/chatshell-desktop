@@ -4,7 +4,7 @@ use crate::models::*;
 use crate::crypto;
 use crate::llm::{self, ChatMessage};
 use crate::prompts;
-use crate::scraper;
+use crate::web_fetch;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -924,7 +924,7 @@ pub async fn send_message(
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
         // Check if message contains URLs and emit attachment processing started event
-        let urls = scraper::extract_urls(&content);
+        let urls = web_fetch::extract_urls(&content);
         println!("🔍 [background_task] Found {} URLs", urls.len());
         if !urls.is_empty() {
             let _ = app_clone.emit("attachment-processing-started", serde_json::json!({
@@ -935,7 +935,7 @@ pub async fn send_message(
         }
         
         // Process URLs and get fetched web resources
-        let fetched_resources = scraper::process_message_urls(&content, None).await;
+        let fetched_resources = web_fetch::process_message_urls(&content, None).await;
         println!("📄 [background_task] Fetched {} web resources", fetched_resources.len());
         
         // Store fetched resources as attachments and link to message
@@ -986,7 +986,7 @@ pub async fn send_message(
         }
         
         // Build LLM content by combining original message with fetched content
-        let processed_content = scraper::build_llm_content_with_attachments(&content, &fetched_resources);
+        let processed_content = web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
         
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default

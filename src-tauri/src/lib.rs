@@ -4,7 +4,7 @@ pub mod db;
 mod llm;
 pub mod models;
 mod prompts;
-mod scraper;
+mod web_fetch;
 mod thinking_parser;
 
 use commands::AppState;
