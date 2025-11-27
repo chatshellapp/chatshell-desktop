@@ -386,10 +386,10 @@ export function ChatView() {
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
-              // Filter for web fetch_result attachments (similar to previous webpage filtering)
-              const attachments = messageAttachments[message.id]?.filter(a => 
-                a.origin === "web" && a.attachment_type === "fetch_result"
-              ) || []
+                              // Filter for fetch_result attachments (web fetched content)
+                              const attachments = messageAttachments[message.id]?.filter(a => 
+                                a.type === "fetch_result"
+                              ) || []
               const urls = processingUrls[message.id] || []
               const hasAttachments = isUserMessage && (attachments.length > 0 || urls.length > 0)
               
@@ -419,7 +419,7 @@ export function ChatView() {
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
                         {attachments.map((attachment) => (
-                          <AttachmentPreview key={attachment.id} attachment={attachment} />
+                          <AttachmentPreview key={(attachment as any).id} attachment={attachment} />
                         ))}
                         {urls.map((url) => (
                           <AttachmentPreview key={url} processingUrl={url} />

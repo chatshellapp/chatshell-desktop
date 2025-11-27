@@ -261,87 +261,157 @@ pub struct CreateMessageRequest {
     pub tokens: Option<i64>,
 }
 
-// Attachment models
-// origin: "web" | "local"
-// attachment_type: "fetch_result" | "search_result" | "file"
-// content_format: MIME type (e.g., "text/html", "image/png", "application/pdf")
+// ========== Attachment Models (Split Tables) ==========
+
+/// Search result - stores metadata about a web search operation
+/// Content is not stored in filesystem, only metadata in database
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Attachment {
+pub struct SearchResult {
     pub id: String,
-    pub origin: String,              // "web" | "local"
-    pub attachment_type: String,     // "fetch_result" | "search_result" | "file"
-    pub content_format: Option<String>, // MIME type of extracted/converted content
-    pub url: Option<String>,
-    pub file_path: Option<String>,
-    pub file_name: Option<String>,
-    pub file_size: Option<i64>,
-    pub mime_type: Option<String>,   // Original MIME type from source
+    pub query: String,
+    pub engine: String,              // "google" | "bing" | "duckduckgo"
+    pub total_results: Option<i64>,
+    pub searched_at: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSearchResultRequest {
+    pub query: String,
+    pub engine: String,
+    pub total_results: Option<i64>,
+    pub searched_at: String,
+}
+
+/// Fetch result - stores metadata about a fetched web resource
+/// Content is stored in filesystem at storage_path
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FetchResult {
+    pub id: String,
+    pub search_id: Option<String>,   // FK to search_results (NULL if standalone fetch)
+    pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub content: Option<String>,     // Extracted text content
-    pub thumbnail_path: Option<String>,
-    pub extraction_status: String,   // "pending" | "processing" | "success" | "failed"
-    pub extraction_error: Option<String>,
-    pub metadata: Option<String>,    // JSON metadata
-    pub parent_id: Option<String>,   // For search_result children
+    pub storage_path: String,        // Path relative to attachments dir: "fetch/{uuid}.md"
+    pub content_type: String,        // MIME type of stored content: "text/markdown", "text/plain"
+    pub original_mime: Option<String>, // Original MIME type from HTTP response
+    pub status: String,              // "pending" | "processing" | "success" | "failed"
+    pub error: Option<String>,
+    pub keywords: Option<String>,
+    pub headings: Option<String>,    // JSON array of headings
+    pub original_size: Option<i64>,
+    pub processed_size: Option<i64>,
+    pub favicon_url: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAttachmentRequest {
-    pub origin: String,
-    pub attachment_type: String,
-    pub content_format: Option<String>,
-    pub url: Option<String>,
-    pub file_path: Option<String>,
-    pub file_name: Option<String>,
-    pub file_size: Option<i64>,
-    pub mime_type: Option<String>,
+pub struct CreateFetchResultRequest {
+    pub search_id: Option<String>,
+    pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub content: Option<String>,
-    pub thumbnail_path: Option<String>,
-    pub extraction_status: Option<String>,
-    pub extraction_error: Option<String>,
-    pub metadata: Option<String>,
-    pub parent_id: Option<String>,
-}
-
-/// Metadata for web fetch results (stored as JSON in metadata field)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebFetchMetadata {
+    pub storage_path: String,
+    pub content_type: String,
+    pub original_mime: Option<String>,
+    pub status: Option<String>,
+    pub error: Option<String>,
     pub keywords: Option<String>,
-    pub headings: Vec<String>,
-    pub fetched_at: String,
-    pub original_length: Option<usize>,
-    pub truncated: bool,
+    pub headings: Option<String>,
+    pub original_size: Option<i64>,
+    pub processed_size: Option<i64>,
     pub favicon_url: Option<String>,
 }
 
-/// Metadata for web search results (stored as JSON in metadata field)
+/// File attachment - stores metadata about a user-uploaded file
+/// Content is stored in filesystem at storage_path
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebSearchMetadata {
-    pub query: String,
-    pub search_engine: String,       // "google" | "bing" | "duckduckgo" etc.
-    pub total_results: Option<i64>,
-    pub searched_at: String,
+pub struct FileAttachment {
+    pub id: String,
+    pub file_name: String,
+    pub file_size: i64,
+    pub mime_type: String,
+    pub storage_path: String,        // Path relative to attachments dir: "files/{uuid}.pdf"
+    pub created_at: String,
 }
 
-/// Metadata for local files (stored as JSON in metadata field)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalFileMetadata {
-    pub original_path: Option<String>,
-    pub last_modified: Option<String>,
-    pub page_count: Option<i32>,     // For PDF/Office documents
-    pub dimensions: Option<ImageDimensions>, // For images
+pub struct CreateFileAttachmentRequest {
+    pub file_name: String,
+    pub file_size: i64,
+    pub mime_type: String,
+    pub storage_path: String,
 }
 
-/// Image dimensions
+/// Attachment type enum for polymorphic handling
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentType {
+    SearchResult,
+    FetchResult,
+    File,
+}
+
+impl std::fmt::Display for AttachmentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttachmentType::SearchResult => write!(f, "search_result"),
+            AttachmentType::FetchResult => write!(f, "fetch_result"),
+            AttachmentType::File => write!(f, "file"),
+        }
+    }
+}
+
+impl std::str::FromStr for AttachmentType {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "search_result" => Ok(AttachmentType::SearchResult),
+            "fetch_result" => Ok(AttachmentType::FetchResult),
+            "file" => Ok(AttachmentType::File),
+            _ => Err(format!("Invalid attachment type: {}", s)),
+        }
+    }
+}
+
+/// Message attachment link - polymorphic junction table record
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageDimensions {
-    pub width: u32,
-    pub height: u32,
+pub struct MessageAttachment {
+    pub id: String,
+    pub message_id: String,
+    pub attachment_type: AttachmentType,
+    pub attachment_id: String,
+    pub display_order: i32,
+    pub created_at: String,
+}
+
+/// Unified attachment enum for API responses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Attachment {
+    SearchResult(SearchResult),
+    FetchResult(FetchResult),
+    File(FileAttachment),
+}
+
+impl Attachment {
+    pub fn id(&self) -> &str {
+        match self {
+            Attachment::SearchResult(s) => &s.id,
+            Attachment::FetchResult(f) => &f.id,
+            Attachment::File(f) => &f.id,
+        }
+    }
+    
+    pub fn attachment_type(&self) -> AttachmentType {
+        match self {
+            Attachment::SearchResult(_) => AttachmentType::SearchResult,
+            Attachment::FetchResult(_) => AttachmentType::FetchResult,
+            Attachment::File(_) => AttachmentType::File,
+        }
+    }
 }
 
 // Prompt models

@@ -232,83 +232,100 @@ export interface CreateMessageRequest {
   tokens?: number;
 }
 
-// Attachment types
-// origin: "web" | "local"
-// attachment_type: "fetch_result" | "search_result" | "file"
-export type AttachmentOrigin = "web" | "local";
-export type AttachmentType = "fetch_result" | "search_result" | "file";
+// ========== Attachment Types (Split Schema) ==========
 
-export interface Attachment {
+// Attachment type enum
+export type AttachmentType = "search_result" | "fetch_result" | "file";
+
+// Search result - stores web search metadata only (no content in filesystem)
+export interface SearchResult {
   id: string;
-  origin: AttachmentOrigin;
-  attachment_type: AttachmentType;
-  content_format?: string; // MIME type of extracted/converted content
-  url?: string;
-  file_path?: string;
-  file_name?: string;
-  file_size?: number;
-  mime_type?: string; // Original MIME type from source
-  title?: string;
-  description?: string;
-  content?: string; // Extracted text content
-  thumbnail_path?: string;
-  extraction_status: string; // "pending" | "processing" | "success" | "failed"
-  extraction_error?: string;
-  metadata?: string; // JSON string
-  parent_id?: string; // For search_result children
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateAttachmentRequest {
-  origin: AttachmentOrigin;
-  attachment_type: AttachmentType;
-  content_format?: string;
-  url?: string;
-  file_path?: string;
-  file_name?: string;
-  file_size?: number;
-  mime_type?: string;
-  title?: string;
-  description?: string;
-  content?: string;
-  thumbnail_path?: string;
-  extraction_status?: string;
-  extraction_error?: string;
-  metadata?: string;
-  parent_id?: string;
-}
-
-// Metadata for web fetch results (parsed from metadata JSON)
-export interface WebFetchMetadata {
-  keywords?: string;
-  headings: string[];
-  fetched_at: string;
-  original_length?: number;
-  truncated: boolean;
-  favicon_url?: string;
-}
-
-// Metadata for web search results
-export interface WebSearchMetadata {
   query: string;
-  search_engine: string;
+  engine: string; // "google" | "bing" | "duckduckgo"
+  total_results?: number;
+  searched_at: string;
+  created_at: string;
+}
+
+export interface CreateSearchResultRequest {
+  query: string;
+  engine: string;
   total_results?: number;
   searched_at: string;
 }
 
-// Metadata for local files
-export interface LocalFileMetadata {
-  original_path?: string;
-  last_modified?: string;
-  page_count?: number; // For PDF/Office documents
-  dimensions?: ImageDimensions; // For images
+// Fetch result - stores fetched web resource metadata (content in filesystem)
+export interface FetchResult {
+  id: string;
+  search_id?: string; // FK to search_results (null if standalone fetch)
+  url: string;
+  title?: string;
+  description?: string;
+  storage_path: string; // Path relative to attachments dir: "fetch/{uuid}.md"
+  content_type: string; // MIME type of stored content: "text/markdown", "text/plain"
+  original_mime?: string; // Original MIME type from HTTP response
+  status: string; // "pending" | "processing" | "success" | "failed"
+  error?: string;
+  keywords?: string;
+  headings?: string; // JSON array of headings
+  original_size?: number;
+  processed_size?: number;
+  favicon_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// Image dimensions
-export interface ImageDimensions {
-  width: number;
-  height: number;
+export interface CreateFetchResultRequest {
+  search_id?: string;
+  url: string;
+  title?: string;
+  description?: string;
+  storage_path: string;
+  content_type: string;
+  original_mime?: string;
+  status?: string;
+  error?: string;
+  keywords?: string;
+  headings?: string;
+  original_size?: number;
+  processed_size?: number;
+  favicon_url?: string;
+}
+
+// File attachment - stores user uploaded file metadata (content in filesystem)
+export interface FileAttachment {
+  id: string;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  storage_path: string; // Path relative to attachments dir: "files/{uuid}.pdf"
+  created_at: string;
+}
+
+export interface CreateFileAttachmentRequest {
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  storage_path: string;
+}
+
+// Unified attachment type (discriminated union from backend)
+export type Attachment =
+  | { type: "search_result" } & SearchResult
+  | { type: "fetch_result" } & FetchResult
+  | { type: "file" } & FileAttachment;
+
+// Helper type guards
+export function isSearchResult(attachment: Attachment): attachment is { type: "search_result" } & SearchResult {
+  return attachment.type === "search_result";
+}
+
+export function isFetchResult(attachment: Attachment): attachment is { type: "fetch_result" } & FetchResult {
+  return attachment.type === "fetch_result";
+}
+
+export function isFileAttachment(attachment: Attachment): attachment is { type: "file" } & FileAttachment {
+  return attachment.type === "file";
 }
 
 // Prompt types

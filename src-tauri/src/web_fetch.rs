@@ -12,7 +12,16 @@ use std::io::Cursor;
 use std::time::Duration;
 use url::Url;
 
-use crate::models::WebFetchMetadata;
+/// Metadata for web fetch results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebFetchMetadata {
+    pub keywords: Option<String>,
+    pub headings: Vec<String>,
+    pub fetched_at: String,
+    pub original_length: Option<usize>,
+    pub truncated: bool,
+    pub favicon_url: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchedWebResource {

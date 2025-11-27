@@ -254,53 +254,77 @@ impl Database {
             [],
         )?;
 
-        // Attachments table (web resources, local files)
-        // origin: 'web' | 'local'
-        // attachment_type: 'fetch_result' | 'search_result' | 'file'
-        // content_format: MIME type
+        // ========== Attachment Tables (Split Schema) ==========
+
+        // Search results table - stores web search metadata only
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS attachments (
+            "CREATE TABLE IF NOT EXISTS search_results (
                 id TEXT PRIMARY KEY,
-                origin TEXT NOT NULL,
-                attachment_type TEXT NOT NULL,
-                content_format TEXT,
-                url TEXT,
-                file_path TEXT,
-                file_name TEXT,
-                file_size INTEGER,
-                mime_type TEXT,
-                title TEXT,
-                description TEXT,
-                content TEXT,
-                thumbnail_path TEXT,
-                extraction_status TEXT DEFAULT 'pending',
-                extraction_error TEXT,
-                metadata TEXT,
-                parent_id TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (parent_id) REFERENCES attachments(id) ON DELETE CASCADE
+                query TEXT NOT NULL,
+                engine TEXT NOT NULL,
+                total_results INTEGER,
+                searched_at TEXT NOT NULL,
+                created_at TEXT NOT NULL
             )",
             [],
         )?;
 
-        // Index for attachment parent lookups (search_result -> fetch_result children)
+        // Fetch results table - stores fetched web resource metadata
+        // Content is stored in filesystem at storage_path
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_attachments_parent ON attachments(parent_id)",
+            "CREATE TABLE IF NOT EXISTS fetch_results (
+                id TEXT PRIMARY KEY,
+                search_id TEXT,
+                url TEXT NOT NULL,
+                title TEXT,
+                description TEXT,
+                storage_path TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                original_mime TEXT,
+                status TEXT DEFAULT 'pending',
+                error TEXT,
+                keywords TEXT,
+                headings TEXT,
+                original_size INTEGER,
+                processed_size INTEGER,
+                favicon_url TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (search_id) REFERENCES search_results(id) ON DELETE CASCADE
+            )",
             [],
         )?;
 
-        // Message-Attachment junction table
+        // Index for fetch results by search_id
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fetch_results_search ON fetch_results(search_id)",
+            [],
+        )?;
+
+        // Files table - stores user uploaded file metadata
+        // Content is stored in filesystem at storage_path
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS files (
+                id TEXT PRIMARY KEY,
+                file_name TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                mime_type TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Message-Attachment polymorphic junction table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS message_attachments (
                 id TEXT PRIMARY KEY,
                 message_id TEXT NOT NULL,
+                attachment_type TEXT NOT NULL CHECK(attachment_type IN ('search_result', 'fetch_result', 'file')),
                 attachment_id TEXT NOT NULL,
                 display_order INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-                FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE,
-                UNIQUE(message_id, attachment_id)
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
             )",
             [],
         )?;
@@ -308,6 +332,12 @@ impl Database {
         // Index for message attachment lookups
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id)",
+            [],
+        )?;
+
+        // Index for attachment type lookups
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_attachments_type ON message_attachments(attachment_type, attachment_id)",
             [],
         )?;
 
@@ -1232,120 +1262,221 @@ impl Database {
         Ok(())
     }
 
-    // ========== Attachment Operations ==========
+    // ========== Search Result Operations ==========
 
-    pub fn create_attachment(&self, req: CreateAttachmentRequest) -> Result<Attachment> {
+    pub fn create_search_result(&self, req: CreateSearchResultRequest) -> Result<SearchResult> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
-        let status = req.extraction_status.unwrap_or_else(|| "pending".to_string());
 
         {
             let conn = self.lock_conn()?;
             conn.execute(
-                "INSERT INTO attachments
-                 (id, origin, attachment_type, content_format, url, file_path, file_name,
-                  file_size, mime_type, title, description, content, thumbnail_path,
-                  extraction_status, extraction_error, metadata, parent_id, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                "INSERT INTO search_results (id, query, engine, total_results, searched_at, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, req.query, req.engine, req.total_results, req.searched_at, now],
+            )?;
+        }
+
+        self.get_search_result(&id)
+    }
+
+    pub fn get_search_result(&self, id: &str) -> Result<SearchResult> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, query, engine, total_results, searched_at, created_at
+             FROM search_results WHERE id = ?1"
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(SearchResult {
+                id: row.get(0)?,
+                query: row.get(1)?,
+                engine: row.get(2)?,
+                total_results: row.get(3)?,
+                searched_at: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        }).map_err(|e| anyhow::anyhow!("Search result not found: {}", e))
+    }
+
+    pub fn delete_search_result(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM search_results WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== Fetch Result Operations ==========
+
+    pub fn create_fetch_result(&self, req: CreateFetchResultRequest) -> Result<FetchResult> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let status = req.status.unwrap_or_else(|| "pending".to_string());
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO fetch_results 
+                 (id, search_id, url, title, description, storage_path, content_type, original_mime,
+                  status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
                 params![
                     id,
-                    req.origin,
-                    req.attachment_type,
-                    req.content_format,
+                    req.search_id,
                     req.url,
-                    req.file_path,
-                    req.file_name,
-                    req.file_size,
-                    req.mime_type,
                     req.title,
                     req.description,
-                    req.content,
-                    req.thumbnail_path,
+                    req.storage_path,
+                    req.content_type,
+                    req.original_mime,
                     status,
-                    req.extraction_error,
-                    req.metadata,
-                    req.parent_id,
+                    req.error,
+                    req.keywords,
+                    req.headings,
+                    req.original_size,
+                    req.processed_size,
+                    req.favicon_url,
                     now,
                     now
                 ],
             )?;
         }
 
-        self.get_attachment(&id)
+        self.get_fetch_result(&id)
     }
 
-    pub fn get_attachment(&self, id: &str) -> Result<Attachment> {
+    pub fn get_fetch_result(&self, id: &str) -> Result<FetchResult> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, origin, attachment_type, content_format, url, file_path, file_name,
-                    file_size, mime_type, title, description, content, thumbnail_path,
-                    extraction_status, extraction_error, metadata, parent_id, created_at, updated_at
-             FROM attachments WHERE id = ?1"
+            "SELECT id, search_id, url, title, description, storage_path, content_type, original_mime,
+                    status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
+             FROM fetch_results WHERE id = ?1"
         )?;
 
         stmt.query_row(params![id], |row| {
-            Ok(Attachment {
+            Ok(FetchResult {
                 id: row.get(0)?,
-                origin: row.get(1)?,
-                attachment_type: row.get(2)?,
-                content_format: row.get(3)?,
-                url: row.get(4)?,
-                file_path: row.get(5)?,
-                file_name: row.get(6)?,
-                file_size: row.get(7)?,
-                mime_type: row.get(8)?,
-                title: row.get(9)?,
-                description: row.get(10)?,
-                content: row.get(11)?,
-                thumbnail_path: row.get(12)?,
-                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
-                extraction_error: row.get(14)?,
-                metadata: row.get(15)?,
-                parent_id: row.get(16)?,
-                created_at: row.get(17)?,
-                updated_at: row.get(18)?,
+                search_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                storage_path: row.get(5)?,
+                content_type: row.get(6)?,
+                original_mime: row.get(7)?,
+                status: row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "pending".to_string()),
+                error: row.get(9)?,
+                keywords: row.get(10)?,
+                headings: row.get(11)?,
+                original_size: row.get(12)?,
+                processed_size: row.get(13)?,
+                favicon_url: row.get(14)?,
+                created_at: row.get(15)?,
+                updated_at: row.get(16)?,
             })
-        }).map_err(|e| anyhow::anyhow!("Attachment not found: {}", e))
+        }).map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
     }
 
-    pub fn get_attachment_children(&self, parent_id: &str) -> Result<Vec<Attachment>> {
+    pub fn get_fetch_results_by_search(&self, search_id: &str) -> Result<Vec<FetchResult>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, origin, attachment_type, content_format, url, file_path, file_name,
-                    file_size, mime_type, title, description, content, thumbnail_path,
-                    extraction_status, extraction_error, metadata, parent_id, created_at, updated_at
-             FROM attachments WHERE parent_id = ?1
+            "SELECT id, search_id, url, title, description, storage_path, content_type, original_mime,
+                    status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
+             FROM fetch_results WHERE search_id = ?1
              ORDER BY created_at"
         )?;
 
-        let attachments = stmt.query_map(params![parent_id], |row| {
-            Ok(Attachment {
+        let results = stmt.query_map(params![search_id], |row| {
+            Ok(FetchResult {
                 id: row.get(0)?,
-                origin: row.get(1)?,
-                attachment_type: row.get(2)?,
-                content_format: row.get(3)?,
-                url: row.get(4)?,
-                file_path: row.get(5)?,
-                file_name: row.get(6)?,
-                file_size: row.get(7)?,
-                mime_type: row.get(8)?,
-                title: row.get(9)?,
-                description: row.get(10)?,
-                content: row.get(11)?,
-                thumbnail_path: row.get(12)?,
-                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
-                extraction_error: row.get(14)?,
-                metadata: row.get(15)?,
-                parent_id: row.get(16)?,
-                created_at: row.get(17)?,
-                updated_at: row.get(18)?,
+                search_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                storage_path: row.get(5)?,
+                content_type: row.get(6)?,
+                original_mime: row.get(7)?,
+                status: row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "pending".to_string()),
+                error: row.get(9)?,
+                keywords: row.get(10)?,
+                headings: row.get(11)?,
+                original_size: row.get(12)?,
+                processed_size: row.get(13)?,
+                favicon_url: row.get(14)?,
+                created_at: row.get(15)?,
+                updated_at: row.get(16)?,
             })
         })?.collect::<Result<Vec<_>, _>>()?;
 
-        Ok(attachments)
+        Ok(results)
     }
 
-    pub fn link_message_attachment(&self, message_id: &str, attachment_id: &str, display_order: Option<i32>) -> Result<()> {
+    pub fn update_fetch_result_status(&self, id: &str, status: &str, error: Option<&str>) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "UPDATE fetch_results SET status = ?1, error = ?2, updated_at = ?3 WHERE id = ?4",
+            params![status, error, now, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_fetch_result(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM fetch_results WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== File Attachment Operations ==========
+
+    pub fn create_file_attachment(&self, req: CreateFileAttachmentRequest) -> Result<FileAttachment> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, req.file_name, req.file_size, req.mime_type, req.storage_path, now],
+            )?;
+        }
+
+        self.get_file_attachment(&id)
+    }
+
+    pub fn get_file_attachment(&self, id: &str) -> Result<FileAttachment> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, file_name, file_size, mime_type, storage_path, created_at
+             FROM files WHERE id = ?1"
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(FileAttachment {
+                id: row.get(0)?,
+                file_name: row.get(1)?,
+                file_size: row.get(2)?,
+                mime_type: row.get(3)?,
+                storage_path: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        }).map_err(|e| anyhow::anyhow!("File attachment not found: {}", e))
+    }
+
+    pub fn delete_file_attachment(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM files WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== Message Attachment Link Operations ==========
+
+    pub fn link_message_attachment(
+        &self,
+        message_id: &str,
+        attachment_type: AttachmentType,
+        attachment_id: &str,
+        display_order: Option<i32>,
+    ) -> Result<()> {
         let conn = self.lock_conn()?;
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
@@ -1353,9 +1484,9 @@ impl Database {
 
         conn.execute(
             "INSERT OR IGNORE INTO message_attachments
-             (id, message_id, attachment_id, display_order, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, message_id, attachment_id, order, now],
+             (id, message_id, attachment_type, attachment_id, display_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, message_id, attachment_type.to_string(), attachment_id, order, now],
         )?;
 
         Ok(())
@@ -1364,41 +1495,59 @@ impl Database {
     pub fn get_message_attachments(&self, message_id: &str) -> Result<Vec<Attachment>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT a.id, a.origin, a.attachment_type, a.content_format, a.url, a.file_path,
-                    a.file_name, a.file_size, a.mime_type, a.title, a.description, a.content,
-                    a.thumbnail_path, a.extraction_status, a.extraction_error, a.metadata,
-                    a.parent_id, a.created_at, a.updated_at
-             FROM attachments a
-             JOIN message_attachments ma ON a.id = ma.attachment_id
-             WHERE ma.message_id = ?1
-             ORDER BY ma.display_order, a.created_at"
+            "SELECT attachment_type, attachment_id, display_order
+             FROM message_attachments
+             WHERE message_id = ?1
+             ORDER BY display_order, created_at"
         )?;
 
-        let attachments = stmt.query_map(params![message_id], |row| {
-            Ok(Attachment {
-                id: row.get(0)?,
-                origin: row.get(1)?,
-                attachment_type: row.get(2)?,
-                content_format: row.get(3)?,
-                url: row.get(4)?,
-                file_path: row.get(5)?,
-                file_name: row.get(6)?,
-                file_size: row.get(7)?,
-                mime_type: row.get(8)?,
-                title: row.get(9)?,
-                description: row.get(10)?,
-                content: row.get(11)?,
-                thumbnail_path: row.get(12)?,
-                extraction_status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "pending".to_string()),
-                extraction_error: row.get(14)?,
-                metadata: row.get(15)?,
-                parent_id: row.get(16)?,
-                created_at: row.get(17)?,
-                updated_at: row.get(18)?,
-            })
+        let links: Vec<(String, String)> = stmt.query_map(params![message_id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
         })?.collect::<Result<Vec<_>, _>>()?;
 
+        drop(stmt);
+        drop(conn);
+
+        let mut attachments = Vec::new();
+        for (attachment_type, attachment_id) in links {
+            let attachment = match attachment_type.as_str() {
+                "search_result" => {
+                    self.get_search_result(&attachment_id)
+                        .map(Attachment::SearchResult)
+                        .ok()
+                }
+                "fetch_result" => {
+                    self.get_fetch_result(&attachment_id)
+                        .map(Attachment::FetchResult)
+                        .ok()
+                }
+                "file" => {
+                    self.get_file_attachment(&attachment_id)
+                        .map(Attachment::File)
+                        .ok()
+                }
+                _ => None,
+            };
+            if let Some(a) = attachment {
+                attachments.push(a);
+            }
+        }
+
         Ok(attachments)
+    }
+
+    pub fn unlink_message_attachment(
+        &self,
+        message_id: &str,
+        attachment_type: AttachmentType,
+        attachment_id: &str,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "DELETE FROM message_attachments WHERE message_id = ?1 AND attachment_type = ?2 AND attachment_id = ?3",
+            params![message_id, attachment_type.to_string(), attachment_id],
+        )?;
+        Ok(())
     }
 
     // Settings operations

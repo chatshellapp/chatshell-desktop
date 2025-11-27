@@ -276,7 +276,7 @@ pub async fn clear_messages_by_conversation(
     state.db.delete_messages_in_conversation(&conversation_id).map_err(|e| e.to_string())
 }
 
-// Attachment commands
+// Attachment commands (new split schema)
 #[tauri::command]
 pub async fn get_message_attachments(
     state: State<'_, AppState>,
@@ -286,19 +286,43 @@ pub async fn get_message_attachments(
 }
 
 #[tauri::command]
-pub async fn get_attachment(
+pub async fn get_search_result(
     state: State<'_, AppState>,
     id: String,
-) -> Result<Attachment, String> {
-    state.db.get_attachment(&id).map_err(|e| e.to_string())
+) -> Result<SearchResult, String> {
+    state.db.get_search_result(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_attachment_children(
+pub async fn get_fetch_result(
     state: State<'_, AppState>,
-    parent_id: String,
-) -> Result<Vec<Attachment>, String> {
-    state.db.get_attachment_children(&parent_id).map_err(|e| e.to_string())
+    id: String,
+) -> Result<FetchResult, String> {
+    state.db.get_fetch_result(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_fetch_results_by_search(
+    state: State<'_, AppState>,
+    search_id: String,
+) -> Result<Vec<FetchResult>, String> {
+    state.db.get_fetch_results_by_search(&search_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_file_attachment(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FileAttachment, String> {
+    state.db.get_file_attachment(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn read_fetch_content(
+    app: tauri::AppHandle,
+    storage_path: String,
+) -> Result<String, String> {
+    crate::storage::read_content(&app, &storage_path).map_err(|e| e.to_string())
 }
 
 // Settings commands
@@ -938,40 +962,55 @@ pub async fn send_message(
         let fetched_resources = web_fetch::process_message_urls(&content, None).await;
         println!("📄 [background_task] Fetched {} web resources", fetched_resources.len());
         
-        // Store fetched resources as attachments and link to message
+        // Store fetched resources as fetch_results and link to message
         let mut attachment_ids: Vec<String> = Vec::new();
         for resource in &fetched_resources {
-            // Create attachment record
-            let metadata_json = serde_json::to_string(&resource.metadata).ok();
-            let extraction_status = if resource.extraction_error.is_some() { "failed" } else { "success" };
+            // Generate storage path and save content to filesystem
+            let fetch_id = uuid::Uuid::now_v7().to_string();
+            let storage_path = crate::storage::generate_fetch_storage_path(&fetch_id, &resource.content_format);
             
-            match state_clone.db.create_attachment(CreateAttachmentRequest {
-                origin: "web".to_string(),
-                attachment_type: "fetch_result".to_string(),
-                content_format: Some(resource.content_format.clone()),
-                url: Some(resource.url.clone()),
-                file_path: None,
-                file_name: None,
-                file_size: None,
-                mime_type: Some(resource.mime_type.clone()),
+            // Save content to filesystem
+            if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &resource.content) {
+                eprintln!("Failed to save content to filesystem for {}: {}", resource.url, e);
+                continue;
+            }
+            
+            let status = if resource.extraction_error.is_some() { "failed" } else { "success" };
+            let headings_json = serde_json::to_string(&resource.metadata.headings).ok();
+            let content_size = resource.content.len() as i64;
+            
+            match state_clone.db.create_fetch_result(CreateFetchResultRequest {
+                search_id: None, // Standalone fetch, not part of a search
+                url: resource.url.clone(),
                 title: resource.title.clone(),
                 description: resource.description.clone(),
-                content: Some(resource.content.clone()),
-                thumbnail_path: None,
-                extraction_status: Some(extraction_status.to_string()),
-                extraction_error: resource.extraction_error.clone(),
-                metadata: metadata_json,
-                parent_id: None,
+                storage_path: storage_path.clone(),
+                content_type: resource.content_format.clone(),
+                original_mime: Some(resource.mime_type.clone()),
+                status: Some(status.to_string()),
+                error: resource.extraction_error.clone(),
+                keywords: resource.metadata.keywords.clone(),
+                headings: headings_json,
+                original_size: resource.metadata.original_length.map(|l| l as i64),
+                processed_size: Some(content_size),
+                favicon_url: resource.metadata.favicon_url.clone(),
             }) {
-                Ok(attachment) => {
-                    // Link attachment to message
-                    if let Err(e) = state_clone.db.link_message_attachment(&user_message_id, &attachment.id, None) {
-                        eprintln!("Failed to link attachment to message: {}", e);
+                Ok(fetch_result) => {
+                    // Link fetch_result to message
+                    if let Err(e) = state_clone.db.link_message_attachment(
+                        &user_message_id, 
+                        AttachmentType::FetchResult,
+                        &fetch_result.id, 
+                        None
+                    ) {
+                        eprintln!("Failed to link fetch_result to message: {}", e);
                     }
-                    attachment_ids.push(attachment.id);
+                    attachment_ids.push(fetch_result.id);
                 }
                 Err(e) => {
-                    eprintln!("Failed to create attachment for {}: {}", resource.url, e);
+                    eprintln!("Failed to create fetch_result for {}: {}", resource.url, e);
+                    // Clean up saved file on failure
+                    let _ = crate::storage::delete_file(&app_clone, &storage_path);
                 }
             }
         }

@@ -4,6 +4,7 @@ pub mod db;
 mod llm;
 pub mod models;
 mod prompts;
+pub mod storage;
 mod web_fetch;
 mod thinking_parser;
 
@@ -59,6 +60,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
+        .setup(|app| {
+            // Initialize storage directories
+            if let Err(e) = storage::init_storage_dirs(app.handle()) {
+                eprintln!("Warning: Failed to initialize storage directories: {}", e);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Provider commands
             commands::create_provider,
@@ -97,10 +105,13 @@ pub fn run() {
             commands::create_message,
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
-            // Attachment commands
+            // Attachment commands (new split schema)
             commands::get_message_attachments,
-            commands::get_attachment,
-            commands::get_attachment_children,
+            commands::get_search_result,
+            commands::get_fetch_result,
+            commands::get_fetch_results_by_search,
+            commands::get_file_attachment,
+            commands::read_fetch_content,
             // Settings commands
             commands::get_setting,
             commands::set_setting,

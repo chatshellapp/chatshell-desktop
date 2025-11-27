@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react"
-import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
+import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, Search } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
+import { invoke } from "@tauri-apps/api/core"
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { MarkdownContent } from "@/components/markdown-content"
-import type { Attachment, WebFetchMetadata } from "@/types"
+import type { Attachment, FetchResult, SearchResult, FileAttachment } from "@/types"
 
 interface AttachmentPreviewProps {
   /** Attachment resource (for completed processing) */
@@ -29,61 +30,302 @@ function getDomain(url: string): string {
   }
 }
 
-// Parse metadata JSON and extract favicon_url
-function parseMetadata(metadataJson?: string): WebFetchMetadata | null {
-  if (!metadataJson) return null
-  try {
-    return JSON.parse(metadataJson) as WebFetchMetadata
-  } catch {
-    return null
-  }
-}
-
-// Get favicon URL - prefer fetched favicon, fallback to Google service
-function getFaviconUrl(attachment: Attachment): string {
-  // First try to get favicon from metadata (fetched from HTML)
-  const metadata = parseMetadata(attachment.metadata)
-  if (metadata?.favicon_url) {
-    return metadata.favicon_url
+// Get favicon URL for a fetch result
+function getFaviconUrl(fetchResult: FetchResult): string {
+  // First try to use the stored favicon_url
+  if (fetchResult.favicon_url) {
+    return fetchResult.favicon_url
   }
   
   // Fallback to Google favicon service
-  if (attachment.url) {
-    try {
-      const urlObj = new URL(attachment.url)
-      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`
-    } catch {
-      return ""
-    }
+  try {
+    const urlObj = new URL(fetchResult.url)
+    return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`
+  } catch {
+    return ""
   }
-  
-  return ""
 }
 
-// Get icon based on attachment type and content format
-function getAttachmentIcon(attachment: Attachment) {
-  // For web fetch results, always use Globe
-  if (attachment.origin === "web") {
-    return Globe
+// FetchResult preview component
+function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
+  const [faviconError, setFaviconError] = useState(false)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [loadingContent, setLoadingContent] = useState(false)
+  
+  const faviconUrl = useMemo(() => getFaviconUrl(fetchResult), [fetchResult])
+  const domain = getDomain(fetchResult.url)
+  const title = fetchResult.title || domain
+  const isFailed = fetchResult.status === "failed"
+  
+  // Load content from filesystem when dialog opens
+  useEffect(() => {
+    if (isDialogOpen && !content && !loadingContent && fetchResult.status === "success") {
+      setLoadingContent(true)
+      invoke<string>("read_fetch_content", { storagePath: fetchResult.storage_path })
+        .then(setContent)
+        .catch((err) => {
+          console.error("Failed to load fetch content:", err)
+          setContent(null)
+        })
+        .finally(() => setLoadingContent(false))
+    }
+  }, [isDialogOpen, content, loadingContent, fetchResult])
+  
+  const handleOpenLink = () => {
+    openUrl(fetchResult.url)
+    setIsDialogOpen(false)
   }
   
-  // For local files, use appropriate icon based on MIME type
-  const mimeType = attachment.content_format || attachment.mime_type || ""
-  
-  if (mimeType.startsWith("image/")) {
-    return Image
+  // Failed state
+  if (isFailed) {
+    return (
+      <>
+        <button
+          onClick={() => setIsDialogOpen(true)}
+          className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+        >
+          {faviconUrl && !faviconError ? (
+            <img 
+              src={faviconUrl} 
+              alt="" 
+              className="h-4 w-4 rounded-sm flex-shrink-0"
+              onError={() => setFaviconError(true)}
+            />
+          ) : (
+            <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          
+          <span className="flex-1 text-sm truncate">
+            <span className="font-medium">Failed to fetch</span>
+            <span className="text-muted-foreground ml-1">{fetchResult.url}</span>
+          </span>
+          
+          <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+        </button>
+        
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {faviconUrl && !faviconError ? (
+                  <img src={faviconUrl} alt="" className="h-5 w-5 rounded-sm flex-shrink-0" />
+                ) : (
+                  <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                )}
+                Failed to fetch
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="px-3 py-2 bg-muted/50 rounded-md">
+              <p className="text-sm text-muted-foreground break-all font-mono">{fetchResult.url}</p>
+            </div>
+            
+            {fetchResult.error && (
+              <div className="px-3 py-2 bg-destructive/10 rounded-md">
+                <p className="text-sm text-destructive">{fetchResult.error}</p>
+              </div>
+            )}
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleOpenLink}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open Link
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    )
   }
-  if (mimeType.startsWith("text/") || mimeType.includes("json") || mimeType.includes("xml")) {
-    return FileText
+  
+  // Success state
+  return (
+    <>
+      <button
+        onClick={() => setIsDialogOpen(true)}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+      >
+        {faviconUrl && !faviconError ? (
+          <img 
+            src={faviconUrl} 
+            alt="" 
+            className="h-4 w-4 rounded-sm flex-shrink-0"
+            onError={() => setFaviconError(true)}
+          />
+        ) : (
+          <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        )}
+        
+        <span className="flex-1 text-sm truncate">
+          <span className="font-medium">Fetched</span>
+          <span className="text-muted-foreground ml-1">{title}</span>
+        </span>
+        
+        <span className="text-sm text-muted-foreground flex-shrink-0">{domain}</span>
+      </button>
+      
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {faviconUrl && !faviconError ? (
+                <img src={faviconUrl} alt="" className="h-5 w-5 rounded-sm flex-shrink-0" />
+              ) : (
+                <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              )}
+              {title}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="px-3 py-2 bg-muted/50 rounded-md">
+            <p className="text-sm text-muted-foreground break-all font-mono">{fetchResult.url}</p>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto border rounded-md p-4 min-h-[200px]">
+            {loadingContent ? (
+              <p className="text-sm text-muted-foreground">Loading content...</p>
+            ) : content ? (
+              <MarkdownContent content={content} className="text-sm" />
+            ) : (
+              <p className="text-sm text-muted-foreground">No content available</p>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleOpenLink}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+// SearchResult preview component
+function SearchResultPreview({ searchResult }: { searchResult: SearchResult }) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  
+  return (
+    <>
+      <button
+        onClick={() => setIsDialogOpen(true)}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+      >
+        <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        
+        <span className="flex-1 text-sm truncate">
+          <span className="font-medium">Search:</span>
+          <span className="text-muted-foreground ml-1">{searchResult.query}</span>
+        </span>
+        
+        <span className="text-sm text-muted-foreground flex-shrink-0">
+          {searchResult.engine}
+        </span>
+      </button>
+      
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              Search Results
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-2">
+            <div className="px-3 py-2 bg-muted/50 rounded-md">
+              <p className="text-sm font-medium">Query</p>
+              <p className="text-sm text-muted-foreground">{searchResult.query}</p>
+            </div>
+            
+            <div className="px-3 py-2 bg-muted/50 rounded-md">
+              <p className="text-sm font-medium">Engine</p>
+              <p className="text-sm text-muted-foreground">{searchResult.engine}</p>
+            </div>
+            
+            {searchResult.total_results && (
+              <div className="px-3 py-2 bg-muted/50 rounded-md">
+                <p className="text-sm font-medium">Total Results</p>
+                <p className="text-sm text-muted-foreground">{searchResult.total_results.toLocaleString()}</p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+// FileAttachment preview component
+function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachment }) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  
+  const IconComponent = fileAttachment.mime_type.startsWith("image/") ? Image : 
+                        fileAttachment.mime_type.startsWith("text/") ? FileText : FileIconLucide
+  
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
   
-  return FileIcon
+  return (
+    <>
+      <button
+        onClick={() => setIsDialogOpen(true)}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+      >
+        <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        
+        <span className="flex-1 text-sm truncate">
+          <span className="font-medium">{fileAttachment.file_name}</span>
+        </span>
+        
+        <span className="text-sm text-muted-foreground flex-shrink-0">
+          {formatFileSize(fileAttachment.file_size)}
+        </span>
+      </button>
+      
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              {fileAttachment.file_name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-2">
+            <div className="px-3 py-2 bg-muted/50 rounded-md">
+              <p className="text-sm font-medium">File Size</p>
+              <p className="text-sm text-muted-foreground">{formatFileSize(fileAttachment.file_size)}</p>
+            </div>
+            
+            <div className="px-3 py-2 bg-muted/50 rounded-md">
+              <p className="text-sm font-medium">Type</p>
+              <p className="text-sm text-muted-foreground">{fileAttachment.mime_type}</p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export function AttachmentPreview({ attachment, processingUrl }: AttachmentPreviewProps) {
-  const [faviconError, setFaviconError] = useState(false)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  
   // Loading state: "Fetching from [domain]"
   if (processingUrl) {
     const domain = getDomain(processingUrl)
@@ -93,10 +335,7 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
         onClick={() => openUrl(processingUrl)}
         className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
       >
-        {/* Globe icon */}
         <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        
-        {/* Fetching text */}
         <span className="flex-1 text-sm text-muted-foreground truncate">
           Fetching from {domain}
         </span>
@@ -109,192 +348,15 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
     return null
   }
   
-  const isWebAttachment = attachment.origin === "web"
-  const faviconUrl = useMemo(() => getFaviconUrl(attachment), [attachment])
-  const domain = attachment.url ? getDomain(attachment.url) : ""
-  const title = attachment.title || attachment.file_name || "Unknown"
-  const hasContent = attachment.content && attachment.extraction_status === "success"
-  const isFailed = attachment.extraction_status === "failed"
-  const IconComponent = getAttachmentIcon(attachment)
-  
-  const handleOpenLink = () => {
-    if (attachment.url) {
-      openUrl(attachment.url)
-    }
-    setIsDialogOpen(false)
+  // Route to appropriate component based on type
+  switch (attachment.type) {
+    case "fetch_result":
+      return <FetchResultPreview fetchResult={attachment as FetchResult} />
+    case "search_result":
+      return <SearchResultPreview searchResult={attachment as SearchResult} />
+    case "file":
+      return <FileAttachmentPreview fileAttachment={attachment as FileAttachment} />
+    default:
+      return null
   }
-  
-  // Failed state: "Failed to fetch [url]" + warning icon
-  if (isFailed) {
-    return (
-      <>
-        <button
-          onClick={() => setIsDialogOpen(true)}
-          className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
-        >
-          {/* Icon */}
-          {isWebAttachment && faviconUrl && !faviconError ? (
-            <img 
-              src={faviconUrl} 
-              alt="" 
-              className="h-4 w-4 rounded-sm flex-shrink-0"
-              onError={() => setFaviconError(true)}
-            />
-          ) : (
-            <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          )}
-          
-          {/* "Failed to fetch" + URL/name */}
-          <span className="flex-1 text-sm truncate">
-            <span className="font-medium">Failed to fetch</span>
-            <span className="text-muted-foreground ml-1">{attachment.url || attachment.file_name}</span>
-          </span>
-          
-          {/* Warning icon */}
-          <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-        </button>
-        
-        {/* Failed Dialog - without content section */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {isWebAttachment && faviconUrl && !faviconError ? (
-                  <img 
-                    src={faviconUrl} 
-                    alt="" 
-                    className="h-5 w-5 rounded-sm flex-shrink-0"
-                  />
-                ) : (
-                  <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                )}
-                Failed to fetch
-              </DialogTitle>
-            </DialogHeader>
-            
-            {/* URL/path section */}
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm text-muted-foreground break-all font-mono">
-                {attachment.url || attachment.file_path}
-              </p>
-            </div>
-            
-            {/* Error message */}
-            {attachment.extraction_error && (
-              <div className="px-3 py-2 bg-destructive/10 rounded-md">
-                <p className="text-sm text-destructive">
-                  {attachment.extraction_error}
-                </p>
-              </div>
-            )}
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              {attachment.url && (
-                <Button onClick={handleOpenLink}>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open Link
-                </Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </>
-    )
-  }
-  
-  // Completed state: "Fetched [title]" + domain + external link
-  return (
-    <>
-      <button
-        onClick={() => setIsDialogOpen(true)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
-      >
-        {/* Icon */}
-        {isWebAttachment && faviconUrl && !faviconError ? (
-          <img 
-            src={faviconUrl} 
-            alt="" 
-            className="h-4 w-4 rounded-sm flex-shrink-0"
-            onError={() => setFaviconError(true)}
-          />
-        ) : (
-          <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        )}
-        
-        {/* "Fetched" label + title */}
-        <span className="flex-1 text-sm truncate">
-          <span className="font-medium">Fetched</span>
-          <span className="text-muted-foreground ml-1">{title}</span>
-        </span>
-        
-        {/* Domain info */}
-        {domain && (
-          <span className="text-sm text-muted-foreground flex-shrink-0">
-            {domain}
-          </span>
-        )}
-      </button>
-      
-      {/* Detail Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {isWebAttachment && faviconUrl && !faviconError ? (
-                <img 
-                  src={faviconUrl} 
-                  alt="" 
-                  className="h-5 w-5 rounded-sm flex-shrink-0"
-                />
-              ) : (
-                <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              )}
-              {title}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {/* URL/path section */}
-          {(attachment.url || attachment.file_path) && (
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm text-muted-foreground break-all font-mono">
-                {attachment.url || attachment.file_path}
-              </p>
-            </div>
-          )}
-          
-          {/* Content section */}
-          <div className="flex-1 overflow-y-auto border rounded-md p-4 min-h-[200px]">
-            {hasContent ? (
-              <MarkdownContent 
-                content={attachment.content!} 
-                className="text-sm"
-              />
-            ) : attachment.extraction_status === "failed" ? (
-              <p className="text-sm text-destructive">
-                {attachment.extraction_error || "Failed to fetch content"}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">No content available</p>
-            )}
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            {attachment.url && (
-              <Button onClick={handleOpenLink}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open Link
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
 }
-
