@@ -1,4 +1,4 @@
-import { ArrowUpIcon, Plus, FileText, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Blocks } from "lucide-react"
+import { ArrowUpIcon, Plus, FileText, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Package } from "lucide-react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { open } from "@tauri-apps/plugin-dialog"
@@ -850,7 +850,7 @@ export function ChatInput({}: ChatInputProps) {
                 onSelect={(e) => e.preventDefault()}
               >
                 <div className="flex items-center gap-2">
-                  <Blocks className="h-4 w-4" />
+                  <Package className="h-4 w-4" />
                   <span>Artifacts</span>
                 </div>
                 <Switch

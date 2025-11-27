@@ -9,6 +9,7 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import { ConversationList } from "@/components/sidebar/conversation-list"
 import { ContactsContent } from "@/components/sidebar/contacts-content"
 import { LibraryContent } from "@/components/sidebar/library-content"
+import { ArtifactsContent } from "@/components/sidebar/artifacts-content"
 import { SidebarNavigation } from "@/components/sidebar/sidebar-navigation"
 import { useConversationParticipants } from "@/hooks/useConversationParticipants"
 import { useSidebarHandlers } from "@/hooks/useSidebarHandlers"
@@ -21,6 +22,7 @@ import type { Prompt, PromptGroup } from "@/components/prompt-list"
 import type { Model as ModelListItem } from "@/components/model-list"
 import type { Assistant as AssistantListItem } from "@/components/assistant-list"
 import type { NavItem } from "@/components/sidebar/sidebar-navigation"
+import type { Artifact, ArtifactGroup } from "@/lib/sidebar-data"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
@@ -28,6 +30,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(SIDEBAR_DATA.peopleGroups)
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>("1")
   const [promptGroups, setPromptGroups] = React.useState<PromptGroup[]>(SIDEBAR_DATA.promptGroups)
+  const [selectedArtifactId, setSelectedArtifactId] = React.useState<string | null>(null)
+  const [artifactGroups, setArtifactGroups] = React.useState<ArtifactGroup[]>(SIDEBAR_DATA.artifactGroups)
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [activeContactsTab, setActiveContactsTab] = React.useState("models")
@@ -108,6 +112,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onPromptGroupSettings={() => {}}
             files={SIDEBAR_DATA.files}
             tools={SIDEBAR_DATA.tools}
+          />
+        )
+      case "Artifacts":
+        return (
+          <ArtifactsContent
+            artifactGroups={artifactGroups}
+            selectedArtifactId={selectedArtifactId || undefined}
+            onArtifactClick={(artifact: Artifact) => setSelectedArtifactId(artifact.id)}
+            onArtifactStarToggle={(artifact: Artifact) => {
+              setArtifactGroups(prevGroups =>
+                prevGroups.map(group => ({
+                  ...group,
+                  artifacts: group.artifacts.map((a: Artifact) =>
+                    a.id === artifact.id ? { ...a, isStarred: !a.isStarred } : a
+                  ),
+                }))
+              )
+            }}
           />
         )
       case "Settings":

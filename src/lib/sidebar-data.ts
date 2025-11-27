@@ -1,7 +1,25 @@
-import { MessageSquare, Users, Library, Settings } from "lucide-react"
+import { MessageSquare, Users, Library, Package, Settings } from "lucide-react"
 import type { ModelVendor } from "@/components/model-list"
 import type { PromptGroup } from "@/components/prompt-list"
 import type { NavItem } from "@/components/sidebar/sidebar-navigation"
+
+export interface Artifact {
+  id: string
+  name: string
+  type: "code" | "document" | "image" | "chart" | "component"
+  language?: string
+  preview?: string
+  createdAt: string
+  conversationId?: string
+  isStarred: boolean
+}
+
+export interface ArtifactGroup {
+  id: string
+  name: string
+  defaultOpen: boolean
+  artifacts: Artifact[]
+}
 
 export const SIDEBAR_DATA: {
   user: { name: string; email: string; avatar: string }
@@ -22,6 +40,7 @@ export const SIDEBAR_DATA: {
   promptGroups: PromptGroup[]
   files: Array<{ id: string; name: string; type: string; size: string; lastModified: string }>
   tools: Array<{ id: string; name: string; description: string; status: string; lastSync: string }>
+  artifactGroups: ArtifactGroup[]
 } = {
   user: {
     name: "shadcn",
@@ -45,6 +64,12 @@ export const SIDEBAR_DATA: {
       title: "Library",
       url: "#",
       icon: Library,
+      isActive: false,
+    },
+    {
+      title: "Artifacts",
+      url: "#",
+      icon: Package,
       isActive: false,
     },
     {
@@ -247,6 +272,88 @@ export const SIDEBAR_DATA: {
       description: "Access and manage documents",
       status: "connected",
       lastSync: "1 hour ago",
+    },
+  ],
+  artifactGroups: [
+    {
+      id: "code",
+      name: "Code Snippets",
+      defaultOpen: true,
+      artifacts: [
+        {
+          id: "artifact-1",
+          name: "React Button Component",
+          type: "code",
+          language: "tsx",
+          preview: "export const Button = ({ children, onClick }) => ...",
+          createdAt: "Today",
+          isStarred: true,
+        },
+        {
+          id: "artifact-2",
+          name: "API Fetch Utility",
+          type: "code",
+          language: "typescript",
+          preview: "async function fetchData<T>(url: string): Promise<T> ...",
+          createdAt: "Yesterday",
+          isStarred: false,
+        },
+        {
+          id: "artifact-3",
+          name: "Database Schema",
+          type: "code",
+          language: "sql",
+          preview: "CREATE TABLE users (id UUID PRIMARY KEY, ...)",
+          createdAt: "2 days ago",
+          isStarred: true,
+        },
+      ],
+    },
+    {
+      id: "documents",
+      name: "Documents",
+      defaultOpen: false,
+      artifacts: [
+        {
+          id: "artifact-4",
+          name: "Project Architecture Overview",
+          type: "document",
+          preview: "# System Architecture\n\nThis document describes...",
+          createdAt: "3 days ago",
+          isStarred: false,
+        },
+        {
+          id: "artifact-5",
+          name: "API Documentation",
+          type: "document",
+          preview: "## Endpoints\n\n### GET /api/users...",
+          createdAt: "1 week ago",
+          isStarred: true,
+        },
+      ],
+    },
+    {
+      id: "components",
+      name: "UI Components",
+      defaultOpen: false,
+      artifacts: [
+        {
+          id: "artifact-6",
+          name: "Dashboard Chart",
+          type: "chart",
+          preview: "Line chart showing monthly revenue trends",
+          createdAt: "Today",
+          isStarred: false,
+        },
+        {
+          id: "artifact-7",
+          name: "User Profile Card",
+          type: "component",
+          preview: "Interactive profile card with avatar and stats",
+          createdAt: "Yesterday",
+          isStarred: false,
+        },
+      ],
     },
   ],
 }
