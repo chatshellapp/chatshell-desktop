@@ -1,4 +1,4 @@
-import { ArrowUpIcon, Plus, File, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Blocks } from "lucide-react"
+import { ArrowUpIcon, Plus, FileText, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Blocks } from "lucide-react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { open } from "@tauri-apps/plugin-dialog"
@@ -157,7 +157,7 @@ function getAttachmentIcon(type: AttachmentType) {
     case "webpage":
       return <Globe className="h-3 w-3" />
     case "file":
-      return <File className="h-3 w-3" />
+      return <FileText className="h-3 w-3" />
     case "image":
       return <Image className="h-3 w-3" />
     case "knowledge":
@@ -246,7 +246,7 @@ export function ChatInput({}: ChatInputProps) {
       const selected = await open({
         multiple: true,
         filters: [{
-          name: 'Text Files',
+          name: 'Documents',  // Changed from 'Text Files'
           extensions: ['md', 'txt', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'html', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'bash', 'zsh', 'sql']
         }]
       })
@@ -795,8 +795,8 @@ export function ChatInput({}: ChatInputProps) {
                 <span>Web Page</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleFileSelect} className="gap-2">
-                <File className="h-4 w-4" />
-                <span>File</span>
+                <FileText className="h-4 w-4" />
+                <span>Document</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImageSelect} className="gap-2">
                 <Image className="h-4 w-4" />
