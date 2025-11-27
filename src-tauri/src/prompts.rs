@@ -34,7 +34,7 @@ pub const DEFAULT_ASSISTANT_SYSTEM_PROMPT: &str = "You are a helpful, harmless, 
 /// Build user prompt for title generation (pairs with TITLE_GENERATION_SYSTEM_PROMPT)
 pub fn build_title_generation_user_prompt(user_message: &str, assistant_message: &str) -> String {
     format!(
-        "<user>{}</user>\n<assistant>{}</assistant>",
+        "<input_dialogue>\n<user>{}</user>\n<assistant>{}</assistant>\n</input_dialogue>",
         user_message,
         assistant_message
     )

@@ -45,8 +45,11 @@ fn build_user_content(text: &str, images: &[ImageData], files: &[FileData]) -> O
     
     // Add file/document contents
     for file in files {
-        // Format file content with filename header
-        let file_content = format!("=== File: {} ===\n{}", file.name, file.content);
+        // Format file content with XML structure
+        let file_content = format!(
+            "<document>\n<filename>{}</filename>\n<content>\n{}\n</content>\n</document>",
+            file.name, file.content
+        );
         let document = Document {
             data: DocumentSourceKind::String(file_content),
             media_type: mime_to_document_media_type(&file.media_type),
