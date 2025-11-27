@@ -363,6 +363,16 @@ pub async fn read_image_base64(
     Ok(STANDARD.encode(&bytes))
 }
 
+#[tauri::command]
+pub fn get_attachment_url(
+    app: tauri::AppHandle,
+    storage_path: String,
+) -> Result<String, String> {
+    let full_path = crate::storage::get_full_path(&app, &storage_path)
+        .map_err(|e| e.to_string())?;
+    Ok(full_path.to_string_lossy().to_string())
+}
+
 // Settings commands
 #[tauri::command]
 pub async fn get_setting(

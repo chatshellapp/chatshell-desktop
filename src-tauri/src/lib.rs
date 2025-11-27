@@ -116,6 +116,7 @@ pub fn run() {
             commands::read_fetch_content,
             commands::read_file_content,
             commands::read_image_base64,
+            commands::get_attachment_url,
             // File reading commands (for files selected via dialog)
             commands::read_text_file_from_path,
             commands::read_file_as_base64,

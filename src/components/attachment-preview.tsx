@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react"
 import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, Search } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import {
   Dialog,
   DialogContent,
@@ -299,10 +299,10 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
       setLoading(true)
       
       if (isImage) {
-        // Load image as base64
-        invoke<string>("read_image_base64", { storagePath: fileAttachment.storage_path })
-          .then((base64) => {
-            setImageSrc(`data:${fileAttachment.mime_type};base64,${base64}`)
+        // Load image via file path (more efficient than base64)
+        invoke<string>("get_attachment_url", { storagePath: fileAttachment.storage_path })
+          .then((fullPath) => {
+            setImageSrc(convertFileSrc(fullPath))
           })
           .catch((err) => {
             console.error("Failed to load image:", err)
