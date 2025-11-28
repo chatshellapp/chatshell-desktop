@@ -802,19 +802,6 @@ export function ChatInput({}: ChatInputProps) {
                 <Image className="size-4" />
                 <span>Image</span>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
-                <Sparkles className="size-4" />
-                <span>Prompt</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleKnowledgeBaseSelect} className="gap-2">
-                <BookOpen className="size-4" />
-                <span>Knowledge</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleToolSelect} className="gap-2">
-                <Plug className="size-4" />
-                <span>Tools</span>
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
@@ -857,6 +844,19 @@ export function ChatInput({}: ChatInputProps) {
                   checked={artifactsEnabled}
                   onCheckedChange={setArtifactsEnabled}
                 />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
+                <Sparkles className="size-4" />
+                <span>Prompt</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleKnowledgeBaseSelect} className="gap-2">
+                <BookOpen className="size-4" />
+                <span>Knowledge</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleToolSelect} className="gap-2">
+                <Plug className="size-4" />
+                <span>Tools</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
