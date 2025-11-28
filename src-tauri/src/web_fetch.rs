@@ -89,12 +89,12 @@ fn extract_favicon_from_html(document: &Html, base_url: &Url) -> Option<String> 
     None
 }
 
-/// Fetch favicon URL for a given website URL
-/// First tries to extract from HTML, then falls back to /favicon.ico
-async fn fetch_favicon_url(url: &str, html_content: Option<&str>) -> Option<String> {
+/// Extract favicon URL from HTML content only
+/// Returns None if favicon cannot be extracted from HTML (frontend will show globe icon)
+fn extract_favicon_url(url: &str, html_content: Option<&str>) -> Option<String> {
     let parsed_url = Url::parse(url).ok()?;
     
-    // If we have HTML content, try to extract favicon from it
+    // Only extract favicon from HTML content
     if let Some(html) = html_content {
         let document = Html::parse_document(html);
         if let Some(favicon) = extract_favicon_from_html(&document, &parsed_url) {
@@ -103,24 +103,8 @@ async fn fetch_favicon_url(url: &str, html_content: Option<&str>) -> Option<Stri
         }
     }
     
-    // Fallback: try the standard /favicon.ico location
-    let favicon_url = parsed_url.join("/favicon.ico").ok()?;
-    
-    // Check if favicon.ico exists
-    match HTTP_CLIENT
-        .head(favicon_url.as_str())
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => {
-            println!("✅ [favicon] Found /favicon.ico for {}", url);
-            Some(favicon_url.to_string())
-        }
-        _ => {
-            println!("⚠️ [favicon] No favicon found for {}", url);
-            None
-        }
-    }
+    // No favicon found - frontend will display globe icon
+    None
 }
 
 fn extract_meta_description(document: &Html) -> Option<String> {
@@ -383,8 +367,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
 
     let response = match HTTP_CLIENT
         .get(url)
-        .header("Accept", "text/html, text/markdown, text/plain, application/json, */*")
-        .header("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
+        .header("Accept", "text/markdown, text/html, */*")
         .send()
         .await
     {
@@ -431,31 +414,27 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         // HTML content - use Readability algorithm for extraction
         "text/html" | "application/xhtml+xml" => {
             // Extract favicon from HTML content
-            let favicon_url = fetch_favicon_url(url, Some(&body)).await;
+            let favicon_url = extract_favicon_url(url, Some(&body));
             process_html_with_readability(url, &body, mime_type, max_chars, favicon_url)
         }
 
-        // Markdown - return directly
+        // Markdown - return directly (no favicon for non-HTML)
         "text/markdown" | "text/x-markdown" => {
-            let favicon_url = fetch_favicon_url(url, None).await;
-            process_text_content(url, &body, "text/markdown".to_string(), max_chars, favicon_url)
+            process_text_content(url, &body, "text/markdown".to_string(), max_chars, None)
         }
 
-        // Plain text - return directly
+        // Plain text - return directly (no favicon for non-HTML)
         "text/plain" => {
-            let favicon_url = fetch_favicon_url(url, None).await;
-            process_text_content(url, &body, mime_type, max_chars, favicon_url)
+            process_text_content(url, &body, mime_type, max_chars, None)
         }
 
-        // JSON - format as code block
+        // JSON - format as code block (no favicon for non-HTML)
         "application/json" => {
-            let favicon_url = fetch_favicon_url(url, None).await;
-            process_json_content(url, &body, max_chars, favicon_url)
+            process_json_content(url, &body, max_chars, None)
         }
 
-        // XML - treat as text with code block
+        // XML - treat as text with code block (no favicon for non-HTML)
         "application/xml" | "text/xml" => {
-            let favicon_url = fetch_favicon_url(url, None).await;
             let markdown_content = format!("```xml\n{}\n```", body);
             let original_length = markdown_content.chars().count();
             let (content, truncated) = match max_chars {
@@ -476,19 +455,18 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                     fetched_at: Utc::now().to_rfc3339(),
                     original_length: Some(original_length),
                     truncated,
-                    favicon_url,
+                    favicon_url: None,
                 },
             }
         }
 
-        // Unsupported binary types
+        // Unsupported binary types (no favicon for binary content)
         mime if mime.starts_with("image/")
             || mime.starts_with("audio/")
             || mime.starts_with("video/")
             || mime == "application/pdf"
             || mime == "application/octet-stream" =>
         {
-            let favicon_url = fetch_favicon_url(url, None).await;
             create_error_response(
                 url,
                 mime_type,
@@ -496,7 +474,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                     "Unsupported content type: {}. Binary content cannot be processed.",
                     mime
                 ),
-                favicon_url,
+                None,
             )
         }
 
@@ -509,12 +487,11 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 || trimmed.starts_with("<html")
                 || trimmed.starts_with("<HTML")
             {
-                let favicon_url = fetch_favicon_url(url, Some(&body)).await;
+                let favicon_url = extract_favicon_url(url, Some(&body));
                 process_html_with_readability(url, &body, "text/html".to_string(), max_chars, favicon_url)
             } else {
-                let favicon_url = fetch_favicon_url(url, None).await;
-                // Treat as plain text
-                process_text_content(url, &body, mime_type, max_chars, favicon_url)
+                // Treat as plain text (no favicon for non-HTML)
+                process_text_content(url, &body, mime_type, max_chars, None)
             }
         }
     }
