@@ -84,8 +84,13 @@ export function useChatEvents(conversationId: string | null) {
 
   const handleGenerationStopped = useCallback((convId: string) => {
     console.log('[useChatEvents] Generation stopped for conversation:', convId);
-    // Don't clear anything here - let the chat-complete event handle the final state
-    // This prevents the message from disappearing before it's saved
+    // Reset streaming states when generation is stopped
+    // This is needed when stopping before any content arrives,
+    // as chat-complete event won't be emitted in that case
+    const store = useMessageStore.getState();
+    store.setIsStreaming(convId, false);
+    store.setIsWaitingForAI(convId, false);
+    store.setStreamingContent(convId, '');
   }, []);
 
   useEffect(() => {
