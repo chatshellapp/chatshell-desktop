@@ -47,6 +47,21 @@ lazy_static! {
     static ref URL_REGEX: Regex = Regex::new(
         r"https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)"
     ).expect("Invalid URL regex pattern");
+
+    /// Regex to match complete img tags
+    static ref IMG_TAG_REGEX: Regex = Regex::new(
+        r#"(?i)<img\s[^>]*?/?>"#
+    ).expect("Invalid img tag regex");
+
+    /// Regex to extract src attribute from img tag
+    static ref IMG_SRC_REGEX: Regex = Regex::new(
+        r#"(?i)src\s*=\s*["']([^"']+)["']"#
+    ).expect("Invalid src regex");
+
+    /// Regex to extract alt attribute from img tag
+    static ref IMG_ALT_REGEX: Regex = Regex::new(
+        r#"(?i)alt\s*=\s*["']([^"']*)["']"#
+    ).expect("Invalid alt regex");
 }
 
 /// Extract and validate URLs from text, with deduplication
@@ -169,6 +184,36 @@ fn truncate_by_chars(s: &str, max_chars: usize) -> (String, bool) {
     }
 }
 
+/// Normalize HTML img tags to simple format for better html2md conversion
+/// Handles complex img tags with srcset, sizes, and other attributes
+/// Converts them to simple <img src="..." alt="..."> format
+fn normalize_html_images(html: &str) -> String {
+    IMG_TAG_REGEX
+        .replace_all(html, |caps: &regex::Captures| {
+            let img_tag = &caps[0];
+
+            // Extract src attribute
+            let src = IMG_SRC_REGEX
+                .captures(img_tag)
+                .map(|c| c[1].to_string())
+                .unwrap_or_default();
+
+            // Skip if no src found
+            if src.is_empty() {
+                return img_tag.to_string();
+            }
+
+            // Extract alt attribute (default to empty string)
+            let alt = IMG_ALT_REGEX
+                .captures(img_tag)
+                .map(|c| c[1].to_string())
+                .unwrap_or_default();
+
+            format!(r#"<img src="{}" alt="{}">"#, src, alt)
+        })
+        .to_string()
+}
+
 /// Create an error response with default metadata
 fn create_error_response(url: &str, mime_type: String, error: String, favicon_url: Option<String>) -> FetchedWebResource {
     FetchedWebResource {
@@ -243,8 +288,11 @@ fn process_html_with_readability(
         }
     };
 
+    // Normalize img tags before markdown conversion to handle complex attributes
+    let normalized_html = normalize_html_images(&content_html);
+
     // Convert extracted HTML to markdown
-    let markdown = html2md::parse_html(&content_html);
+    let markdown = html2md::parse_html(&normalized_html);
     let original_length = markdown.chars().count();
 
     let (extracted_content, truncated) = match max_chars {
@@ -368,6 +416,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
     let response = match HTTP_CLIENT
         .get(url)
         .header("Accept", "text/markdown, text/html, */*")
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .send()
         .await
     {
@@ -625,5 +674,41 @@ mod tests {
         let (result, was_truncated) = truncate_by_chars(text, 10);
         assert!(!was_truncated);
         assert_eq!(result, "Hello");
+    }
+
+    #[test]
+    fn test_normalize_html_images_with_srcset() {
+        let html = r#"<img src="https://example.com/image.jpg!720" alt="" width="1920" height="1080" srcset="https://example.com/image.jpg!720 1920w, https://example.com/image-360.jpg 360w" sizes="(max-width: 1920px) 100vw, 1920px">"#;
+        let result = normalize_html_images(html);
+        assert_eq!(result, r#"<img src="https://example.com/image.jpg!720" alt="">"#);
+    }
+
+    #[test]
+    fn test_normalize_html_images_with_alt() {
+        let html = r#"<img src="https://example.com/photo.png" alt="A beautiful sunset" class="responsive">"#;
+        let result = normalize_html_images(html);
+        assert_eq!(result, r#"<img src="https://example.com/photo.png" alt="A beautiful sunset">"#);
+    }
+
+    #[test]
+    fn test_normalize_html_images_alt_before_src() {
+        let html = r#"<img alt="Test image" src="https://example.com/test.jpg" width="100">"#;
+        let result = normalize_html_images(html);
+        assert_eq!(result, r#"<img src="https://example.com/test.jpg" alt="Test image">"#);
+    }
+
+    #[test]
+    fn test_normalize_html_images_self_closing() {
+        let html = r#"<img src="https://example.com/image.jpg" alt="test" />"#;
+        let result = normalize_html_images(html);
+        assert_eq!(result, r#"<img src="https://example.com/image.jpg" alt="test">"#);
+    }
+
+    #[test]
+    fn test_normalize_html_images_multiple() {
+        let html = r#"<p><img src="https://a.com/1.jpg" alt="first" srcset="..."></p><p><img src="https://b.com/2.jpg" alt="second"></p>"#;
+        let result = normalize_html_images(html);
+        assert!(result.contains(r#"<img src="https://a.com/1.jpg" alt="first">"#));
+        assert!(result.contains(r#"<img src="https://b.com/2.jpg" alt="second">"#));
     }
 }
