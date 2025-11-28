@@ -60,4 +60,5 @@ scraper = "0.18"
 html2md = "0.2"
 url = "2"
 readability = "0.3"
+headless_chrome = "1"
 
