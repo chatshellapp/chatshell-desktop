@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Plus } from "lucide-react"
+import { Plus, MessageSquarePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar"
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
@@ -151,10 +151,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <Button
               variant="outline"
               size="sm"
-              className="w-full justify-start gap-2 h-9"
+              className="w-full justify-center gap-2 h-9"
               onClick={handlers.handleNewConversation}
             >
-              <Plus className="size-4" />
+              <MessageSquarePlus className="size-4" />
               New Conversation
             </Button>
           </div>
@@ -167,7 +167,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start gap-2 h-9"
+                  className="w-full justify-center gap-2 h-9"
                   onClick={() => setProviderDialogOpen(true)}
                 >
                   <Plus className="size-4" />
@@ -181,7 +181,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start gap-2 h-9"
+                  className="w-full justify-center gap-2 h-9"
                   onClick={() => {}}
                 >
                   <Plus className="size-4" />
@@ -195,7 +195,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start gap-2 h-9"
+                  className="w-full justify-center gap-2 h-9"
                   onClick={() => {}}
                 >
                   <Plus className="size-4" />
@@ -212,7 +212,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-start gap-2 h-9"
+                className="w-full justify-center gap-2 h-9"
                 onClick={() => {}}
               >
                 <Plus className="size-4" />
@@ -244,6 +244,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           setOpen(true)
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
+        onNewConversation={handlers.handleNewConversation}
         user={SIDEBAR_DATA.user}
       />
 

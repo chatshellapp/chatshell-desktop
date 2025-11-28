@@ -1,4 +1,4 @@
-import { Command } from "lucide-react"
+import { Command, MessageSquarePlus } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -10,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 export interface NavItem {
@@ -24,6 +25,7 @@ interface SidebarNavigationProps {
   activeItem: NavItem
   onItemClick: (item: NavItem) => void
   onSettingsClick: () => void
+  onNewConversation: () => void
   user: { name: string; email: string; avatar: string }
 }
 
@@ -32,14 +34,18 @@ export function SidebarNavigation({
   activeItem,
   onItemClick,
   onSettingsClick,
+  onNewConversation,
   user,
 }: SidebarNavigationProps) {
+  const { state } = useSidebar()
+  const isCollapsed = state === "collapsed"
+
   return (
     <Sidebar
       collapsible="none"
       className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
     >
-      <SidebarHeader>
+      {/* <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
@@ -55,7 +61,7 @@ export function SidebarNavigation({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarHeader>
+      </SidebarHeader> */}
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent className="px-1.5 md:px-0">
@@ -86,7 +92,16 @@ export function SidebarNavigation({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="gap-2">
+        {isCollapsed && (
+          <button
+            onClick={onNewConversation}
+            className="mx-auto flex size-8 items-center justify-center rounded-full bg-black text-white hover:bg-black/80 transition-colors"
+            title="New Conversation"
+          >
+            <MessageSquarePlus className="size-4" />
+          </button>
+        )}
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
