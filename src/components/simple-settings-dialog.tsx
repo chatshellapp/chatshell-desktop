@@ -78,9 +78,9 @@ export function SimpleSettingsDialog() {
           variant="ghost"
           size="icon"
           onClick={handleOpen}
-          className="h-8 w-8"
+          className="size-8"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
           <span className="sr-only">Settings</span>
         </Button>
       </DialogTrigger>

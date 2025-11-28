@@ -155,15 +155,15 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
 function getAttachmentIcon(type: AttachmentType) {
   switch (type) {
     case "webpage":
-      return <Globe className="h-3 w-3" />
+      return <Globe className="size-3" />
     case "file":
-      return <FileText className="h-3 w-3" />
+      return <FileText className="size-3" />
     case "image":
-      return <Image className="h-3 w-3" />
+      return <Image className="size-3" />
     case "knowledge":
-      return <BookOpen className="h-3 w-3" />
+      return <BookOpen className="size-3" />
     case "tools":
-      return <Plug className="h-3 w-3" />
+      return <Plug className="size-3" />
   }
 }
 
@@ -734,7 +734,7 @@ export function ChatInput({}: ChatInputProps) {
                   onClick={() => removeAttachment(attachment.id)}
                   className="hover:text-destructive transition-colors -ml-0.5"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="size-3" />
                 </button>
                 {attachment.type === "image" && attachment.base64 ? (
                   <img 
@@ -791,28 +791,28 @@ export function ChatInput({}: ChatInputProps) {
               className="[--radius:0.95rem]"
             >
               <DropdownMenuItem onClick={handleWebPageSelect} className="gap-2">
-                <Globe className="h-4 w-4" />
+                <Globe className="size-4" />
                 <span>Web Page</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleFileSelect} className="gap-2">
-                <FileText className="h-4 w-4" />
+                <FileText className="size-4" />
                 <span>Document</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImageSelect} className="gap-2">
-                <Image className="h-4 w-4" />
+                <Image className="size-4" />
                 <span>Image</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="size-4" />
                 <span>Prompt</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleKnowledgeBaseSelect} className="gap-2">
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="size-4" />
                 <span>Knowledge</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleToolSelect} className="gap-2">
-                <Plug className="h-4 w-4" />
+                <Plug className="size-4" />
                 <span>Tools</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -837,7 +837,7 @@ export function ChatInput({}: ChatInputProps) {
                 onSelect={(e) => e.preventDefault()}
               >
                 <div className="flex items-center gap-2">
-                  <Search className="h-4 w-4" />
+                  <Search className="size-4" />
                   <span>Web Search</span>
                 </div>
                 <Switch
@@ -850,7 +850,7 @@ export function ChatInput({}: ChatInputProps) {
                 onSelect={(e) => e.preventDefault()}
               >
                 <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4" />
+                  <Package className="size-4" />
                   <span>Artifacts</span>
                 </div>
                 <Switch
@@ -892,7 +892,7 @@ export function ChatInput({}: ChatInputProps) {
                     
                     return (
                       <>
-                        <Avatar key={`model-${selectedModel.id}`} className="h-4 w-4">
+                        <Avatar key={`model-${selectedModel.id}`} className="size-4">
                           {modelLogo && <AvatarImage src={modelLogo} alt={selectedModel.name} />}
                           <AvatarFallback className="text-[10px]">
                             {selectedModel.name.charAt(0).toUpperCase()}
@@ -966,7 +966,7 @@ export function ChatInput({}: ChatInputProps) {
               size="icon-xs"
               onClick={handleStop}
             >
-              <Square className="h-4 w-4" />
+              <Square className="size-3 fill-current" />
               <span className="sr-only">Stop</span>
             </InputGroupButton>
           ) : (
