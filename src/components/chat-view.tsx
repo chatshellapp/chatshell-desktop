@@ -62,6 +62,7 @@ export function ChatView() {
   const isStreaming = conversationState?.isStreaming || false
   const streamingContent = conversationState?.streamingContent || ''
   const attachmentStatus = conversationState?.attachmentStatus || 'idle'
+  const attachmentRefreshKey = conversationState?.attachmentRefreshKey || 0
   const isWaitingForAI = conversationState?.isWaitingForAI || false
   const processingUrls = conversationState?.processingUrls || {}
 
@@ -171,17 +172,17 @@ export function ChatView() {
   }, [currentConversation, loadMessages])
 
   // Fetch attachments for user messages
-  // Re-run when attachmentStatus changes to 'complete' to pick up newly processed attachments
+  // Re-run when attachmentStatus changes to 'complete' or attachmentRefreshKey changes
   useEffect(() => {
     const fetchAttachments = async () => {
       const userMessages = messages.filter(m => m.sender_type === "user")
       const attachmentMap: Record<string, Attachment[]> = {}
       
       for (const msg of userMessages) {
-        // When processing just completed, always re-fetch for the latest message
+        // When processing just completed or refresh key changed, always re-fetch for the latest message
         // Otherwise, skip if we already have attachments for this message
         const isLatestMessage = userMessages.indexOf(msg) === userMessages.length - 1
-        const shouldRefetch = attachmentStatus === 'complete' && isLatestMessage
+        const shouldRefetch = (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage
         
         if (messageAttachments[msg.id] && !shouldRefetch) {
           attachmentMap[msg.id] = messageAttachments[msg.id]
@@ -209,7 +210,7 @@ export function ChatView() {
     if (messages.length > 0) {
       fetchAttachments()
     }
-  }, [messages, attachmentStatus])
+  }, [messages, attachmentStatus, attachmentRefreshKey])
 
   // Cleanup conversation state on unmount (optional - could keep state cached)
   useEffect(() => {
@@ -386,11 +387,16 @@ export function ChatView() {
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
-                              // Filter for fetch_result and file attachments
+                              // Filter for search_result, fetch_result (without search_id) and file attachments
+                              // FetchResults with search_id belong to a SearchResult and are shown inside it
                               const attachments = messageAttachments[message.id]?.filter(a => 
-                                a.type === "fetch_result" || a.type === "file"
+                                a.type === "search_result" || 
+                                (a.type === "fetch_result" && !(a as any).search_id) || 
+                                a.type === "file"
                               ) || []
-              const urls = processingUrls[message.id] || []
+              // Check if this message has a search result (URLs will be shown inside it)
+              const hasSearchResult = messageAttachments[message.id]?.some(a => a.type === "search_result")
+              const urls = hasSearchResult ? [] : (processingUrls[message.id] || [])
               const hasAttachments = isUserMessage && (attachments.length > 0 || urls.length > 0)
               
               return (
@@ -419,7 +425,11 @@ export function ChatView() {
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
                         {attachments.map((attachment) => (
-                          <AttachmentPreview key={(attachment as any).id} attachment={attachment} />
+                          <AttachmentPreview 
+                            key={(attachment as any).id} 
+                            attachment={attachment}
+                            processingUrls={attachment.type === "search_result" ? (processingUrls[message.id] || []) : undefined}
+                          />
                         ))}
                         {urls.map((url) => (
                           <AttachmentPreview key={url} processingUrl={url} />

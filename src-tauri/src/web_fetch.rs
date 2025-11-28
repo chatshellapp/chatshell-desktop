@@ -65,7 +65,7 @@ lazy_static! {
     ).expect("Invalid alt regex");
 
     /// Stealth JavaScript to hide headless browser detection
-    static ref STEALTH_JS: String = r#"
+    pub static ref STEALTH_JS: String = r#"
         // Override webdriver property
         Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined,
@@ -99,7 +99,7 @@ lazy_static! {
 }
 
 /// Create a new headless browser instance
-fn create_new_browser() -> Result<Browser> {
+pub fn create_new_browser() -> Result<Browser> {
     println!("🌐 [headless] Creating new browser instance...");
     
     let launch_options = LaunchOptions::default_builder()

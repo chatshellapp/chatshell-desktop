@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, Search } from "lucide-react"
+import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import {
@@ -18,6 +18,8 @@ interface AttachmentPreviewProps {
   attachment?: Attachment
   /** URL being processed (for loading state) */
   processingUrl?: string
+  /** URLs being processed (for search results) */
+  processingUrls?: string[]
 }
 
 // Extract domain from URL
@@ -206,62 +208,252 @@ function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
   )
 }
 
-// SearchResult preview component
-function SearchResultPreview({ searchResult }: { searchResult: SearchResult }) {
+// Inline FetchResult item for search results - reuses the same dialog as FetchResultPreview
+function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResult }) {
+  const [faviconError, setFaviconError] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [loadingContent, setLoadingContent] = useState(false)
+  
+  const faviconUrl = useMemo(() => getFaviconUrl(fetchResult), [fetchResult])
+  const domain = getDomain(fetchResult.url)
+  const title = fetchResult.title || domain
+  const isFailed = fetchResult.status === "failed"
+  
+  // Load content from filesystem when dialog opens
+  useEffect(() => {
+    if (isDialogOpen && !content && !loadingContent && fetchResult.status === "success") {
+      setLoadingContent(true)
+      invoke<string>("read_fetch_content", { storagePath: fetchResult.storage_path })
+        .then(setContent)
+        .catch((err) => {
+          console.error("Failed to load fetch content:", err)
+          setContent(null)
+        })
+        .finally(() => setLoadingContent(false))
+    }
+  }, [isDialogOpen, content, loadingContent, fetchResult])
+  
+  const handleOpenLink = () => {
+    openUrl(fetchResult.url)
+    setIsDialogOpen(false)
+  }
   
   return (
     <>
       <button
-        onClick={() => setIsDialogOpen(true)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsDialogOpen(true)
+        }}
+        className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors"
       >
-        <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        {faviconUrl && !faviconError ? (
+          <img 
+            src={faviconUrl} 
+            alt="" 
+            className="h-4 w-4 rounded-sm flex-shrink-0"
+            onError={() => setFaviconError(true)}
+          />
+        ) : (
+          <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        )}
         
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium">Search:</span>
-          <span className="text-muted-foreground ml-1">{searchResult.query}</span>
+          {isFailed ? (
+            <>
+              <span className="font-medium text-destructive">Failed</span>
+              <span className="text-muted-foreground ml-1">{title}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-medium">Fetched</span>
+              <span className="text-muted-foreground ml-1">{title}</span>
+            </>
+          )}
         </span>
         
-        <span className="text-sm text-muted-foreground flex-shrink-0">
-          {searchResult.engine}
-        </span>
+        <span className="text-sm text-muted-foreground flex-shrink-0">{domain}</span>
+        
+        {isFailed && (
+          <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+        )}
       </button>
       
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              Search Results
+              {faviconUrl && !faviconError ? (
+                <img src={faviconUrl} alt="" className="h-5 w-5 rounded-sm flex-shrink-0" />
+              ) : (
+                <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              )}
+              {isFailed ? "Failed to fetch" : title}
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-2">
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm font-medium">Query</p>
-              <p className="text-sm text-muted-foreground">{searchResult.query}</p>
-            </div>
-            
-            <div className="px-3 py-2 bg-muted/50 rounded-md">
-              <p className="text-sm font-medium">Engine</p>
-              <p className="text-sm text-muted-foreground">{searchResult.engine}</p>
-            </div>
-            
-            {searchResult.total_results && (
-              <div className="px-3 py-2 bg-muted/50 rounded-md">
-                <p className="text-sm font-medium">Total Results</p>
-                <p className="text-sm text-muted-foreground">{searchResult.total_results.toLocaleString()}</p>
-              </div>
-            )}
+          <div className="px-3 py-2 bg-muted/50 rounded-md">
+            <p className="text-sm text-muted-foreground break-all font-mono">{fetchResult.url}</p>
           </div>
           
+          {isFailed && fetchResult.error && (
+            <div className="px-3 py-2 bg-destructive/10 rounded-md">
+              <p className="text-sm text-destructive">{fetchResult.error}</p>
+            </div>
+          )}
+          
+          {!isFailed && (
+            <div className="flex-1 overflow-y-auto border rounded-md p-4 min-h-[200px]">
+              {loadingContent ? (
+                <p className="text-sm text-muted-foreground">Loading content...</p>
+              ) : content ? (
+                <MarkdownContent content={content} className="text-sm" />
+              ) : (
+                <p className="text-sm text-muted-foreground">No content available</p>
+              )}
+            </div>
+          )}
+          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleOpenLink}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open Link
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+// Processing URL item - shown while fetching
+function ProcessingUrlItem({ url }: { url: string }) {
+  const domain = getDomain(url)
+  
+  return (
+    <div className="flex items-center gap-2.5 w-full px-3 py-2 text-left">
+      <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0 animate-pulse" />
+      <span className="flex-1 text-sm text-muted-foreground truncate">
+        Fetching from {domain}
+      </span>
+    </div>
+  )
+}
+
+// SearchResult preview component - expandable inline list
+function SearchResultPreview({ searchResult, processingUrls }: { searchResult: SearchResult; processingUrls?: string[] }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [fetchResults, setFetchResults] = useState<FetchResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  
+  // Track processing state
+  const isProcessing = processingUrls && processingUrls.length > 0
+  
+  // Check if search is still in progress (no total_results yet)
+  const isSearching = searchResult.total_results === null || searchResult.total_results === undefined
+  
+  // Load linked fetch results - also reload when processing completes
+  useEffect(() => {
+    // Skip loading while still processing (will show processingUrls instead)
+    if (isProcessing || isSearching) {
+      return
+    }
+    
+    const loadResults = async () => {
+      setLoading(true)
+      try {
+        const results = await invoke<FetchResult[]>("get_fetch_results_by_search", { searchId: searchResult.id })
+        setFetchResults(results)
+        
+        // If we expect results but got none, schedule a retry (up to 5 times)
+        if (results.length === 0 && searchResult.total_results && searchResult.total_results > 0 && retryCount < 5) {
+          setTimeout(() => setRetryCount(c => c + 1), 1000)
+        }
+      } catch (err) {
+        console.error("Failed to load fetch results:", err)
+        setFetchResults([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    loadResults()
+  }, [searchResult.id, searchResult.total_results, retryCount, isProcessing, isSearching])
+  
+  const resultCount = fetchResults.length || processingUrls?.length || searchResult.total_results || 0
+  const hasProcessingUrls = processingUrls && processingUrls.length > 0
+  
+  // Determine if expandable (has results or processing URLs)
+  const canExpand = !isSearching && (resultCount > 0 || hasProcessingUrls)
+  
+  return (
+    <div className="w-full rounded-lg border border-muted overflow-hidden">
+      {/* Header row - similar style to FetchResultPreview */}
+      <button
+        onClick={() => canExpand && setIsExpanded(!isExpanded)}
+        className={`flex items-center gap-2.5 w-full px-3 py-2.5 text-left transition-colors ${canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'}`}
+      >
+        <Search className={`h-4 w-4 text-muted-foreground flex-shrink-0 ${isSearching ? 'animate-pulse' : ''}`} />
+        
+        {isSearching ? (
+          <span className="flex-1 text-sm text-muted-foreground">
+            Searching the web
+          </span>
+        ) : (
+          <>
+            <span className="flex-1 text-sm truncate">
+              {searchResult.query}
+            </span>
+            
+            <span className="text-sm text-muted-foreground flex-shrink-0 flex items-center gap-1.5">
+              {loading ? (
+                "Loading..."
+              ) : (
+                <>
+                  {`${resultCount} results`}
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </>
+              )}
+            </span>
+          </>
+        )}
+      </button>
+      
+      {/* Expandable results list */}
+      {isExpanded && canExpand && (
+        <div className="border-t border-muted">
+          {/* Show processing URLs first */}
+          {hasProcessingUrls && (
+            <div className="divide-y divide-muted">
+              {processingUrls.map((url) => (
+                <ProcessingUrlItem key={url} url={url} />
+              ))}
+            </div>
+          )}
+          {/* Show fetched results */}
+          {!hasProcessingUrls && (
+            loading ? (
+              <p className="text-sm text-muted-foreground px-3 py-2">Loading search results...</p>
+            ) : fetchResults.length > 0 ? (
+              <div className="divide-y divide-muted">
+                {fetchResults.map((result) => (
+                  <SearchResultFetchItem key={result.id} fetchResult={result} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground px-3 py-2">No results fetched yet.</p>
+            )
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -391,7 +583,7 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
   )
 }
 
-export function AttachmentPreview({ attachment, processingUrl }: AttachmentPreviewProps) {
+export function AttachmentPreview({ attachment, processingUrl, processingUrls }: AttachmentPreviewProps) {
   // Loading state: "Fetching from [domain]"
   if (processingUrl) {
     const domain = getDomain(processingUrl)
@@ -419,7 +611,7 @@ export function AttachmentPreview({ attachment, processingUrl }: AttachmentPrevi
     case "fetch_result":
       return <FetchResultPreview fetchResult={attachment as FetchResult} />
     case "search_result":
-      return <SearchResultPreview searchResult={attachment as SearchResult} />
+      return <SearchResultPreview searchResult={attachment as SearchResult} processingUrls={processingUrls} />
     case "file":
       return <FileAttachmentPreview fileAttachment={attachment as FileAttachment} />
     default:

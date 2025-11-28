@@ -853,6 +853,7 @@ pub async fn send_message(
     urls_to_fetch: Option<Vec<String>>,
     image_base64s: Option<Vec<String>>,
     files: Option<Vec<FileAttachmentInput>>,
+    search_enabled: Option<bool>,
 ) -> Result<Message, String> {
     println!("🚀 [send_message] Command received!");
     println!("   conversation_id: {}", conversation_id);
@@ -867,6 +868,7 @@ pub async fn send_message(
     println!("   urls_to_fetch: {:?}", urls_to_fetch);
     println!("   image_base64s count: {:?}", image_base64s.as_ref().map(|v| v.len()));
     println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
+    println!("   search_enabled: {:?}", search_enabled);
     
     // Save user message to database with original content first
     // URL processing will happen in background
@@ -1012,15 +1014,113 @@ pub async fn send_message(
     let model_db_id = model_db_id.clone();
     let assistant_db_id = assistant_db_id.clone();
     
-    // Clone urls_to_fetch, image_base64s, and files for the background task
+    // Clone urls_to_fetch, image_base64s, files, and search_enabled for the background task
     let urls_to_fetch_clone = urls_to_fetch.clone();
     let image_base64s_clone = image_base64s.clone();
     let files_clone = files.clone();
+    let search_enabled_clone = search_enabled.unwrap_or(false);
     
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
-        // Use provided URLs if available, otherwise extract from content
-        let urls: Vec<String> = urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content));
+        
+        // Track search result ID for linking fetch results
+        let mut search_result_id: Option<String> = None;
+        
+        // If search is enabled, perform web search first
+        let urls: Vec<String> = if search_enabled_clone {
+            println!("🔍 [background_task] Web search enabled, extracting keywords...");
+            let keywords = crate::web_search::extract_search_keywords(&content);
+            println!("🔍 [background_task] Search keywords: {}", keywords);
+            
+            // Create SearchResult IMMEDIATELY (before searching) so UI can show it
+            let searched_at = chrono::Utc::now().to_rfc3339();
+            match state_clone.db.create_search_result(CreateSearchResultRequest {
+                query: keywords.clone(),
+                engine: "duckduckgo".to_string(),
+                total_results: None, // Will be updated after search completes
+                searched_at: searched_at.clone(),
+            }) {
+                Ok(search_result) => {
+                    println!("📝 [background_task] Created pending search result: {}", search_result.id);
+                    search_result_id = Some(search_result.id.clone());
+                    
+                    // Link search result to message immediately
+                    if let Err(e) = state_clone.db.link_message_attachment(
+                        &user_message_id,
+                        AttachmentType::SearchResult,
+                        &search_result.id,
+                        None
+                    ) {
+                        eprintln!("Failed to link search result to message: {}", e);
+                    }
+                    
+                    // Emit attachment update so UI shows SearchPreview immediately
+                    let _ = app_clone.emit("attachment-update", serde_json::json!({
+                        "message_id": user_message_id,
+                        "conversation_id": conversation_id_clone,
+                        "attachment": {
+                            "type": "search_result",
+                            "id": search_result.id,
+                            "query": keywords,
+                            "engine": "duckduckgo",
+                            "total_results": null,
+                            "searched_at": searched_at,
+                        }
+                    }));
+                }
+                Err(e) => {
+                    eprintln!("Failed to create search result: {}", e);
+                }
+            }
+            
+            // Now perform the actual search
+            match crate::web_search::search_duckduckgo(&keywords, 5).await {
+                Ok(search_response) => {
+                    println!("✅ [background_task] Search completed, found {} results", search_response.results.len());
+                    
+                    // Update SearchResult with actual results count
+                    if let Some(ref sr_id) = search_result_id {
+                        if let Err(e) = state_clone.db.update_search_result_total(sr_id, search_response.total_results as i64) {
+                            eprintln!("Failed to update search result total: {}", e);
+                        }
+                        
+                        // Emit attachment-update so frontend shows result count immediately
+                        let _ = app_clone.emit("attachment-update", serde_json::json!({
+                            "message_id": user_message_id,
+                            "conversation_id": conversation_id_clone,
+                            "attachment": {
+                                "type": "search_result",
+                                "id": sr_id,
+                                "query": search_response.query,
+                                "engine": "duckduckgo",
+                                "total_results": search_response.total_results,
+                            }
+                        }));
+                    }
+                    
+                    // Emit search completed event
+                    let search_urls: Vec<String> = search_response.results.iter().map(|r| r.url.clone()).collect();
+                    let _ = app_clone.emit("search-completed", serde_json::json!({
+                        "message_id": user_message_id,
+                        "conversation_id": conversation_id_clone,
+                        "search_result_id": search_result_id,
+                        "query": search_response.query,
+                        "results_count": search_response.results.len(),
+                    }));
+                    
+                    search_urls
+                }
+                Err(e) => {
+                    eprintln!("❌ [background_task] Search failed: {}", e);
+                    // Fall back to extracting URLs from content
+                    urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+                }
+            }
+        } else {
+            // Use provided URLs if available, otherwise extract from content
+            urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+        };
+        
         println!("🔍 [background_task] Processing {} URLs", urls.len());
         if !urls.is_empty() {
             let _ = app_clone.emit("attachment-processing-started", serde_json::json!({
@@ -1052,7 +1152,7 @@ pub async fn send_message(
             let content_size = resource.content.len() as i64;
             
             match state_clone.db.create_fetch_result(CreateFetchResultRequest {
-                search_id: None, // Standalone fetch, not part of a search
+                search_id: search_result_id.clone(), // Link to search if available
                 url: resource.url.clone(),
                 title: resource.title.clone(),
                 description: resource.description.clone(),
@@ -1331,5 +1431,29 @@ pub async fn stop_generation(
         println!("⚠️ [stop_generation] No active task found for conversation");
         Ok(false)
     }
+}
+
+// ========== Web Search Commands ==========
+
+/// Perform a DuckDuckGo web search
+#[tauri::command]
+pub async fn perform_web_search(
+    query: String,
+    max_results: Option<usize>,
+) -> Result<crate::web_search::DuckDuckGoSearchResponse, String> {
+    let max = max_results.unwrap_or(5);
+    println!("🔍 [perform_web_search] Searching for: {} (max {})", query, max);
+    
+    crate::web_search::search_duckduckgo(&query, max)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Extract search keywords from user input
+#[tauri::command]
+pub async fn extract_search_keywords(
+    user_input: String,
+) -> Result<String, String> {
+    Ok(crate::web_search::extract_search_keywords(&user_input))
 }
 

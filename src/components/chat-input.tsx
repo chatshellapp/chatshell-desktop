@@ -512,7 +512,8 @@ export function ChatInput({}: ChatInputProps) {
         selectedAssistant?.id, // assistantDbId
         webpageUrls.length > 0 ? webpageUrls : undefined, // urlsToFetch
         imageBase64s.length > 0 ? imageBase64s : undefined, // imageBase64s
-        files.length > 0 ? files : undefined // files
+        files.length > 0 ? files : undefined, // files
+        webSearchEnabled // searchEnabled
       )
 
       // Clear attachments after sending

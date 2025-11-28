@@ -11,6 +11,8 @@ interface ConversationState {
   streamingContent: string;
   isWaitingForAI: boolean;
   attachmentStatus: 'idle' | 'processing' | 'complete' | 'error';
+  // Counter that increments to force attachment refresh
+  attachmentRefreshKey: number;
   // Track URLs being processed for each message: { messageId: [urls] }
   processingUrls: Record<string, string[]>;
 }
@@ -23,6 +25,7 @@ const createDefaultConversationState = (): ConversationState => ({
   streamingContent: '',
   isWaitingForAI: false,
   attachmentStatus: 'idle',
+  attachmentRefreshKey: 0,
   processingUrls: {},
 });
 
@@ -56,7 +59,8 @@ interface MessageStore {
     assistantDbId?: string,
     urlsToFetch?: string[],
     imageBase64s?: string[],
-    files?: { name: string; content: string; mimeType: string }[]
+    files?: { name: string; content: string; mimeType: string }[],
+    searchEnabled?: boolean
   ) => Promise<void>;
   stopGeneration: (conversationId: string) => Promise<void>;
   clearMessages: (conversationId: string) => Promise<void>;
@@ -64,6 +68,7 @@ interface MessageStore {
   setStreamingContent: (conversationId: string, content: string) => void;
   setIsStreaming: (conversationId: string, isStreaming: boolean) => void;
   setAttachmentStatus: (conversationId: string, status: 'idle' | 'processing' | 'complete' | 'error') => void;
+  incrementAttachmentRefreshKey: (conversationId: string) => void;
   setProcessingUrls: (conversationId: string, messageId: string, urls: string[]) => void;
   clearProcessingUrls: (conversationId: string, messageId: string) => void;
   appendStreamingChunk: (conversationId: string, chunk: string) => void;
@@ -153,7 +158,8 @@ export const useMessageStore = create<MessageStore>()(
     assistantDbId?: string,
     urlsToFetch?: string[],
     imageBase64s?: string[],
-    files?: { name: string; content: string; mimeType: string }[]
+    files?: { name: string; content: string; mimeType: string }[],
+    searchEnabled?: boolean
   ) => {
     set((draft) => {
       draft.isSending = true;
@@ -202,7 +208,8 @@ export const useMessageStore = create<MessageStore>()(
         modelDbId,
         assistantDbId,
         hasImageBase64s: !!imageBase64s?.length,
-        hasFiles: !!files?.length
+        hasFiles: !!files?.length,
+        searchEnabled
       });
 
       // This will return the user message immediately
@@ -221,6 +228,7 @@ export const useMessageStore = create<MessageStore>()(
         urlsToFetch,
         imageBase64s,
         files,
+        searchEnabled,
       });
 
       console.log('[messageStore] Received user message:', userMessage);
@@ -353,6 +361,16 @@ export const useMessageStore = create<MessageStore>()(
       const convState = draft.conversationStates[conversationId];
       if (convState) {
         convState.attachmentStatus = status;
+      }
+    });
+  },
+
+  incrementAttachmentRefreshKey: (conversationId: string) => {
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        convState.attachmentRefreshKey += 1;
       }
     });
   },

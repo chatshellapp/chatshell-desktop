@@ -399,3 +399,13 @@ export interface AttachmentProcessingErrorEvent {
   error: string;
 }
 
+export interface AttachmentUpdateEvent {
+  message_id: string;
+  conversation_id: string;
+  attachment: {
+    type: string;
+    id: string;
+    [key: string]: unknown;
+  };
+}
+

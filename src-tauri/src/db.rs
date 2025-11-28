@@ -1305,6 +1305,17 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_search_result_total(&self, id: &str, total_results: i64) -> Result<SearchResult> {
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "UPDATE search_results SET total_results = ?1 WHERE id = ?2",
+                params![total_results, id],
+            )?;
+        }
+        self.get_search_result(id)
+    }
+
     // ========== Fetch Result Operations ==========
 
     pub fn create_fetch_result(&self, req: CreateFetchResultRequest) -> Result<FetchResult> {

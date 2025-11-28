@@ -8,6 +8,7 @@ import type {
   AttachmentProcessingStartedEvent,
   AttachmentProcessingCompleteEvent,
   AttachmentProcessingErrorEvent,
+  AttachmentUpdateEvent,
 } from '@/types';
 
 interface ConversationUpdatedEvent {
@@ -60,6 +61,12 @@ export function useChatEvents(conversationId: string | null) {
   const handleAttachmentProcessingError = useCallback((convId: string, error: string) => {
     useMessageStore.getState().setAttachmentStatus(convId, 'error');
     console.error('Attachment processing error:', error);
+  }, []);
+
+  const handleAttachmentUpdate = useCallback((convId: string) => {
+    // Trigger a refresh by incrementing the refresh key
+    const store = useMessageStore.getState();
+    store.incrementAttachmentRefreshKey(convId);
   }, []);
 
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
@@ -145,6 +152,14 @@ export function useChatEvents(conversationId: string | null) {
       }
     );
 
+    // Listen for attachment updates (new attachments added)
+    const unlistenAttachmentUpdate = listen<AttachmentUpdateEvent>(
+      'attachment-update',
+      (event) => {
+        handleAttachmentUpdate(event.payload.conversation_id);
+      }
+    );
+
     // Listen for conversation updates (title changes)
     const unlistenConversationUpdated = listen<ConversationUpdatedEvent>(
       'conversation-updated',
@@ -171,6 +186,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenAttachmentStarted.then((fn) => fn());
       unlistenAttachmentComplete.then((fn) => fn());
       unlistenAttachmentError.then((fn) => fn());
+      unlistenAttachmentUpdate.then((fn) => fn());
       unlistenConversationUpdated.then((fn) => fn());
       unlistenGenerationStopped.then((fn) => fn());
     };
@@ -181,6 +197,7 @@ export function useChatEvents(conversationId: string | null) {
     handleAttachmentProcessingStarted,
     handleAttachmentProcessingComplete,
     handleAttachmentProcessingError,
+    handleAttachmentUpdate,
     handleConversationUpdated,
     handleGenerationStopped,
   ]);

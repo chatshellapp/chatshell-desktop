@@ -5,8 +5,9 @@ mod llm;
 pub mod models;
 mod prompts;
 pub mod storage;
-mod web_fetch;
 mod thinking_parser;
+mod web_fetch;
+mod web_search;
 
 use commands::AppState;
 use db::Database;
@@ -135,6 +136,9 @@ pub fn run() {
             // Chat commands
             commands::send_message,
             commands::stop_generation,
+            // Web search commands
+            commands::perform_web_search,
+            commands::extract_search_keywords,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
