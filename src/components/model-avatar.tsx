@@ -1,4 +1,3 @@
-import * as React from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getModelLogoById } from "@/lib/model-logos"
 import { cn } from "@/lib/utils"

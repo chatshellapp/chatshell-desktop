@@ -6,8 +6,6 @@ import type {
   CreateConversationRequest, 
   ConversationParticipant, 
   CreateConversationParticipantRequest, 
-  ParticipantSummary,
-  User,
   Model, 
   Assistant 
 } from '@/types';

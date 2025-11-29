@@ -30,5 +30,5 @@ src-tauri/src/demo
 # Docs directory
 docs
 
-# Database files
-src-tauri/chatshell.db
+# Design assets files
+design-assets

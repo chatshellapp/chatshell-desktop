@@ -16,7 +16,7 @@ interface SettingsStore {
 }
 
 export const useSettingsStore = create<SettingsStore>()(
-  immer((set, get) => ({
+  immer((set) => ({
   settings: {},
   models: {},
   isLoading: false,

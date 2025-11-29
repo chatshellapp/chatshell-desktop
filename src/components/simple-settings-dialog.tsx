@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { useModelStore } from "@/stores/modelStore"
-import type { Model } from "@/types"
 
 export function SimpleSettingsDialog() {
   const [open, setOpen] = useState(false)

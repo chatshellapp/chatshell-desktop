@@ -1,5 +1,4 @@
 import { MessageSquare, Users, Library, Package, Settings } from "lucide-react"
-import type { ModelVendor } from "@/components/model-list"
 import type { PromptGroup } from "@/components/prompt-list"
 import type { NavItem } from "@/components/sidebar/sidebar-navigation"
 

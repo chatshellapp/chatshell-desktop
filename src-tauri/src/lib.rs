@@ -13,61 +13,53 @@ use commands::AppState;
 use db::Database;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::RwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize database
-    // For development, use current directory. For production, use app data directory
-    let db_path = std::path::PathBuf::from("chatshell.db");
-    
-    let canonical_path = db_path.canonicalize().unwrap_or_else(|_| db_path.clone());
-    println!("Database path: {:?}", canonical_path);
-
-    let db_path_str = db_path.to_str()
-        .unwrap_or_else(|| {
-            eprintln!("FATAL: Invalid database path");
-            std::process::exit(1);
-        });
-    let db = Database::new(db_path_str)
-        .unwrap_or_else(|e| {
-            eprintln!("FATAL: Failed to initialize database: {}", e);
-            std::process::exit(1);
-        });
-    
-    println!("Database initialized successfully");
-    
-    // Seed database with default assistants (async operation)
-    let rt = tokio::runtime::Runtime::new()
-        .unwrap_or_else(|e| {
-            eprintln!("FATAL: Failed to create tokio runtime: {}", e);
-            std::process::exit(1);
-        });
-    rt.block_on(async {
-        db.seed_default_data().await
-            .unwrap_or_else(|e| {
-                eprintln!("FATAL: Failed to seed database: {}", e);
-                std::process::exit(1);
-            });
-    });
-    
-    println!("Database seeded with default assistants");
-    
-    let app_state = AppState { 
-        db,
-        generation_tasks: Arc::new(RwLock::new(HashMap::new())),
-    };
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(app_state)
         .setup(|app| {
             // Initialize storage directories
             if let Err(e) = storage::init_storage_dirs(app.handle()) {
                 eprintln!("Warning: Failed to initialize storage directories: {}", e);
             }
+            
+            // Initialize database in app data directory
+            let app_data_dir = app.path().app_data_dir()
+                .expect("FATAL: Failed to get app data directory");
+            std::fs::create_dir_all(&app_data_dir)
+                .expect("FATAL: Failed to create app data directory");
+            
+            let db_path = app_data_dir.join("data.db");
+            println!("📂 [db] Database path: {:?}", db_path);
+            
+            let db_path_str = db_path.to_str()
+                .expect("FATAL: Invalid database path");
+            let db = Database::new(db_path_str)
+                .expect("FATAL: Failed to initialize database");
+            
+            println!("✅ [db] Database initialized successfully");
+            
+            // Seed database with default data (async operation)
+            let rt = tokio::runtime::Runtime::new()
+                .expect("FATAL: Failed to create tokio runtime");
+            rt.block_on(async {
+                db.seed_default_data().await
+                    .expect("FATAL: Failed to seed database");
+            });
+            
+            println!("✅ [db] Database seeded with default data");
+            
+            let app_state = AppState { 
+                db,
+                generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+            };
+            app.manage(app_state);
+            
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
