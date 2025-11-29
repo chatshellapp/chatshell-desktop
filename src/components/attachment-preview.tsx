@@ -477,7 +477,11 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
-        <CircleQuestionMark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        {decision.search_needed ? (
+          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+        ) : (
+          <XCircle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+        )}
         
         <span className="flex-1 text-sm truncate">
           <span className="font-medium">Search Decision</span>
@@ -487,11 +491,6 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
         </span>
         
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
-          {decision.search_needed ? (
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          ) : (
-            <XCircle className="h-4 w-4 text-yellow-500" />
-          )}
           {isExpanded ? (
             <ChevronUp className="h-4 w-4" />
           ) : (
