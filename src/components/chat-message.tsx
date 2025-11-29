@@ -205,7 +205,7 @@ export const ChatMessage = memo(function ChatMessage({
       <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none mb-2">
         {isLoading ? (
           <div className="flex items-center gap-2 py-2">
-            <MorphSpinner size={20} />
+            <MorphSpinner size={16} />
           </div>
         ) : (
           <MarkdownContent content={content} />
