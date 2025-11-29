@@ -1026,98 +1026,162 @@ pub async fn send_message(
         // Track search result ID for linking fetch results
         let mut search_result_id: Option<String> = None;
         
-        // If search is enabled, perform web search first
+        // If search is enabled, first ask AI if search is actually needed
         let urls: Vec<String> = if search_enabled_clone {
-            println!("🔍 [background_task] Web search enabled, extracting keywords...");
-            let keywords = crate::web_search::extract_search_keywords(&content);
-            println!("🔍 [background_task] Search keywords: {}", keywords);
+            println!("🔍 [background_task] Web search enabled, checking if search is needed...");
             
-            // Create SearchResult IMMEDIATELY (before searching) so UI can show it
-            let searched_at = chrono::Utc::now().to_rfc3339();
-            match state_clone.db.create_search_result(CreateSearchResultRequest {
-                query: keywords.clone(),
-                engine: "duckduckgo".to_string(),
-                total_results: None, // Will be updated after search completes
-                searched_at: searched_at.clone(),
+            // Emit event to show "deciding" state immediately
+            let _ = app_clone.emit("search-decision-started", serde_json::json!({
+                "message_id": user_message_id,
+                "conversation_id": conversation_id_clone,
+            }));
+            
+            // Use AI to decide if search is truly needed
+            let decision = match crate::web_search::decide_search_needed(
+                &content,
+                &provider,
+                &model,
+                api_key.as_deref(),
+                base_url.as_deref(),
+            ).await {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("⚠️ [background_task] Search decision failed, skipping search: {}", e);
+                    crate::web_search::SearchDecisionResult {
+                        reasoning: format!("Decision failed: {}", e),
+                        search_needed: false,
+                        search_query: None,
+                    }
+                }
+            };
+            
+            // Store the search decision in database
+            match state_clone.db.create_search_decision(CreateSearchDecisionRequest {
+                reasoning: decision.reasoning.clone(),
+                search_needed: decision.search_needed,
+                search_query: decision.search_query.clone(),
             }) {
-                Ok(search_result) => {
-                    println!("📝 [background_task] Created pending search result: {}", search_result.id);
-                    search_result_id = Some(search_result.id.clone());
+                Ok(search_decision) => {
+                    println!("📝 [background_task] Created search decision: {}", search_decision.id);
                     
-                    // Link search result to message immediately
+                    // Link to user message (show first, before search results)
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
-                        AttachmentType::SearchResult,
-                        &search_result.id,
-                        None
+                        AttachmentType::SearchDecision,
+                        &search_decision.id,
+                        Some(0),
                     ) {
-                        eprintln!("Failed to link search result to message: {}", e);
+                        eprintln!("Failed to link search decision to message: {}", e);
                     }
                     
-                    // Emit attachment update so UI shows SearchPreview immediately
+                    // Emit attachment update for UI
                     let _ = app_clone.emit("attachment-update", serde_json::json!({
                         "message_id": user_message_id,
                         "conversation_id": conversation_id_clone,
-                        "attachment": {
-                            "type": "search_result",
-                            "id": search_result.id,
-                            "query": keywords,
-                            "engine": "duckduckgo",
-                            "total_results": null,
-                            "searched_at": searched_at,
-                        }
                     }));
                 }
                 Err(e) => {
-                    eprintln!("Failed to create search result: {}", e);
+                    eprintln!("❌ [background_task] Failed to create search decision: {}", e);
                 }
             }
             
-            // Now perform the actual search
-            match crate::web_search::search_duckduckgo(&keywords, 5).await {
-                Ok(search_response) => {
-                    println!("✅ [background_task] Search completed, found {} results", search_response.results.len());
-                    
-                    // Update SearchResult with actual results count
-                    if let Some(ref sr_id) = search_result_id {
-                        if let Err(e) = state_clone.db.update_search_result_total(sr_id, search_response.total_results as i64) {
-                            eprintln!("Failed to update search result total: {}", e);
+            if decision.search_needed {
+                // Use AI-generated search query (better optimized than raw user input)
+                let keywords = decision.search_query
+                    .unwrap_or_else(|| crate::web_search::extract_search_keywords(&content));
+                println!("🔍 [background_task] AI decided search is needed, query: {}", keywords);
+                
+                // Create SearchResult IMMEDIATELY (before searching) so UI can show it
+                let searched_at = chrono::Utc::now().to_rfc3339();
+                match state_clone.db.create_search_result(CreateSearchResultRequest {
+                    query: keywords.clone(),
+                    engine: "duckduckgo".to_string(),
+                    total_results: None, // Will be updated after search completes
+                    searched_at: searched_at.clone(),
+                }) {
+                    Ok(search_result) => {
+                        println!("📝 [background_task] Created pending search result: {}", search_result.id);
+                        search_result_id = Some(search_result.id.clone());
+                        
+                        // Link search result to message
+                        if let Err(e) = state_clone.db.link_message_attachment(
+                            &user_message_id,
+                            AttachmentType::SearchResult,
+                            &search_result.id,
+                            Some(1), // After search decision
+                        ) {
+                            eprintln!("Failed to link search result to message: {}", e);
                         }
                         
-                        // Emit attachment-update so frontend shows result count immediately
+                        // Emit attachment update so UI shows SearchPreview immediately
                         let _ = app_clone.emit("attachment-update", serde_json::json!({
                             "message_id": user_message_id,
                             "conversation_id": conversation_id_clone,
                             "attachment": {
                                 "type": "search_result",
-                                "id": sr_id,
-                                "query": search_response.query,
+                                "id": search_result.id,
+                                "query": keywords,
                                 "engine": "duckduckgo",
-                                "total_results": search_response.total_results,
+                                "total_results": null,
+                                "searched_at": searched_at,
                             }
                         }));
                     }
-                    
-                    // Emit search completed event
-                    let search_urls: Vec<String> = search_response.results.iter().map(|r| r.url.clone()).collect();
-                    let _ = app_clone.emit("search-completed", serde_json::json!({
-                        "message_id": user_message_id,
-                        "conversation_id": conversation_id_clone,
-                        "search_result_id": search_result_id,
-                        "query": search_response.query,
-                        "results_count": search_response.results.len(),
-                    }));
-                    
-                    search_urls
+                    Err(e) => {
+                        eprintln!("Failed to create search result: {}", e);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("❌ [background_task] Search failed: {}", e);
-                    // Fall back to extracting URLs from content
-                    urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+                
+                // Now perform the actual search
+                match crate::web_search::search_duckduckgo(&keywords, 5).await {
+                    Ok(search_response) => {
+                        println!("✅ [background_task] Search completed, found {} results", search_response.results.len());
+                        
+                        // Update SearchResult with actual results count
+                        if let Some(ref sr_id) = search_result_id {
+                            if let Err(e) = state_clone.db.update_search_result_total(sr_id, search_response.total_results as i64) {
+                                eprintln!("Failed to update search result total: {}", e);
+                            }
+                            
+                            // Emit attachment-update so frontend shows result count immediately
+                            let _ = app_clone.emit("attachment-update", serde_json::json!({
+                                "message_id": user_message_id,
+                                "conversation_id": conversation_id_clone,
+                                "attachment": {
+                                    "type": "search_result",
+                                    "id": sr_id,
+                                    "query": search_response.query,
+                                    "engine": "duckduckgo",
+                                    "total_results": search_response.total_results,
+                                }
+                            }));
+                        }
+                        
+                        // Emit search completed event
+                        let search_urls: Vec<String> = search_response.results.iter().map(|r| r.url.clone()).collect();
+                        let _ = app_clone.emit("search-completed", serde_json::json!({
+                            "message_id": user_message_id,
+                            "conversation_id": conversation_id_clone,
+                            "search_result_id": search_result_id,
+                            "query": search_response.query,
+                            "results_count": search_response.results.len(),
+                        }));
+                        
+                        search_urls
+                    }
+                    Err(e) => {
+                        eprintln!("❌ [background_task] Search failed: {}", e);
+                        // Fall back to extracting URLs from content
+                        urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+                    }
                 }
+            } else {
+                println!("ℹ️ [background_task] AI decided search is NOT needed: {}", decision.reasoning);
+                // No search needed, use provided URLs or extract from content
+                urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
             }
         } else {
-            // Use provided URLs if available, otherwise extract from content
+            // Search not enabled, use provided URLs or extract from content
             urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
         };
         

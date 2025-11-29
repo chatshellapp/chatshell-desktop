@@ -65,6 +65,7 @@ export function ChatView() {
   const attachmentRefreshKey = conversationState?.attachmentRefreshKey || 0
   const isWaitingForAI = conversationState?.isWaitingForAI || false
   const processingUrls = conversationState?.processingUrls || {}
+  const pendingSearchDecisions = conversationState?.pendingSearchDecisions || {}
 
   // Store attachments for each message (keyed by message id)
   const [messageAttachments, setMessageAttachments] = useState<Record<string, Attachment[]>>({})
@@ -387,17 +388,29 @@ export function ChatView() {
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
-                              // Filter for search_result, fetch_result (without search_id) and file attachments
-                              // FetchResults with search_id belong to a SearchResult and are shown inside it
-                              const attachments = messageAttachments[message.id]?.filter(a => 
-                                a.type === "search_result" || 
-                                (a.type === "fetch_result" && !(a as any).search_id) || 
-                                a.type === "file"
-                              ) || []
+              
+              // Split attachments into user and assistant categories
+              const allAttachments = messageAttachments[message.id] || []
+              
+              // User attachments: file, fetch_result (without search_id) - shown right-aligned
+              const userAttachments = allAttachments.filter(a => 
+                a.type === "file" || 
+                (a.type === "fetch_result" && !(a as any).search_id)
+              )
+              
+              // Assistant attachments: search_decision, search_result - shown left-aligned
+              const assistantAttachments = allAttachments.filter(a => 
+                a.type === "search_result" || 
+                a.type === "search_decision"
+              )
+              
               // Check if this message has a search result (URLs will be shown inside it)
-              const hasSearchResult = messageAttachments[message.id]?.some(a => a.type === "search_result")
+              const hasSearchResult = allAttachments.some(a => a.type === "search_result")
               const urls = hasSearchResult ? [] : (processingUrls[message.id] || [])
-              const hasAttachments = isUserMessage && (attachments.length > 0 || urls.length > 0)
+              
+              const hasUserAttachments = isUserMessage && (userAttachments.length > 0 || urls.length > 0)
+              const hasAssistantAttachments = isUserMessage && assistantAttachments.length > 0
+              const hasPendingSearchDecision = isUserMessage && pendingSearchDecisions[message.id]
               
               return (
                 <div key={message.id}>
@@ -420,19 +433,39 @@ export function ChatView() {
                     onExportConversation={handleExportConversation}
                     onExportMessage={handleExportMessage}
                   />
-                  {/* Attachment previews - rendered as separate message block */}
-                  {hasAttachments && (
+                  
+                  {/* User attachments - rendered right-aligned after user message */}
+                  {hasUserAttachments && (
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
-                        {attachments.map((attachment) => (
+                        {userAttachments.map((attachment) => (
+                          <AttachmentPreview 
+                            key={(attachment as any).id} 
+                            attachment={attachment}
+                          />
+                        ))}
+                        {/* Standalone processing URLs (no search result) */}
+                        {urls.map((url) => (
+                          <AttachmentPreview key={url} processingUrl={url} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Assistant attachments (search_decision, search_result) - rendered left-aligned */}
+                  {(hasAssistantAttachments || hasPendingSearchDecision) && (
+                    <div className="flex justify-start px-4 my-2">
+                      <div className="max-w-[80%] space-y-1.5">
+                        {/* Show pending search decision preview */}
+                        {hasPendingSearchDecision && !assistantAttachments.some(a => a.type === "search_decision") && (
+                          <AttachmentPreview pendingSearchDecision={true} />
+                        )}
+                        {assistantAttachments.map((attachment) => (
                           <AttachmentPreview 
                             key={(attachment as any).id} 
                             attachment={attachment}
                             processingUrls={attachment.type === "search_result" ? (processingUrls[message.id] || []) : undefined}
                           />
-                        ))}
-                        {urls.map((url) => (
-                          <AttachmentPreview key={url} processingUrl={url} />
                         ))}
                       </div>
                     </div>

@@ -15,6 +15,8 @@ interface ConversationState {
   attachmentRefreshKey: number;
   // Track URLs being processed for each message: { messageId: [urls] }
   processingUrls: Record<string, string[]>;
+  // Track pending search decisions per message: { messageId: true/false }
+  pendingSearchDecisions: Record<string, boolean>;
 }
 
 // Default state for a new conversation
@@ -27,6 +29,7 @@ const createDefaultConversationState = (): ConversationState => ({
   attachmentStatus: 'idle',
   attachmentRefreshKey: 0,
   processingUrls: {},
+  pendingSearchDecisions: {},
 });
 
 interface MessageStore {
@@ -73,6 +76,7 @@ interface MessageStore {
   clearProcessingUrls: (conversationId: string, messageId: string) => void;
   appendStreamingChunk: (conversationId: string, chunk: string) => void;
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void;
+  setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void;
   cleanupConversation: (conversationId: string) => void;
   removeConversationState: (conversationId: string) => void;
 }
@@ -443,6 +447,20 @@ export const useMessageStore = create<MessageStore>()(
       const convState = draft.conversationStates[conversationId];
       if (convState) {
         convState.isWaitingForAI = isWaiting;
+      }
+    });
+  },
+
+  setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => {
+    get().getConversationState(conversationId); // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId];
+      if (convState) {
+        if (pending) {
+          convState.pendingSearchDecisions[messageId] = true;
+        } else {
+          delete convState.pendingSearchDecisions[messageId];
+        }
       }
     });
   },

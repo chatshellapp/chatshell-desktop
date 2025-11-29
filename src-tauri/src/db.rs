@@ -315,12 +315,24 @@ impl Database {
             [],
         )?;
 
+        // Search decisions table - stores AI's reasoning about search necessity
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS search_decisions (
+                id TEXT PRIMARY KEY,
+                reasoning TEXT NOT NULL,
+                search_needed INTEGER NOT NULL,
+                search_query TEXT,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
         // Message-Attachment polymorphic junction table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS message_attachments (
                 id TEXT PRIMARY KEY,
                 message_id TEXT NOT NULL,
-                attachment_type TEXT NOT NULL CHECK(attachment_type IN ('search_result', 'fetch_result', 'file')),
+                attachment_type TEXT NOT NULL CHECK(attachment_type IN ('search_result', 'fetch_result', 'file', 'search_decision')),
                 attachment_id TEXT NOT NULL,
                 display_order INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -1479,6 +1491,48 @@ impl Database {
         Ok(())
     }
 
+    // ========== Search Decision Operations ==========
+
+    pub fn create_search_decision(&self, req: CreateSearchDecisionRequest) -> Result<SearchDecision> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO search_decisions (id, reasoning, search_needed, search_query, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![id, req.reasoning, req.search_needed as i32, req.search_query, now],
+            )?;
+        }
+
+        self.get_search_decision(&id)
+    }
+
+    pub fn get_search_decision(&self, id: &str) -> Result<SearchDecision> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, reasoning, search_needed, search_query, created_at
+             FROM search_decisions WHERE id = ?1"
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(SearchDecision {
+                id: row.get(0)?,
+                reasoning: row.get(1)?,
+                search_needed: row.get::<_, i32>(2)? != 0,
+                search_query: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        }).map_err(|e| anyhow::anyhow!("Search decision not found: {}", e))
+    }
+
+    pub fn delete_search_decision(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM search_decisions WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     // ========== Message Attachment Link Operations ==========
 
     pub fn link_message_attachment(
@@ -1535,6 +1589,11 @@ impl Database {
                 "file" => {
                     self.get_file_attachment(&attachment_id)
                         .map(Attachment::File)
+                        .ok()
+                }
+                "search_decision" => {
+                    self.get_search_decision(&attachment_id)
+                        .map(Attachment::SearchDecision)
                         .ok()
                 }
                 _ => None,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search } from "lucide-react"
+import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search, Brain, CheckCircle, XCircle, Sparkles, CircleQuestionMark } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { MarkdownContent } from "@/components/markdown-content"
-import type { Attachment, FetchResult, SearchResult, FileAttachment } from "@/types"
+import type { Attachment, FetchResult, SearchResult, FileAttachment, SearchDecision } from "@/types"
 
 interface AttachmentPreviewProps {
   /** Attachment resource (for completed processing) */
@@ -20,6 +20,8 @@ interface AttachmentPreviewProps {
   processingUrl?: string
   /** URLs being processed (for search results) */
   processingUrls?: string[]
+  /** Show pending search decision state (AI is deciding if search is needed) */
+  pendingSearchDecision?: boolean
 }
 
 // Extract domain from URL
@@ -464,6 +466,67 @@ function SearchResultPreview({ searchResult, processingUrls }: { searchResult: S
   )
 }
 
+// SearchDecision preview component - shows AI reasoning for search decision
+function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  return (
+    <div className="w-full rounded-lg border border-muted overflow-hidden">
+      {/* Header row */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
+      >
+        <CircleQuestionMark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        
+        <span className="flex-1 text-sm truncate">
+          <span className="font-medium">Search Decision</span>
+          <span className="text-muted-foreground ml-2">
+            {decision.search_needed ? "Search needed" : "No search needed"}
+          </span>
+        </span>
+        
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
+          {decision.search_needed ? (
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          ) : (
+            <XCircle className="h-4 w-4 text-yellow-500" />
+          )}
+          {isExpanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </span>
+      </button>
+      
+      {/* Expandable reasoning */}
+      {isExpanded && (
+        <div className="border-t border-muted px-3 py-3 space-y-3">
+          {/* Reasoning */}
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reasoning</p>
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              {decision.reasoning}
+            </p>
+          </div>
+          
+          {/* Search query if search was needed */}
+          {decision.search_needed && decision.search_query && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Search Query</p>
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 rounded-md">
+                <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <code className="text-sm font-mono">{decision.search_query}</code>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Helper function to format file size
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -590,7 +653,26 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
   )
 }
 
-export function AttachmentPreview({ attachment, processingUrl, processingUrls }: AttachmentPreviewProps) {
+// Pending SearchDecision preview - shown while AI is deciding
+function PendingSearchDecisionPreview() {
+  return (
+    <div className="w-full rounded-lg border border-muted overflow-hidden">
+      <div className="flex items-center gap-2.5 w-full px-3 py-2.5">
+        <CircleQuestionMark className="h-4 w-4 text-muted-foreground flex-shrink-0 animate-pulse" />
+        <span className="flex-1 text-sm text-muted-foreground">
+          Deciding if web search is needed...
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export function AttachmentPreview({ attachment, processingUrl, processingUrls, pendingSearchDecision }: AttachmentPreviewProps) {
+  // Pending search decision state
+  if (pendingSearchDecision) {
+    return <PendingSearchDecisionPreview />
+  }
+  
   // Loading state: "Fetching from [domain]"
   if (processingUrl) {
     const domain = getDomain(processingUrl)
@@ -621,6 +703,8 @@ export function AttachmentPreview({ attachment, processingUrl, processingUrls }:
       return <SearchResultPreview searchResult={attachment as SearchResult} processingUrls={processingUrls} />
     case "file":
       return <FileAttachmentPreview fileAttachment={attachment as FileAttachment} />
+    case "search_decision":
+      return <SearchDecisionPreview decision={attachment as SearchDecision} />
     default:
       return null
   }

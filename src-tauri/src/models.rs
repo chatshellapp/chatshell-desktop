@@ -344,6 +344,23 @@ pub struct CreateFileAttachmentRequest {
     pub storage_path: String,
 }
 
+/// Search decision - stores AI's reasoning about whether web search is needed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchDecision {
+    pub id: String,
+    pub reasoning: String,
+    pub search_needed: bool,
+    pub search_query: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSearchDecisionRequest {
+    pub reasoning: String,
+    pub search_needed: bool,
+    pub search_query: Option<String>,
+}
+
 /// Attachment type enum for polymorphic handling
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -351,6 +368,7 @@ pub enum AttachmentType {
     SearchResult,
     FetchResult,
     File,
+    SearchDecision,
 }
 
 impl std::fmt::Display for AttachmentType {
@@ -359,6 +377,7 @@ impl std::fmt::Display for AttachmentType {
             AttachmentType::SearchResult => write!(f, "search_result"),
             AttachmentType::FetchResult => write!(f, "fetch_result"),
             AttachmentType::File => write!(f, "file"),
+            AttachmentType::SearchDecision => write!(f, "search_decision"),
         }
     }
 }
@@ -371,6 +390,7 @@ impl std::str::FromStr for AttachmentType {
             "search_result" => Ok(AttachmentType::SearchResult),
             "fetch_result" => Ok(AttachmentType::FetchResult),
             "file" => Ok(AttachmentType::File),
+            "search_decision" => Ok(AttachmentType::SearchDecision),
             _ => Err(format!("Invalid attachment type: {}", s)),
         }
     }
@@ -394,6 +414,7 @@ pub enum Attachment {
     SearchResult(SearchResult),
     FetchResult(FetchResult),
     File(FileAttachment),
+    SearchDecision(SearchDecision),
 }
 
 impl Attachment {
@@ -402,6 +423,7 @@ impl Attachment {
             Attachment::SearchResult(s) => &s.id,
             Attachment::FetchResult(f) => &f.id,
             Attachment::File(f) => &f.id,
+            Attachment::SearchDecision(d) => &d.id,
         }
     }
     
@@ -410,6 +432,7 @@ impl Attachment {
             Attachment::SearchResult(_) => AttachmentType::SearchResult,
             Attachment::FetchResult(_) => AttachmentType::FetchResult,
             Attachment::File(_) => AttachmentType::File,
+            Attachment::SearchDecision(_) => AttachmentType::SearchDecision,
         }
     }
 }

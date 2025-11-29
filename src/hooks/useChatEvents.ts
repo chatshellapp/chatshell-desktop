@@ -20,6 +20,11 @@ interface GenerationStoppedEvent {
   conversation_id: string;
 }
 
+interface SearchDecisionStartedEvent {
+  message_id: string;
+  conversation_id: string;
+}
+
 export function useChatEvents(conversationId: string | null) {
   const conversationIdRef = useRef(conversationId);
   
@@ -63,10 +68,14 @@ export function useChatEvents(conversationId: string | null) {
     console.error('Attachment processing error:', error);
   }, []);
 
-  const handleAttachmentUpdate = useCallback((convId: string) => {
+  const handleAttachmentUpdate = useCallback((convId: string, messageId?: string) => {
     // Trigger a refresh by incrementing the refresh key
     const store = useMessageStore.getState();
     store.incrementAttachmentRefreshKey(convId);
+    // Clear pending search decision when actual decision arrives
+    if (messageId) {
+      store.setPendingSearchDecision(convId, messageId, false);
+    }
   }, []);
 
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
@@ -98,6 +107,12 @@ export function useChatEvents(conversationId: string | null) {
     store.setIsStreaming(convId, false);
     store.setIsWaitingForAI(convId, false);
     store.setStreamingContent(convId, '');
+  }, []);
+
+  const handleSearchDecisionStarted = useCallback((convId: string, messageId: string) => {
+    console.log('[useChatEvents] Search decision started for message:', messageId);
+    const store = useMessageStore.getState();
+    store.setPendingSearchDecision(convId, messageId, true);
   }, []);
 
   useEffect(() => {
@@ -156,7 +171,15 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenAttachmentUpdate = listen<AttachmentUpdateEvent>(
       'attachment-update',
       (event) => {
-        handleAttachmentUpdate(event.payload.conversation_id);
+        handleAttachmentUpdate(event.payload.conversation_id, event.payload.message_id);
+      }
+    );
+
+    // Listen for search decision started (AI is deciding if search is needed)
+    const unlistenSearchDecisionStarted = listen<SearchDecisionStartedEvent>(
+      'search-decision-started',
+      (event) => {
+        handleSearchDecisionStarted(event.payload.conversation_id, event.payload.message_id);
       }
     );
 
@@ -187,6 +210,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenAttachmentComplete.then((fn) => fn());
       unlistenAttachmentError.then((fn) => fn());
       unlistenAttachmentUpdate.then((fn) => fn());
+      unlistenSearchDecisionStarted.then((fn) => fn());
       unlistenConversationUpdated.then((fn) => fn());
       unlistenGenerationStopped.then((fn) => fn());
     };
@@ -198,6 +222,7 @@ export function useChatEvents(conversationId: string | null) {
     handleAttachmentProcessingComplete,
     handleAttachmentProcessingError,
     handleAttachmentUpdate,
+    handleSearchDecisionStarted,
     handleConversationUpdated,
     handleGenerationStopped,
   ]);

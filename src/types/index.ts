@@ -235,7 +235,7 @@ export interface CreateMessageRequest {
 // ========== Attachment Types (Split Schema) ==========
 
 // Attachment type enum
-export type AttachmentType = "search_result" | "fetch_result" | "file";
+export type AttachmentType = "search_result" | "fetch_result" | "file" | "search_decision";
 
 // Search result - stores web search metadata only (no content in filesystem)
 export interface SearchResult {
@@ -309,11 +309,27 @@ export interface CreateFileAttachmentRequest {
   storage_path: string;
 }
 
+// Search decision - stores AI's reasoning about whether web search is needed
+export interface SearchDecision {
+  id: string;
+  reasoning: string;
+  search_needed: boolean;
+  search_query?: string;
+  created_at: string;
+}
+
+export interface CreateSearchDecisionRequest {
+  reasoning: string;
+  search_needed: boolean;
+  search_query?: string;
+}
+
 // Unified attachment type (discriminated union from backend)
 export type Attachment =
   | { type: "search_result" } & SearchResult
   | { type: "fetch_result" } & FetchResult
-  | { type: "file" } & FileAttachment;
+  | { type: "file" } & FileAttachment
+  | { type: "search_decision" } & SearchDecision;
 
 // Helper type guards
 export function isSearchResult(attachment: Attachment): attachment is { type: "search_result" } & SearchResult {
@@ -326,6 +342,10 @@ export function isFetchResult(attachment: Attachment): attachment is { type: "fe
 
 export function isFileAttachment(attachment: Attachment): attachment is { type: "file" } & FileAttachment {
   return attachment.type === "file";
+}
+
+export function isSearchDecision(attachment: Attachment): attachment is { type: "search_decision" } & SearchDecision {
+  return attachment.type === "search_decision";
 }
 
 // Prompt types
