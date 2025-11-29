@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Copy, Languages, Undo, Scan } from "lucide-react"
 import { useState, memo } from "react"
-import { Spinner } from "@/components/ui/spinner"
+import { MorphSpinner } from "@/components/ui/morph-spinner"
 import { ModelAvatar } from "@/components/model-avatar"
 import { AssistantAvatar } from "@/components/assistant-avatar"
 import { MarkdownContent } from "@/components/markdown-content"
@@ -205,7 +205,7 @@ export const ChatMessage = memo(function ChatMessage({
       <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none mb-2">
         {isLoading ? (
           <div className="flex items-center gap-2 py-2">
-            <Spinner className="size-4" />
+            <MorphSpinner size={20} />
           </div>
         ) : (
           <MarkdownContent content={content} />
