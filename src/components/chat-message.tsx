@@ -49,6 +49,11 @@ interface ChatMessageProps {
   userMessageAlign?: "left" | "right"
   userMessageShowBackground?: boolean
   isLoading?: boolean
+  /**
+   * Content to render after the header (avatar/name) but before the message content.
+   * Used for assistant attachments like search_decision and search_result.
+   */
+  headerContent?: React.ReactNode
   onCopy?: () => void
   onResend?: () => void
   onTranslate?: () => void
@@ -70,6 +75,7 @@ export const ChatMessage = memo(function ChatMessage({
   userMessageAlign = "right",
   userMessageShowBackground = true,
   isLoading = false,
+  headerContent,
   onCopy,
   onResend,
   onTranslate,
@@ -202,6 +208,8 @@ export const ChatMessage = memo(function ChatMessage({
           </span>
         )}
       </div>
+      {/* Assistant attachments (search_decision, search_result) rendered after header, before content */}
+      {headerContent}
       <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none mb-2">
         {isLoading ? (
           <div className="flex items-center gap-2 py-2">

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search, Brain, CheckCircle, XCircle, Sparkles, CircleQuestionMark } from "lucide-react"
+import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search, CheckCircle, XCircle, CircleQuestionMark } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import {

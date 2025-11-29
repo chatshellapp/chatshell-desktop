@@ -383,11 +383,12 @@ export function ChatView() {
           </div>
         ) : (
           <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
-            {messages.map((message) => {
+            {messages.map((message, index) => {
               const info = getMessageDisplayInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
               const role = message.sender_type === "user" ? "user" : "assistant"
               const isUserMessage = message.sender_type === "user"
+              const isAssistantMessage = !isUserMessage
               
               // Split attachments into user and assistant categories
               const allAttachments = messageAttachments[message.id] || []
@@ -398,19 +399,39 @@ export function ChatView() {
                 (a.type === "fetch_result" && !(a as any).search_id)
               )
               
-              // Assistant attachments: search_decision, search_result - shown left-aligned
-              const assistantAttachments = allAttachments.filter(a => 
-                a.type === "search_result" || 
-                a.type === "search_decision"
-              )
-              
               // Check if this message has a search result (URLs will be shown inside it)
               const hasSearchResult = allAttachments.some(a => a.type === "search_result")
               const urls = hasSearchResult ? [] : (processingUrls[message.id] || [])
               
               const hasUserAttachments = isUserMessage && (userAttachments.length > 0 || urls.length > 0)
-              const hasAssistantAttachments = isUserMessage && assistantAttachments.length > 0
-              const hasPendingSearchDecision = isUserMessage && pendingSearchDecisions[message.id]
+              
+              // For assistant messages in history, get assistant attachments from previous user message
+              let assistantAttachmentsToShow: typeof allAttachments = []
+              let prevUserMessageId: string | null = null
+              if (isAssistantMessage && index > 0) {
+                const prevMessage = messages[index - 1]
+                if (prevMessage.sender_type === "user") {
+                  prevUserMessageId = prevMessage.id
+                  const prevAttachments = messageAttachments[prevMessage.id] || []
+                  assistantAttachmentsToShow = prevAttachments.filter(a => 
+                    a.type === "search_result" || 
+                    a.type === "search_decision"
+                  )
+                }
+              }
+              
+              // Build headerContent for assistant messages (attachments shown between header and content)
+              const headerContent = isAssistantMessage && assistantAttachmentsToShow.length > 0 ? (
+                <div className="space-y-1.5 mb-2">
+                  {assistantAttachmentsToShow.map((attachment) => (
+                    <AttachmentPreview 
+                      key={(attachment as any).id} 
+                      attachment={attachment}
+                      processingUrls={attachment.type === "search_result" && prevUserMessageId ? (processingUrls[prevUserMessageId] || []) : undefined}
+                    />
+                  ))}
+                </div>
+              ) : undefined
               
               return (
                 <div key={message.id}>
@@ -426,6 +447,7 @@ export function ChatView() {
                     avatarText={info.avatarText}
                     userMessageAlign={CHAT_CONFIG.userMessageAlign}
                     userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                    headerContent={headerContent}
                     onCopy={handleCopy}
                     onResend={handleResend}
                     onTranslate={handleTranslate}
@@ -451,35 +473,50 @@ export function ChatView() {
                       </div>
                     </div>
                   )}
-                  
-                  {/* Assistant attachments (search_decision, search_result) - rendered left-aligned */}
-                  {(hasAssistantAttachments || hasPendingSearchDecision) && (
-                    <div className="flex justify-start px-4 my-2">
-                      <div className="max-w-[80%] space-y-1.5">
-                        {/* Show pending search decision preview */}
-                        {hasPendingSearchDecision && !assistantAttachments.some(a => a.type === "search_decision") && (
-                          <AttachmentPreview pendingSearchDecision={true} />
-                        )}
-                        {assistantAttachments.map((attachment) => (
-                          <AttachmentPreview 
-                            key={(attachment as any).id} 
-                            attachment={attachment}
-                            processingUrls={attachment.type === "search_result" ? (processingUrls[message.id] || []) : undefined}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )
             })}
-            {isWaitingForAI && (() => {
+            {(isWaitingForAI || (isStreaming && streamingContent && !isWaitingForAI)) && (() => {
               const info = getDisplayInfo()
+              
+              // Get the last user message to show its assistant attachments
+              const lastUserMessage = messages.filter(m => m.sender_type === "user").slice(-1)[0]
+              
+              // Build headerContent with attachments (shown between header and content)
+              let streamingHeaderContent: React.ReactNode = undefined
+              if (lastUserMessage) {
+                const lastUserAttachments = messageAttachments[lastUserMessage.id] || []
+                const assistantAttachments = lastUserAttachments.filter(a => 
+                  a.type === "search_result" || 
+                  a.type === "search_decision"
+                )
+                const hasPendingDecision = pendingSearchDecisions[lastUserMessage.id]
+                const hasAssistantAttachments = assistantAttachments.length > 0
+                
+                if (hasAssistantAttachments || hasPendingDecision) {
+                  streamingHeaderContent = (
+                    <div className="space-y-1.5 mb-2">
+                      {/* Show pending search decision preview */}
+                      {hasPendingDecision && !assistantAttachments.some(a => a.type === "search_decision") && (
+                        <AttachmentPreview pendingSearchDecision={true} />
+                      )}
+                      {assistantAttachments.map((attachment) => (
+                        <AttachmentPreview 
+                          key={(attachment as any).id} 
+                          attachment={attachment}
+                          processingUrls={attachment.type === "search_result" ? (processingUrls[lastUserMessage.id] || []) : undefined}
+                        />
+                      ))}
+                    </div>
+                  )
+                }
+              }
+              
               return (
                 <ChatMessage
-                  key="waiting"
+                  key={isWaitingForAI ? "waiting" : "streaming"}
                   role="assistant"
-                  content=""
+                  content={isWaitingForAI ? "" : streamingContent}
                   timestamp="Now"
                   displayName={info.displayName}
                   senderType={info.senderType}
@@ -489,32 +526,8 @@ export function ChatView() {
                   avatarText={info.avatarText}
                   userMessageAlign={CHAT_CONFIG.userMessageAlign}
                   userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-                  isLoading={true}
-                  onCopy={handleCopy}
-                  onResend={handleResend}
-                  onTranslate={handleTranslate}
-                  onExportAll={handleExportAll}
-                  onExportConversation={handleExportConversation}
-                  onExportMessage={handleExportMessage}
-                />
-              )
-            })()}
-            {isStreaming && streamingContent && !isWaitingForAI && (() => {
-              const info = getDisplayInfo()
-              return (
-                <ChatMessage
-                  key="streaming"
-                  role="assistant"
-                  content={streamingContent}
-                  timestamp="Now"
-                  displayName={info.displayName}
-                  senderType={info.senderType}
-                  modelLogo={info.modelLogo}
-                  assistantLogo={info.assistantLogo}
-                  avatarBg={info.avatarBg}
-                  avatarText={info.avatarText}
-                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
-                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                  isLoading={isWaitingForAI}
+                  headerContent={streamingHeaderContent}
                   onCopy={handleCopy}
                   onResend={handleResend}
                   onTranslate={handleTranslate}
