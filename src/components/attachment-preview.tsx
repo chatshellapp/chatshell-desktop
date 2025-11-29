@@ -355,6 +355,13 @@ function SearchResultPreview({ searchResult, processingUrls }: { searchResult: S
   // Check if search is still in progress (no total_results yet)
   const isSearching = searchResult.total_results === null || searchResult.total_results === undefined
   
+  // Auto-expand when search results arrive
+  useEffect(() => {
+    if (!isSearching && searchResult.total_results && searchResult.total_results > 0) {
+      setIsExpanded(true)
+    }
+  }, [isSearching, searchResult.total_results])
+  
   // Load linked fetch results - also reload when processing completes
   useEffect(() => {
     // Skip loading while still processing (will show processingUrls instead)
