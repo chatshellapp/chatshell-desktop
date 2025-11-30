@@ -114,6 +114,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const [fetchError, setFetchError] = React.useState<string | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [existingProvider, setExistingProvider] = React.useState<Provider | null>(null)
+  const [dataLoaded, setDataLoaded] = React.useState(false)
 
   // Store hooks
   const loadAll = useModelStore((state) => state.loadAll)
@@ -123,12 +124,15 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   // Load data when dialog opens
   React.useEffect(() => {
     if (open) {
-      loadAll()
+      setDataLoaded(false)
+      loadAll().then(() => setDataLoaded(true))
     }
   }, [open, loadAll])
 
-  // Load existing provider data when provider type changes
+  // Load existing provider data when provider type changes - only after data is loaded
   React.useEffect(() => {
+    if (!dataLoaded) return // Wait for fresh data to be loaded
+
     // Find existing provider of the selected type
     const existing = storeProviders.find((p) => p.provider_type === selectedProvider.id)
     setExistingProvider(existing || null)
@@ -153,7 +157,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       setApiBaseUrl('http://localhost:11434')
       setModels([])
     }
-  }, [selectedProvider, storeProviders, storeModels])
+  }, [selectedProvider, storeProviders, storeModels, dataLoaded])
 
   const handleAddModel = () => {
     if (newModelName.trim()) {
