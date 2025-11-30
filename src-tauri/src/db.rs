@@ -432,6 +432,24 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
+        // Store API key in OS keychain if provided
+        if let Some(ref api_key) = req.api_key {
+            if !api_key.is_empty() {
+                let key_name = crate::keyring_store::provider_api_key_name(&id);
+                if let Err(e) = crate::keyring_store::store_credential(&key_name, api_key) {
+                    eprintln!(
+                        "⚠️  [db] Failed to store API key in keychain, falling back to database: {}",
+                        e
+                    );
+                    // Fall through to store in database
+                } else {
+                    println!("🔐 [db] API key stored securely in OS keychain");
+                }
+            }
+        }
+
+        // Store provider in database (API key is stored in keychain, so we store NULL here)
+        // Note: For backward compatibility with systems without keychain, we still store the key
         {
             let conn = self.lock_conn()?;
             conn.execute(
@@ -441,7 +459,7 @@ impl Database {
                     id,
                     req.name,
                     req.provider_type,
-                    req.api_key,
+                    Option::<String>::None, // Don't store API key in database anymore
                     req.base_url,
                     req.description,
                     is_enabled as i32,
@@ -464,11 +482,24 @@ impl Database {
 
         let provider = stmt
             .query_row(params![id], |row| {
+                let provider_id: String = row.get(0)?;
+                let db_api_key: Option<String> = row.get(3)?;
+
+                // Try to get API key from keychain first, fall back to database
+                let api_key = {
+                    let key_name = crate::keyring_store::provider_api_key_name(&provider_id);
+                    match crate::keyring_store::get_credential(&key_name) {
+                        Ok(Some(key)) => Some(key),
+                        Ok(None) => db_api_key, // Fallback to database (for migration)
+                        Err(_) => db_api_key,   // Fallback on keychain error
+                    }
+                };
+
                 Ok(Provider {
-                    id: row.get(0)?,
+                    id: provider_id,
                     name: row.get(1)?,
                     provider_type: row.get(2)?,
-                    api_key: row.get(3)?,
+                    api_key,
                     base_url: row.get(4)?,
                     description: row.get(5)?,
                     is_enabled: row.get::<_, i32>(6)? != 0,
@@ -490,11 +521,24 @@ impl Database {
 
         let providers = stmt
             .query_map([], |row| {
+                let provider_id: String = row.get(0)?;
+                let db_api_key: Option<String> = row.get(3)?;
+
+                // Try to get API key from keychain first, fall back to database
+                let api_key = {
+                    let key_name = crate::keyring_store::provider_api_key_name(&provider_id);
+                    match crate::keyring_store::get_credential(&key_name) {
+                        Ok(Some(key)) => Some(key),
+                        Ok(None) => db_api_key, // Fallback to database (for migration)
+                        Err(_) => db_api_key,   // Fallback on keychain error
+                    }
+                };
+
                 Ok(Provider {
-                    id: row.get(0)?,
+                    id: provider_id,
                     name: row.get(1)?,
                     provider_type: row.get(2)?,
-                    api_key: row.get(3)?,
+                    api_key,
                     base_url: row.get(4)?,
                     description: row.get(5)?,
                     is_enabled: row.get::<_, i32>(6)? != 0,
@@ -511,6 +555,22 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
+        // Update API key in OS keychain if provided
+        let key_name = crate::keyring_store::provider_api_key_name(id);
+        if let Some(ref api_key) = req.api_key {
+            if !api_key.is_empty() {
+                if let Err(e) = crate::keyring_store::store_credential(&key_name, api_key) {
+                    eprintln!(
+                        "⚠️  [db] Failed to update API key in keychain: {}",
+                        e
+                    );
+                }
+            } else {
+                // Empty API key means delete
+                let _ = crate::keyring_store::delete_credential(&key_name);
+            }
+        }
+
         {
             let conn = self.lock_conn()?;
             conn.execute(
@@ -518,7 +578,7 @@ impl Database {
                 params![
                     req.name,
                     req.provider_type,
-                    req.api_key,
+                    Option::<String>::None, // Don't store API key in database
                     req.base_url,
                     req.description,
                     is_enabled as i32,
@@ -533,6 +593,12 @@ impl Database {
     }
 
     pub fn delete_provider(&self, id: &str) -> Result<()> {
+        // Delete API key from keychain
+        let key_name = crate::keyring_store::provider_api_key_name(id);
+        if let Err(e) = crate::keyring_store::delete_credential(&key_name) {
+            eprintln!("⚠️  [db] Failed to delete API key from keychain: {}", e);
+        }
+
         let conn = self.lock_conn()?;
         conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
         Ok(())

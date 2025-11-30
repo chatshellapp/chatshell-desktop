@@ -52,6 +52,9 @@ regex = "1"
 lazy_static = "1.4"
 async-trait = "0.1"
 
+# Secure credential storage (OS keychain)
+keyring = "3"
+
 # LLM framework
 rig-core = "0.24"
 
