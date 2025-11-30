@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useModelStore } from '@/stores/modelStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
 
 import {
@@ -119,6 +120,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const loadAll = useModelStore((state) => state.loadAll)
   const storeProviders = useModelStore((state) => state.providers)
   const storeModels = useModelStore((state) => state.models)
+  const getSetting = useSettingsStore((state) => state.getSetting)
   const [isDataLoaded, setIsDataLoaded] = React.useState(false)
 
   // Load data when dialog opens
@@ -135,31 +137,46 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   React.useEffect(() => {
     if (!isDataLoaded) return // Don't populate until data is loaded
 
-    // Find existing provider of the selected type
-    const existing = storeProviders.find((p) => p.provider_type === selectedProvider.id)
-    setExistingProvider(existing || null)
+    const loadProviderData = async () => {
+      // Find existing provider of the selected type
+      const existing = storeProviders.find((p) => p.provider_type === selectedProvider.id)
+      setExistingProvider(existing || null)
 
-    if (existing) {
-      // Load existing provider's data
-      setApiKey(existing.api_key || '')
-      setApiBaseUrl(existing.base_url || 'http://localhost:11434')
+      if (existing) {
+        // Load existing provider's data
+        let key = existing.api_key || ''
 
-      // Load existing models for this provider
-      const existingModels = storeModels
-        .filter((m) => m.provider_id === existing.id)
-        .map((m) => ({
-          id: m.id, // Use the database ID
-          name: m.model_id, // model_id is the actual model identifier
-          isExisting: true, // Mark as existing
-        }))
-      setModels(existingModels)
-    } else {
-      // Reset to defaults for new provider
-      setApiKey('')
-      setApiBaseUrl('http://localhost:11434')
-      setModels([])
+        // Fallback to settings if provider doesn't have API key (for backward compatibility)
+        if (!key) {
+          if (selectedProvider.id === 'openai') {
+            key = (await getSetting('openai_api_key')) || ''
+          } else if (selectedProvider.id === 'openrouter') {
+            key = (await getSetting('openrouter_api_key')) || ''
+          }
+        }
+
+        setApiKey(key)
+        setApiBaseUrl(existing.base_url || 'http://localhost:11434')
+
+        // Load existing models for this provider
+        const existingModels = storeModels
+          .filter((m) => m.provider_id === existing.id)
+          .map((m) => ({
+            id: m.id, // Use the database ID
+            name: m.model_id, // model_id is the actual model identifier
+            isExisting: true, // Mark as existing
+          }))
+        setModels(existingModels)
+      } else {
+        // Reset to defaults for new provider
+        setApiKey('')
+        setApiBaseUrl('http://localhost:11434')
+        setModels([])
+      }
     }
-  }, [selectedProvider, storeProviders, storeModels, isDataLoaded])
+
+    loadProviderData()
+  }, [selectedProvider, storeProviders, storeModels, isDataLoaded, getSetting])
 
   const handleAddModel = () => {
     if (newModelName.trim()) {
