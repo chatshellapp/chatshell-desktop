@@ -264,7 +264,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       <Sidebar collapsible="none" className="hidden flex-1 md:flex">
         <SidebarHeader className="gap-3.5 border-b p-4">
-          <div className="flex w-full items-center justify-between">
+          <div className="flex w-full items-center justify-between h-7">
             <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
           </div>
         </SidebarHeader>

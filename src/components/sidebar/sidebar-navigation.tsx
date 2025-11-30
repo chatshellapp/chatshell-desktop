@@ -98,7 +98,7 @@ export function SidebarNavigation({
             <MessageSquarePlus className="size-4" />
           </button>
         )}
-        <NavUser user={user} />
+        {/* <NavUser user={user} /> */}
       </SidebarFooter>
     </Sidebar>
   )
