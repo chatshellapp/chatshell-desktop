@@ -11,6 +11,8 @@
     "lint": "eslint . --ext ts,tsx",
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css}\"",
+    "format:rust": "cd src-tauri && cargo fmt --all",
+    "format:all": "pnpm run format && cd src-tauri && cargo fmt --all",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css}\"",
     "type-check": "tsc --noEmit",
     "check": "pnpm run type-check && pnpm run lint && pnpm run format:check",

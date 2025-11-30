@@ -426,7 +426,14 @@ function SearchResultPreview({
     }
 
     loadResults()
-  }, [searchResult.id, searchResult.total_results, retryCount, isProcessing, isSearching, fetchedCount])
+  }, [
+    searchResult.id,
+    searchResult.total_results,
+    retryCount,
+    isProcessing,
+    isSearching,
+    fetchedCount,
+  ])
 
   const urlCount = urlStatuses ? Object.keys(urlStatuses).length : 0
   const resultCount = urlCount || fetchResults.length || searchResult.total_results || 0
@@ -750,10 +757,7 @@ export function AttachmentPreview({
       return <FetchResultPreview fetchResult={attachment as FetchResult} />
     case 'search_result':
       return (
-        <SearchResultPreview
-          searchResult={attachment as SearchResult}
-          urlStatuses={urlStatuses}
-        />
+        <SearchResultPreview searchResult={attachment as SearchResult} urlStatuses={urlStatuses} />
       )
     case 'file':
       return <FileAttachmentPreview fileAttachment={attachment as FileAttachment} />
