@@ -120,50 +120,6 @@ function formatFileSize(bytes: number): string {
 
 interface ChatInputProps {}
 
-// Circle progress component
-interface CircleProgressProps {
-  percentage: number
-  size?: number
-}
-
-function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
-  const strokeWidth = 2.5
-  const radius = (size - strokeWidth * 2) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (percentage / 100) * circumference
-
-  return (
-    <svg width={size} height={size} className="transform -rotate-90">
-      {/* Background circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        className="text-muted-foreground/20"
-      />
-      {/* Progress circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className={cn(
-          'transition-all duration-300 ease-out',
-          percentage < 70 ? 'text-green-500' : percentage < 90 ? 'text-yellow-500' : 'text-red-500'
-        )}
-      />
-    </svg>
-  )
-}
-
 // Helper function to get icon for attachment type
 function getAttachmentIcon(type: AttachmentType) {
   switch (type) {

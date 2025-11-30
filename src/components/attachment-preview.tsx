@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
-  CheckCircle,
   XCircle,
   CircleQuestionMark,
   CheckCircle2,

@@ -1,5 +1,4 @@
 import { MessageSquarePlus } from 'lucide-react'
-import { NavUser } from '@/components/nav-user'
 import {
   Sidebar,
   SidebarContent,
@@ -34,7 +33,7 @@ export function SidebarNavigation({
   onItemClick,
   onSettingsClick,
   onNewConversation,
-  user,
+  user: _user,
 }: SidebarNavigationProps) {
   const { state } = useSidebar()
   const isCollapsed = state === 'collapsed'
