@@ -539,6 +539,18 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                     />
                     <p className="text-xs text-muted-foreground">
                       Optional: Override the default API endpoint
+                      {apiBaseUrl !== selectedProvider.baseUrl && (
+                        <>
+                          {' · '}
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => setApiBaseUrl(selectedProvider.baseUrl)}
+                          >
+                            Restore default
+                          </button>
+                        </>
+                      )}
                     </p>
                   </div>
 
