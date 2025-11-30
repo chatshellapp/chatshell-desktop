@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react"
-import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search, CheckCircle, XCircle, CircleQuestionMark } from "lucide-react"
+import { Globe, ExternalLink, AlertTriangle, FileText, Image, FileIcon as FileIconLucide, ChevronDown, ChevronUp, Search, CheckCircle, XCircle, CircleQuestionMark, CheckCircle2 } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"
 import {
@@ -478,16 +478,13 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
         className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         {decision.search_needed ? (
-          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+          <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
         ) : (
           <XCircle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
         )}
         
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium">Search Decision</span>
-          <span className="text-muted-foreground ml-2">
-            {decision.search_needed ? "Search needed" : "No search needed"}
-          </span>
+          {decision.search_needed ? "Search needed" : "No search needed"}
         </span>
         
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
