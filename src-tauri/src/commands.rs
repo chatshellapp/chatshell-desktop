@@ -1498,6 +1498,16 @@ pub async fn send_message(
                             "📎 [background_task] Saved file attachment: {} -> {}",
                             file.name, file_attachment.id
                         );
+
+                        // Emit attachment-update so UI refreshes and shows the file
+                        let _ = app_clone.emit(
+                            "attachment-update",
+                            serde_json::json!({
+                                "message_id": user_message_id,
+                                "conversation_id": conversation_id_clone,
+                                "attachment_id": file_attachment.id,
+                            }),
+                        );
                     }
                 }
                 Err(e) => {
@@ -1557,6 +1567,16 @@ pub async fn send_message(
                         println!(
                             "🖼️ [background_task] Saved image attachment: {} -> {}",
                             file_name, file_attachment.id
+                        );
+
+                        // Emit attachment-update so UI refreshes and shows the image
+                        let _ = app_clone.emit(
+                            "attachment-update",
+                            serde_json::json!({
+                                "message_id": user_message_id,
+                                "conversation_id": conversation_id_clone,
+                                "attachment_id": file_attachment.id,
+                            }),
                         );
                     }
                 }
