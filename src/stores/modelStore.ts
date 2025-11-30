@@ -30,7 +30,8 @@ export const useModelStore = create<ModelState>()(
         draft.error = null
       })
       try {
-        const models = await invoke<Model[]>('list_models')
+        // Use list_all_models to include soft-deleted models for display purposes
+        const models = await invoke<Model[]>('list_all_models')
         console.log('[modelStore] Loaded models:', models)
         set((draft) => {
           draft.models = models
@@ -73,7 +74,8 @@ export const useModelStore = create<ModelState>()(
       })
       try {
         const [models, providers] = await Promise.all([
-          invoke<Model[]>('list_models'),
+          // Use list_all_models to include soft-deleted models for display purposes
+          invoke<Model[]>('list_all_models'),
           invoke<Provider[]>('list_providers'),
         ])
         console.log('[modelStore] Loaded models:', models)

@@ -60,6 +60,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const llmProviders = [
   { id: 'openai', name: 'OpenAI', icon: Bot },
@@ -115,6 +116,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const [fetchError, setFetchError] = React.useState<string | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [existingProvider, setExistingProvider] = React.useState<Provider | null>(null)
+  const [modelsToDelete, setModelsToDelete] = React.useState<string[]>([])
 
   // Store hooks
   const loadAll = useModelStore((state) => state.loadAll)
@@ -138,6 +140,9 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     if (!isDataLoaded) return // Don't populate until data is loaded
 
     const loadProviderData = async () => {
+      // Reset modelsToDelete when switching providers
+      setModelsToDelete([])
+
       // Find existing provider of the selected type
       const existing = storeProviders.find((p) => p.provider_type === selectedProvider.id)
       setExistingProvider(existing || null)
@@ -246,25 +251,60 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     handleFetchModels()
   }
 
-  const handleImportModel = (model: ModelInfo) => {
-    // Check if model already exists (by model id)
-    if (!models.find((m) => m.name === model.id)) {
-      setModels([
-        ...models,
-        {
-          id: Date.now().toString(),
-          name: model.id, // Use model.id as the name (this is the actual model identifier)
-        },
-      ])
+  const handleToggleImportModel = (model: ModelInfo) => {
+    const existingIndex = models.findIndex((m) => m.name === model.id)
+    if (existingIndex >= 0) {
+      // Model is currently in list - remove it
+      const existingModel = models[existingIndex]
+      if (existingModel.isExisting) {
+        // Mark for soft delete
+        setModelsToDelete((prev) => [...prev, existingModel.id])
+      }
+      setModels(models.filter((_, idx) => idx !== existingIndex))
+    } else {
+      // Model not in list - check if it was marked for deletion and restore it
+      const markedForDelete = modelsToDelete.find((id) => {
+        const m = storeModels.find((sm) => sm.id === id)
+        return m && m.model_id === model.id
+      })
+
+      if (markedForDelete) {
+        // Restore from delete list
+        const originalModel = storeModels.find((sm) => sm.id === markedForDelete)
+        setModelsToDelete((prev) => prev.filter((id) => id !== markedForDelete))
+        if (originalModel) {
+          setModels([
+            ...models,
+            {
+              id: originalModel.id,
+              name: originalModel.model_id,
+              isExisting: true,
+            },
+          ])
+        }
+      } else {
+        // Add as new model
+        setModels([
+          ...models,
+          {
+            id: Date.now().toString(),
+            name: model.id,
+          },
+        ])
+      }
     }
+  }
+
+  const isModelImported = (modelId: string) => {
+    return models.some((m) => m.name === modelId)
   }
 
   const handleSave = async () => {
     // Filter for new models only
     const newModels = models.filter((m) => !m.isExisting)
 
-    if (newModels.length === 0 && !existingProvider) {
-      console.warn('No new models to save')
+    if (newModels.length === 0 && modelsToDelete.length === 0 && !existingProvider) {
+      console.warn('No changes to save')
       onOpenChange(false)
       return
     }
@@ -305,6 +345,12 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         const provider = await invoke<Provider>('create_provider', { req: providerReq })
         console.log('Created provider:', provider)
         providerId = provider.id
+      }
+
+      // Soft delete removed models
+      for (const modelId of modelsToDelete) {
+        await invoke('soft_delete_model', { id: modelId })
+        console.log('Soft deleted model:', modelId)
       }
 
       // Create only new models
@@ -591,6 +637,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                 disabled={
                   isSaving ||
                   (models.filter((m) => !m.isExisting).length === 0 &&
+                    modelsToDelete.length === 0 &&
                     (!existingProvider ||
                       (existingProvider.api_key === apiKey &&
                         existingProvider.base_url === apiBaseUrl)))
@@ -657,45 +704,43 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                         <div className="border-t">
                           <Table>
                             <TableBody>
-                              {groupModels.map((model) => (
-                                <TableRow key={model.id}>
-                                  <TableCell className="font-medium max-w-[200px]">
-                                    <div className="truncate" title={model.name}>
-                                      {model.name}
-                                    </div>
-                                    <div
-                                      className="text-xs text-muted-foreground truncate"
-                                      title={model.id}
-                                    >
-                                      {model.id}
-                                    </div>
-                                  </TableCell>
-                                  {model.context_length && (
-                                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                      {(model.context_length / 1000).toFixed(0)}K ctx
+                              {groupModels.map((model) => {
+                                const imported = isModelImported(model.id)
+                                return (
+                                  <TableRow key={model.id}>
+                                    <TableCell className="w-[40px]">
+                                      <Checkbox
+                                        checked={imported}
+                                        onCheckedChange={() => handleToggleImportModel(model)}
+                                      />
                                     </TableCell>
-                                  )}
-                                  {model.description && (
-                                    <TableCell
-                                      className="text-xs text-muted-foreground max-w-[200px] truncate"
-                                      title={model.description}
-                                    >
-                                      {model.description}
+                                    <TableCell className="font-medium max-w-[200px]">
+                                      <div className="truncate" title={model.name}>
+                                        {model.name}
+                                      </div>
+                                      <div
+                                        className="text-xs text-muted-foreground truncate"
+                                        title={model.id}
+                                      >
+                                        {model.id}
+                                      </div>
                                     </TableCell>
-                                  )}
-                                  <TableCell className="text-right">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => {
-                                        handleImportModel(model)
-                                        setFetchModalOpen(false)
-                                      }}
-                                    >
-                                      Import
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
+                                    {model.context_length && (
+                                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                        {(model.context_length / 1000).toFixed(0)}K ctx
+                                      </TableCell>
+                                    )}
+                                    {model.description && (
+                                      <TableCell
+                                        className="text-xs text-muted-foreground max-w-[200px] truncate"
+                                        title={model.description}
+                                      >
+                                        {model.description}
+                                      </TableCell>
+                                    )}
+                                  </TableRow>
+                                )
+                              })}
                             </TableBody>
                           </Table>
                         </div>

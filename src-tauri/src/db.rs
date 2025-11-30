@@ -63,6 +63,7 @@ impl Database {
                 model_id TEXT NOT NULL,
                 description TEXT,
                 is_starred INTEGER DEFAULT 0,
+                is_deleted INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
@@ -639,27 +640,48 @@ impl Database {
 
     // Model CRUD operations
     pub fn create_model(&self, req: CreateModelRequest) -> Result<Model> {
-        let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let is_starred = req.is_starred.unwrap_or(false);
 
-        {
-            let conn = self.lock_conn()?;
+        let conn = self.lock_conn()?;
+
+        // Check if a soft-deleted model with same model_id and provider_id exists
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM models WHERE model_id = ?1 AND provider_id = ?2 AND is_deleted = 1",
+                params![req.model_id, req.provider_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(id) = existing_id {
+            // Restore the soft-deleted model
             conn.execute(
-                "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    id,
-                    req.name,
-                    req.provider_id,
-                    req.model_id,
-                    req.description,
-                    is_starred as i32,
-                    now,
-                    now
-                ],
+                "UPDATE models SET is_deleted = 0, name = ?1, description = ?2, is_starred = ?3, updated_at = ?4 WHERE id = ?5",
+                params![req.name, req.description, is_starred as i32, now, id],
             )?;
+            drop(conn);
+            return self.get_model(&id)?
+                .ok_or_else(|| anyhow::anyhow!("Failed to retrieve restored model"));
         }
+
+        // Create new model
+        let id = Uuid::now_v7().to_string();
+        conn.execute(
+            "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)",
+            params![
+                id,
+                req.name,
+                req.provider_id,
+                req.model_id,
+                req.description,
+                is_starred as i32,
+                now,
+                now
+            ],
+        )?;
+        drop(conn);
 
         self.get_model(&id)?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created model"))
@@ -668,7 +690,7 @@ impl Database {
     pub fn get_model(&self, id: &str) -> Result<Option<Model>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
+            "SELECT id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at
              FROM models WHERE id = ?1",
         )?;
 
@@ -681,8 +703,9 @@ impl Database {
                     model_id: row.get(3)?,
                     description: row.get(4)?,
                     is_starred: row.get::<_, i32>(5)? != 0,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
+                    is_deleted: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
                 })
             })
             .optional()?;
@@ -693,7 +716,34 @@ impl Database {
     pub fn list_models(&self) -> Result<Vec<Model>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, provider_id, model_id, description, is_starred, created_at, updated_at
+            "SELECT id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at
+             FROM models WHERE is_deleted = 0 ORDER BY created_at ASC",
+        )?;
+
+        let models = stmt
+            .query_map([], |row| {
+                Ok(Model {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    provider_id: row.get(2)?,
+                    model_id: row.get(3)?,
+                    description: row.get(4)?,
+                    is_starred: row.get::<_, i32>(5)? != 0,
+                    is_deleted: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(models)
+    }
+
+    /// List all models including soft-deleted ones (for cache/display purposes)
+    pub fn list_all_models(&self) -> Result<Vec<Model>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at
              FROM models ORDER BY created_at ASC",
         )?;
 
@@ -706,8 +756,9 @@ impl Database {
                     model_id: row.get(3)?,
                     description: row.get(4)?,
                     is_starred: row.get::<_, i32>(5)? != 0,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
+                    is_deleted: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -742,6 +793,16 @@ impl Database {
     pub fn delete_model(&self, id: &str) -> Result<()> {
         let conn = self.lock_conn()?;
         conn.execute("DELETE FROM models WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn soft_delete_model(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE models SET is_deleted = 1, updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
         Ok(())
     }
 

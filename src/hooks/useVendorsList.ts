@@ -13,7 +13,8 @@ export function useVendorsList(): ModelVendor[] {
     return providers
       .map((provider) => {
         const providerModels = models
-          .filter((m) => m.provider_id === provider.id)
+          // Filter out soft-deleted models for selection UI
+          .filter((m) => m.provider_id === provider.id && !m.is_deleted)
           .map((m) => ({
             id: m.id,
             name: m.name,

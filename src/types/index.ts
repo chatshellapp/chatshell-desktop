@@ -28,6 +28,7 @@ export interface Model {
   model_id: string
   description?: string
   is_starred: boolean // For quick access in chat interface
+  is_deleted?: boolean // Soft delete flag
   created_at: string
   updated_at: string
 }

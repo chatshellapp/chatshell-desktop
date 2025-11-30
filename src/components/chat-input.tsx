@@ -715,7 +715,10 @@ export function ChatInput({}: ChatInputProps) {
   const modelVendors = useMemo((): ModelVendor[] => {
     const vendorMap = new Map<string, ModelListModel[]>()
 
-    models.forEach((model) => {
+    // Filter out soft-deleted models for selection UI
+    const activeModels = models.filter((m) => !m.is_deleted)
+
+    activeModels.forEach((model) => {
       const provider = getProviderById(model.provider_id)
       if (!provider) return
 

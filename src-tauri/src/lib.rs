@@ -73,8 +73,10 @@ pub fn run() {
             commands::create_model,
             commands::get_model,
             commands::list_models,
+            commands::list_all_models,
             commands::update_model,
             commands::delete_model,
+            commands::soft_delete_model,
             // Assistant commands
             commands::create_assistant,
             commands::get_assistant,

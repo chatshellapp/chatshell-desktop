@@ -81,6 +81,11 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<Vec<Model>, Strin
 }
 
 #[tauri::command]
+pub async fn list_all_models(state: State<'_, AppState>) -> Result<Vec<Model>, String> {
+    state.db.list_all_models().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn update_model(
     state: State<'_, AppState>,
     id: String,
@@ -92,6 +97,11 @@ pub async fn update_model(
 #[tauri::command]
 pub async fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_model(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn soft_delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db.soft_delete_model(&id).map_err(|e| e.to_string())
 }
 
 // Assistant commands

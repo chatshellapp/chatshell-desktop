@@ -204,9 +204,16 @@ export const useConversationStore = create<ConversationStore>()(
               const model = useModelStore
                 .getState()
                 .getModelById(modelOrAssistantParticipant.participant_id)
-              if (model) {
+              // Only select if model exists and is not soft-deleted
+              if (model && !model.is_deleted) {
                 get().setSelectedModel(model)
                 console.log('[conversationStore] Set selected model from conversation:', model.name)
+              } else if (model?.is_deleted) {
+                console.log('[conversationStore] Model is soft-deleted, not selecting:', model.name)
+                set((draft) => {
+                  draft.selectedModel = null
+                  draft.selectedAssistant = null
+                })
               }
             } else if (
               modelOrAssistantParticipant.participant_type === 'assistant' &&
@@ -228,7 +235,8 @@ export const useConversationStore = create<ConversationStore>()(
           } else {
             // No participants yet - use lastUsed model/assistant to maintain continuity
             const state = get()
-            if (state.lastUsedModel) {
+            // Only use lastUsedModel if it's not soft-deleted
+            if (state.lastUsedModel && !state.lastUsedModel.is_deleted) {
               get().setSelectedModel(state.lastUsedModel)
               console.log(
                 '[conversationStore] No participant found, using lastUsedModel:',
@@ -337,6 +345,11 @@ export const useConversationStore = create<ConversationStore>()(
     },
 
     setSelectedModel: (model: Model | null) => {
+      // Don't allow selecting soft-deleted models
+      if (model?.is_deleted) {
+        console.log('[conversationStore] Refusing to select soft-deleted model:', model.name)
+        return
+      }
       console.log('[conversationStore] Setting selected model:', model?.name)
       set((draft) => {
         draft.selectedModel = model
