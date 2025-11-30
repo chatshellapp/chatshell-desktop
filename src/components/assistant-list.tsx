@@ -1,19 +1,15 @@
-import * as React from "react"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { AssistantListItem, AssistantCapabilities } from "@/components/assistant-list-item"
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, MoreVertical } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { AssistantListItem, AssistantCapabilities } from '@/components/assistant-list-item'
 
 export interface Assistant {
   /**
@@ -135,14 +131,14 @@ export function AssistantList({
 
   // Create a virtual group for starred assistants
   const starredGroup: AssistantGroup = {
-    id: "starred",
-    name: "Starred",
+    id: 'starred',
+    name: 'Starred',
     assistants: starredAssistants,
     defaultOpen: true,
   }
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred assistants group first if there are any starred assistants */}
       {hasStarredAssistants && (
         <AssistantGroupComponent
@@ -202,7 +198,7 @@ function AssistantGroupComponent({
   ignoreGroupDefault = false,
   compact = false,
 }: AssistantGroupComponentProps) {
-  // Determine initial open state: 
+  // Determine initial open state:
   // - If forceDefaultOpen is true, always open
   // - If ignoreGroupDefault is true, ignore group.defaultOpen (use false)
   // - Otherwise use group.defaultOpen, default to false
@@ -222,15 +218,15 @@ function AssistantGroupComponent({
             variant="ghost"
             size="sm"
             className={cn(
-              "w-full justify-start font-normal px-3",
-              compact ? "text-xs h-7" : "text-sm h-9"
+              'w-full justify-start font-normal px-3',
+              compact ? 'text-xs h-7' : 'text-sm h-9'
             )}
           >
             <ChevronDown
               className={cn(
-                "transition-transform duration-200",
-                compact ? "size-3" : "size-4",
-                !isOpen && "-rotate-90"
+                'transition-transform duration-200',
+                compact ? 'size-3' : 'size-4',
+                !isOpen && '-rotate-90'
               )}
             />
             <span className="flex-1 text-left">{group.name}</span>
@@ -241,8 +237,8 @@ function AssistantGroupComponent({
         {!hideGroupMenu && (
           <div
             className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 transition-opacity",
-              !isHovered && "opacity-0"
+              'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
+              !isHovered && 'opacity-0'
             )}
           >
             <DropdownMenu>
@@ -296,4 +292,3 @@ function AssistantGroupComponent({
     </Collapsible>
   )
 }
-

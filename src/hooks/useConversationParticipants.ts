@@ -9,8 +9,10 @@ export function useConversationParticipants() {
   const conversations = useConversationStore((state) => state.conversations)
   const selfUser = useUserStore((state) => state.selfUser)
   const loadConversations = useConversationStore((state) => state.loadConversations)
-  
-  const [conversationParticipantsMap, setConversationParticipantsMap] = useState<Map<string, ParticipantSummary[]>>(new Map())
+
+  const [conversationParticipantsMap, setConversationParticipantsMap] = useState<
+    Map<string, ParticipantSummary[]>
+  >(new Map())
 
   // Load participants for all conversations
   useEffect(() => {
@@ -18,16 +20,19 @@ export function useConversationParticipants() {
       if (conversations.length === 0 || !selfUser) {
         return
       }
-      
+
       const participantsMap = new Map()
-      
+
       await Promise.all(
         conversations.map(async (conversation) => {
           try {
-            const participants = await invoke<ParticipantSummary[]>('get_conversation_participant_summary', { 
-              conversationId: conversation.id,
-              currentUserId: selfUser.id
-            })
+            const participants = await invoke<ParticipantSummary[]>(
+              'get_conversation_participant_summary',
+              {
+                conversationId: conversation.id,
+                currentUserId: selfUser.id,
+              }
+            )
             participantsMap.set(conversation.id, participants)
           } catch (error) {
             console.error(`Failed to load participants for conversation ${conversation.id}:`, error)
@@ -35,32 +40,38 @@ export function useConversationParticipants() {
           }
         })
       )
-      
+
       setConversationParticipantsMap(participantsMap)
     }
-    
+
     loadAllParticipants()
   }, [conversations, selfUser])
 
   // Refresh participants for a specific conversation
-  const refreshConversationParticipants = useCallback(async (conversationId: string) => {
-    if (!selfUser) return
-    
-    try {
-      const participants = await invoke<ParticipantSummary[]>('get_conversation_participant_summary', { 
-        conversationId: conversationId,
-        currentUserId: selfUser.id
-      })
-      
-      setConversationParticipantsMap(prev => {
-        const newMap = new Map(prev)
-        newMap.set(conversationId, participants)
-        return newMap
-      })
-    } catch (error) {
-      console.error('Failed to refresh participants:', error)
-    }
-  }, [selfUser])
+  const refreshConversationParticipants = useCallback(
+    async (conversationId: string) => {
+      if (!selfUser) return
+
+      try {
+        const participants = await invoke<ParticipantSummary[]>(
+          'get_conversation_participant_summary',
+          {
+            conversationId: conversationId,
+            currentUserId: selfUser.id,
+          }
+        )
+
+        setConversationParticipantsMap((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(conversationId, participants)
+          return newMap
+        })
+      } catch (error) {
+        console.error('Failed to refresh participants:', error)
+      }
+    },
+    [selfUser]
+  )
 
   // Listen for chat-complete event
   useEffect(() => {
@@ -74,10 +85,9 @@ export function useConversationParticipants() {
     })
 
     return () => {
-      unlistenComplete.then(fn => fn())
+      unlistenComplete.then((fn) => fn())
     }
   }, [refreshConversationParticipants, loadConversations])
 
   return { conversationParticipantsMap, refreshConversationParticipants }
 }
-

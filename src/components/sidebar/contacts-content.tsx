@@ -1,8 +1,8 @@
-import { Bot, Drama, Users } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ModelList, type Model, type ModelVendor } from "@/components/model-list"
-import { AssistantList, type Assistant, type AssistantGroup } from "@/components/assistant-list"
-import { PeopleList, type Person, type PersonGroup } from "@/components/people-list"
+import { Bot, Drama, Users } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ModelList, type Model, type ModelVendor } from '@/components/model-list'
+import { AssistantList, type Assistant, type AssistantGroup } from '@/components/assistant-list'
+import { PeopleList, type Person, type PersonGroup } from '@/components/people-list'
 
 interface ContactsContentProps {
   activeTab: string
@@ -53,13 +53,16 @@ export function ContactsContent({
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full p-2">
       <TabsList className="w-full grid grid-cols-3 h-9">
         <TabsTrigger value="models" className="text-xs gap-1 px-2">
-          <Bot className="size-3.5" />Models
+          <Bot className="size-3.5" />
+          Models
         </TabsTrigger>
         <TabsTrigger value="assistants" className="text-xs gap-1 px-2">
-          <Drama className="size-3.5" />Assistants
+          <Drama className="size-3.5" />
+          Assistants
         </TabsTrigger>
         <TabsTrigger value="people" className="text-xs gap-1 px-2">
-          <Users className="size-3.5" />People
+          <Users className="size-3.5" />
+          People
         </TabsTrigger>
       </TabsList>
       <TabsContent value="models" className="mt-2">
@@ -95,4 +98,3 @@ export function ContactsContent({
     </Tabs>
   )
 }
-

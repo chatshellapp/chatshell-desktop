@@ -9,24 +9,25 @@ export function useVendorsList(): ModelVendor[] {
 
   return useMemo(() => {
     if (providers.length === 0) return []
-    
-    return providers.map((provider) => {
-      const providerModels = models
-        .filter((m) => m.provider_id === provider.id)
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          modelId: m.model_id,
-          logo: getModelLogo(m),
-          isStarred: m.is_starred || false,
-        }))
-      
-      return {
-        id: provider.id,
-        name: provider.name,
-        models: providerModels,
-      }
-    }).filter((vendor) => vendor.models.length > 0)
+
+    return providers
+      .map((provider) => {
+        const providerModels = models
+          .filter((m) => m.provider_id === provider.id)
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            modelId: m.model_id,
+            logo: getModelLogo(m),
+            isStarred: m.is_starred || false,
+          }))
+
+        return {
+          id: provider.id,
+          name: provider.name,
+          models: providerModels,
+        }
+      })
+      .filter((vendor) => vendor.models.length > 0)
   }, [models, providers])
 }
-

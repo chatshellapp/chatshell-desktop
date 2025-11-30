@@ -1,19 +1,15 @@
-import * as React from "react"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { PromptListItem } from "@/components/prompt-list-item"
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, MoreVertical } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { PromptListItem } from '@/components/prompt-list-item'
 
 export interface Prompt {
   /**
@@ -110,14 +106,14 @@ export function PromptList({
 
   // Create a virtual group for starred prompts
   const starredGroup: PromptGroup = {
-    id: "starred",
-    name: "Starred",
+    id: 'starred',
+    name: 'Starred',
     prompts: starredPrompts,
     defaultOpen: true,
   }
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred prompts group first if there are any starred prompts */}
       {hasStarredPrompts && (
         <PromptGroupComponent
@@ -173,7 +169,7 @@ function PromptGroupComponent({
   forceDefaultOpen = false,
   ignoreGroupDefault = false,
 }: PromptGroupComponentProps) {
-  // Determine initial open state: 
+  // Determine initial open state:
   // - If forceDefaultOpen is true, always open
   // - If ignoreGroupDefault is true, ignore group.defaultOpen (use false)
   // - Otherwise use group.defaultOpen, default to false
@@ -195,10 +191,7 @@ function PromptGroupComponent({
             className="w-full justify-start font-normal text-sm h-9 px-3"
           >
             <ChevronDown
-              className={cn(
-                "size-4 transition-transform duration-200",
-                !isOpen && "-rotate-90"
-              )}
+              className={cn('size-4 transition-transform duration-200', !isOpen && '-rotate-90')}
             />
             <span className="flex-1 text-left">{group.name}</span>
           </Button>
@@ -208,8 +201,8 @@ function PromptGroupComponent({
         {!hideGroupMenu && (
           <div
             className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 transition-opacity",
-              !isHovered && "opacity-0"
+              'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
+              !isHovered && 'opacity-0'
             )}
           >
             <DropdownMenu>
@@ -257,4 +250,3 @@ function PromptGroupComponent({
     </Collapsible>
   )
 }
-

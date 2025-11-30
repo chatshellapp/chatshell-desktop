@@ -1,19 +1,15 @@
-import * as React from "react"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { ModelListItem } from "@/components/model-list-item"
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, MoreVertical } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { ModelListItem } from '@/components/model-list-item'
 
 export interface Model {
   /**
@@ -123,14 +119,14 @@ export function ModelList({
 
   // Create a virtual vendor for starred models
   const starredVendor: ModelVendor = {
-    id: "starred",
-    name: "Starred",
+    id: 'starred',
+    name: 'Starred',
     models: starredModels,
     defaultOpen: true,
   }
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred models group first if there are any starred models */}
       {hasStarredModels && (
         <ModelVendorGroup
@@ -190,11 +186,12 @@ function ModelVendorGroup({
   ignoreVendorDefault = false,
   compact = false,
 }: ModelVendorGroupProps) {
-  // Determine initial open state: 
+  // Determine initial open state:
   // - If forceDefaultOpen is true, always open
   // - If ignoreVendorDefault is true, ignore vendor.defaultOpen (use false)
   // - Otherwise use vendor.defaultOpen, default to false
-  const initialOpenState = forceDefaultOpen || (!ignoreVendorDefault && (vendor.defaultOpen ?? false))
+  const initialOpenState =
+    forceDefaultOpen || (!ignoreVendorDefault && (vendor.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
 
@@ -210,15 +207,15 @@ function ModelVendorGroup({
             variant="ghost"
             size="sm"
             className={cn(
-              "w-full justify-start font-normal px-3",
-              compact ? "text-xs h-7" : "text-sm h-9"
+              'w-full justify-start font-normal px-3',
+              compact ? 'text-xs h-7' : 'text-sm h-9'
             )}
           >
             <ChevronDown
               className={cn(
-                "transition-transform duration-200",
-                compact ? "size-3" : "size-4",
-                !isOpen && "-rotate-90"
+                'transition-transform duration-200',
+                compact ? 'size-3' : 'size-4',
+                !isOpen && '-rotate-90'
               )}
             />
             <span className="flex-1 text-left">{vendor.name}</span>
@@ -229,8 +226,8 @@ function ModelVendorGroup({
         {!hideVendorMenu && (
           <div
             className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 transition-opacity",
-              !isHovered && "opacity-0"
+              'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
+              !isHovered && 'opacity-0'
             )}
           >
             <DropdownMenu>
@@ -281,4 +278,3 @@ function ModelVendorGroup({
     </Collapsible>
   )
 }
-

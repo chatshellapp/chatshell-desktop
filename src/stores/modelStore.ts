@@ -8,7 +8,7 @@ interface ModelState {
   providers: Provider[]
   isLoading: boolean
   error: string | null
-  
+
   loadModels: () => Promise<void>
   loadProviders: () => Promise<void>
   loadAll: () => Promise<void>
@@ -19,108 +19,109 @@ interface ModelState {
 
 export const useModelStore = create<ModelState>()(
   immer((set, get) => ({
-  models: [],
-  providers: [],
-  isLoading: false,
-  error: null,
+    models: [],
+    providers: [],
+    isLoading: false,
+    error: null,
 
-  loadModels: async () => {
-    set((draft) => {
-      draft.isLoading = true
-      draft.error = null
-    })
-    try {
-      const models = await invoke<Model[]>('list_models')
-      console.log('[modelStore] Loaded models:', models)
+    loadModels: async () => {
       set((draft) => {
-        draft.models = models
-        draft.isLoading = false
+        draft.isLoading = true
+        draft.error = null
       })
-    } catch (error) {
-      console.error('[modelStore] Failed to load models:', error)
-      set((draft) => {
-        draft.error = String(error)
-        draft.isLoading = false
-      })
-    }
-  },
+      try {
+        const models = await invoke<Model[]>('list_models')
+        console.log('[modelStore] Loaded models:', models)
+        set((draft) => {
+          draft.models = models
+          draft.isLoading = false
+        })
+      } catch (error) {
+        console.error('[modelStore] Failed to load models:', error)
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+      }
+    },
 
-  loadProviders: async () => {
-    set((draft) => {
-      draft.isLoading = true
-      draft.error = null
-    })
-    try {
-      const providers = await invoke<Provider[]>('list_providers')
-      console.log('[modelStore] Loaded providers:', providers)
+    loadProviders: async () => {
       set((draft) => {
-        draft.providers = providers
-        draft.isLoading = false
+        draft.isLoading = true
+        draft.error = null
       })
-    } catch (error) {
-      console.error('[modelStore] Failed to load providers:', error)
-      set((draft) => {
-        draft.error = String(error)
-        draft.isLoading = false
-      })
-    }
-  },
+      try {
+        const providers = await invoke<Provider[]>('list_providers')
+        console.log('[modelStore] Loaded providers:', providers)
+        set((draft) => {
+          draft.providers = providers
+          draft.isLoading = false
+        })
+      } catch (error) {
+        console.error('[modelStore] Failed to load providers:', error)
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+      }
+    },
 
-  loadAll: async () => {
-    set((draft) => {
-      draft.isLoading = true
-      draft.error = null
-    })
-    try {
-      const [models, providers] = await Promise.all([
-        invoke<Model[]>('list_models'),
-        invoke<Provider[]>('list_providers')
-      ])
-      console.log('[modelStore] Loaded models:', models)
-      console.log('[modelStore] Loaded providers:', providers)
+    loadAll: async () => {
       set((draft) => {
-        draft.models = models
-        draft.providers = providers
-        draft.isLoading = false
+        draft.isLoading = true
+        draft.error = null
       })
-    } catch (error) {
-      console.error('[modelStore] Failed to load models and providers:', error)
-      set((draft) => {
-        draft.error = String(error)
-        draft.isLoading = false
-      })
-    }
-  },
+      try {
+        const [models, providers] = await Promise.all([
+          invoke<Model[]>('list_models'),
+          invoke<Provider[]>('list_providers'),
+        ])
+        console.log('[modelStore] Loaded models:', models)
+        console.log('[modelStore] Loaded providers:', providers)
+        set((draft) => {
+          draft.models = models
+          draft.providers = providers
+          draft.isLoading = false
+        })
+      } catch (error) {
+        console.error('[modelStore] Failed to load models and providers:', error)
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+      }
+    },
 
-  updateModel: async (id: string, req: CreateModelRequest) => {
-    set((draft) => {
-      draft.isLoading = true
-      draft.error = null
-    })
-    try {
-      const model = await invoke<Model>('update_model', { id, req })
+    updateModel: async (id: string, req: CreateModelRequest) => {
       set((draft) => {
-        const index = draft.models.findIndex((m: Model) => m.id === id)
-        if (index >= 0) {
-          draft.models[index] = model
-        }
-        draft.isLoading = false
+        draft.isLoading = true
+        draft.error = null
       })
-      return model
-    } catch (error) {
-      set((draft) => {
-        draft.error = String(error)
-        draft.isLoading = false
-      })
-      throw error
-    }
-  },
+      try {
+        const model = await invoke<Model>('update_model', { id, req })
+        set((draft) => {
+          const index = draft.models.findIndex((m: Model) => m.id === id)
+          if (index >= 0) {
+            draft.models[index] = model
+          }
+          draft.isLoading = false
+        })
+        return model
+      } catch (error) {
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+        throw error
+      }
+    },
 
-  getModelById: (id: string) => {
-    return get().models.find(m => m.id === id)
-  },
+    getModelById: (id: string) => {
+      return get().models.find((m) => m.id === id)
+    },
 
-  getProviderById: (id: string) => {
-    return get().providers.find(p => p.id === id)
-  },
-})))
+    getProviderById: (id: string) => {
+      return get().providers.find((p) => p.id === id)
+    },
+  }))
+)

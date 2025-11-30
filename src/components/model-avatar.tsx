@@ -1,6 +1,6 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { getModelLogoById } from "@/lib/model-logos"
-import { cn } from "@/lib/utils"
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { getModelLogoById } from '@/lib/model-logos'
+import { cn } from '@/lib/utils'
 
 interface ModelAvatarProps {
   /**
@@ -19,7 +19,7 @@ interface ModelAvatarProps {
   /**
    * Size variant
    */
-  size?: "xxs" | "xs" | "sm" | "md"
+  size?: 'xxs' | 'xs' | 'sm' | 'md'
   /**
    * Additional className for Avatar container
    */
@@ -27,34 +27,26 @@ interface ModelAvatarProps {
 }
 
 const sizeConfig = {
-  xxs: { avatar: "size-3", fallback: "text-[8px]" },
-  xs: { avatar: "size-4", fallback: "text-[10px]" },
-  sm: { avatar: "size-6", fallback: "text-[10px]" },
-  md: { avatar: "size-8", fallback: "text-xs" },
+  xxs: { avatar: 'size-3', fallback: 'text-[8px]' },
+  xs: { avatar: 'size-4', fallback: 'text-[10px]' },
+  sm: { avatar: 'size-6', fallback: 'text-[10px]' },
+  md: { avatar: 'size-8', fallback: 'text-xs' },
 }
 
-export function ModelAvatar({
-  logo,
-  modelId,
-  name,
-  size = "md",
-  className,
-}: ModelAvatarProps) {
+export function ModelAvatar({ logo, modelId, name, size = 'md', className }: ModelAvatarProps) {
   // Get logo with fallback logic - same as model-list-item.tsx
-  const displayLogo = logo || 
-    (modelId ? getModelLogoById(modelId) : undefined) || 
+  const displayLogo =
+    logo ||
+    (modelId ? getModelLogoById(modelId) : undefined) ||
     (name ? getModelLogoById(name) : undefined)
 
-  const fallbackChar = name?.charAt(0)?.toUpperCase() || "M"
+  const fallbackChar = name?.charAt(0)?.toUpperCase() || 'M'
   const { avatar: avatarClass, fallback: fallbackClass } = sizeConfig[size]
 
   return (
     <Avatar className={cn(avatarClass, className)}>
-      {displayLogo && <AvatarImage src={displayLogo} alt={name || "Model"} />}
-      <AvatarFallback className={fallbackClass}>
-        {fallbackChar}
-      </AvatarFallback>
+      {displayLogo && <AvatarImage src={displayLogo} alt={name || 'Model'} />}
+      <AvatarFallback className={fallbackClass}>{fallbackChar}</AvatarFallback>
     </Avatar>
   )
 }
-

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Provider {
     pub id: String,
-    pub name: String,           // Display name, e.g., "Ollama Local", "OpenAI"
-    pub provider_type: String,  // Type: ollama, openai, openrouter
+    pub name: String,          // Display name, e.g., "Ollama Local", "OpenAI"
+    pub provider_type: String, // Type: ollama, openai, openrouter
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub description: Option<String>,
@@ -28,11 +28,11 @@ pub struct CreateProviderRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
     pub id: String,
-    pub name: String,           // Display name, e.g., "DeepSeek R1 14B"
-    pub provider_id: String,    // Foreign key to providers table
-    pub model_id: String,       // Actual model identifier, e.g., "deepseek-r1:14b"
+    pub name: String,        // Display name, e.g., "DeepSeek R1 14B"
+    pub provider_id: String, // Foreign key to providers table
+    pub model_id: String,    // Actual model identifier, e.g., "deepseek-r1:14b"
     pub description: Option<String>,
-    pub is_starred: bool,       // Whether model is starred for quick access
+    pub is_starred: bool, // Whether model is starred for quick access
     pub created_at: String,
     pub updated_at: String,
 }
@@ -55,15 +55,15 @@ pub struct Assistant {
     pub description: Option<String>,
     pub system_prompt: String,
     pub user_prompt: Option<String>,
-    pub model_id: String,       // Foreign key to models table
-    
+    pub model_id: String, // Foreign key to models table
+
     // Avatar fields
     pub avatar_type: String,
     pub avatar_bg: Option<String>,
     pub avatar_text: Option<String>,
     pub avatar_image_path: Option<String>,
     pub avatar_image_url: Option<String>,
-    
+
     pub group_name: Option<String>,
     pub is_starred: bool,
     pub created_at: String,
@@ -77,14 +77,14 @@ pub struct CreateAssistantRequest {
     pub description: Option<String>,
     pub system_prompt: String,
     pub user_prompt: Option<String>,
-    pub model_id: String,       // Foreign key to models table
-    
+    pub model_id: String, // Foreign key to models table
+
     pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,
     pub avatar_text: Option<String>,
     pub avatar_image_path: Option<String>,
     pub avatar_image_url: Option<String>,
-    
+
     pub group_name: Option<String>,
     pub is_starred: Option<bool>,
 }
@@ -173,7 +173,7 @@ pub struct UserRelationship {
     pub id: String,
     pub user_id: String,
     pub related_user_id: String,
-    pub relationship_type: String,  // "friend", "blocked", "pending"
+    pub relationship_type: String, // "friend", "blocked", "pending"
     pub created_at: String,
     pub updated_at: String,
 }
@@ -206,11 +206,11 @@ pub struct CreateConversationRequest {
 pub struct ConversationParticipant {
     pub id: String,
     pub conversation_id: String,
-    pub participant_type: String,  // "user", "model", "assistant"
+    pub participant_type: String, // "user", "model", "assistant"
     pub participant_id: Option<String>,
     pub display_name: Option<String>,
-    pub role: String,              // "owner", "admin", "member", "observer"
-    pub status: String,            // "active", "left", "removed", "invited"
+    pub role: String,   // "owner", "admin", "member", "observer"
+    pub status: String, // "active", "left", "removed", "invited"
     pub joined_at: String,
     pub left_at: Option<String>,
     pub last_read_at: Option<String>,
@@ -269,7 +269,7 @@ pub struct CreateMessageRequest {
 pub struct SearchResult {
     pub id: String,
     pub query: String,
-    pub engine: String,              // "google" | "bing" | "duckduckgo"
+    pub engine: String, // "google" | "bing" | "duckduckgo"
     pub total_results: Option<i64>,
     pub searched_at: String,
     pub created_at: String,
@@ -288,17 +288,17 @@ pub struct CreateSearchResultRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchResult {
     pub id: String,
-    pub search_id: Option<String>,   // FK to search_results (NULL if standalone fetch)
+    pub search_id: Option<String>, // FK to search_results (NULL if standalone fetch)
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub storage_path: String,        // Path relative to attachments dir: "fetch/{uuid}.md"
-    pub content_type: String,        // MIME type of stored content: "text/markdown", "text/plain"
+    pub storage_path: String, // Path relative to attachments dir: "fetch/{uuid}.md"
+    pub content_type: String, // MIME type of stored content: "text/markdown", "text/plain"
     pub original_mime: Option<String>, // Original MIME type from HTTP response
-    pub status: String,              // "pending" | "processing" | "success" | "failed"
+    pub status: String,       // "pending" | "processing" | "success" | "failed"
     pub error: Option<String>,
     pub keywords: Option<String>,
-    pub headings: Option<String>,    // JSON array of headings
+    pub headings: Option<String>, // JSON array of headings
     pub original_size: Option<i64>,
     pub processed_size: Option<i64>,
     pub favicon_url: Option<String>,
@@ -332,7 +332,7 @@ pub struct FileAttachment {
     pub file_name: String,
     pub file_size: i64,
     pub mime_type: String,
-    pub storage_path: String,        // Path relative to attachments dir: "files/{uuid}.pdf"
+    pub storage_path: String, // Path relative to attachments dir: "files/{uuid}.pdf"
     pub created_at: String,
 }
 
@@ -384,7 +384,7 @@ impl std::fmt::Display for AttachmentType {
 
 impl std::str::FromStr for AttachmentType {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "search_result" => Ok(AttachmentType::SearchResult),
@@ -426,7 +426,7 @@ impl Attachment {
             Attachment::SearchDecision(d) => &d.id,
         }
     }
-    
+
     pub fn attachment_type(&self) -> AttachmentType {
         match self {
             Attachment::SearchResult(_) => AttachmentType::SearchResult,
@@ -466,4 +466,3 @@ pub struct Setting {
     pub value: String,
     pub updated_at: String,
 }
-

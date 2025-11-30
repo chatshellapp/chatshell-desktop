@@ -101,17 +101,17 @@ lazy_static! {
 /// Create a new headless browser instance
 pub fn create_new_browser() -> Result<Browser> {
     println!("🌐 [headless] Creating new browser instance...");
-    
+
     let launch_options = LaunchOptions::default_builder()
         .headless(true)
         .window_size(Some((1920, 1080)))
         .idle_browser_timeout(Duration::from_secs(300))
         .build()
         .map_err(|e| anyhow::anyhow!("Failed to build launch options: {}", e))?;
-    
+
     let browser = Browser::new(launch_options)
         .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
-    
+
     println!("✅ [headless] Browser instance created");
     Ok(browser)
 }
@@ -120,64 +120,79 @@ pub fn create_new_browser() -> Result<Browser> {
 /// This is used as a fallback when direct HTTP fetch fails (e.g., 403 errors from bot protection)
 fn fetch_with_headless_browser(url: &str) -> Result<String> {
     println!("🔄 [headless] Fetching with headless browser: {}", url);
-    
+
     let browser = create_new_browser()?;
-    
-    let tab = browser.new_tab()
+
+    let tab = browser
+        .new_tab()
         .map_err(|e| anyhow::anyhow!("Failed to create tab: {}", e))?;
-    
+
     // Set realistic User-Agent before navigation
     tab.set_user_agent(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Some("en-US,en;q=0.9"),
         Some("macOS"),
     ).map_err(|e| anyhow::anyhow!("Failed to set user agent: {}", e))?;
-    
+
     // Navigate to a blank page first to inject stealth JS
     tab.navigate_to("about:blank")
         .map_err(|e| anyhow::anyhow!("Failed to navigate to blank: {}", e))?;
     tab.wait_until_navigated()
         .map_err(|e| anyhow::anyhow!("Blank navigation timeout: {}", e))?;
-    
+
     // Inject stealth JavaScript to hide headless detection
     tab.evaluate(&*STEALTH_JS, false)
         .map_err(|e| anyhow::anyhow!("Failed to inject stealth JS: {}", e))?;
-    
+
     println!("🛡️ [headless] Stealth mode enabled, navigating to target...");
-    
+
     // Navigate to the actual URL
     tab.navigate_to(url)
         .map_err(|e| anyhow::anyhow!("Failed to navigate: {}", e))?;
-    
+
     // Wait for navigation to complete
     tab.wait_until_navigated()
         .map_err(|e| anyhow::anyhow!("Navigation timeout: {}", e))?;
-    
+
     // Wait for Cloudflare challenge to complete (usually takes 5-10 seconds)
     println!("⏳ [headless] Waiting for page to load (Cloudflare check)...");
     std::thread::sleep(Duration::from_secs(8));
-    
+
     // Check if we're still on the challenge page
-    let mut html = tab.get_content()
+    let mut html = tab
+        .get_content()
         .map_err(|e| anyhow::anyhow!("Failed to get page content: {}", e))?;
-    
+
     // If still showing challenge, wait more and retry
-    let challenge_indicators = ["Just a moment", "Verifying", "checking your browser", "Please wait", "Checking if the site"];
+    let challenge_indicators = [
+        "Just a moment",
+        "Verifying",
+        "checking your browser",
+        "Please wait",
+        "Checking if the site",
+    ];
     let mut retries = 0;
     while retries < 3 && challenge_indicators.iter().any(|ind| html.contains(ind)) {
-        println!("⏳ [headless] Still on challenge page, waiting more... (retry {})", retries + 1);
+        println!(
+            "⏳ [headless] Still on challenge page, waiting more... (retry {})",
+            retries + 1
+        );
         std::thread::sleep(Duration::from_secs(5));
-        html = tab.get_content()
+        html = tab
+            .get_content()
             .map_err(|e| anyhow::anyhow!("Failed to get page content: {}", e))?;
         retries += 1;
     }
-    
+
     if challenge_indicators.iter().any(|ind| html.contains(ind)) {
-        return Err(anyhow::anyhow!("Cloudflare challenge could not be bypassed after {} retries", retries));
+        return Err(anyhow::anyhow!(
+            "Cloudflare challenge could not be bypassed after {} retries",
+            retries
+        ));
     }
-    
+
     println!("✅ [headless] Successfully fetched {} bytes", html.len());
-    
+
     Ok(html)
 }
 
@@ -185,17 +200,22 @@ fn fetch_with_headless_browser(url: &str) -> Result<String> {
 /// Runs the blocking headless browser operation in a separate thread
 async fn fetch_with_headless_fallback(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
     let url_owned = url.to_string();
-    
+
     // Run headless browser in blocking thread to avoid blocking async runtime
-    let html_result = tokio::task::spawn_blocking(move || {
-        fetch_with_headless_browser(&url_owned)
-    }).await;
-    
+    let html_result =
+        tokio::task::spawn_blocking(move || fetch_with_headless_browser(&url_owned)).await;
+
     match html_result {
         Ok(Ok(html)) => {
             // Successfully got HTML from headless browser
             let favicon_url = extract_favicon_url(url, Some(&html));
-            process_html_with_readability(url, &html, "text/html".to_string(), max_chars, favicon_url)
+            process_html_with_readability(
+                url,
+                &html,
+                "text/html".to_string(),
+                max_chars,
+                favicon_url,
+            )
         }
         Ok(Err(e)) => {
             // Headless browser fetch failed
@@ -241,7 +261,7 @@ fn extract_favicon_from_html(document: &Html, base_url: &Url) -> Option<String> 
         r#"link[rel="apple-touch-icon"]"#,
         r#"link[rel="apple-touch-icon-precomposed"]"#,
     ];
-    
+
     for selector_str in &selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
             for element in document.select(&selector) {
@@ -254,7 +274,7 @@ fn extract_favicon_from_html(document: &Html, base_url: &Url) -> Option<String> 
             }
         }
     }
-    
+
     None
 }
 
@@ -262,7 +282,7 @@ fn extract_favicon_from_html(document: &Html, base_url: &Url) -> Option<String> 
 /// Returns None if favicon cannot be extracted from HTML (frontend will show globe icon)
 fn extract_favicon_url(url: &str, html_content: Option<&str>) -> Option<String> {
     let parsed_url = Url::parse(url).ok()?;
-    
+
     // Only extract favicon from HTML content
     if let Some(html) = html_content {
         let document = Html::parse_document(html);
@@ -271,7 +291,7 @@ fn extract_favicon_url(url: &str, html_content: Option<&str>) -> Option<String> 
             return Some(favicon);
         }
     }
-    
+
     // No favicon found - frontend will display globe icon
     None
 }
@@ -369,7 +389,12 @@ fn normalize_html_images(html: &str) -> String {
 }
 
 /// Create an error response with default metadata
-fn create_error_response(url: &str, mime_type: String, error: String, favicon_url: Option<String>) -> FetchedWebResource {
+fn create_error_response(
+    url: &str,
+    mime_type: String,
+    error: String,
+    favicon_url: Option<String>,
+) -> FetchedWebResource {
     FetchedWebResource {
         url: url.to_string(),
         title: None,
@@ -407,7 +432,12 @@ fn process_html_with_readability(
     let parsed_url = match Url::parse(url) {
         Ok(u) => u,
         Err(e) => {
-            return create_error_response(url, mime_type, format!("Invalid URL: {}", e), favicon_url);
+            return create_error_response(
+                url,
+                mime_type,
+                format!("Invalid URL: {}", e),
+                favicon_url,
+            );
         }
     };
 
@@ -578,7 +608,10 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         Ok(r) => r,
         Err(e) => {
             // Network error - try headless browser fallback
-            println!("⚠️ [fetcher] HTTP request failed: {}, trying headless browser...", e);
+            println!(
+                "⚠️ [fetcher] HTTP request failed: {}, trying headless browser...",
+                e
+            );
             return fetch_with_headless_fallback(url, max_chars).await;
         }
     };
@@ -587,7 +620,10 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
 
     // If non-200 status, try headless browser fallback
     if !response.status().is_success() {
-        println!("⚠️ [fetcher] HTTP error {}, trying headless browser fallback...", response.status());
+        println!(
+            "⚠️ [fetcher] HTTP error {}, trying headless browser fallback...",
+            response.status()
+        );
         return fetch_with_headless_fallback(url, max_chars).await;
     }
 
@@ -598,7 +634,12 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         .unwrap_or("")
         .to_lowercase();
 
-    let mime_type = content_type.split(';').next().unwrap_or("").trim().to_string();
+    let mime_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     let body = match response.text().await {
         Ok(c) => c,
@@ -627,14 +668,10 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         }
 
         // Plain text - return directly (no favicon for non-HTML)
-        "text/plain" => {
-            process_text_content(url, &body, mime_type, max_chars, None)
-        }
+        "text/plain" => process_text_content(url, &body, mime_type, max_chars, None),
 
         // JSON - format as code block (no favicon for non-HTML)
-        "application/json" => {
-            process_json_content(url, &body, max_chars, None)
-        }
+        "application/json" => process_json_content(url, &body, max_chars, None),
 
         // XML - treat as text with code block (no favicon for non-HTML)
         "application/xml" | "text/xml" => {
@@ -691,7 +728,13 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 || trimmed.starts_with("<HTML")
             {
                 let favicon_url = extract_favicon_url(url, Some(&body));
-                process_html_with_readability(url, &body, "text/html".to_string(), max_chars, favicon_url)
+                process_html_with_readability(
+                    url,
+                    &body,
+                    "text/html".to_string(),
+                    max_chars,
+                    favicon_url,
+                )
             } else {
                 // Treat as plain text (no favicon for non-HTML)
                 process_text_content(url, &body, mime_type, max_chars, None)
@@ -718,10 +761,7 @@ pub async fn process_message_urls(
 }
 
 /// Fetch multiple URLs in parallel (takes a list of URLs directly)
-pub async fn fetch_urls(
-    urls: &[String],
-    max_chars: Option<usize>,
-) -> Vec<FetchedWebResource> {
+pub async fn fetch_urls(urls: &[String], max_chars: Option<usize>) -> Vec<FetchedWebResource> {
     if urls.is_empty() {
         return vec![];
     }
@@ -765,7 +805,10 @@ pub fn build_llm_content_with_attachments(
             content.push_str(&format!(
                 "\n\n---\n**Note:** Could not fetch content from {}: {}",
                 resource.url,
-                resource.extraction_error.as_deref().unwrap_or("Unknown error")
+                resource
+                    .extraction_error
+                    .as_deref()
+                    .unwrap_or("Unknown error")
             ));
         } else {
             content.push_str(&format!(
@@ -834,28 +877,40 @@ mod tests {
     fn test_normalize_html_images_with_srcset() {
         let html = r#"<img src="https://example.com/image.jpg!720" alt="" width="1920" height="1080" srcset="https://example.com/image.jpg!720 1920w, https://example.com/image-360.jpg 360w" sizes="(max-width: 1920px) 100vw, 1920px">"#;
         let result = normalize_html_images(html);
-        assert_eq!(result, r#"<img src="https://example.com/image.jpg!720" alt="">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/image.jpg!720" alt="">"#
+        );
     }
 
     #[test]
     fn test_normalize_html_images_with_alt() {
         let html = r#"<img src="https://example.com/photo.png" alt="A beautiful sunset" class="responsive">"#;
         let result = normalize_html_images(html);
-        assert_eq!(result, r#"<img src="https://example.com/photo.png" alt="A beautiful sunset">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/photo.png" alt="A beautiful sunset">"#
+        );
     }
 
     #[test]
     fn test_normalize_html_images_alt_before_src() {
         let html = r#"<img alt="Test image" src="https://example.com/test.jpg" width="100">"#;
         let result = normalize_html_images(html);
-        assert_eq!(result, r#"<img src="https://example.com/test.jpg" alt="Test image">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/test.jpg" alt="Test image">"#
+        );
     }
 
     #[test]
     fn test_normalize_html_images_self_closing() {
         let html = r#"<img src="https://example.com/image.jpg" alt="test" />"#;
         let result = normalize_html_images(html);
-        assert_eq!(result, r#"<img src="https://example.com/image.jpg" alt="test">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/image.jpg" alt="test">"#
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -117,24 +117,24 @@
   body {
     @apply bg-background text-foreground;
   }
-  
+
   /* Add cursor pointer for all interactive elements */
   button,
   a,
   select,
-  [role="button"],
-  [role="link"],
-  [role="menuitem"],
-  [role="tab"],
-  [role="option"],
-  [type="button"],
-  [type="submit"],
-  [type="reset"],
+  [role='button'],
+  [role='link'],
+  [role='menuitem'],
+  [role='tab'],
+  [role='option'],
+  [type='button'],
+  [type='submit'],
+  [type='reset'],
   label[for],
   summary {
     @apply cursor-pointer;
   }
-  
+
   /* Disabled elements should show not-allowed cursor */
   button:disabled,
   [disabled] {

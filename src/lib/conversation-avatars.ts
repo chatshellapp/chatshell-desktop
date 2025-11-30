@@ -1,6 +1,6 @@
-import { getModelLogo } from "@/lib/model-logos"
-import type { ParticipantSummary, Model } from "@/types"
-import type { AvatarData } from "@/components/message-list-item"
+import { getModelLogo } from '@/lib/model-logos'
+import type { ParticipantSummary, Model } from '@/types'
+import type { AvatarData } from '@/components/message-list-item'
 
 export function buildConversationAvatars(
   participants: ParticipantSummary[],
@@ -10,14 +10,15 @@ export function buildConversationAvatars(
 
   participants.forEach((participant) => {
     if (participant.participant_type === 'assistant') {
-      const hasCustomImage = participant.avatar_type === 'image' && 
-                            (participant.avatar_image_url || participant.avatar_image_path)
-      
+      const hasCustomImage =
+        participant.avatar_type === 'image' &&
+        (participant.avatar_image_url || participant.avatar_image_path)
+
       if (hasCustomImage) {
         avatars.push({
           type: 'image',
           imageUrl: participant.avatar_image_url || participant.avatar_image_path || '',
-          fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase()
+          fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
         })
       } else {
         const avatarBg = participant.avatar_bg || '#3b82f6'
@@ -25,7 +26,7 @@ export function buildConversationAvatars(
           type: 'text',
           text: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
           backgroundColor: avatarBg,
-          fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase()
+          fallback: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
         })
       }
     } else if (participant.participant_type === 'model' && participant.participant_id) {
@@ -36,7 +37,7 @@ export function buildConversationAvatars(
           avatars.push({
             type: 'image',
             imageUrl: modelLogo,
-            fallback: model.name.charAt(0).toUpperCase()
+            fallback: model.name.charAt(0).toUpperCase(),
           })
         } else {
           // Don't set backgroundColor - let the Avatar use its default bg-muted styling
@@ -44,7 +45,7 @@ export function buildConversationAvatars(
           avatars.push({
             type: 'text',
             text: model.name.charAt(0).toUpperCase(),
-            fallback: model.name.charAt(0).toUpperCase()
+            fallback: model.name.charAt(0).toUpperCase(),
           })
         }
       }
@@ -55,7 +56,7 @@ export function buildConversationAvatars(
           avatars.push({
             type: 'image',
             imageUrl,
-            fallback: participant.display_name.charAt(0).toUpperCase()
+            fallback: participant.display_name.charAt(0).toUpperCase(),
           })
         }
       } else {
@@ -63,7 +64,7 @@ export function buildConversationAvatars(
           type: 'text',
           text: participant.avatar_text || participant.display_name.charAt(0).toUpperCase(),
           backgroundColor: participant.avatar_bg || '#6366f1',
-          fallback: participant.display_name.charAt(0).toUpperCase()
+          fallback: participant.display_name.charAt(0).toUpperCase(),
         })
       }
     }
@@ -71,4 +72,3 @@ export function buildConversationAvatars(
 
   return avatars
 }
-

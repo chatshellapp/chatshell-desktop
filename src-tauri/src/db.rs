@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -23,9 +23,9 @@ impl Database {
 
     /// Safely acquire database lock, converting poison errors to anyhow::Error
     fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
-        self.conn.lock().map_err(|e| {
-            anyhow::anyhow!("Database lock poisoned: {}", e)
-        })
+        self.conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))
     }
 
     fn init_schema(&self) -> Result<()> {
@@ -1031,7 +1031,10 @@ impl Database {
     }
 
     // Conversation Participant CRUD operations
-    pub fn add_conversation_participant(&self, req: CreateConversationParticipantRequest) -> Result<ConversationParticipant> {
+    pub fn add_conversation_participant(
+        &self,
+        req: CreateConversationParticipantRequest,
+    ) -> Result<ConversationParticipant> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -1049,7 +1052,10 @@ impl Database {
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created participant"))
     }
 
-    pub fn get_conversation_participant(&self, id: &str) -> Result<Option<ConversationParticipant>> {
+    pub fn get_conversation_participant(
+        &self,
+        id: &str,
+    ) -> Result<Option<ConversationParticipant>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
@@ -1078,7 +1084,10 @@ impl Database {
         Ok(participant)
     }
 
-    pub fn list_conversation_participants(&self, conversation_id: &str) -> Result<Vec<ConversationParticipant>> {
+    pub fn list_conversation_participants(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<ConversationParticipant>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
@@ -1175,7 +1184,10 @@ impl Database {
 
     pub fn remove_conversation_participant(&self, id: &str) -> Result<()> {
         let conn = self.lock_conn()?;
-        conn.execute("DELETE FROM conversation_participants WHERE id = ?1", params![id])?;
+        conn.execute(
+            "DELETE FROM conversation_participants WHERE id = ?1",
+            params![id],
+        )?;
         Ok(())
     }
 
@@ -1184,15 +1196,20 @@ impl Database {
         println!("🔒 [db] Acquiring lock for create_message...");
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
-        
+
         {
             let conn = self.lock_conn()?;
             println!("✅ [db] Lock acquired");
-            
-            let target_id = req.conversation_id.as_ref()
+
+            let target_id = req
+                .conversation_id
+                .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or("unknown");
-            println!("💾 [db] Executing INSERT for message (conversation_id: {})", target_id);
+            println!(
+                "💾 [db] Executing INSERT for message (conversation_id: {})",
+                target_id
+            );
             conn.execute(
                 "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -1212,7 +1229,8 @@ impl Database {
         }
 
         println!("🔍 [db] Retrieving created message...");
-        let result = self.get_message(&id)?
+        let result = self
+            .get_message(&id)?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created message"));
         println!("✅ [db] Message retrieved: {:?}", result.is_ok());
         result
@@ -1270,7 +1288,10 @@ impl Database {
 
     pub fn delete_messages_in_conversation(&self, conversation_id: &str) -> Result<()> {
         let conn = self.lock_conn()?;
-        conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![conversation_id])?;
+        conn.execute(
+            "DELETE FROM messages WHERE conversation_id = ?1",
+            params![conversation_id],
+        )?;
         Ok(())
     }
 
@@ -1296,7 +1317,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, query, engine, total_results, searched_at, created_at
-             FROM search_results WHERE id = ?1"
+             FROM search_results WHERE id = ?1",
         )?;
 
         stmt.query_row(params![id], |row| {
@@ -1308,7 +1329,8 @@ impl Database {
                 searched_at: row.get(4)?,
                 created_at: row.get(5)?,
             })
-        }).map_err(|e| anyhow::anyhow!("Search result not found: {}", e))
+        })
+        .map_err(|e| anyhow::anyhow!("Search result not found: {}", e))
     }
 
     pub fn delete_search_result(&self, id: &str) -> Result<()> {
@@ -1385,7 +1407,9 @@ impl Database {
                 storage_path: row.get(5)?,
                 content_type: row.get(6)?,
                 original_mime: row.get(7)?,
-                status: row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "pending".to_string()),
+                status: row
+                    .get::<_, Option<String>>(8)?
+                    .unwrap_or_else(|| "pending".to_string()),
                 error: row.get(9)?,
                 keywords: row.get(10)?,
                 headings: row.get(11)?,
@@ -1395,7 +1419,8 @@ impl Database {
                 created_at: row.get(15)?,
                 updated_at: row.get(16)?,
             })
-        }).map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
+        })
+        .map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
     }
 
     pub fn get_fetch_results_by_search(&self, search_id: &str) -> Result<Vec<FetchResult>> {
@@ -1407,32 +1432,41 @@ impl Database {
              ORDER BY created_at"
         )?;
 
-        let results = stmt.query_map(params![search_id], |row| {
-            Ok(FetchResult {
-                id: row.get(0)?,
-                search_id: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                description: row.get(4)?,
-                storage_path: row.get(5)?,
-                content_type: row.get(6)?,
-                original_mime: row.get(7)?,
-                status: row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "pending".to_string()),
-                error: row.get(9)?,
-                keywords: row.get(10)?,
-                headings: row.get(11)?,
-                original_size: row.get(12)?,
-                processed_size: row.get(13)?,
-                favicon_url: row.get(14)?,
-                created_at: row.get(15)?,
-                updated_at: row.get(16)?,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+        let results = stmt
+            .query_map(params![search_id], |row| {
+                Ok(FetchResult {
+                    id: row.get(0)?,
+                    search_id: row.get(1)?,
+                    url: row.get(2)?,
+                    title: row.get(3)?,
+                    description: row.get(4)?,
+                    storage_path: row.get(5)?,
+                    content_type: row.get(6)?,
+                    original_mime: row.get(7)?,
+                    status: row
+                        .get::<_, Option<String>>(8)?
+                        .unwrap_or_else(|| "pending".to_string()),
+                    error: row.get(9)?,
+                    keywords: row.get(10)?,
+                    headings: row.get(11)?,
+                    original_size: row.get(12)?,
+                    processed_size: row.get(13)?,
+                    favicon_url: row.get(14)?,
+                    created_at: row.get(15)?,
+                    updated_at: row.get(16)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(results)
     }
 
-    pub fn update_fetch_result_status(&self, id: &str, status: &str, error: Option<&str>) -> Result<()> {
+    pub fn update_fetch_result_status(
+        &self,
+        id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = self.lock_conn()?;
         conn.execute(
@@ -1450,7 +1484,10 @@ impl Database {
 
     // ========== File Attachment Operations ==========
 
-    pub fn create_file_attachment(&self, req: CreateFileAttachmentRequest) -> Result<FileAttachment> {
+    pub fn create_file_attachment(
+        &self,
+        req: CreateFileAttachmentRequest,
+    ) -> Result<FileAttachment> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -1459,7 +1496,14 @@ impl Database {
             conn.execute(
                 "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![id, req.file_name, req.file_size, req.mime_type, req.storage_path, now],
+                params![
+                    id,
+                    req.file_name,
+                    req.file_size,
+                    req.mime_type,
+                    req.storage_path,
+                    now
+                ],
             )?;
         }
 
@@ -1470,7 +1514,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, file_name, file_size, mime_type, storage_path, created_at
-             FROM files WHERE id = ?1"
+             FROM files WHERE id = ?1",
         )?;
 
         stmt.query_row(params![id], |row| {
@@ -1482,7 +1526,8 @@ impl Database {
                 storage_path: row.get(4)?,
                 created_at: row.get(5)?,
             })
-        }).map_err(|e| anyhow::anyhow!("File attachment not found: {}", e))
+        })
+        .map_err(|e| anyhow::anyhow!("File attachment not found: {}", e))
     }
 
     pub fn delete_file_attachment(&self, id: &str) -> Result<()> {
@@ -1493,7 +1538,10 @@ impl Database {
 
     // ========== Search Decision Operations ==========
 
-    pub fn create_search_decision(&self, req: CreateSearchDecisionRequest) -> Result<SearchDecision> {
+    pub fn create_search_decision(
+        &self,
+        req: CreateSearchDecisionRequest,
+    ) -> Result<SearchDecision> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -1513,7 +1561,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, reasoning, search_needed, search_query, created_at
-             FROM search_decisions WHERE id = ?1"
+             FROM search_decisions WHERE id = ?1",
         )?;
 
         stmt.query_row(params![id], |row| {
@@ -1524,7 +1572,8 @@ impl Database {
                 search_query: row.get(3)?,
                 created_at: row.get(4)?,
             })
-        }).map_err(|e| anyhow::anyhow!("Search decision not found: {}", e))
+        })
+        .map_err(|e| anyhow::anyhow!("Search decision not found: {}", e))
     }
 
     pub fn delete_search_decision(&self, id: &str) -> Result<()> {
@@ -1551,7 +1600,14 @@ impl Database {
             "INSERT OR IGNORE INTO message_attachments
              (id, message_id, attachment_type, attachment_id, display_order, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, message_id, attachment_type.to_string(), attachment_id, order, now],
+            params![
+                id,
+                message_id,
+                attachment_type.to_string(),
+                attachment_id,
+                order,
+                now
+            ],
         )?;
 
         Ok(())
@@ -1563,12 +1619,12 @@ impl Database {
             "SELECT attachment_type, attachment_id, display_order
              FROM message_attachments
              WHERE message_id = ?1
-             ORDER BY display_order, created_at"
+             ORDER BY display_order, created_at",
         )?;
 
-        let links: Vec<(String, String)> = stmt.query_map(params![message_id], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?.collect::<Result<Vec<_>, _>>()?;
+        let links: Vec<(String, String)> = stmt
+            .query_map(params![message_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
 
         drop(stmt);
         drop(conn);
@@ -1576,26 +1632,22 @@ impl Database {
         let mut attachments = Vec::new();
         for (attachment_type, attachment_id) in links {
             let attachment = match attachment_type.as_str() {
-                "search_result" => {
-                    self.get_search_result(&attachment_id)
-                        .map(Attachment::SearchResult)
-                        .ok()
-                }
-                "fetch_result" => {
-                    self.get_fetch_result(&attachment_id)
-                        .map(Attachment::FetchResult)
-                        .ok()
-                }
-                "file" => {
-                    self.get_file_attachment(&attachment_id)
-                        .map(Attachment::File)
-                        .ok()
-                }
-                "search_decision" => {
-                    self.get_search_decision(&attachment_id)
-                        .map(Attachment::SearchDecision)
-                        .ok()
-                }
+                "search_result" => self
+                    .get_search_result(&attachment_id)
+                    .map(Attachment::SearchResult)
+                    .ok(),
+                "fetch_result" => self
+                    .get_fetch_result(&attachment_id)
+                    .map(Attachment::FetchResult)
+                    .ok(),
+                "file" => self
+                    .get_file_attachment(&attachment_id)
+                    .map(Attachment::File)
+                    .ok(),
+                "search_decision" => self
+                    .get_search_decision(&attachment_id)
+                    .map(Attachment::SearchDecision)
+                    .ok(),
                 _ => None,
             };
             if let Some(a) = attachment {
@@ -1625,9 +1677,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
 
-        let value = stmt
-            .query_row(params![key], |row| row.get(0))
-            .optional()?;
+        let value = stmt.query_row(params![key], |row| row.get(0)).optional()?;
 
         Ok(value)
     }
@@ -1646,8 +1696,7 @@ impl Database {
 
     pub fn get_all_settings(&self) -> Result<Vec<Setting>> {
         let conn = self.lock_conn()?;
-        let mut stmt =
-            conn.prepare("SELECT key, value, updated_at FROM settings ORDER BY key")?;
+        let mut stmt = conn.prepare("SELECT key, value, updated_at FROM settings ORDER BY key")?;
 
         let settings = stmt
             .query_map([], |row| {
@@ -1691,12 +1740,15 @@ impl Database {
         // Check if default ollama provider already exists
         let providers = self.list_providers()?;
         let has_ollama = providers.iter().any(|p| p.provider_type == "ollama");
-        
+
         let ollama_provider = if has_ollama {
             // Use existing ollama provider
-            providers.into_iter()
+            providers
+                .into_iter()
                 .find(|p| p.provider_type == "ollama")
-                .ok_or_else(|| anyhow::anyhow!("Ollama provider not found despite has_ollama check"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Ollama provider not found despite has_ollama check")
+                })?
         } else {
             // Create default Ollama provider
             println!("🌱 [db] Seeding default Ollama provider...");
@@ -1714,15 +1766,18 @@ impl Database {
 
         // Check if models already exist for this provider
         let existing_models = self.list_models()?;
-        let provider_has_models = existing_models.iter()
+        let provider_has_models = existing_models
+            .iter()
             .any(|m| m.provider_id == ollama_provider.id);
-        
+
         if provider_has_models {
             println!("✅ [db] Models already exist for provider, skipping model seed");
             // Still check and seed assistants if needed
             let assistants = self.list_assistants()?;
             if assistants.is_empty() {
-                println!("⚠️  [db] No assistants found, but models exist. You may need to manually create assistants.");
+                println!(
+                    "⚠️  [db] No assistants found, but models exist. You may need to manually create assistants."
+                );
             }
             return Ok(());
         }
@@ -1730,9 +1785,11 @@ impl Database {
         println!("🌱 [db] Checking for local Ollama models...");
 
         // Try to fetch models from local Ollama
-        let base_url = ollama_provider.base_url.clone()
+        let base_url = ollama_provider
+            .base_url
+            .clone()
             .unwrap_or_else(|| "http://localhost:11434".to_string());
-        
+
         let ollama_models = match crate::llm::models::fetch_ollama_models(base_url).await {
             Ok(models) if !models.is_empty() => {
                 println!("✅ [db] Found {} local Ollama models", models.len());
@@ -1751,8 +1808,9 @@ impl Database {
         let created_models = if !ollama_models.is_empty() {
             println!("🌱 [db] Creating models from local Ollama...");
             let mut models = Vec::new();
-            
-            for ollama_model in ollama_models.iter().take(10) {  // Limit to first 10 models
+
+            for ollama_model in ollama_models.iter().take(10) {
+                // Limit to first 10 models
                 let model = self.create_model(CreateModelRequest {
                     name: ollama_model.name.clone(),
                     provider_id: ollama_provider.id.clone(),
@@ -1763,17 +1821,19 @@ impl Database {
                 println!("✅ [db] Created model: {}", model.name);
                 models.push(model);
             }
-            
+
             models
         } else {
             println!("🌱 [db] Seeding with default models (Ollama not available)...");
-            
+
             // Fallback to hardcoded default models if Ollama is not available
             let gemma_model = self.create_model(CreateModelRequest {
                 name: "Gemma 3 12B".to_string(),
                 provider_id: ollama_provider.id.clone(),
                 model_id: "gemma3:12b".to_string(),
-                description: Some("Gemma 3 12B - Google's efficient instruction-following model".to_string()),
+                description: Some(
+                    "Gemma 3 12B - Google's efficient instruction-following model".to_string(),
+                ),
                 is_starred: Some(false),
             })?;
             println!("✅ [db] Created model: {}", gemma_model.name);
@@ -1782,7 +1842,9 @@ impl Database {
                 name: "GPT-OSS 20B".to_string(),
                 provider_id: ollama_provider.id.clone(),
                 model_id: "gpt-oss:20b".to_string(),
-                description: Some("GPT-OSS 20B - Open source GPT-style model for general tasks".to_string()),
+                description: Some(
+                    "GPT-OSS 20B - Open source GPT-style model for general tasks".to_string(),
+                ),
                 is_starred: Some(false),
             })?;
             println!("✅ [db] Created model: {}", gpt_oss_model.name);
@@ -1791,11 +1853,13 @@ impl Database {
                 name: "DeepSeek R1 14B".to_string(),
                 provider_id: ollama_provider.id.clone(),
                 model_id: "deepseek-r1:14b".to_string(),
-                description: Some("DeepSeek R1 14B - Advanced reasoning model with thinking process".to_string()),
+                description: Some(
+                    "DeepSeek R1 14B - Advanced reasoning model with thinking process".to_string(),
+                ),
                 is_starred: Some(true),
             })?;
             println!("✅ [db] Created model: {}", deepseek_model.name);
-            
+
             vec![gemma_model, gpt_oss_model, deepseek_model]
         };
 
@@ -1810,22 +1874,56 @@ impl Database {
 
         // Create default assistants using created models
         let avatar_configs = vec![
-            ("Code Assistant", "Coding Expert", "Help with programming tasks and technical questions", 
-             "You are a helpful coding assistant. Help users with programming tasks, code review, debugging, and technical questions. Provide clear explanations and working code examples.", 
-             "#3b82f6", "💻", "Development", true),
-            ("General Assistant", "General Helper", "General purpose AI assistant", 
-             "You are a helpful, harmless, and honest AI assistant. Provide clear and accurate information to help users with their questions. Think through problems step by step.", 
-             "#10b981", "🤖", "General", false),
-            ("Research Assistant", "Research Specialist", "Help with research and data analysis", 
-             "You are a research assistant. Help users find information, analyze data, and summarize findings. Provide detailed analysis with reasoning.", 
-             "#8b5cf6", "🔍", "Research", false),
+            (
+                "Code Assistant",
+                "Coding Expert",
+                "Help with programming tasks and technical questions",
+                "You are a helpful coding assistant. Help users with programming tasks, code review, debugging, and technical questions. Provide clear explanations and working code examples.",
+                "#3b82f6",
+                "💻",
+                "Development",
+                true,
+            ),
+            (
+                "General Assistant",
+                "General Helper",
+                "General purpose AI assistant",
+                "You are a helpful, harmless, and honest AI assistant. Provide clear and accurate information to help users with their questions. Think through problems step by step.",
+                "#10b981",
+                "🤖",
+                "General",
+                false,
+            ),
+            (
+                "Research Assistant",
+                "Research Specialist",
+                "Help with research and data analysis",
+                "You are a research assistant. Help users find information, analyze data, and summarize findings. Provide detailed analysis with reasoning.",
+                "#8b5cf6",
+                "🔍",
+                "Research",
+                false,
+            ),
         ];
 
-        for (idx, (name, role, description, system_prompt, avatar_bg, avatar_text, group_name, is_starred)) in avatar_configs.into_iter().enumerate() {
+        for (
+            idx,
+            (
+                name,
+                role,
+                description,
+                system_prompt,
+                avatar_bg,
+                avatar_text,
+                group_name,
+                is_starred,
+            ),
+        ) in avatar_configs.into_iter().enumerate()
+        {
             // Use models in round-robin fashion
             let model_idx = idx % created_models.len();
             let model = &created_models[model_idx];
-            
+
             let assistant_req = CreateAssistantRequest {
                 name: name.to_string(),
                 role: Some(role.to_string()),
@@ -1841,13 +1939,15 @@ impl Database {
                 group_name: Some(group_name.to_string()),
                 is_starred: Some(is_starred),
             };
-            
+
             let assistant = self.create_assistant(assistant_req)?;
-            println!("✅ [db] Created assistant: {} (using model: {})", assistant.name, model.name);
+            println!(
+                "✅ [db] Created assistant: {} (using model: {})",
+                assistant.name, model.name
+            );
         }
 
         println!("🎉 [db] Seeding complete!");
         Ok(())
     }
 }
-

@@ -1,19 +1,15 @@
-import * as React from "react"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown, MoreVertical } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { PersonListItem } from "@/components/people-list-item"
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, MoreVertical } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { PersonListItem } from '@/components/people-list-item'
 
 export interface Person {
   /**
@@ -122,14 +118,14 @@ export function PeopleList({
 
   // Create a virtual group for starred people
   const starredGroup: PersonGroup = {
-    id: "starred",
-    name: "Starred",
+    id: 'starred',
+    name: 'Starred',
     people: starredPeople,
     defaultOpen: true,
   }
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred people group first if there are any starred people */}
       {hasStarredPeople && (
         <PersonGroupComponent
@@ -185,7 +181,7 @@ function PersonGroupComponent({
   forceDefaultOpen = false,
   ignoreGroupDefault = false,
 }: PersonGroupComponentProps) {
-  // Determine initial open state: 
+  // Determine initial open state:
   // - If forceDefaultOpen is true, always open
   // - If ignoreGroupDefault is true, ignore group.defaultOpen (use false)
   // - Otherwise use group.defaultOpen, default to false
@@ -207,10 +203,7 @@ function PersonGroupComponent({
             className="w-full justify-start font-normal text-sm h-9 px-3"
           >
             <ChevronDown
-              className={cn(
-                "size-4 transition-transform duration-200",
-                !isOpen && "-rotate-90"
-              )}
+              className={cn('size-4 transition-transform duration-200', !isOpen && '-rotate-90')}
             />
             <span className="flex-1 text-left">{group.name}</span>
           </Button>
@@ -220,8 +213,8 @@ function PersonGroupComponent({
         {!hideGroupMenu && (
           <div
             className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 transition-opacity",
-              !isHovered && "opacity-0"
+              'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
+              !isHovered && 'opacity-0'
             )}
           >
             <DropdownMenu>
@@ -272,4 +265,3 @@ function PersonGroupComponent({
     </Collapsible>
   )
 }
-

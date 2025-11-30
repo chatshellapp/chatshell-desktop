@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import * as React from "react"
+import * as React from 'react'
 import {
   Bot,
   Database,
@@ -10,7 +10,7 @@ import {
   Download,
   Loader2,
   ChevronDown,
-} from "lucide-react"
+} from 'lucide-react'
 
 import {
   Breadcrumb,
@@ -19,21 +19,21 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Button } from "@/components/ui/button"
+} from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -43,10 +43,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-} from "@/components/ui/sidebar"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
+} from '@/components/ui/sidebar'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 import {
   Table,
   TableBody,
@@ -54,22 +54,18 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+} from '@/components/ui/table'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 const llmProviders = [
-  { id: "openai", name: "OpenAI", icon: Bot },
-  { id: "anthropic", name: "Anthropic", icon: Bot },
-  { id: "google", name: "Google AI", icon: Bot },
-  { id: "openrouter", name: "OpenRouter", icon: Server },
-  { id: "ollama", name: "Ollama", icon: Database },
-  { id: "azure", name: "Azure OpenAI", icon: Bot },
-  { id: "cohere", name: "Cohere", icon: Bot },
-  { id: "huggingface", name: "Hugging Face", icon: Bot },
+  { id: 'openai', name: 'OpenAI', icon: Bot },
+  { id: 'anthropic', name: 'Anthropic', icon: Bot },
+  { id: 'google', name: 'Google AI', icon: Bot },
+  { id: 'openrouter', name: 'OpenRouter', icon: Server },
+  { id: 'ollama', name: 'Ollama', icon: Database },
+  { id: 'azure', name: 'Azure OpenAI', icon: Bot },
+  { id: 'cohere', name: 'Cohere', icon: Bot },
+  { id: 'huggingface', name: 'Hugging Face', icon: Bot },
 ]
 
 interface ProviderSettingsDialogProps {
@@ -94,15 +90,12 @@ interface AvailableModel {
   }
 }
 
-export function ProviderSettingsDialog({
-  open,
-  onOpenChange,
-}: ProviderSettingsDialogProps) {
+export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
   const [selectedProvider, setSelectedProvider] = React.useState(llmProviders[0])
-  const [apiKey, setApiKey] = React.useState("")
-  const [apiBaseUrl, setApiBaseUrl] = React.useState("")
+  const [apiKey, setApiKey] = React.useState('')
+  const [apiBaseUrl, setApiBaseUrl] = React.useState('')
   const [models, setModels] = React.useState<ModelItem[]>([])
-  const [newModelName, setNewModelName] = React.useState("")
+  const [newModelName, setNewModelName] = React.useState('')
   const [fetchModalOpen, setFetchModalOpen] = React.useState(false)
   const [availableModels, setAvailableModels] = React.useState<AvailableModel[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -117,14 +110,12 @@ export function ProviderSettingsDialog({
           name: newModelName.trim(),
         },
       ])
-      setNewModelName("")
+      setNewModelName('')
     }
   }
 
   const handleUpdateModelName = (id: string, newName: string) => {
-    setModels(models.map((model) => 
-      model.id === id ? { ...model, name: newName } : model
-    ))
+    setModels(models.map((model) => (model.id === id ? { ...model, name: newName } : model)))
   }
 
   const handleDeleteModel = (id: string) => {
@@ -132,7 +123,7 @@ export function ProviderSettingsDialog({
   }
 
   const handleModelSettings = (model: ModelItem) => {
-    console.log("Model settings:", model)
+    console.log('Model settings:', model)
     // Add your model settings logic here
   }
 
@@ -141,12 +132,12 @@ export function ProviderSettingsDialog({
     setFetchError(null)
     try {
       // Fetch models from Ollama API
-      const response = await fetch("http://localhost:11434/api/tags")
+      const response = await fetch('http://localhost:11434/api/tags')
       if (!response.ok) {
         throw new Error(`Failed to fetch models: ${response.statusText}`)
       }
       const data = await response.json()
-      
+
       // Process models to extract details
       const processedModels = (data.models || []).map((model: any) => ({
         name: model.name,
@@ -159,11 +150,11 @@ export function ProviderSettingsDialog({
           family: model.details?.family,
         },
       }))
-      
+
       setAvailableModels(processedModels)
     } catch (error) {
-      console.error("Error fetching models:", error)
-      setFetchError(error instanceof Error ? error.message : "Failed to fetch models")
+      console.error('Error fetching models:', error)
+      setFetchError(error instanceof Error ? error.message : 'Failed to fetch models')
     } finally {
       setIsLoading(false)
     }
@@ -188,7 +179,7 @@ export function ProviderSettingsDialog({
   }
 
   const handleSave = () => {
-    console.log("Saving provider configuration:", {
+    console.log('Saving provider configuration:', {
       provider: selectedProvider.id,
       apiKey,
       apiBaseUrl,
@@ -202,7 +193,7 @@ export function ProviderSettingsDialog({
   const groupedModels = React.useMemo(() => {
     const groups: Record<string, AvailableModel[]> = {}
     availableModels.forEach((model) => {
-      const family = model.details?.family || "Other"
+      const family = model.details?.family || 'Other'
       if (!groups[family]) {
         groups[family] = []
       }
@@ -305,17 +296,13 @@ export function ProviderSettingsDialog({
                         value={newModelName}
                         onChange={(e) => setNewModelName(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                          if (e.key === 'Enter') {
                             e.preventDefault()
                             handleAddModel()
                           }
                         }}
                       />
-                      <Button
-                        type="button"
-                        onClick={handleAddModel}
-                        size="icon"
-                      >
+                      <Button type="button" onClick={handleAddModel} size="icon">
                         <Plus className="size-4" />
                       </Button>
                     </div>
@@ -338,24 +325,21 @@ export function ProviderSettingsDialog({
                                 <TableCell>
                                   <Input
                                     value={model.name}
-                                    onChange={(e) => handleUpdateModelName(model.id, e.target.value)}
+                                    onChange={(e) =>
+                                      handleUpdateModelName(model.id, e.target.value)
+                                    }
                                     className="h-8"
                                   />
                                 </TableCell>
                                 <TableCell>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon-sm"
-                                      >
+                                      <Button variant="ghost" size="icon-sm">
                                         <MoreHorizontal className="size-4" />
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() => handleModelSettings(model)}
-                                      >
+                                      <DropdownMenuItem onClick={() => handleModelSettings(model)}>
                                         Configure
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
@@ -394,22 +378,18 @@ export function ProviderSettingsDialog({
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Add models one at a time by entering the model name and clicking the plus button
+                      Add models one at a time by entering the model name and clicking the plus
+                      button
                     </p>
                   </div>
                 </div>
               </div>
             </div>
             <DialogFooter className="shrink-0 border-t p-4 sm:justify-end">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSave}>
-                Save Configuration
-              </Button>
+              <Button onClick={handleSave}>Save Configuration</Button>
             </DialogFooter>
           </main>
         </SidebarProvider>
@@ -450,7 +430,7 @@ export function ProviderSettingsDialog({
                           <span className="font-semibold">{family}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">
-                              {familyModels.length} {familyModels.length === 1 ? "model" : "models"}
+                              {familyModels.length} {familyModels.length === 1 ? 'model' : 'models'}
                             </span>
                             <ChevronDown className="size-4" />
                           </div>
@@ -514,4 +494,3 @@ export function ProviderSettingsDialog({
     </Dialog>
   )
 }
-

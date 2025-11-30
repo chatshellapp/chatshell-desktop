@@ -1,25 +1,29 @@
-import { useEffect, useRef, useState } from "react"
-import { invoke } from "@tauri-apps/api/core"
-import { ChatInput } from "@/components/chat-input"
-import { ChatMessage } from "@/components/chat-message"
-import { AttachmentPreview } from "@/components/attachment-preview"
-import { useConversationStore } from "@/stores/conversationStore"
-import { useMessageStore } from "@/stores/messageStore"
-import { useModelStore } from "@/stores/modelStore"
-import { useAssistantStore } from "@/stores/assistantStore"
-import { useChatEvents } from "@/hooks/useChatEvents"
-import { getModelLogo } from "@/lib/model-logos"
-import type { Message, Attachment } from "@/types"
+import { useEffect, useRef, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { ChatInput } from '@/components/chat-input'
+import { ChatMessage } from '@/components/chat-message'
+import { AttachmentPreview } from '@/components/attachment-preview'
+import { useConversationStore } from '@/stores/conversationStore'
+import { useMessageStore } from '@/stores/messageStore'
+import { useModelStore } from '@/stores/modelStore'
+import { useAssistantStore } from '@/stores/assistantStore'
+import { useChatEvents } from '@/hooks/useChatEvents'
+import { getModelLogo } from '@/lib/model-logos'
+import type { Message, Attachment } from '@/types'
 
 // Helper function to format model name with provider
-const formatModelDisplayName = (modelName: string, providerId: string, getProviderById: (id: string) => any) => {
+const formatModelDisplayName = (
+  modelName: string,
+  providerId: string,
+  getProviderById: (id: string) => any
+) => {
   const provider = getProviderById(providerId)
   return provider ? `${modelName} - ${provider.name}` : modelName
 }
 
 // Global chat message configuration
 const CHAT_CONFIG = {
-  userMessageAlign: "right" as const,
+  userMessageAlign: 'right' as const,
   userMessageShowBackground: true,
 }
 
@@ -27,12 +31,12 @@ export function ChatView() {
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
-  
+
   // Get conversation-specific state
-  const conversationState = useMessageStore((state) => 
+  const conversationState = useMessageStore((state) =>
     currentConversation ? state.getConversationState(currentConversation.id) : null
   )
-  
+
   const loadMessages = useMessageStore((state) => state.loadMessages)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
@@ -43,13 +47,13 @@ export function ChatView() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const inputAreaRef = useRef<HTMLDivElement>(null)
   const messagesContentRef = useRef<HTMLDivElement>(null)
-  
+
   // Track if user is at bottom
   const [isAtBottom, setIsAtBottom] = useState(true)
-  
+
   // Track input area height for button positioning
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
-  
+
   // Track messages content container position for button centering
   const [buttonLeft, setButtonLeft] = useState<string | number>('50%')
 
@@ -71,95 +75,101 @@ export function ChatView() {
   const [messageAttachments, setMessageAttachments] = useState<Record<string, Attachment[]>>({})
 
   // Get display info for currently selected model/assistant (used for streaming messages)
-  const getDisplayInfo = (): { 
-    displayName: string; 
-    senderType: "model" | "assistant";
-    modelLogo?: string;
-    assistantLogo?: string;
-    avatarBg?: string;
-    avatarText?: string;
+  const getDisplayInfo = (): {
+    displayName: string
+    senderType: 'model' | 'assistant'
+    modelLogo?: string
+    assistantLogo?: string
+    avatarBg?: string
+    avatarText?: string
   } => {
     if (selectedAssistant) {
       const model = getModelById(selectedAssistant.model_id)
-      const modelName = model ? model.name : "Unknown Model"
-      
+      const modelName = model ? model.name : 'Unknown Model'
+
       // Return assistant info
-      if (selectedAssistant.avatar_type === "image") {
-        return { 
+      if (selectedAssistant.avatar_type === 'image') {
+        return {
           displayName: `${selectedAssistant.name} · ${modelName}`,
-          senderType: "assistant",
-          assistantLogo: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path
+          senderType: 'assistant',
+          assistantLogo: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path,
         }
       } else {
         // Text/emoji avatar
-        return { 
+        return {
           displayName: `${selectedAssistant.name} · ${modelName}`,
-          senderType: "assistant",
+          senderType: 'assistant',
           avatarBg: selectedAssistant.avatar_bg || undefined,
-          avatarText: selectedAssistant.avatar_text || undefined
+          avatarText: selectedAssistant.avatar_text || undefined,
         }
       }
     } else if (selectedModel) {
-      return { 
-        displayName: formatModelDisplayName(selectedModel.name, selectedModel.provider_id, getProviderById),
-        senderType: "model",
-        modelLogo: getModelLogo(selectedModel)
+      return {
+        displayName: formatModelDisplayName(
+          selectedModel.name,
+          selectedModel.provider_id,
+          getProviderById
+        ),
+        senderType: 'model',
+        modelLogo: getModelLogo(selectedModel),
       }
     }
-    return { displayName: "AI Assistant", senderType: "model" }
+    return { displayName: 'AI Assistant', senderType: 'model' }
   }
 
   // Get display info for a specific message based on its sender_id and sender_type
-  const getMessageDisplayInfo = (message: Message): { 
-    displayName: string; 
-    senderType: "model" | "assistant";
-    modelLogo?: string;
-    assistantLogo?: string;
-    avatarBg?: string;
-    avatarText?: string;
+  const getMessageDisplayInfo = (
+    message: Message
+  ): {
+    displayName: string
+    senderType: 'model' | 'assistant'
+    modelLogo?: string
+    assistantLogo?: string
+    avatarBg?: string
+    avatarText?: string
   } => {
     if (!message.sender_id) {
-      return { displayName: "AI Assistant", senderType: "model" }
+      return { displayName: 'AI Assistant', senderType: 'model' }
     }
 
     // Handle different sender types
-    if (message.sender_type === "model") {
+    if (message.sender_type === 'model') {
       // Direct model chat
       const model = getModelById(message.sender_id)
       if (model) {
-        return { 
+        return {
           displayName: formatModelDisplayName(model.name, model.provider_id, getProviderById),
-          senderType: "model",
-          modelLogo: getModelLogo(model)
+          senderType: 'model',
+          modelLogo: getModelLogo(model),
         }
       }
-    } else if (message.sender_type === "assistant") {
+    } else if (message.sender_type === 'assistant') {
       // Assistant chat
       const assistant = getAssistantById(message.sender_id)
       if (assistant) {
         const assistantModel = getModelById(assistant.model_id)
-        const modelName = assistantModel ? assistantModel.name : "Unknown Model"
-        
+        const modelName = assistantModel ? assistantModel.name : 'Unknown Model'
+
         // Return assistant info
-        if (assistant.avatar_type === "image") {
-          return { 
+        if (assistant.avatar_type === 'image') {
+          return {
             displayName: `${assistant.name} · ${modelName}`,
-            senderType: "assistant",
-            assistantLogo: assistant.avatar_image_url || assistant.avatar_image_path
+            senderType: 'assistant',
+            assistantLogo: assistant.avatar_image_url || assistant.avatar_image_path,
           }
         } else {
           // Text/emoji avatar
-          return { 
+          return {
             displayName: `${assistant.name} · ${modelName}`,
-            senderType: "assistant",
+            senderType: 'assistant',
             avatarBg: assistant.avatar_bg || undefined,
-            avatarText: assistant.avatar_text || undefined
+            avatarText: assistant.avatar_text || undefined,
           }
         }
       }
     }
 
-    return { displayName: "AI Assistant", senderType: "model" }
+    return { displayName: 'AI Assistant', senderType: 'model' }
   }
 
   // Set up event listeners for chat streaming and scraping
@@ -176,38 +186,39 @@ export function ChatView() {
   // Re-run when attachmentStatus changes to 'complete' or attachmentRefreshKey changes
   useEffect(() => {
     const fetchAttachments = async () => {
-      const userMessages = messages.filter(m => m.sender_type === "user")
+      const userMessages = messages.filter((m) => m.sender_type === 'user')
       const attachmentMap: Record<string, Attachment[]> = {}
-      
+
       for (const msg of userMessages) {
         // When processing just completed or refresh key changed, always re-fetch for the latest message
         // Otherwise, skip if we already have attachments for this message
         const isLatestMessage = userMessages.indexOf(msg) === userMessages.length - 1
-        const shouldRefetch = (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage
-        
+        const shouldRefetch =
+          (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage
+
         if (messageAttachments[msg.id] && !shouldRefetch) {
           attachmentMap[msg.id] = messageAttachments[msg.id]
           continue
         }
-        
+
         try {
-          const attachments = await invoke<Attachment[]>("get_message_attachments", {
-            messageId: msg.id
+          const attachments = await invoke<Attachment[]>('get_message_attachments', {
+            messageId: msg.id,
           })
           if (attachments.length > 0) {
             attachmentMap[msg.id] = attachments
           }
         } catch (e) {
-          console.error("Failed to fetch attachments for message:", msg.id, e)
+          console.error('Failed to fetch attachments for message:', msg.id, e)
         }
       }
-      
+
       // Only update if there are changes
       if (Object.keys(attachmentMap).length > 0) {
-        setMessageAttachments(prev => ({ ...prev, ...attachmentMap }))
+        setMessageAttachments((prev) => ({ ...prev, ...attachmentMap }))
       }
     }
-    
+
     if (messages.length > 0) {
       fetchAttachments()
     }
@@ -221,7 +232,7 @@ export function ChatView() {
       // if (currentConversation) {
       //   useMessageStore.getState().cleanupConversation(currentConversation.id);
       // }
-    };
+    }
   }, [])
 
   // Measure input area height and update on resize
@@ -233,7 +244,7 @@ export function ChatView() {
     const updateHeight = () => {
       setInputAreaHeight(inputArea.offsetHeight)
     }
-    
+
     updateHeight()
 
     // Use ResizeObserver to watch for height changes
@@ -284,11 +295,11 @@ export function ChatView() {
   const checkIfAtBottom = () => {
     const container = messagesContainerRef.current
     if (!container) return true
-    
+
     const threshold = 100
-    const isNearBottom = 
+    const isNearBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight < threshold
-    
+
     return isNearBottom
   }
 
@@ -296,12 +307,12 @@ export function ChatView() {
   const handleScroll = () => {
     // Mark that user is actively scrolling
     isUserScrollingRef.current = true
-    
+
     // Clear any existing timeout
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current)
     }
-    
+
     // Set a timeout to mark scroll as finished (user stopped scrolling)
     scrollTimeoutRef.current = window.setTimeout(() => {
       isUserScrollingRef.current = false
@@ -316,9 +327,9 @@ export function ChatView() {
     if (isUserScrollingRef.current) {
       return
     }
-    
+
     if (isAtBottom && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages.length, streamingContent, isStreaming, isWaitingForAI, isAtBottom])
 
@@ -340,27 +351,27 @@ export function ChatView() {
   }, [])
 
   const handleCopy = () => {
-    console.log("Message copied")
+    console.log('Message copied')
   }
 
   const handleResend = () => {
-    console.log("Resend message")
+    console.log('Resend message')
   }
 
   const handleTranslate = () => {
-    console.log("Translate message")
+    console.log('Translate message')
   }
 
   const handleExportAll = () => {
-    console.log("Export all messages")
+    console.log('Export all messages')
   }
 
   const handleExportConversation = () => {
-    console.log("Export current conversation")
+    console.log('Export current conversation')
   }
 
   const handleExportMessage = () => {
-    console.log("Export current message")
+    console.log('Export current message')
   }
 
   // Format timestamp from ISO string
@@ -372,7 +383,7 @@ export function ChatView() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Messages Area */}
-      <div 
+      <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto px-4"
         onScroll={handleScroll}
@@ -386,53 +397,57 @@ export function ChatView() {
             {messages.map((message, index) => {
               const info = getMessageDisplayInfo(message)
               // Map sender_type to ChatMessage role: "user" stays "user", both "model" and "assistant" become "assistant"
-              const role = message.sender_type === "user" ? "user" : "assistant"
-              const isUserMessage = message.sender_type === "user"
+              const role = message.sender_type === 'user' ? 'user' : 'assistant'
+              const isUserMessage = message.sender_type === 'user'
               const isAssistantMessage = !isUserMessage
-              
+
               // Split attachments into user and assistant categories
               const allAttachments = messageAttachments[message.id] || []
-              
+
               // User attachments: file, fetch_result (without search_id) - shown right-aligned
-              const userAttachments = allAttachments.filter(a => 
-                a.type === "file" || 
-                (a.type === "fetch_result" && !(a as any).search_id)
+              const userAttachments = allAttachments.filter(
+                (a) => a.type === 'file' || (a.type === 'fetch_result' && !(a as any).search_id)
               )
-              
+
               // Check if this message has a search result (URLs will be shown inside it)
-              const hasSearchResult = allAttachments.some(a => a.type === "search_result")
-              const urls = hasSearchResult ? [] : (processingUrls[message.id] || [])
-              
-              const hasUserAttachments = isUserMessage && (userAttachments.length > 0 || urls.length > 0)
-              
+              const hasSearchResult = allAttachments.some((a) => a.type === 'search_result')
+              const urls = hasSearchResult ? [] : processingUrls[message.id] || []
+
+              const hasUserAttachments =
+                isUserMessage && (userAttachments.length > 0 || urls.length > 0)
+
               // For assistant messages in history, get assistant attachments from previous user message
               let assistantAttachmentsToShow: typeof allAttachments = []
               let prevUserMessageId: string | null = null
               if (isAssistantMessage && index > 0) {
                 const prevMessage = messages[index - 1]
-                if (prevMessage.sender_type === "user") {
+                if (prevMessage.sender_type === 'user') {
                   prevUserMessageId = prevMessage.id
                   const prevAttachments = messageAttachments[prevMessage.id] || []
-                  assistantAttachmentsToShow = prevAttachments.filter(a => 
-                    a.type === "search_result" || 
-                    a.type === "search_decision"
+                  assistantAttachmentsToShow = prevAttachments.filter(
+                    (a) => a.type === 'search_result' || a.type === 'search_decision'
                   )
                 }
               }
-              
+
               // Build headerContent for assistant messages (attachments shown between header and content)
-              const headerContent = isAssistantMessage && assistantAttachmentsToShow.length > 0 ? (
-                <div className="space-y-1.5 mb-2">
-                  {assistantAttachmentsToShow.map((attachment) => (
-                    <AttachmentPreview 
-                      key={(attachment as any).id} 
-                      attachment={attachment}
-                      processingUrls={attachment.type === "search_result" && prevUserMessageId ? (processingUrls[prevUserMessageId] || []) : undefined}
-                    />
-                  ))}
-                </div>
-              ) : undefined
-              
+              const headerContent =
+                isAssistantMessage && assistantAttachmentsToShow.length > 0 ? (
+                  <div className="space-y-1.5 mb-2">
+                    {assistantAttachmentsToShow.map((attachment) => (
+                      <AttachmentPreview
+                        key={(attachment as any).id}
+                        attachment={attachment}
+                        processingUrls={
+                          attachment.type === 'search_result' && prevUserMessageId
+                            ? processingUrls[prevUserMessageId] || []
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : undefined
+
               return (
                 <div key={message.id}>
                   <ChatMessage
@@ -455,16 +470,13 @@ export function ChatView() {
                     onExportConversation={handleExportConversation}
                     onExportMessage={handleExportMessage}
                   />
-                  
+
                   {/* User attachments - rendered right-aligned after user message */}
                   {hasUserAttachments && (
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
                         {userAttachments.map((attachment) => (
-                          <AttachmentPreview 
-                            key={(attachment as any).id} 
-                            attachment={attachment}
-                          />
+                          <AttachmentPreview key={(attachment as any).id} attachment={attachment} />
                         ))}
                         {/* Standalone processing URLs (no search result) */}
                         {urls.map((url) => (
@@ -476,88 +488,94 @@ export function ChatView() {
                 </div>
               )
             })}
-            {(isWaitingForAI || (isStreaming && streamingContent && !isWaitingForAI)) && (() => {
-              const info = getDisplayInfo()
-              
-              // Get the last user message to show its assistant attachments
-              const lastUserMessage = messages.filter(m => m.sender_type === "user").slice(-1)[0]
-              
-              // Build headerContent with attachments (shown between header and content)
-              let streamingHeaderContent: React.ReactNode = undefined
-              if (lastUserMessage) {
-                const lastUserAttachments = messageAttachments[lastUserMessage.id] || []
-                const assistantAttachments = lastUserAttachments.filter(a => 
-                  a.type === "search_result" || 
-                  a.type === "search_decision"
-                )
-                const hasPendingDecision = pendingSearchDecisions[lastUserMessage.id]
-                const hasAssistantAttachments = assistantAttachments.length > 0
-                
-                if (hasAssistantAttachments || hasPendingDecision) {
-                  streamingHeaderContent = (
-                    <div className="space-y-1.5 mb-2">
-                      {/* Show pending search decision preview */}
-                      {hasPendingDecision && !assistantAttachments.some(a => a.type === "search_decision") && (
-                        <AttachmentPreview pendingSearchDecision={true} />
-                      )}
-                      {assistantAttachments.map((attachment) => (
-                        <AttachmentPreview 
-                          key={(attachment as any).id} 
-                          attachment={attachment}
-                          processingUrls={attachment.type === "search_result" ? (processingUrls[lastUserMessage.id] || []) : undefined}
-                        />
-                      ))}
-                    </div>
+            {(isWaitingForAI || (isStreaming && streamingContent && !isWaitingForAI)) &&
+              (() => {
+                const info = getDisplayInfo()
+
+                // Get the last user message to show its assistant attachments
+                const lastUserMessage = messages
+                  .filter((m) => m.sender_type === 'user')
+                  .slice(-1)[0]
+
+                // Build headerContent with attachments (shown between header and content)
+                let streamingHeaderContent: React.ReactNode = undefined
+                if (lastUserMessage) {
+                  const lastUserAttachments = messageAttachments[lastUserMessage.id] || []
+                  const assistantAttachments = lastUserAttachments.filter(
+                    (a) => a.type === 'search_result' || a.type === 'search_decision'
                   )
+                  const hasPendingDecision = pendingSearchDecisions[lastUserMessage.id]
+                  const hasAssistantAttachments = assistantAttachments.length > 0
+
+                  if (hasAssistantAttachments || hasPendingDecision) {
+                    streamingHeaderContent = (
+                      <div className="space-y-1.5 mb-2">
+                        {/* Show pending search decision preview */}
+                        {hasPendingDecision &&
+                          !assistantAttachments.some((a) => a.type === 'search_decision') && (
+                            <AttachmentPreview pendingSearchDecision={true} />
+                          )}
+                        {assistantAttachments.map((attachment) => (
+                          <AttachmentPreview
+                            key={(attachment as any).id}
+                            attachment={attachment}
+                            processingUrls={
+                              attachment.type === 'search_result'
+                                ? processingUrls[lastUserMessage.id] || []
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </div>
+                    )
+                  }
                 }
-              }
-              
-              return (
-                <ChatMessage
-                  key={isWaitingForAI ? "waiting" : "streaming"}
-                  role="assistant"
-                  content={isWaitingForAI ? "" : streamingContent}
-                  timestamp="Now"
-                  displayName={info.displayName}
-                  senderType={info.senderType}
-                  modelLogo={info.modelLogo}
-                  assistantLogo={info.assistantLogo}
-                  avatarBg={info.avatarBg}
-                  avatarText={info.avatarText}
-                  userMessageAlign={CHAT_CONFIG.userMessageAlign}
-                  userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-                  isLoading={isWaitingForAI}
-                  headerContent={streamingHeaderContent}
-                  onCopy={handleCopy}
-                  onResend={handleResend}
-                  onTranslate={handleTranslate}
-                  onExportAll={handleExportAll}
-                  onExportConversation={handleExportConversation}
-                  onExportMessage={handleExportMessage}
-                />
-              )
-            })()}
+
+                return (
+                  <ChatMessage
+                    key={isWaitingForAI ? 'waiting' : 'streaming'}
+                    role="assistant"
+                    content={isWaitingForAI ? '' : streamingContent}
+                    timestamp="Now"
+                    displayName={info.displayName}
+                    senderType={info.senderType}
+                    modelLogo={info.modelLogo}
+                    assistantLogo={info.assistantLogo}
+                    avatarBg={info.avatarBg}
+                    avatarText={info.avatarText}
+                    userMessageAlign={CHAT_CONFIG.userMessageAlign}
+                    userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
+                    isLoading={isWaitingForAI}
+                    headerContent={streamingHeaderContent}
+                    onCopy={handleCopy}
+                    onResend={handleResend}
+                    onTranslate={handleTranslate}
+                    onExportAll={handleExportAll}
+                    onExportConversation={handleExportConversation}
+                    onExportMessage={handleExportMessage}
+                  />
+                )
+              })()}
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
           </div>
         )}
-        
       </div>
 
       {/* Scroll to bottom button - fixed positioning relative to viewport */}
-      <div 
+      <div
         className={`fixed z-20 pointer-events-none transition-opacity duration-150 ease-in-out ${
           !isAtBottom ? 'opacity-100' : 'opacity-0'
         }`}
-        style={{ 
+        style={{
           bottom: `${inputAreaHeight + 16}px`,
           left: typeof buttonLeft === 'number' ? `${buttonLeft}px` : buttonLeft,
-          transform: typeof buttonLeft === 'number' ? 'translateX(-50%)' : '-translate-x-1/2'
+          transform: typeof buttonLeft === 'number' ? 'translateX(-50%)' : '-translate-x-1/2',
         }}
       >
         <button
           onClick={() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
             setIsAtBottom(true)
           }}
           className={`bg-muted text-muted-foreground px-2.5 py-1 rounded-full shadow-sm hover:bg-muted/90 transition-colors flex items-center gap-1.5 pointer-events-auto text-xs ${
@@ -570,10 +588,7 @@ export function ChatView() {
       </div>
 
       {/* Input Area */}
-      <div 
-        ref={inputAreaRef}
-        className="shrink-0 bg-background border-t p-4 flex justify-center"
-      >
+      <div ref={inputAreaRef} className="shrink-0 bg-background border-t p-4 flex justify-center">
         <ChatInput />
       </div>
     </div>

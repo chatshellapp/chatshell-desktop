@@ -1,38 +1,56 @@
-import { ArrowUpIcon, Plus, FileText, Image, Sparkles, BookOpen, Plug, Globe, X, Square, Settings2, Search, Package } from "lucide-react"
-import React, { useState, useRef, useEffect, useMemo } from "react"
-import { openUrl } from "@tauri-apps/plugin-opener"
-import { open } from "@tauri-apps/plugin-dialog"
-import { invoke } from "@tauri-apps/api/core"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
+import {
+  ArrowUpIcon,
+  Plus,
+  FileText,
+  Image,
+  Sparkles,
+  BookOpen,
+  Plug,
+  Globe,
+  X,
+  Square,
+  Settings2,
+  Search,
+  Package,
+} from 'lucide-react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from "@/components/ui/input-group"
-import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
-import { useConversationStore } from "@/stores/conversationStore"
-import { useMessageStore } from "@/stores/messageStore"
-import { useModelStore } from "@/stores/modelStore"
-import { useSettingsStore } from "@/stores/settingsStore"
-import { useAssistantStore } from "@/stores/assistantStore"
-import type { Model } from "@/types"
-import { ModelList, type ModelVendor, type Model as ModelListModel } from "@/components/model-list"
-import { AssistantList, type AssistantGroup, type Assistant as AssistantListAssistant } from "@/components/assistant-list"
-import { getModelLogo } from "@/lib/model-logos"
+} from '@/components/ui/input-group'
+import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
+import { useConversationStore } from '@/stores/conversationStore'
+import { useMessageStore } from '@/stores/messageStore'
+import { useModelStore } from '@/stores/modelStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useAssistantStore } from '@/stores/assistantStore'
+import type { Model } from '@/types'
+import { ModelList, type ModelVendor, type Model as ModelListModel } from '@/components/model-list'
+import {
+  AssistantList,
+  type AssistantGroup,
+  type Assistant as AssistantListAssistant,
+} from '@/components/assistant-list'
+import { getModelLogo } from '@/lib/model-logos'
 
-type AttachmentType = "webpage" | "file" | "image" | "knowledge" | "tools"
+type AttachmentType = 'webpage' | 'file' | 'image' | 'knowledge' | 'tools'
 
 interface Attachment {
   id: string
@@ -51,31 +69,31 @@ interface Attachment {
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase()
   const mimeTypes: Record<string, string> = {
-    'md': 'text/markdown',
-    'txt': 'text/plain',
-    'json': 'application/json',
-    'js': 'text/javascript',
-    'ts': 'text/typescript',
-    'tsx': 'text/typescript',
-    'jsx': 'text/javascript',
-    'py': 'text/x-python',
-    'rs': 'text/x-rust',
-    'go': 'text/x-go',
-    'java': 'text/x-java',
-    'c': 'text/x-c',
-    'cpp': 'text/x-c++',
-    'h': 'text/x-c',
-    'css': 'text/css',
-    'html': 'text/html',
-    'xml': 'text/xml',
-    'yaml': 'text/yaml',
-    'yml': 'text/yaml',
-    'toml': 'text/toml',
-    'ini': 'text/plain',
-    'sh': 'text/x-shellscript',
-    'bash': 'text/x-shellscript',
-    'zsh': 'text/x-shellscript',
-    'sql': 'text/x-sql',
+    md: 'text/markdown',
+    txt: 'text/plain',
+    json: 'application/json',
+    js: 'text/javascript',
+    ts: 'text/typescript',
+    tsx: 'text/typescript',
+    jsx: 'text/javascript',
+    py: 'text/x-python',
+    rs: 'text/x-rust',
+    go: 'text/x-go',
+    java: 'text/x-java',
+    c: 'text/x-c',
+    cpp: 'text/x-c++',
+    h: 'text/x-c',
+    css: 'text/css',
+    html: 'text/html',
+    xml: 'text/xml',
+    yaml: 'text/yaml',
+    yml: 'text/yaml',
+    toml: 'text/toml',
+    ini: 'text/plain',
+    sh: 'text/x-shellscript',
+    bash: 'text/x-shellscript',
+    zsh: 'text/x-shellscript',
+    sql: 'text/x-sql',
   }
   return mimeTypes[ext || ''] || 'text/plain'
 }
@@ -84,12 +102,12 @@ function getMimeType(fileName: string): string {
 function getImageMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase()
   const mimeTypes: Record<string, string> = {
-    'png': 'image/png',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'bmp': 'image/bmp',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    bmp: 'image/bmp',
   }
   return mimeTypes[ext || ''] || 'image/png'
 }
@@ -116,11 +134,7 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
   const offset = circumference - (percentage / 100) * circumference
 
   return (
-    <svg
-      width={size}
-      height={size}
-      className="transform -rotate-90"
-    >
+    <svg width={size} height={size} className="transform -rotate-90">
       {/* Background circle */}
       <circle
         cx={size / 2}
@@ -143,8 +157,8 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
         strokeDashoffset={offset}
         strokeLinecap="round"
         className={cn(
-          "transition-all duration-300 ease-out",
-          percentage < 70 ? "text-green-500" : percentage < 90 ? "text-yellow-500" : "text-red-500"
+          'transition-all duration-300 ease-out',
+          percentage < 70 ? 'text-green-500' : percentage < 90 ? 'text-yellow-500' : 'text-red-500'
         )}
       />
     </svg>
@@ -154,24 +168,24 @@ function CircleProgress({ percentage, size = 24 }: CircleProgressProps) {
 // Helper function to get icon for attachment type
 function getAttachmentIcon(type: AttachmentType) {
   switch (type) {
-    case "webpage":
+    case 'webpage':
       return <Globe className="size-3" />
-    case "file":
+    case 'file':
       return <FileText className="size-3" />
-    case "image":
+    case 'image':
       return <Image className="size-3" />
-    case "knowledge":
+    case 'knowledge':
       return <BookOpen className="size-3" />
-    case "tools":
+    case 'tools':
       return <Plug className="size-3" />
   }
 }
 
 export function ChatInput({}: ChatInputProps) {
   // State
-  const [input, setInput] = useState("")
+  const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [activeTab, setActiveTab] = useState<"models" | "assistants">("models")
+  const [activeTab, setActiveTab] = useState<'models' | 'assistants'>('models')
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [artifactsEnabled, setArtifactsEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
@@ -183,26 +197,26 @@ export function ChatInput({}: ChatInputProps) {
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
   const setSelectedModel = useConversationStore((state) => state.setSelectedModel)
   const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
-  
+
   const models = useModelStore((state) => state.models)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const updateModel = useModelStore((state) => state.updateModel)
   const assistants = useAssistantStore((state) => state.assistants)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
-  
+
   // Get conversation-specific state
-  const conversationState = useMessageStore((state) => 
+  const conversationState = useMessageStore((state) =>
     currentConversation ? state.getConversationState(currentConversation.id) : null
   )
   const sendMessage = useMessageStore((state) => state.sendMessage)
   const stopGeneration = useMessageStore((state) => state.stopGeneration)
   const isSending = useMessageStore((state) => state.isSending)
-  
+
   // Get streaming state from current conversation
   const isStreaming = conversationState?.isStreaming || false
   const isWaitingForAI = conversationState?.isWaitingForAI || false
-  
+
   const getSetting = useSettingsStore((state) => state.getSetting)
 
   // Auto-focus textarea when conversation changes
@@ -214,17 +228,22 @@ export function ChatInput({}: ChatInputProps) {
       }, 100)
     }
   }, [currentConversation])
-  
+
   // Debug: log attachments changes
   useEffect(() => {
-    console.log("[ChatInput] Attachments updated:", attachments.length, attachments.map(a => ({ type: a.type, name: a.name })))
+    console.log(
+      '[ChatInput] Attachments updated:',
+      attachments.length,
+      attachments.map((a) => ({ type: a.type, name: a.name }))
+    )
   }, [attachments])
 
   // URL regex pattern to detect URLs (handles URLs within sentences)
-  const urlRegex = /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
+  const urlRegex =
+    /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)/g
 
   const handlePromptSelect = () => {
-    console.log("Prompt selected")
+    console.log('Prompt selected')
   }
 
   const addAttachment = (type: AttachmentType, name: string) => {
@@ -237,151 +256,189 @@ export function ChatInput({}: ChatInputProps) {
   }
 
   const removeAttachment = (id: string) => {
-    setAttachments(attachments.filter(att => att.id !== id))
+    setAttachments(attachments.filter((att) => att.id !== id))
   }
 
   const handleFileSelect = async () => {
     try {
-      console.log("[handleFileSelect] Opening file dialog...")
+      console.log('[handleFileSelect] Opening file dialog...')
       const selected = await open({
         multiple: true,
-        filters: [{
-          name: 'Documents',  // Changed from 'Text Files'
-          extensions: ['md', 'txt', 'json', 'js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'css', 'html', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'bash', 'zsh', 'sql']
-        }]
+        filters: [
+          {
+            name: 'Documents', // Changed from 'Text Files'
+            extensions: [
+              'md',
+              'txt',
+              'json',
+              'js',
+              'ts',
+              'tsx',
+              'jsx',
+              'py',
+              'rs',
+              'go',
+              'java',
+              'c',
+              'cpp',
+              'h',
+              'css',
+              'html',
+              'xml',
+              'yaml',
+              'yml',
+              'toml',
+              'ini',
+              'sh',
+              'bash',
+              'zsh',
+              'sql',
+            ],
+          },
+        ],
       })
-      
-      console.log("[handleFileSelect] Dialog result:", selected)
-      
+
+      console.log('[handleFileSelect] Dialog result:', selected)
+
       if (!selected) {
-        console.log("[handleFileSelect] No file selected")
+        console.log('[handleFileSelect] No file selected')
         return
       }
-      
+
       const files = Array.isArray(selected) ? selected : [selected]
-      console.log("[handleFileSelect] Files to process:", files)
-      
+      console.log('[handleFileSelect] Files to process:', files)
+
       for (const filePath of files) {
-        console.log("[handleFileSelect] Reading file:", filePath)
+        console.log('[handleFileSelect] Reading file:', filePath)
         // Use Rust command to read file (avoids plugin-fs scope issues)
-        const content = await invoke<string>("read_text_file_from_path", { path: filePath })
-        console.log("[handleFileSelect] File read, length:", content.length)
-        
+        const content = await invoke<string>('read_text_file_from_path', { path: filePath })
+        console.log('[handleFileSelect] File read, length:', content.length)
+
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
-        
+
         const newAttachment: Attachment = {
           id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          type: "file",
+          type: 'file',
           name: fileName,
           content,
           mimeType: getMimeType(fileName),
           size: content.length,
         }
-        console.log("[handleFileSelect] Created attachment:", newAttachment.name, newAttachment.size)
-        setAttachments(prev => {
-          console.log("[handleFileSelect] Updating attachments, prev count:", prev.length)
+        console.log(
+          '[handleFileSelect] Created attachment:',
+          newAttachment.name,
+          newAttachment.size
+        )
+        setAttachments((prev) => {
+          console.log('[handleFileSelect] Updating attachments, prev count:', prev.length)
           return [...prev, newAttachment]
         })
       }
-      console.log("[handleFileSelect] Done processing files")
+      console.log('[handleFileSelect] Done processing files')
     } catch (error) {
-      console.error("[handleFileSelect] Failed to select file:", error)
+      console.error('[handleFileSelect] Failed to select file:', error)
     }
   }
 
   const handleImageSelect = async () => {
     try {
-      console.log("[handleImageSelect] Opening file dialog...")
+      console.log('[handleImageSelect] Opening file dialog...')
       const selected = await open({
         multiple: true,
-        filters: [{
-          name: 'Images',
-          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-        }]
+        filters: [
+          {
+            name: 'Images',
+            extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+          },
+        ],
       })
-      
-      console.log("[handleImageSelect] Dialog result:", selected)
-      
+
+      console.log('[handleImageSelect] Dialog result:', selected)
+
       if (!selected) {
-        console.log("[handleImageSelect] No file selected")
+        console.log('[handleImageSelect] No file selected')
         return
       }
-      
+
       const files = Array.isArray(selected) ? selected : [selected]
-      console.log("[handleImageSelect] Files to process:", files)
-      
+      console.log('[handleImageSelect] Files to process:', files)
+
       for (const filePath of files) {
-        console.log("[handleImageSelect] Reading file:", filePath)
+        console.log('[handleImageSelect] Reading file:', filePath)
         // Use Rust command to read file as base64 (avoids plugin-fs scope issues)
-        const base64 = await invoke<string>("read_file_as_base64", { path: filePath })
-        console.log("[handleImageSelect] Base64 length:", base64.length)
-        
+        const base64 = await invoke<string>('read_file_as_base64', { path: filePath })
+        console.log('[handleImageSelect] Base64 length:', base64.length)
+
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image'
         const mimeType = getImageMimeType(fileName)
-        
+
         // Estimate original file size from base64 length
-        const estimatedSize = Math.floor(base64.length * 3 / 4)
-        
+        const estimatedSize = Math.floor((base64.length * 3) / 4)
+
         const newAttachment: Attachment = {
           id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          type: "image",
+          type: 'image',
           name: fileName,
           base64: `data:${mimeType};base64,${base64}`,
           mimeType,
           size: estimatedSize,
         }
-        console.log("[handleImageSelect] Created attachment:", newAttachment.name, newAttachment.size)
-        setAttachments(prev => {
-          console.log("[handleImageSelect] Updating attachments, prev count:", prev.length)
+        console.log(
+          '[handleImageSelect] Created attachment:',
+          newAttachment.name,
+          newAttachment.size
+        )
+        setAttachments((prev) => {
+          console.log('[handleImageSelect] Updating attachments, prev count:', prev.length)
           return [...prev, newAttachment]
         })
       }
-      console.log("[handleImageSelect] Done processing files")
+      console.log('[handleImageSelect] Done processing files')
     } catch (error) {
-      console.error("[handleImageSelect] Failed to select image:", error)
+      console.error('[handleImageSelect] Failed to select image:', error)
     }
   }
 
   const handleKnowledgeBaseSelect = () => {
-    addAttachment("knowledge", "Documentation")
+    addAttachment('knowledge', 'Documentation')
   }
 
   const handleToolSelect = () => {
-    addAttachment("tools", "Calculator")
+    addAttachment('tools', 'Calculator')
   }
 
   const handleWebPageSelect = () => {
-    addAttachment("webpage", "https://example.com")
+    addAttachment('webpage', 'https://example.com')
   }
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const pastedText = e.clipboardData.getData("text")
+    const pastedText = e.clipboardData.getData('text')
     const urls = pastedText.match(urlRegex)
-    
+
     if (urls && urls.length > 0) {
       const newAttachments: Attachment[] = []
       urls.forEach((url) => {
-        const isDuplicate = attachments.some(
-          att => att.type === "webpage" && att.name === url
-        ) || newAttachments.some(att => att.name === url)
-        
+        const isDuplicate =
+          attachments.some((att) => att.type === 'webpage' && att.name === url) ||
+          newAttachments.some((att) => att.name === url)
+
         if (!isDuplicate) {
           newAttachments.push({
             id: `webpage-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            type: "webpage",
+            type: 'webpage',
             name: url,
           })
         }
       })
-      
+
       if (newAttachments.length > 0) {
-        setAttachments(prev => [...prev, ...newAttachments])
+        setAttachments((prev) => [...prev, ...newAttachments])
       }
     }
   }
 
   const handleSend = async () => {
-    console.log("handleSend called", {
+    console.log('handleSend called', {
       input: input.trim(),
       hasCurrentConversation: !!currentConversation,
       selectedModel: selectedModel?.name,
@@ -389,13 +446,13 @@ export function ChatInput({}: ChatInputProps) {
     })
 
     if (!input.trim()) {
-      console.warn("Cannot send: empty input")
+      console.warn('Cannot send: empty input')
       return
     }
 
     // Check if we have either a model or assistant selected
     if (!selectedModel && !selectedAssistant) {
-      alert("Please select a model or assistant first")
+      alert('Please select a model or assistant first')
       return
     }
 
@@ -408,23 +465,23 @@ export function ChatInput({}: ChatInputProps) {
       // Use assistant's model
       modelToUse = getModelById(selectedAssistant.model_id)
       if (!modelToUse) {
-        console.error("Model not found for assistant:", selectedAssistant.model_id)
-        alert("Error: Model configuration not found for assistant")
+        console.error('Model not found for assistant:', selectedAssistant.model_id)
+        alert('Error: Model configuration not found for assistant')
         return
       }
     } else if (selectedModel) {
       // Use selected model directly
       modelToUse = selectedModel
     } else {
-      alert("Please select a model or assistant first")
+      alert('Please select a model or assistant first')
       return
     }
 
     // Get provider info
     const provider = getProviderById(modelToUse.provider_id)
     if (!provider) {
-      console.error("Provider not found for model:", modelToUse.provider_id)
-      alert("Error: Provider configuration not found")
+      console.error('Provider not found for model:', modelToUse.provider_id)
+      alert('Error: Provider configuration not found')
       return
     }
 
@@ -432,7 +489,7 @@ export function ChatInput({}: ChatInputProps) {
     modelIdStr = modelToUse.model_id
 
     const content = input.trim()
-    setInput("")
+    setInput('')
 
     try {
       // Get API credentials
@@ -440,42 +497,42 @@ export function ChatInput({}: ChatInputProps) {
       let baseUrl: string | undefined = provider.base_url
 
       // Fall back to settings if not in provider
-      if (!apiKey && provider.provider_type === "openai") {
-        apiKey = (await getSetting("openai_api_key")) || undefined
-      } else if (!apiKey && provider.provider_type === "openrouter") {
-        apiKey = (await getSetting("openrouter_api_key")) || undefined
+      if (!apiKey && provider.provider_type === 'openai') {
+        apiKey = (await getSetting('openai_api_key')) || undefined
+      } else if (!apiKey && provider.provider_type === 'openrouter') {
+        apiKey = (await getSetting('openrouter_api_key')) || undefined
       }
-      
-      if (!baseUrl && provider.provider_type === "ollama") {
-        baseUrl = (await getSetting("ollama_base_url")) || "http://localhost:11434"
+
+      if (!baseUrl && provider.provider_type === 'ollama') {
+        baseUrl = (await getSetting('ollama_base_url')) || 'http://localhost:11434'
       }
 
       // Get prompts from assistant if selected
       let systemPrompt: string | undefined
       let userPrompt: string | undefined
-      
+
       if (selectedAssistant) {
         systemPrompt = selectedAssistant.system_prompt
         userPrompt = selectedAssistant.user_prompt || undefined
-        console.log("Using assistant prompts:", {
+        console.log('Using assistant prompts:', {
           hasSystemPrompt: !!systemPrompt,
-          hasUserPrompt: !!userPrompt
+          hasUserPrompt: !!userPrompt,
         })
       }
 
       // Extract file attachments as structured data (sent via rig's Document)
-      const fileAttachments = attachments.filter(att => att.type === "file" && att.content)
-      const files = fileAttachments.map(file => ({
+      const fileAttachments = attachments.filter((att) => att.type === 'file' && att.content)
+      const files = fileAttachments.map((file) => ({
         name: file.name,
         content: file.content!,
-        mimeType: file.mimeType || "text/plain"
+        mimeType: file.mimeType || 'text/plain',
       }))
-      
-      // Extract image base64 data
-      const imageAttachments = attachments.filter(att => att.type === "image" && att.base64)
-      const imageBase64s = imageAttachments.map(img => img.base64!)
 
-      console.log("Sending message:", {
+      // Extract image base64 data
+      const imageAttachments = attachments.filter((att) => att.type === 'image' && att.base64)
+      const imageBase64s = imageAttachments.map((img) => img.base64!)
+
+      console.log('Sending message:', {
         content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
         conversationId: currentConversation?.id,
         provider: providerType,
@@ -494,9 +551,7 @@ export function ChatInput({}: ChatInputProps) {
       })
 
       // Extract webpage URLs from attachments
-      const webpageUrls = attachments
-        .filter(att => att.type === "webpage")
-        .map(att => att.name)
+      const webpageUrls = attachments.filter((att) => att.type === 'webpage').map((att) => att.name)
 
       await sendMessage(
         content, // Send original content, files are sent separately
@@ -519,26 +574,26 @@ export function ChatInput({}: ChatInputProps) {
       // Clear attachments after sending
       setAttachments([])
 
-      console.log("Message sent successfully")
+      console.log('Message sent successfully')
     } catch (error) {
-      console.error("Failed to send message:", error)
+      console.error('Failed to send message:', error)
       alert(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
   const handleStop = async () => {
     if (!currentConversation) {
-      console.warn("Cannot stop: no current conversation")
+      console.warn('Cannot stop: no current conversation')
       return
     }
 
-    console.log("handleStop called for conversation:", currentConversation.id)
-    
+    console.log('handleStop called for conversation:', currentConversation.id)
+
     try {
       await stopGeneration(currentConversation.id)
-      console.log("Generation stopped successfully")
+      console.log('Generation stopped successfully')
     } catch (error) {
-      console.error("Failed to stop generation:", error)
+      console.error('Failed to stop generation:', error)
     }
   }
 
@@ -548,25 +603,25 @@ export function ChatInput({}: ChatInputProps) {
     if (e.nativeEvent.keyCode === 229 || e.nativeEvent.isComposing) {
       return // Let IME handle the input
     }
-    
+
     // Command+Enter or Ctrl+Enter: insert new line manually
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       const textarea = e.currentTarget
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
-      const newValue = input.substring(0, start) + "\n" + input.substring(end)
+      const newValue = input.substring(0, start) + '\n' + input.substring(end)
       setInput(newValue)
-      
+
       // Set cursor position after the inserted newline
       setTimeout(() => {
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
       return
     }
-    
+
     // Enter without modifiers: send message
-    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
       handleSend()
     }
@@ -579,33 +634,33 @@ export function ChatInput({}: ChatInputProps) {
       console.error('Model not found:', modelId)
       return
     }
-    
+
     // Simply set the selected model
     setSelectedModel(model)
     console.log('Selected model:', model.name)
-    
+
     // Close the dropdown menu
     setIsModelMenuOpen(false)
   }
 
   const handleAssistantSelect = (assistantId: string) => {
     console.log('handleAssistantSelect called with assistantId:', assistantId)
-    const assistant = assistants.find(a => a.id === assistantId)
+    const assistant = assistants.find((a) => a.id === assistantId)
     if (!assistant) {
       console.error('Assistant not found:', assistantId)
       return
     }
-    
+
     // Set the selected assistant (this will clear model selection automatically)
     setSelectedAssistant(assistant)
     console.log('Selected assistant:', assistant.name)
-    
+
     // Close the dropdown menu
     setIsModelMenuOpen(false)
   }
 
   const handleModelStarToggle = async (model: ModelListModel) => {
-    console.log("Toggle star for model:", model)
+    console.log('Toggle star for model:', model)
     // Find the real model from store
     const realModel = models.find((m) => m.id === model.id)
     if (realModel) {
@@ -618,13 +673,13 @@ export function ChatInput({}: ChatInputProps) {
           is_starred: !realModel.is_starred,
         })
       } catch (error) {
-        console.error("Failed to toggle star:", error)
+        console.error('Failed to toggle star:', error)
       }
     }
   }
 
   const handleAssistantStarToggle = async (assistant: AssistantListAssistant) => {
-    console.log("Toggle star for assistant:", assistant)
+    console.log('Toggle star for assistant:', assistant)
     // Find the real assistant from store
     const realAssistant = assistants.find((a) => a.id === assistant.id)
     if (realAssistant) {
@@ -638,7 +693,7 @@ export function ChatInput({}: ChatInputProps) {
           is_starred: !realAssistant.is_starred,
         })
       } catch (error) {
-        console.error("Failed to toggle star:", error)
+        console.error('Failed to toggle star:', error)
       }
     }
   }
@@ -652,23 +707,23 @@ export function ChatInput({}: ChatInputProps) {
       const provider = getProviderById(selectedModel.provider_id)
       return provider ? `${selectedModel.name} - ${provider.name}` : selectedModel.name
     } else {
-      return "Select model or assistant"
+      return 'Select model or assistant'
     }
   }
 
   // Transform models to ModelVendor groups
   const modelVendors = useMemo((): ModelVendor[] => {
     const vendorMap = new Map<string, ModelListModel[]>()
-    
+
     models.forEach((model) => {
       const provider = getProviderById(model.provider_id)
       if (!provider) return
-      
+
       const vendorKey = provider.id
       if (!vendorMap.has(vendorKey)) {
         vendorMap.set(vendorKey, [])
       }
-      
+
       vendorMap.get(vendorKey)!.push({
         id: model.id,
         name: model.name,
@@ -677,7 +732,7 @@ export function ChatInput({}: ChatInputProps) {
         isStarred: model.is_starred,
       })
     })
-    
+
     return Array.from(vendorMap.entries()).map(([vendorId, models]) => {
       const provider = getProviderById(vendorId)
       return {
@@ -691,15 +746,15 @@ export function ChatInput({}: ChatInputProps) {
   // Transform assistants to AssistantGroup groups
   const assistantGroups = useMemo((): AssistantGroup[] => {
     const groupMap = new Map<string, AssistantListAssistant[]>()
-    
+
     assistants.forEach((assistant) => {
       const groupName = assistant.group_name || 'Default'
       if (!groupMap.has(groupName)) {
         groupMap.set(groupName, [])
       }
-      
+
       const model = getModelById(assistant.model_id)
-      
+
       groupMap.get(groupName)!.push({
         id: assistant.id,
         name: assistant.name,
@@ -711,7 +766,7 @@ export function ChatInput({}: ChatInputProps) {
         isStarred: assistant.is_starred,
       })
     })
-    
+
     return Array.from(groupMap.entries()).map(([groupName, assistants]) => ({
       id: groupName.toLowerCase().replace(/\s+/g, '-'),
       name: groupName,
@@ -737,16 +792,16 @@ export function ChatInput({}: ChatInputProps) {
                 >
                   <X className="size-3" />
                 </button>
-                {attachment.type === "image" && attachment.base64 ? (
-                  <img 
-                    src={attachment.base64} 
-                    alt={attachment.name} 
+                {attachment.type === 'image' && attachment.base64 ? (
+                  <img
+                    src={attachment.base64}
+                    alt={attachment.name}
                     className="h-4 w-4 object-cover rounded"
                   />
                 ) : (
                   getAttachmentIcon(attachment.type)
                 )}
-                {attachment.type === "webpage" ? (
+                {attachment.type === 'webpage' ? (
                   <button
                     type="button"
                     onClick={() => openUrl(attachment.name)}
@@ -758,17 +813,15 @@ export function ChatInput({}: ChatInputProps) {
                   <span className="max-w-[150px] truncate">{attachment.name}</span>
                 )}
                 {attachment.size !== undefined && (
-                  <span className="text-xs opacity-60">
-                    ({formatFileSize(attachment.size)})
-                  </span>
+                  <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
                 )}
               </Badge>
             ))}
           </div>
         )}
-        <InputGroupTextarea 
+        <InputGroupTextarea
           ref={textareaRef}
-          placeholder="Ask, Search or Chat..." 
+          placeholder="Ask, Search or Chat..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -778,19 +831,11 @@ export function ChatInput({}: ChatInputProps) {
         <InputGroupAddon align="block-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <InputGroupButton
-                variant="outline"
-                className="rounded-full"
-                size="icon-xs"
-              >
+              <InputGroupButton variant="outline" className="rounded-full" size="icon-xs">
                 <Plus />
               </InputGroupButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="top"
-              align="start"
-              className="[--radius:0.95rem]"
-            >
+            <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem]">
               <DropdownMenuItem onClick={handleWebPageSelect} className="gap-2">
                 <Globe className="size-4" />
                 <span>Web Page</span>
@@ -807,11 +852,7 @@ export function ChatInput({}: ChatInputProps) {
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <InputGroupButton
-                variant="outline"
-                className="rounded-full"
-                size="icon-xs"
-              >
+              <InputGroupButton variant="outline" className="rounded-full" size="icon-xs">
                 <Settings2 />
               </InputGroupButton>
             </DropdownMenuTrigger>
@@ -828,10 +869,7 @@ export function ChatInput({}: ChatInputProps) {
                   <Search className="size-4" />
                   <span>Web Search</span>
                 </div>
-                <Switch
-                  checked={webSearchEnabled}
-                  onCheckedChange={setWebSearchEnabled}
-                />
+                <Switch checked={webSearchEnabled} onCheckedChange={setWebSearchEnabled} />
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="gap-2 justify-between"
@@ -841,10 +879,7 @@ export function ChatInput({}: ChatInputProps) {
                   <Package className="size-4" />
                   <span>Artifacts</span>
                 </div>
-                <Switch
-                  checked={artifactsEnabled}
-                  onCheckedChange={setArtifactsEnabled}
-                />
+                <Switch checked={artifactsEnabled} onCheckedChange={setArtifactsEnabled} />
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handlePromptSelect} className="gap-2">
@@ -867,21 +902,36 @@ export function ChatInput({}: ChatInputProps) {
                 {(() => {
                   if (selectedAssistant) {
                     // For assistants, show their avatar (custom image or text/emoji with background)
-                    const hasCustomImage = selectedAssistant.avatar_type === "image" && 
-                                          (selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path)
-                    const avatarBg = selectedAssistant.avatar_bg || "#3b82f6"
-                    const isHexColor = avatarBg.startsWith("#")
+                    const hasCustomImage =
+                      selectedAssistant.avatar_type === 'image' &&
+                      (selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path)
+                    const avatarBg = selectedAssistant.avatar_bg || '#3b82f6'
+                    const isHexColor = avatarBg.startsWith('#')
                     const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
                     const avatarClassName = !isHexColor ? avatarBg : undefined
-                    
+
                     return (
                       <>
-                        <Avatar key={`assistant-${selectedAssistant.id}`} className={cn("h-4 w-4", avatarClassName)} style={avatarStyle}>
+                        <Avatar
+                          key={`assistant-${selectedAssistant.id}`}
+                          className={cn('h-4 w-4', avatarClassName)}
+                          style={avatarStyle}
+                        >
                           {hasCustomImage && (
-                            <AvatarImage src={selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path} alt={selectedAssistant.name} />
+                            <AvatarImage
+                              src={
+                                selectedAssistant.avatar_image_url ||
+                                selectedAssistant.avatar_image_path
+                              }
+                              alt={selectedAssistant.name}
+                            />
                           )}
-                          <AvatarFallback className={cn("text-white text-[8px]", avatarClassName)} style={avatarStyle}>
-                            {selectedAssistant.avatar_text || selectedAssistant.name.charAt(0).toUpperCase()}
+                          <AvatarFallback
+                            className={cn('text-white text-[8px]', avatarClassName)}
+                            style={avatarStyle}
+                          >
+                            {selectedAssistant.avatar_text ||
+                              selectedAssistant.name.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <span className="text-xs">{getSelectionDisplay()}</span>
@@ -890,7 +940,7 @@ export function ChatInput({}: ChatInputProps) {
                   } else if (selectedModel) {
                     // For models, show model logo with first character fallback
                     const modelLogo = getModelLogo(selectedModel)
-                    
+
                     return (
                       <>
                         <Avatar key={`model-${selectedModel.id}`} className="size-4">
@@ -913,7 +963,10 @@ export function ChatInput({}: ChatInputProps) {
               align="start"
               className="[--radius:0.95rem] p-2 w-[320px] max-h-[400px] overflow-y-auto"
             >
-              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "models" | "assistants")}>
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) => setActiveTab(value as 'models' | 'assistants')}
+              >
                 <TabsList className="grid w-full grid-cols-2 mb-2">
                   <TabsTrigger value="models" className="text-xs">
                     Models

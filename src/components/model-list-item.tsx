@@ -1,21 +1,15 @@
-import * as React from "react"
-import {
-  Item,
-  ItemContent,
-  ItemTitle,
-  ItemDescription,
-  ItemHeader,
-} from "@/components/ui/item"
-import { ModelAvatar } from "@/components/model-avatar"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Item, ItemContent, ItemTitle, ItemDescription, ItemHeader } from '@/components/ui/item'
+import { ModelAvatar } from '@/components/model-avatar'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star } from "lucide-react"
-import { cn } from "@/lib/utils"
+} from '@/components/ui/dropdown-menu'
+import { MoreVertical, Star } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ModelListItemProps {
   /**
@@ -83,8 +77,8 @@ export function ModelListItem({
     return (
       <Item
         className={cn(
-          "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
-          isActive && "bg-accent",
+          'cursor-pointer hover:bg-accent/50 transition-colors relative pr-0',
+          isActive && 'bg-accent',
           className
         )}
         onClick={onClick}
@@ -94,7 +88,7 @@ export function ModelListItem({
         role="button"
         size="sm"
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             onClick?.()
           }
@@ -108,26 +102,25 @@ export function ModelListItem({
           <ItemHeader>
             {/* Model name and provider name on same line */}
             <ItemTitle className="text-xs font-medium leading-tight">
-              {name}{providerName && ` - ${providerName}`}
+              {name}
+              {providerName && ` - ${providerName}`}
             </ItemTitle>
-            
+
             {/* Only star button in compact mode */}
             <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "size-6 transition-opacity",
-                isStarred && "text-yellow-500 hover:text-yellow-600",
-                !isHovered && "opacity-0"
+                'size-6 transition-opacity',
+                isStarred && 'text-yellow-500 hover:text-yellow-600',
+                !isHovered && 'opacity-0'
               )}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)
               }}
             >
-              <Star
-                className={cn("size-3.5", isStarred && "fill-current")}
-              />
+              <Star className={cn('size-3.5', isStarred && 'fill-current')} />
             </Button>
           </ItemHeader>
         </ItemContent>
@@ -138,8 +131,8 @@ export function ModelListItem({
   return (
     <Item
       className={cn(
-        "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
-        isActive && "bg-accent",
+        'cursor-pointer hover:bg-accent/50 transition-colors relative pr-0',
+        isActive && 'bg-accent',
         className
       )}
       onClick={onClick}
@@ -149,7 +142,7 @@ export function ModelListItem({
       role="button"
       size="sm"
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick?.()
         }
@@ -163,7 +156,7 @@ export function ModelListItem({
         {/* First row: Name and Action buttons */}
         <ItemHeader>
           <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
-          
+
           {/* Action buttons */}
           <div className="flex items-center gap-1">
             {/* Star button - show on hover */}
@@ -171,18 +164,16 @@ export function ModelListItem({
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "size-7 transition-opacity",
-                isStarred && "text-yellow-500 hover:text-yellow-600",
-                !isHovered && "opacity-0"
+                'size-7 transition-opacity',
+                isStarred && 'text-yellow-500 hover:text-yellow-600',
+                !isHovered && 'opacity-0'
               )}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)
               }}
             >
-              <Star
-                className={cn("size-4", isStarred && "fill-current")}
-              />
+              <Star className={cn('size-4', isStarred && 'fill-current')} />
             </Button>
 
             {/* Menu button - only visible on hover */}
@@ -191,10 +182,7 @@ export function ModelListItem({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn(
-                    "size-7 transition-opacity",
-                    !isHovered && "opacity-0"
-                  )}
+                  className={cn('size-7 transition-opacity', !isHovered && 'opacity-0')}
                   onClick={(e) => {
                     e.stopPropagation()
                   }}
@@ -224,4 +212,3 @@ export function ModelListItem({
     </Item>
   )
 }
-

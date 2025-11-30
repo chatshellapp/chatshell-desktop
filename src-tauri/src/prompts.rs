@@ -1,5 +1,5 @@
 //! Centralized prompt management for ChatShell
-//! 
+//!
 //! This module contains all system prompts and prompt templates used throughout the application.
 
 /// System prompt for generating conversation titles
@@ -29,7 +29,8 @@ Government Plans Increased Investment in Renewable Energy
 </output_title>"#;
 
 /// Default system prompt for assistant when none is specified
-pub const DEFAULT_ASSISTANT_SYSTEM_PROMPT: &str = "You are a helpful, harmless, and honest AI assistant.";
+pub const DEFAULT_ASSISTANT_SYSTEM_PROMPT: &str =
+    "You are a helpful, harmless, and honest AI assistant.";
 
 /// System prompt for deciding whether web search is needed
 pub const SEARCH_DECISION_SYSTEM_PROMPT: &str = r#"# Identity
@@ -91,8 +92,6 @@ Latest iPhone 16 price in India
 pub fn build_title_generation_user_prompt(user_message: &str, assistant_message: &str) -> String {
     format!(
         "<input_dialogue>\n<user>{}</user>\n<assistant>{}</assistant>\n</input_dialogue>",
-        user_message,
-        assistant_message
+        user_message, assistant_message
     )
 }
-

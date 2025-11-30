@@ -1,21 +1,16 @@
-import * as React from "react"
-import {
-  Item,
-  ItemContent,
-  ItemTitle,
-  ItemHeader,
-} from "@/components/ui/item"
-import { AssistantAvatar } from "@/components/assistant-avatar"
-import { ModelAvatar } from "@/components/model-avatar"
-import { Button } from "@/components/ui/button"
+import * as React from 'react'
+import { Item, ItemContent, ItemTitle, ItemHeader } from '@/components/ui/item'
+import { AssistantAvatar } from '@/components/assistant-avatar'
+import { ModelAvatar } from '@/components/model-avatar'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { MoreVertical, Star, FileText, Database, Boxes } from "lucide-react"
-import { cn } from "@/lib/utils"
+} from '@/components/ui/dropdown-menu'
+import { MoreVertical, Star, FileText, Database, Boxes } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export interface AssistantCapabilities {
   /**
@@ -101,7 +96,7 @@ interface AssistantListItemProps {
 
 export function AssistantListItem({
   logo,
-  avatarBg = "#3b82f6",
+  avatarBg = '#3b82f6',
   avatarText,
   name,
   persona,
@@ -124,8 +119,8 @@ export function AssistantListItem({
     return (
       <Item
         className={cn(
-          "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
-          isActive && "bg-accent",
+          'cursor-pointer hover:bg-accent/50 transition-colors relative pr-0',
+          isActive && 'bg-accent',
           className
         )}
         onClick={onClick}
@@ -135,40 +130,45 @@ export function AssistantListItem({
         role="button"
         size="sm"
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             onClick?.()
           }
         }}
       >
         {/* Assistant logo - smaller in compact mode */}
-        <AssistantAvatar logo={logo} avatarBg={avatarBg} avatarText={avatarText} name={name} size="xs" />
+        <AssistantAvatar
+          logo={logo}
+          avatarBg={avatarBg}
+          avatarText={avatarText}
+          name={name}
+          size="xs"
+        />
 
         {/* Assistant info */}
         <ItemContent>
           <ItemHeader>
             {/* Assistant name and model name on same line */}
             <ItemTitle className="text-xs font-medium leading-tight">
-              {name}{modelName && ` - ${modelName}`}
+              {name}
+              {modelName && ` - ${modelName}`}
             </ItemTitle>
-            
+
             {/* Only star button in compact mode */}
             <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "size-6 transition-opacity",
-                isStarred && "text-yellow-500 hover:text-yellow-600",
-                !isHovered && "opacity-0"
+                'size-6 transition-opacity',
+                isStarred && 'text-yellow-500 hover:text-yellow-600',
+                !isHovered && 'opacity-0'
               )}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)
               }}
             >
-              <Star
-                className={cn("size-3.5", isStarred && "fill-current")}
-              />
+              <Star className={cn('size-3.5', isStarred && 'fill-current')} />
             </Button>
           </ItemHeader>
         </ItemContent>
@@ -179,8 +179,8 @@ export function AssistantListItem({
   return (
     <Item
       className={cn(
-        "cursor-pointer hover:bg-accent/50 transition-colors relative pr-0",
-        isActive && "bg-accent",
+        'cursor-pointer hover:bg-accent/50 transition-colors relative pr-0',
+        isActive && 'bg-accent',
         className
       )}
       onClick={onClick}
@@ -190,21 +190,27 @@ export function AssistantListItem({
       role="button"
       size="sm"
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick?.()
         }
       }}
     >
       {/* Assistant logo */}
-      <AssistantAvatar logo={logo} avatarBg={avatarBg} avatarText={avatarText} name={name} size="md" />
+      <AssistantAvatar
+        logo={logo}
+        avatarBg={avatarBg}
+        avatarText={avatarText}
+        name={name}
+        size="md"
+      />
 
       {/* Assistant info */}
       <ItemContent>
         {/* First row: Name and Action buttons */}
         <ItemHeader>
           <ItemTitle className="text-sm font-medium leading-tight">{name}</ItemTitle>
-          
+
           {/* Action buttons */}
           <div className="flex items-center gap-1">
             {/* Star button - show on hover */}
@@ -212,18 +218,16 @@ export function AssistantListItem({
               variant="ghost"
               size="icon-sm"
               className={cn(
-                "size-7 transition-opacity",
-                isStarred && "text-yellow-500 hover:text-yellow-600",
-                !isHovered && "opacity-0"
+                'size-7 transition-opacity',
+                isStarred && 'text-yellow-500 hover:text-yellow-600',
+                !isHovered && 'opacity-0'
               )}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)
               }}
             >
-              <Star
-                className={cn("size-4", isStarred && "fill-current")}
-              />
+              <Star className={cn('size-4', isStarred && 'fill-current')} />
             </Button>
 
             {/* Menu button - only visible on hover */}
@@ -232,10 +236,7 @@ export function AssistantListItem({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn(
-                    "size-7 transition-opacity",
-                    !isHovered && "opacity-0"
-                  )}
+                  className={cn('size-7 transition-opacity', !isHovered && 'opacity-0')}
                   onClick={(e) => {
                     e.stopPropagation()
                   }}
@@ -256,38 +257,29 @@ export function AssistantListItem({
             </DropdownMenu>
           </div>
         </ItemHeader>
-        
+
         {/* Second row: Persona */}
         {persona && (
-          <div className="text-xs text-muted-foreground line-clamp-1 leading-tight">
-            {persona}
-          </div>
+          <div className="text-xs text-muted-foreground line-clamp-1 leading-tight">{persona}</div>
         )}
-        
+
         {/* Third row: Capabilities */}
         {hasCapabilities && (
           <div className="flex items-center gap-1.5">
             {capabilities.hasModel && (
-              <ModelAvatar 
-                logo={capabilities.modelLogo} 
-                name={modelName} 
-                size="xxs" 
-                className="rounded-sm" 
+              <ModelAvatar
+                logo={capabilities.modelLogo}
+                name={modelName}
+                size="xxs"
+                className="rounded-sm"
               />
             )}
-            {capabilities.hasFiles && (
-              <FileText className="size-3 text-muted-foreground" />
-            )}
-            {capabilities.hasKnowledgeBase && (
-              <Database className="size-3 text-muted-foreground" />
-            )}
-            {capabilities.hasTools && (
-              <Boxes className="size-3 text-muted-foreground" />
-            )}
+            {capabilities.hasFiles && <FileText className="size-3 text-muted-foreground" />}
+            {capabilities.hasKnowledgeBase && <Database className="size-3 text-muted-foreground" />}
+            {capabilities.hasTools && <Boxes className="size-3 text-muted-foreground" />}
           </div>
         )}
       </ItemContent>
     </Item>
   )
 }
-

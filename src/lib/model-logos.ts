@@ -3,17 +3,17 @@
  * Maps model IDs/names to their corresponding logo images using regex patterns
  */
 
-import type { Model } from "@/types"
+import type { Model } from '@/types'
 
 // Import model logo assets
-import gptAvatar from "@/assets/avatars/models/gpt.png"
-import claudeAvatar from "@/assets/avatars/models/claude.png"
-import geminiAvatar from "@/assets/avatars/models/gemini.png"
-import llamaAvatar from "@/assets/avatars/models/llama.png"
-import gemmaAvatar from "@/assets/avatars/models/gemma.png"
-import grokAvatar from "@/assets/avatars/models/grok.png"
-import deepseekAvatar from "@/assets/avatars/models/deepseek.png"
-import doubaoAvatar from "@/assets/avatars/models/doubao.png"
+import gptAvatar from '@/assets/avatars/models/gpt.png'
+import claudeAvatar from '@/assets/avatars/models/claude.png'
+import geminiAvatar from '@/assets/avatars/models/gemini.png'
+import llamaAvatar from '@/assets/avatars/models/llama.png'
+import gemmaAvatar from '@/assets/avatars/models/gemma.png'
+import grokAvatar from '@/assets/avatars/models/grok.png'
+import deepseekAvatar from '@/assets/avatars/models/deepseek.png'
+import doubaoAvatar from '@/assets/avatars/models/doubao.png'
 // Import more model logos as needed...
 
 type LogoMap = Record<string, string>
@@ -32,71 +32,71 @@ export function getModelLogoById(modelId: string): string | undefined {
   const logoMap: LogoMap = {
     // OpenAI models - unified pattern
     '(o[1-9]|gpt-[3-9]|gpt|chatgpt|text-moderation|text-embedding|dall-e|whisper|tts)': gptAvatar,
-    
+
     // Anthropic Claude models
     '(claude|anthropic)': claudeAvatar,
-    
+
     // Google models
     '(gemini|palm|bison)': geminiAvatar,
-    'gemma': gemmaAvatar,
-    
+    gemma: gemmaAvatar,
+
     // Meta models
-    'llama': llamaAvatar,
-    
+    llama: llamaAvatar,
+
     // Alibaba models
     // '(qwen|qwq|qvq)': gptAvatar, // Replace with qwen logo
-    
+
     // DeepSeek models
-    'deepseek': deepseekAvatar, // Replace with deepseek logo
-    
+    deepseek: deepseekAvatar, // Replace with deepseek logo
+
     // Mistral models
     // '(mixtral|mistral|codestral|ministral|magistral)': gptAvatar, // Replace with mistral logo
-    
+
     // Moonshot models
     // '(moonshot|kimi)': gptAvatar, // Replace with moonshot logo
-    
+
     // Zhipu AI models
     // '(glm|chatglm|cogview|zhipu)': gptAvatar, // Replace with chatglm logo
-    
+
     // ByteDance models
     '(doubao|seedream|ep-202)': doubaoAvatar, // Replace with doubao logo
-    
+
     // Baidu models
     // '(ernie|wenxin|tao-)': gptAvatar, // Replace with wenxin logo
-    
+
     // Tencent models
     // 'hunyuan': gptAvatar, // Replace with hunyuan logo
-    
+
     // iFlytek models
     // '(sparkdesk|generalv)': gptAvatar, // Replace with sparkdesk logo
-    
+
     // 01.AI models
     // 'yi-': gptAvatar, // Replace with yi logo
-    
+
     // Cohere models
     // '(cohere|command)': gptAvatar, // Replace with cohere logo
-    
+
     // StepFun models
     // 'step': gptAvatar, // Replace with step logo
-    
+
     // MiniMax models
     // '(minimax|abab)': gptAvatar, // Replace with minimax logo
-    
+
     // Stability AI models
     // '(stable-|sdxl|sd3|sd2)': gptAvatar, // Replace with stability logo
-    
+
     // Grok models
-    'grok': grokAvatar,
-    
+    grok: grokAvatar,
+
     // Microsoft models
     // '(phi|wizardlm|microsoft)': gptAvatar, // Replace with microsoft logo
-    
+
     // Baichuan models
     // 'baichuan': gptAvatar, // Replace with baichuan logo
-    
+
     // GitHub Copilot
     // '(copilot|creative|balanced|precise)': gptAvatar, // Replace with copilot logo
-    
+
     // Other models
     // '(minicpm|360|aimass|codegeex|dbrx|flashaudio|flux|hailuo|internlm|internvl|llava|magic|midjourney|mj-)': gptAvatar,
     // '(nvidia|upstage|rakutenai|ibm|hugging|youdao|embedding|perplexity|sonar|bge-|voyage-|tokenflux|nomic-|pangu-|bytedance|ling|ring)': gptAvatar,
@@ -123,15 +123,15 @@ export function getModelLogoById(modelId: string): string | undefined {
  */
 export function getModelLogo(model: Model | undefined | null): string | undefined {
   if (!model) return undefined
-  
+
   // Try model.model_id first (e.g., "gpt-4-turbo")
   let logo = getModelLogoById(model.model_id)
   if (logo) return logo
-  
+
   // Fall back to model.name (e.g., "GPT-4 Turbo")
   logo = getModelLogoById(model.name)
   if (logo) return logo
-  
+
   return undefined
 }
 
@@ -145,7 +145,6 @@ export function getModelAvatarData(model: Model | undefined | null): {
 } {
   const logo = getModelLogo(model)
   const fallback = model?.name?.charAt(0)?.toUpperCase() || 'M'
-  
+
   return { logo, fallback }
 }
-

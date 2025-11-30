@@ -27,39 +27,39 @@ pub fn run() {
             if let Err(e) = storage::init_storage_dirs(app.handle()) {
                 eprintln!("Warning: Failed to initialize storage directories: {}", e);
             }
-            
+
             // Initialize database in app data directory
-            let app_data_dir = app.path().app_data_dir()
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
                 .expect("FATAL: Failed to get app data directory");
             std::fs::create_dir_all(&app_data_dir)
                 .expect("FATAL: Failed to create app data directory");
-            
+
             let db_path = app_data_dir.join("data.db");
             println!("📂 [db] Database path: {:?}", db_path);
-            
-            let db_path_str = db_path.to_str()
-                .expect("FATAL: Invalid database path");
-            let db = Database::new(db_path_str)
-                .expect("FATAL: Failed to initialize database");
-            
+
+            let db_path_str = db_path.to_str().expect("FATAL: Invalid database path");
+            let db = Database::new(db_path_str).expect("FATAL: Failed to initialize database");
+
             println!("✅ [db] Database initialized successfully");
-            
+
             // Seed database with default data (async operation)
-            let rt = tokio::runtime::Runtime::new()
-                .expect("FATAL: Failed to create tokio runtime");
+            let rt = tokio::runtime::Runtime::new().expect("FATAL: Failed to create tokio runtime");
             rt.block_on(async {
-                db.seed_default_data().await
+                db.seed_default_data()
+                    .await
                     .expect("FATAL: Failed to seed database");
             });
-            
+
             println!("✅ [db] Database seeded with default data");
-            
-            let app_state = AppState { 
+
+            let app_state = AppState {
                 db,
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
             };
             app.manage(app_state);
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

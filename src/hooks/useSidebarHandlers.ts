@@ -18,122 +18,141 @@ export function useSidebarHandlers() {
   const updateModel = useModelStore((state) => state.updateModel)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
 
-  const handleModelClick = useCallback(async (model: ModelListItem) => {
-    const realModel = getModelById(model.id)
-    if (!realModel) {
-      console.error("Model not found:", model.id)
-      return
-    }
-    
-    try {
-      let targetConversation = null
-      
-      if (conversations.length > 0) {
-        const latestConversation = conversations[0]
-        const messages = await invoke<any[]>('list_messages_by_conversation', {
-          conversationId: latestConversation.id
-        })
-        
-        if (messages.length === 0) {
-          targetConversation = latestConversation
+  const handleModelClick = useCallback(
+    async (model: ModelListItem) => {
+      const realModel = getModelById(model.id)
+      if (!realModel) {
+        console.error('Model not found:', model.id)
+        return
+      }
+
+      try {
+        let targetConversation = null
+
+        if (conversations.length > 0) {
+          const latestConversation = conversations[0]
+          const messages = await invoke<any[]>('list_messages_by_conversation', {
+            conversationId: latestConversation.id,
+          })
+
+          if (messages.length === 0) {
+            targetConversation = latestConversation
+          }
+        }
+
+        if (!targetConversation) {
+          targetConversation = await createConversation('New Conversation')
+        }
+
+        setSelectedModel(realModel)
+        setCurrentConversation(targetConversation)
+      } catch (error) {
+        console.error('Failed to handle model click:', error)
+        alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    },
+    [conversations, getModelById, createConversation, setSelectedModel, setCurrentConversation]
+  )
+
+  const handleAssistantClick = useCallback(
+    async (assistant: AssistantListItem) => {
+      const realAssistant = assistants.find((a) => a.id === assistant.id)
+      if (!realAssistant) {
+        console.error('Assistant not found:', assistant.id)
+        return
+      }
+
+      try {
+        let targetConversation = null
+
+        if (conversations.length > 0) {
+          const latestConversation = conversations[0]
+          const messages = await invoke<any[]>('list_messages_by_conversation', {
+            conversationId: latestConversation.id,
+          })
+
+          if (messages.length === 0) {
+            targetConversation = latestConversation
+          }
+        }
+
+        if (!targetConversation) {
+          targetConversation = await createConversation('New Conversation')
+        }
+
+        setSelectedAssistant(realAssistant)
+        setCurrentConversation(targetConversation)
+      } catch (error) {
+        console.error('Failed to handle assistant click:', error)
+        alert(
+          `Failed to select assistant: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    },
+    [conversations, assistants, createConversation, setSelectedAssistant, setCurrentConversation]
+  )
+
+  const handleModelStarToggle = useCallback(
+    async (model: ModelListItem) => {
+      const realModel = getModelById(model.id)
+      if (realModel) {
+        try {
+          await updateModel(realModel.id, {
+            name: realModel.name,
+            provider_id: realModel.provider_id,
+            model_id: realModel.model_id,
+            description: realModel.description,
+            is_starred: !realModel.is_starred,
+          })
+        } catch (error) {
+          console.error('Failed to toggle star:', error)
         }
       }
-      
-      if (!targetConversation) {
-        targetConversation = await createConversation("New Conversation")
-      }
-      
-      setSelectedModel(realModel)
-      setCurrentConversation(targetConversation)
-    } catch (error) {
-      console.error("Failed to handle model click:", error)
-      alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }, [conversations, getModelById, createConversation, setSelectedModel, setCurrentConversation])
+    },
+    [getModelById, updateModel]
+  )
 
-  const handleAssistantClick = useCallback(async (assistant: AssistantListItem) => {
-    const realAssistant = assistants.find((a) => a.id === assistant.id)
-    if (!realAssistant) {
-      console.error("Assistant not found:", assistant.id)
-      return
-    }
-    
-    try {
-      let targetConversation = null
-      
-      if (conversations.length > 0) {
-        const latestConversation = conversations[0]
-        const messages = await invoke<any[]>('list_messages_by_conversation', {
-          conversationId: latestConversation.id
-        })
-        
-        if (messages.length === 0) {
-          targetConversation = latestConversation
+  const handleAssistantStarToggle = useCallback(
+    async (assistant: AssistantListItem) => {
+      const realAssistant = assistants.find((a) => a.id === assistant.id)
+      if (realAssistant) {
+        try {
+          await updateAssistant(realAssistant.id, {
+            name: realAssistant.name,
+            system_prompt: realAssistant.system_prompt,
+            model_id: realAssistant.model_id,
+            avatar_bg: realAssistant.avatar_bg,
+            avatar_text: realAssistant.avatar_text,
+            is_starred: !realAssistant.is_starred,
+          })
+        } catch (error) {
+          console.error('Failed to toggle star:', error)
         }
       }
-      
-      if (!targetConversation) {
-        targetConversation = await createConversation("New Conversation")
-      }
-      
-      setSelectedAssistant(realAssistant)
-      setCurrentConversation(targetConversation)
-    } catch (error) {
-      console.error("Failed to handle assistant click:", error)
-      alert(`Failed to select assistant: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }, [conversations, assistants, createConversation, setSelectedAssistant, setCurrentConversation])
+    },
+    [assistants, updateAssistant]
+  )
 
-  const handleModelStarToggle = useCallback(async (model: ModelListItem) => {
-    const realModel = getModelById(model.id)
-    if (realModel) {
+  const handleConversationClick = useCallback(
+    async (conversationId: string) => {
       try {
-        await updateModel(realModel.id, {
-          name: realModel.name,
-          provider_id: realModel.provider_id,
-          model_id: realModel.model_id,
-          description: realModel.description,
-          is_starred: !realModel.is_starred,
-        })
+        await selectConversation(conversationId)
       } catch (error) {
-        console.error("Failed to toggle star:", error)
+        console.error('Failed to select conversation:', error)
       }
-    }
-  }, [getModelById, updateModel])
-
-  const handleAssistantStarToggle = useCallback(async (assistant: AssistantListItem) => {
-    const realAssistant = assistants.find((a) => a.id === assistant.id)
-    if (realAssistant) {
-      try {
-        await updateAssistant(realAssistant.id, {
-          name: realAssistant.name,
-          system_prompt: realAssistant.system_prompt,
-          model_id: realAssistant.model_id,
-          avatar_bg: realAssistant.avatar_bg,
-          avatar_text: realAssistant.avatar_text,
-          is_starred: !realAssistant.is_starred,
-        })
-      } catch (error) {
-        console.error("Failed to toggle star:", error)
-      }
-    }
-  }, [assistants, updateAssistant])
-
-  const handleConversationClick = useCallback(async (conversationId: string) => {
-    try {
-      await selectConversation(conversationId)
-    } catch (error) {
-      console.error("Failed to select conversation:", error)
-    }
-  }, [selectConversation])
+    },
+    [selectConversation]
+  )
 
   const handleNewConversation = useCallback(async () => {
     try {
-      const newConversation = await createConversation("New Conversation")
+      const newConversation = await createConversation('New Conversation')
       setCurrentConversation(newConversation)
     } catch (error) {
-      console.error("Failed to create new conversation:", error)
-      alert(`Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`)
+      console.error('Failed to create new conversation:', error)
+      alert(
+        `Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }, [createConversation, setCurrentConversation])
 
@@ -146,4 +165,3 @@ export function useSidebarHandlers() {
     handleNewConversation,
   }
 }
-

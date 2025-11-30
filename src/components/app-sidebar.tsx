@@ -1,62 +1,72 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { Plus, MessageSquarePlus } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar"
-import { ProviderSettingsDialog } from "@/components/provider-settings-dialog"
-import { SettingsDialog } from "@/components/settings-dialog"
-import { ConversationList } from "@/components/sidebar/conversation-list"
-import { ContactsContent } from "@/components/sidebar/contacts-content"
-import { LibraryContent } from "@/components/sidebar/library-content"
-import { ArtifactsContent } from "@/components/sidebar/artifacts-content"
-import { SidebarNavigation } from "@/components/sidebar/sidebar-navigation"
-import { useConversationParticipants } from "@/hooks/useConversationParticipants"
-import { useSidebarHandlers } from "@/hooks/useSidebarHandlers"
-import { useVendorsList } from "@/hooks/useVendorsList"
-import { useAssistantGroups } from "@/hooks/useAssistantGroups"
-import { useConversationStore } from "@/stores/conversationStore"
-import { SIDEBAR_DATA } from "@/lib/sidebar-data"
-import type { Person, PersonGroup } from "@/components/people-list"
-import type { Prompt, PromptGroup } from "@/components/prompt-list"
-import type { Model as ModelListItem } from "@/components/model-list"
-import type { Assistant as AssistantListItem } from "@/components/assistant-list"
-import type { NavItem } from "@/components/sidebar/sidebar-navigation"
-import type { Artifact, ArtifactGroup } from "@/lib/sidebar-data"
+import * as React from 'react'
+import { Plus, MessageSquarePlus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { ProviderSettingsDialog } from '@/components/provider-settings-dialog'
+import { SettingsDialog } from '@/components/settings-dialog'
+import { ConversationList } from '@/components/sidebar/conversation-list'
+import { ContactsContent } from '@/components/sidebar/contacts-content'
+import { LibraryContent } from '@/components/sidebar/library-content'
+import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
+import { SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
+import { useConversationParticipants } from '@/hooks/useConversationParticipants'
+import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
+import { useVendorsList } from '@/hooks/useVendorsList'
+import { useAssistantGroups } from '@/hooks/useAssistantGroups'
+import { useConversationStore } from '@/stores/conversationStore'
+import { SIDEBAR_DATA } from '@/lib/sidebar-data'
+import type { Person, PersonGroup } from '@/components/people-list'
+import type { Prompt, PromptGroup } from '@/components/prompt-list'
+import type { Model as ModelListItem } from '@/components/model-list'
+import type { Assistant as AssistantListItem } from '@/components/assistant-list'
+import type { NavItem } from '@/components/sidebar/sidebar-navigation'
+import type { Artifact, ArtifactGroup } from '@/lib/sidebar-data'
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
-  const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>("person-1")
+  const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>('person-1')
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(SIDEBAR_DATA.peopleGroups)
-  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>("1")
+  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>('1')
   const [promptGroups, setPromptGroups] = React.useState<PromptGroup[]>(SIDEBAR_DATA.promptGroups)
   const [selectedArtifactId, setSelectedArtifactId] = React.useState<string | null>(null)
-  const [artifactGroups, setArtifactGroups] = React.useState<ArtifactGroup[]>(SIDEBAR_DATA.artifactGroups)
+  const [artifactGroups, setArtifactGroups] = React.useState<ArtifactGroup[]>(
+    SIDEBAR_DATA.artifactGroups
+  )
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
-  const [activeContactsTab, setActiveContactsTab] = React.useState("models")
-  const [activeLibraryTab, setActiveLibraryTab] = React.useState("prompts")
+  const [activeContactsTab, setActiveContactsTab] = React.useState('models')
+  const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
   const { setOpen } = useSidebar()
 
   const { conversationParticipantsMap } = useConversationParticipants()
   const vendorsList = useVendorsList()
   const assistantGroups = useAssistantGroups()
-  
+
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
-  
+
   const handlers = useSidebarHandlers()
 
   const renderContent = () => {
     switch (activeItem.title) {
-      case "Conversations":
+      case 'Conversations':
         return (
           <ConversationList
             conversationParticipantsMap={conversationParticipantsMap}
             onConversationClick={handlers.handleConversationClick}
           />
         )
-      case "Contacts":
+      case 'Contacts':
         return (
           <ContactsContent
             activeTab={activeContactsTab}
@@ -71,15 +81,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onModelSettings={() => {}}
             onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
             onVendorSettings={() => {}}
-            onAssistantClick={(assistant: AssistantListItem) => handlers.handleAssistantClick(assistant)}
+            onAssistantClick={(assistant: AssistantListItem) =>
+              handlers.handleAssistantClick(assistant)
+            }
             onAssistantSettings={() => {}}
-            onAssistantStarToggle={(assistant: AssistantListItem) => handlers.handleAssistantStarToggle(assistant)}
+            onAssistantStarToggle={(assistant: AssistantListItem) =>
+              handlers.handleAssistantStarToggle(assistant)
+            }
             onGroupSettings={() => {}}
             onPersonClick={(person: Person) => setSelectedPersonId(person.id)}
             onPersonSettings={() => {}}
             onPersonStarToggle={(person: Person) => {
-              setPeopleGroups(prevGroups =>
-                prevGroups.map(group => ({
+              setPeopleGroups((prevGroups) =>
+                prevGroups.map((group) => ({
                   ...group,
                   people: group.people.map((p: Person) =>
                     p.id === person.id ? { ...p, isStarred: !p.isStarred } : p
@@ -90,7 +104,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onPersonGroupSettings={() => {}}
           />
         )
-      case "Library":
+      case 'Library':
         return (
           <LibraryContent
             activeTab={activeLibraryTab}
@@ -100,8 +114,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onPromptClick={(prompt: Prompt) => setSelectedPromptId(prompt.id)}
             onPromptSettings={() => {}}
             onPromptStarToggle={(prompt: Prompt) => {
-              setPromptGroups(prevGroups =>
-                prevGroups.map(group => ({
+              setPromptGroups((prevGroups) =>
+                prevGroups.map((group) => ({
                   ...group,
                   prompts: group.prompts.map((p: Prompt) =>
                     p.id === prompt.id ? { ...p, isStarred: !p.isStarred } : p
@@ -114,15 +128,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             tools={SIDEBAR_DATA.tools}
           />
         )
-      case "Artifacts":
+      case 'Artifacts':
         return (
           <ArtifactsContent
             artifactGroups={artifactGroups}
             selectedArtifactId={selectedArtifactId || undefined}
             onArtifactClick={(artifact: Artifact) => setSelectedArtifactId(artifact.id)}
             onArtifactStarToggle={(artifact: Artifact) => {
-              setArtifactGroups(prevGroups =>
-                prevGroups.map(group => ({
+              setArtifactGroups((prevGroups) =>
+                prevGroups.map((group) => ({
                   ...group,
                   artifacts: group.artifacts.map((a: Artifact) =>
                     a.id === artifact.id ? { ...a, isStarred: !a.isStarred } : a
@@ -132,7 +146,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             }}
           />
         )
-      case "Settings":
+      case 'Settings':
         return (
           <div className="p-4">
             <p className="text-sm text-muted-foreground">Settings panel coming soon...</p>
@@ -145,7 +159,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const renderFooter = () => {
     switch (activeItem.title) {
-      case "Conversations":
+      case 'Conversations':
         return (
           <div className="px-3 pt-2 pb-2">
             <Button
@@ -159,9 +173,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </Button>
           </div>
         )
-      case "Contacts":
+      case 'Contacts':
         switch (activeContactsTab) {
-          case "models":
+          case 'models':
             return (
               <div className="px-3 pt-2 pb-2">
                 <Button
@@ -175,7 +189,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </Button>
               </div>
             )
-          case "assistants":
+          case 'assistants':
             return (
               <div className="px-3 pt-2 pb-2">
                 <Button
@@ -189,7 +203,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </Button>
               </div>
             )
-          case "people":
+          case 'people':
             return (
               <div className="px-3 pt-2 pb-2">
                 <Button
@@ -205,8 +219,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             )
         }
         break
-      case "Library":
-        if (activeLibraryTab === "prompts") {
+      case 'Library':
+        if (activeLibraryTab === 'prompts') {
           return (
             <div className="px-3 pt-2 pb-2">
               <Button
@@ -222,7 +236,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           )
         }
         break
-      case "Settings":
+      case 'Settings':
         return null
       default:
         return null
@@ -251,32 +265,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <Sidebar collapsible="none" className="hidden flex-1 md:flex">
         <SidebarHeader className="gap-3.5 border-b p-4">
           <div className="flex w-full items-center justify-between">
-            <div className="text-foreground text-base font-medium">
-              {activeItem?.title}
-            </div>
+            <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
           </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup className="px-0">
-            <SidebarGroupContent>
-              {renderContent()}
-            </SidebarGroupContent>
+            <SidebarGroupContent>{renderContent()}</SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="border-t">
-          {renderFooter()}
-        </SidebarFooter>
+        <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>
       </Sidebar>
-      
-      <ProviderSettingsDialog
-        open={providerDialogOpen}
-        onOpenChange={setProviderDialogOpen}
-      />
-      
-      <SettingsDialog
-        open={settingsDialogOpen}
-        onOpenChange={setSettingsDialogOpen}
-      />
+
+      <ProviderSettingsDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
+
+      <SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
     </Sidebar>
   )
 }

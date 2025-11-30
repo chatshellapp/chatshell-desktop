@@ -1,13 +1,13 @@
-use tauri::{State, Emitter};
-use crate::db::Database;
-use crate::models::*;
 use crate::crypto;
+use crate::db::Database;
 use crate::llm::{self, ChatMessage};
+use crate::models::*;
 use crate::prompts;
 use crate::web_fetch;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
@@ -40,9 +40,7 @@ pub async fn get_provider(
 }
 
 #[tauri::command]
-pub async fn list_providers(
-    state: State<'_, AppState>,
-) -> Result<Vec<Provider>, String> {
+pub async fn list_providers(state: State<'_, AppState>) -> Result<Vec<Provider>, String> {
     state.db.list_providers().map_err(|e| e.to_string())
 }
 
@@ -52,14 +50,14 @@ pub async fn update_provider(
     id: String,
     req: CreateProviderRequest,
 ) -> Result<Provider, String> {
-    state.db.update_provider(&id, req).map_err(|e| e.to_string())
+    state
+        .db
+        .update_provider(&id, req)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_provider(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_provider(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_provider(&id).map_err(|e| e.to_string())
 }
 
@@ -73,17 +71,12 @@ pub async fn create_model(
 }
 
 #[tauri::command]
-pub async fn get_model(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<Model>, String> {
+pub async fn get_model(state: State<'_, AppState>, id: String) -> Result<Option<Model>, String> {
     state.db.get_model(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn list_models(
-    state: State<'_, AppState>,
-) -> Result<Vec<Model>, String> {
+pub async fn list_models(state: State<'_, AppState>) -> Result<Vec<Model>, String> {
     state.db.list_models().map_err(|e| e.to_string())
 }
 
@@ -97,10 +90,7 @@ pub async fn update_model(
 }
 
 #[tauri::command]
-pub async fn delete_model(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_model(&id).map_err(|e| e.to_string())
 }
 
@@ -122,9 +112,7 @@ pub async fn get_assistant(
 }
 
 #[tauri::command]
-pub async fn list_assistants(
-    state: State<'_, AppState>,
-) -> Result<Vec<Assistant>, String> {
+pub async fn list_assistants(state: State<'_, AppState>) -> Result<Vec<Assistant>, String> {
     state.db.list_assistants().map_err(|e| e.to_string())
 }
 
@@ -134,14 +122,14 @@ pub async fn update_assistant(
     id: String,
     req: CreateAssistantRequest,
 ) -> Result<Assistant, String> {
-    state.db.update_assistant(&id, req).map_err(|e| e.to_string())
+    state
+        .db
+        .update_assistant(&id, req)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_assistant(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_assistant(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_assistant(&id).map_err(|e| e.to_string())
 }
 
@@ -155,24 +143,17 @@ pub async fn create_user(
 }
 
 #[tauri::command]
-pub async fn get_user(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<User>, String> {
+pub async fn get_user(state: State<'_, AppState>, id: String) -> Result<Option<User>, String> {
     state.db.get_user(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_self_user(
-    state: State<'_, AppState>,
-) -> Result<Option<User>, String> {
+pub async fn get_self_user(state: State<'_, AppState>) -> Result<Option<User>, String> {
     state.db.get_self_user().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn list_users(
-    state: State<'_, AppState>,
-) -> Result<Vec<User>, String> {
+pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<User>, String> {
     state.db.list_users().map_err(|e| e.to_string())
 }
 
@@ -194,9 +175,7 @@ pub async fn get_conversation(
 }
 
 #[tauri::command]
-pub async fn list_conversations(
-    state: State<'_, AppState>,
-) -> Result<Vec<Conversation>, String> {
+pub async fn list_conversations(state: State<'_, AppState>) -> Result<Vec<Conversation>, String> {
     state.db.list_conversations().map_err(|e| e.to_string())
 }
 
@@ -206,14 +185,14 @@ pub async fn update_conversation(
     id: String,
     title: String,
 ) -> Result<Conversation, String> {
-    state.db.update_conversation(&id, &title).map_err(|e| e.to_string())
+    state
+        .db
+        .update_conversation(&id, &title)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_conversation(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_conversation(&id).map_err(|e| e.to_string())
 }
 
@@ -223,7 +202,10 @@ pub async fn add_conversation_participant(
     state: State<'_, AppState>,
     req: CreateConversationParticipantRequest,
 ) -> Result<ConversationParticipant, String> {
-    state.db.add_conversation_participant(req).map_err(|e| e.to_string())
+    state
+        .db
+        .add_conversation_participant(req)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -231,7 +213,10 @@ pub async fn list_conversation_participants(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Vec<ConversationParticipant>, String> {
-    state.db.list_conversation_participants(&conversation_id).map_err(|e| e.to_string())
+    state
+        .db
+        .list_conversation_participants(&conversation_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -240,7 +225,10 @@ pub async fn get_conversation_participant_summary(
     conversation_id: String,
     current_user_id: String,
 ) -> Result<Vec<ParticipantSummary>, String> {
-    state.db.get_conversation_participant_summary(&conversation_id, &current_user_id).map_err(|e| e.to_string())
+    state
+        .db
+        .get_conversation_participant_summary(&conversation_id, &current_user_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -248,7 +236,10 @@ pub async fn remove_conversation_participant(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    state.db.remove_conversation_participant(&id).map_err(|e| e.to_string())
+    state
+        .db
+        .remove_conversation_participant(&id)
+        .map_err(|e| e.to_string())
 }
 
 // Message commands
@@ -265,7 +256,10 @@ pub async fn list_messages_by_conversation(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Vec<Message>, String> {
-    state.db.list_messages_by_conversation(&conversation_id).map_err(|e| e.to_string())
+    state
+        .db
+        .list_messages_by_conversation(&conversation_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -273,7 +267,10 @@ pub async fn clear_messages_by_conversation(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<(), String> {
-    state.db.delete_messages_in_conversation(&conversation_id).map_err(|e| e.to_string())
+    state
+        .db
+        .delete_messages_in_conversation(&conversation_id)
+        .map_err(|e| e.to_string())
 }
 
 // Attachment commands (new split schema)
@@ -282,7 +279,10 @@ pub async fn get_message_attachments(
     state: State<'_, AppState>,
     message_id: String,
 ) -> Result<Vec<Attachment>, String> {
-    state.db.get_message_attachments(&message_id).map_err(|e| e.to_string())
+    state
+        .db
+        .get_message_attachments(&message_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -306,7 +306,10 @@ pub async fn get_fetch_results_by_search(
     state: State<'_, AppState>,
     search_id: String,
 ) -> Result<Vec<FetchResult>, String> {
-    state.db.get_fetch_results_by_search(&search_id).map_err(|e| e.to_string())
+    state
+        .db
+        .get_fetch_results_by_search(&search_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -335,19 +338,15 @@ pub async fn read_file_content(
 
 // Read arbitrary text file from filesystem (for files selected via dialog)
 #[tauri::command]
-pub async fn read_text_file_from_path(
-    path: String,
-) -> Result<String, String> {
+pub async fn read_text_file_from_path(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file {}: {}", path, e))
 }
 
 // Read arbitrary binary file as base64 (for files selected via dialog)
 #[tauri::command]
-pub async fn read_file_as_base64(
-    path: String,
-) -> Result<String, String> {
+pub async fn read_file_as_base64(path: String) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    
+
     let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file {}: {}", path, e))?;
     Ok(STANDARD.encode(&bytes))
 }
@@ -358,18 +357,15 @@ pub async fn read_image_base64(
     storage_path: String,
 ) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    
+
     let bytes = crate::storage::read_binary(&app, &storage_path).map_err(|e| e.to_string())?;
     Ok(STANDARD.encode(&bytes))
 }
 
 #[tauri::command]
-pub fn get_attachment_url(
-    app: tauri::AppHandle,
-    storage_path: String,
-) -> Result<String, String> {
-    let full_path = crate::storage::get_full_path(&app, &storage_path)
-        .map_err(|e| e.to_string())?;
+pub fn get_attachment_url(app: tauri::AppHandle, storage_path: String) -> Result<String, String> {
+    let full_path =
+        crate::storage::get_full_path(&app, &storage_path).map_err(|e| e.to_string())?;
     Ok(full_path.to_string_lossy().to_string())
 }
 
@@ -388,13 +384,14 @@ pub async fn set_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    state.db.set_setting(&key, &value).map_err(|e| e.to_string())
+    state
+        .db
+        .set_setting(&key, &value)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_all_settings(
-    state: State<'_, AppState>,
-) -> Result<Vec<Setting>, String> {
+pub async fn get_all_settings(state: State<'_, AppState>) -> Result<Vec<Setting>, String> {
     state.db.get_all_settings().map_err(|e| e.to_string())
 }
 
@@ -405,10 +402,7 @@ pub async fn generate_keypair() -> Result<crypto::GeneratedKeyPair, String> {
 }
 
 #[tauri::command]
-pub async fn export_keypair(
-    public_key: String,
-    private_key: String,
-) -> Result<String, String> {
+pub async fn export_keypair(public_key: String, private_key: String) -> Result<String, String> {
     crypto::export_keypair(&public_key, &private_key).map_err(|e| e.to_string())
 }
 
@@ -453,7 +447,7 @@ async fn call_llm_provider(
         stream: false,
     };
     let cancel_token = CancellationToken::new();
-    
+
     match provider {
         "openai" => {
             let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
@@ -461,7 +455,8 @@ async fn call_llm_provider(
             provider.chat_stream(request, cancel_token, |_| true).await
         }
         "openrouter" => {
-            let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
+            let api_key_val =
+                api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
             let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
             provider.chat_stream(request, cancel_token, |_| true).await
         }
@@ -469,7 +464,10 @@ async fn call_llm_provider(
             let provider = llm::ollama::OllamaRigProvider::new(base_url);
             provider.chat_stream(request, cancel_token, |_| true).await
         }
-        _ => Err(anyhow::anyhow!("Unknown provider: {}. Use openai, openrouter, or ollama", provider)),
+        _ => Err(anyhow::anyhow!(
+            "Unknown provider: {}. Use openai, openrouter, or ollama",
+            provider
+        )),
     }
 }
 
@@ -485,39 +483,70 @@ async fn generate_conversation_title(
     base_url: Option<String>,
 ) -> Result<String> {
     println!("🏷️ [generate_title] Starting title generation...");
-    
+
     // Check if there's a custom summary model setting
-    let summary_model_id = state.db.get_setting("conversation_summary_model_id")
+    let summary_model_id = state
+        .db
+        .get_setting("conversation_summary_model_id")
         .ok()
         .flatten();
-    
-    let (summary_provider, summary_model, summary_api_key, summary_base_url) = if let Some(model_id) = summary_model_id {
+
+    let (summary_provider, summary_model, summary_api_key, summary_base_url) = if let Some(
+        model_id,
+    ) =
+        summary_model_id
+    {
         // Get the custom model settings
         match state.db.get_model(&model_id) {
             Ok(Some(m)) => {
                 // Get provider info
                 match state.db.get_provider(&m.provider_id) {
                     Ok(Some(p)) => {
-                        println!("🏷️ [generate_title] Using custom summary model: {} from provider: {}", m.model_id, p.provider_type);
-                        (p.provider_type.clone(), m.model_id.clone(), p.api_key.clone(), p.base_url.clone())
-                    },
+                        println!(
+                            "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
+                            m.model_id, p.provider_type
+                        );
+                        (
+                            p.provider_type.clone(),
+                            m.model_id.clone(),
+                            p.api_key.clone(),
+                            p.base_url.clone(),
+                        )
+                    }
                     _ => {
-                        println!("🏷️ [generate_title] Custom model provider not found, using current model");
-                        (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+                        println!(
+                            "🏷️ [generate_title] Custom model provider not found, using current model"
+                        );
+                        (
+                            provider.to_string(),
+                            model.to_string(),
+                            api_key.clone(),
+                            base_url.clone(),
+                        )
                     }
                 }
-            },
+            }
             _ => {
                 println!("🏷️ [generate_title] Custom model not found, using current model");
-                (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+                (
+                    provider.to_string(),
+                    model.to_string(),
+                    api_key.clone(),
+                    base_url.clone(),
+                )
             }
         }
     } else {
         // Use the current conversation model by default
         println!("🏷️ [generate_title] No custom summary model set, using current model");
-        (provider.to_string(), model.to_string(), api_key.clone(), base_url.clone())
+        (
+            provider.to_string(),
+            model.to_string(),
+            api_key.clone(),
+            base_url.clone(),
+        )
     };
-    
+
     // Generate title using unified provider handler
     let response = call_llm_provider(
         &summary_provider,
@@ -531,21 +560,27 @@ async fn generate_conversation_title(
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: prompts::build_title_generation_user_prompt(user_message, assistant_message),
+                content: prompts::build_title_generation_user_prompt(
+                    user_message,
+                    assistant_message,
+                ),
                 images: vec![],
                 files: vec![],
             },
         ],
         summary_api_key,
         summary_base_url,
-    ).await?;
-    
+    )
+    .await?;
+
     // Clean up the title (remove quotes, extra whitespace, etc.)
-    let title = response.content.trim()
+    let title = response
+        .content
+        .trim()
         .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == ',' || c == '!' || c == '?')
         .trim()
         .to_string();
-    
+
     println!("🏷️ [generate_title] Generated title: {}", title);
     Ok(title)
 }
@@ -574,20 +609,28 @@ async fn auto_generate_title_if_needed(
                 model,
                 api_key,
                 base_url,
-            ).await {
+            )
+            .await
+            {
                 Ok(title) => {
                     match state.db.update_conversation(conversation_id, &title) {
                         Ok(_) => {
                             println!("✅ [auto_title] Conversation title updated to: {}", title);
                             // Notify frontend of title update
-                            let _ = app.emit("conversation-updated", serde_json::json!({
-                                "conversation_id": conversation_id,
-                                "title": title,
-                            }));
-                        },
-                        Err(e) => eprintln!("⚠️  [auto_title] Failed to update conversation title: {}", e),
+                            let _ = app.emit(
+                                "conversation-updated",
+                                serde_json::json!({
+                                    "conversation_id": conversation_id,
+                                    "title": title,
+                                }),
+                            );
+                        }
+                        Err(e) => eprintln!(
+                            "⚠️  [auto_title] Failed to update conversation title: {}",
+                            e
+                        ),
                     }
-                },
+                }
                 Err(e) => eprintln!("⚠️  [auto_title] Failed to generate title: {}", e),
             }
         }
@@ -610,21 +653,21 @@ async fn handle_provider_streaming(
     assistant_db_id: Option<String>,
 ) {
     println!("✅ [background_task] Using {} provider", provider);
-    
+
     // Create the appropriate provider
     let request = llm::ChatRequest {
         model: model.clone(),
         messages: chat_messages.clone(),
         stream: true,
     };
-    
+
     // Track accumulated content for cancellation handling
     let accumulated_content = Arc::new(RwLock::new(String::new()));
     let accumulated_content_clone = accumulated_content.clone();
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
-    
+
     // Call the appropriate provider and handle streaming
     let response = match provider.as_str() {
         "openai" => {
@@ -648,18 +691,18 @@ async fn handle_provider_streaming(
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
-                        
+
                         // Accumulate content
                         if let Ok(mut content) = accumulated_content_clone.try_write() {
                             content.push_str(&chunk);
                         }
-                        
+
                         let payload = serde_json::json!({
                             "conversation_id": conversation_id_for_stream,
                             "content": chunk,
                         });
                         let _ = app_for_stream.emit("chat-stream", payload);
-                        
+
                         true // Continue streaming
                     },
                 )
@@ -686,18 +729,18 @@ async fn handle_provider_streaming(
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
-                        
+
                         // Accumulate content
                         if let Ok(mut content) = accumulated_content_clone.try_write() {
                             content.push_str(&chunk);
                         }
-                        
+
                         let payload = serde_json::json!({
                             "conversation_id": conversation_id_for_stream,
                             "content": chunk,
                         });
                         let _ = app_for_stream.emit("chat-stream", payload);
-                        
+
                         true // Continue streaming
                     },
                 )
@@ -715,18 +758,18 @@ async fn handle_provider_streaming(
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
-                        
+
                         // Accumulate content
                         if let Ok(mut content) = accumulated_content_clone.try_write() {
                             content.push_str(&chunk);
                         }
-                        
+
                         let payload = serde_json::json!({
                             "conversation_id": conversation_id_for_stream,
                             "content": chunk,
                         });
                         let _ = app_for_stream.emit("chat-stream", payload);
-                        
+
                         true // Continue streaming
                     },
                 )
@@ -739,7 +782,7 @@ async fn handle_provider_streaming(
             return;
         }
     };
-    
+
     let response = match response {
         Ok(r) => r,
         Err(e) => {
@@ -749,17 +792,17 @@ async fn handle_provider_streaming(
             return;
         }
     };
-    
+
     // Use response content directly
     let final_content = response.content.clone();
-    
+
     if final_content.is_empty() {
         println!("⚠️ [background_task] No content to save, skipping");
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
         return;
     }
-    
+
     // Determine sender_type and sender_id
     let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
         ("model".to_string(), Some(model_id))
@@ -768,7 +811,7 @@ async fn handle_provider_streaming(
     } else {
         ("assistant".to_string(), None)
     };
-    
+
     // Save assistant message
     let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
         conversation_id: Some(conversation_id_clone.clone()),
@@ -786,22 +829,25 @@ async fn handle_provider_streaming(
             return;
         }
     };
-    
-    println!("✅ [background_task] Assistant message saved with id: {}", assistant_message.id);
-    
+
+    println!(
+        "✅ [background_task] Assistant message saved with id: {}",
+        assistant_message.id
+    );
+
     // Notify frontend that streaming is complete (do this first, before title generation)
     let completion_payload = serde_json::json!({
         "conversation_id": conversation_id_clone,
         "message": assistant_message,
     });
     let _ = app.emit("chat-complete", completion_payload);
-    
+
     // Remove task from tracking
     {
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
     }
-    
+
     // Auto-generate title for new conversations (async, doesn't block the response)
     let state_for_title = state_clone.clone();
     let app_for_title = app.clone();
@@ -821,7 +867,8 @@ async fn handle_provider_streaming(
             &model_for_title,
             api_key,
             base_url,
-        ).await;
+        )
+        .await;
     });
 }
 
@@ -866,10 +913,13 @@ pub async fn send_message(
     println!("   model_db_id: {:?}", model_db_id);
     println!("   assistant_db_id: {:?}", assistant_db_id);
     println!("   urls_to_fetch: {:?}", urls_to_fetch);
-    println!("   image_base64s count: {:?}", image_base64s.as_ref().map(|v| v.len()));
+    println!(
+        "   image_base64s count: {:?}",
+        image_base64s.as_ref().map(|v| v.len())
+    );
     println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
     println!("   search_enabled: {:?}", search_enabled);
-    
+
     // Save user message to database with original content first
     // URL processing will happen in background
     println!("📝 [send_message] Creating user message in database...");
@@ -887,55 +937,68 @@ pub async fn send_message(
             println!("❌ [send_message] Failed to create message: {}", e);
             e.to_string()
         })?;
-    
-    println!("✅ [send_message] User message created with id: {}", user_message.id);
+
+    println!(
+        "✅ [send_message] User message created with id: {}",
+        user_message.id
+    );
 
     // Auto-add participants - supports multiple models/assistants in same conversation
     // This ensures conversation_participants table is populated for UI display
-    let existing_participants = state.db
+    let existing_participants = state
+        .db
         .list_conversation_participants(&conversation_id)
         .map_err(|e| e.to_string())?;
-    
+
     // Check if we need to add participants
-    let has_user = existing_participants.iter().any(|p| p.participant_type == "user");
-    
+    let has_user = existing_participants
+        .iter()
+        .any(|p| p.participant_type == "user");
+
     // Check if the SPECIFIC model or assistant is already a participant
     let current_model_exists = if let Some(ref model_id) = model_db_id {
-        existing_participants.iter().any(|p| 
-            p.participant_type == "model" && 
-            p.participant_id.as_ref() == Some(model_id)
-        )
+        existing_participants
+            .iter()
+            .any(|p| p.participant_type == "model" && p.participant_id.as_ref() == Some(model_id))
     } else {
         false
     };
-    
+
     let current_assistant_exists = if let Some(ref assistant_id) = assistant_db_id {
-        existing_participants.iter().any(|p| 
-            p.participant_type == "assistant" && 
-            p.participant_id.as_ref() == Some(assistant_id)
-        )
+        existing_participants.iter().any(|p| {
+            p.participant_type == "assistant" && p.participant_id.as_ref() == Some(assistant_id)
+        })
     } else {
         false
     };
-    
-    println!("📋 [send_message] Current participants: {} total", existing_participants.len());
+
+    println!(
+        "📋 [send_message] Current participants: {} total",
+        existing_participants.len()
+    );
     println!("   has_user: {}", has_user);
-    println!("   current_model_exists: {} (model_db_id: {:?})", current_model_exists, model_db_id);
-    println!("   current_assistant_exists: {} (assistant_db_id: {:?})", current_assistant_exists, assistant_db_id);
-    
+    println!(
+        "   current_model_exists: {} (model_db_id: {:?})",
+        current_model_exists, model_db_id
+    );
+    println!(
+        "   current_assistant_exists: {} (assistant_db_id: {:?})",
+        current_assistant_exists, assistant_db_id
+    );
+
     // Add self user if not present
     if !has_user {
         println!("👤 [send_message] Adding self user as participant...");
         match state.db.get_self_user() {
             Ok(Some(self_user)) => {
-                match state.db.add_conversation_participant(
-                    CreateConversationParticipantRequest {
+                match state
+                    .db
+                    .add_conversation_participant(CreateConversationParticipantRequest {
                         conversation_id: conversation_id.clone(),
                         participant_type: "user".to_string(),
                         participant_id: Some(self_user.id.clone()),
                         display_name: Some(self_user.display_name.clone()),
-                    }
-                ) {
+                    }) {
                     Ok(_) => println!("✅ [send_message] Added self user as participant"),
                     Err(e) => println!("⚠️  [send_message] Failed to add self user: {}", e),
                 }
@@ -944,11 +1007,14 @@ pub async fn send_message(
             Err(e) => println!("⚠️  [send_message] Error getting self user: {}", e),
         }
     }
-    
+
     // Add assistant if the SPECIFIC one is not present
     if let Some(assistant_id) = &assistant_db_id {
         if !current_assistant_exists {
-            println!("🤖 [send_message] Adding NEW assistant as participant (assistant_id: {})...", assistant_id);
+            println!(
+                "🤖 [send_message] Adding NEW assistant as participant (assistant_id: {})...",
+                assistant_id
+            );
             match state.db.get_assistant(assistant_id) {
                 Ok(Some(assistant)) => {
                     match state.db.add_conversation_participant(
@@ -957,9 +1023,12 @@ pub async fn send_message(
                             participant_type: "assistant".to_string(),
                             participant_id: Some(assistant.id.clone()),
                             display_name: Some(assistant.name.clone()),
-                        }
+                        },
                     ) {
-                        Ok(_) => println!("✅ [send_message] Added assistant '{}' as participant", assistant.name),
+                        Ok(_) => println!(
+                            "✅ [send_message] Added assistant '{}' as participant",
+                            assistant.name
+                        ),
                         Err(e) => println!("⚠️  [send_message] Failed to add assistant: {}", e),
                     }
                 }
@@ -972,7 +1041,10 @@ pub async fn send_message(
     } else if let Some(model_id) = &model_db_id {
         // Add model if the SPECIFIC one is not present
         if !current_model_exists {
-            println!("🤖 [send_message] Adding NEW model as participant (model_id: {})...", model_id);
+            println!(
+                "🤖 [send_message] Adding NEW model as participant (model_id: {})...",
+                model_id
+            );
             match state.db.get_model(model_id) {
                 Ok(Some(model)) => {
                     match state.db.add_conversation_participant(
@@ -981,9 +1053,12 @@ pub async fn send_message(
                             participant_type: "model".to_string(),
                             participant_id: Some(model.id.clone()),
                             display_name: Some(model.name.clone()),
-                        }
+                        },
                     ) {
-                        Ok(_) => println!("✅ [send_message] Added model '{}' as participant", model.name),
+                        Ok(_) => println!(
+                            "✅ [send_message] Added model '{}' as participant",
+                            model.name
+                        ),
                         Err(e) => println!("⚠️  [send_message] Failed to add model: {}", e),
                     }
                 }
@@ -997,7 +1072,7 @@ pub async fn send_message(
 
     // Create cancellation token for this generation
     let cancel_token = CancellationToken::new();
-    
+
     // Register the cancellation token
     {
         let mut tasks = state.generation_tasks.write().await;
@@ -1013,29 +1088,32 @@ pub async fn send_message(
     let conversation_id_clone = conversation_id.clone();
     let model_db_id = model_db_id.clone();
     let assistant_db_id = assistant_db_id.clone();
-    
+
     // Clone urls_to_fetch, image_base64s, files, and search_enabled for the background task
     let urls_to_fetch_clone = urls_to_fetch.clone();
     let image_base64s_clone = image_base64s.clone();
     let files_clone = files.clone();
     let search_enabled_clone = search_enabled.unwrap_or(false);
-    
+
     tokio::spawn(async move {
         println!("🎯 [background_task] Started processing LLM request");
-        
+
         // Track search result ID for linking fetch results
         let mut search_result_id: Option<String> = None;
-        
+
         // If search is enabled, first ask AI if search is actually needed
         let urls: Vec<String> = if search_enabled_clone {
             println!("🔍 [background_task] Web search enabled, checking if search is needed...");
-            
+
             // Emit event to show "deciding" state immediately
-            let _ = app_clone.emit("search-decision-started", serde_json::json!({
-                "message_id": user_message_id,
-                "conversation_id": conversation_id_clone,
-            }));
-            
+            let _ = app_clone.emit(
+                "search-decision-started",
+                serde_json::json!({
+                    "message_id": user_message_id,
+                    "conversation_id": conversation_id_clone,
+                }),
+            );
+
             // Use AI to decide if search is truly needed
             let decision = match crate::web_search::decide_search_needed(
                 &content,
@@ -1043,10 +1121,15 @@ pub async fn send_message(
                 &model,
                 api_key.as_deref(),
                 base_url.as_deref(),
-            ).await {
+            )
+            .await
+            {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("⚠️ [background_task] Search decision failed, skipping search: {}", e);
+                    eprintln!(
+                        "⚠️ [background_task] Search decision failed, skipping search: {}",
+                        e
+                    );
                     crate::web_search::SearchDecisionResult {
                         reasoning: format!("Decision failed: {}", e),
                         search_needed: false,
@@ -1054,16 +1137,21 @@ pub async fn send_message(
                     }
                 }
             };
-            
+
             // Store the search decision in database
-            match state_clone.db.create_search_decision(CreateSearchDecisionRequest {
-                reasoning: decision.reasoning.clone(),
-                search_needed: decision.search_needed,
-                search_query: decision.search_query.clone(),
-            }) {
+            match state_clone
+                .db
+                .create_search_decision(CreateSearchDecisionRequest {
+                    reasoning: decision.reasoning.clone(),
+                    search_needed: decision.search_needed,
+                    search_query: decision.search_query.clone(),
+                }) {
                 Ok(search_decision) => {
-                    println!("📝 [background_task] Created search decision: {}", search_decision.id);
-                    
+                    println!(
+                        "📝 [background_task] Created search decision: {}",
+                        search_decision.id
+                    );
+
                     // Link to user message (show first, before search results)
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
@@ -1073,36 +1161,51 @@ pub async fn send_message(
                     ) {
                         eprintln!("Failed to link search decision to message: {}", e);
                     }
-                    
+
                     // Emit attachment update for UI
-                    let _ = app_clone.emit("attachment-update", serde_json::json!({
-                        "message_id": user_message_id,
-                        "conversation_id": conversation_id_clone,
-                    }));
+                    let _ = app_clone.emit(
+                        "attachment-update",
+                        serde_json::json!({
+                            "message_id": user_message_id,
+                            "conversation_id": conversation_id_clone,
+                        }),
+                    );
                 }
                 Err(e) => {
-                    eprintln!("❌ [background_task] Failed to create search decision: {}", e);
+                    eprintln!(
+                        "❌ [background_task] Failed to create search decision: {}",
+                        e
+                    );
                 }
             }
-            
+
             if decision.search_needed {
                 // Use AI-generated search query (better optimized than raw user input)
-                let keywords = decision.search_query
+                let keywords = decision
+                    .search_query
                     .unwrap_or_else(|| crate::web_search::extract_search_keywords(&content));
-                println!("🔍 [background_task] AI decided search is needed, query: {}", keywords);
-                
+                println!(
+                    "🔍 [background_task] AI decided search is needed, query: {}",
+                    keywords
+                );
+
                 // Create SearchResult IMMEDIATELY (before searching) so UI can show it
                 let searched_at = chrono::Utc::now().to_rfc3339();
-                match state_clone.db.create_search_result(CreateSearchResultRequest {
-                    query: keywords.clone(),
-                    engine: "duckduckgo".to_string(),
-                    total_results: None, // Will be updated after search completes
-                    searched_at: searched_at.clone(),
-                }) {
+                match state_clone
+                    .db
+                    .create_search_result(CreateSearchResultRequest {
+                        query: keywords.clone(),
+                        engine: "duckduckgo".to_string(),
+                        total_results: None, // Will be updated after search completes
+                        searched_at: searched_at.clone(),
+                    }) {
                     Ok(search_result) => {
-                        println!("📝 [background_task] Created pending search result: {}", search_result.id);
+                        println!(
+                            "📝 [background_task] Created pending search result: {}",
+                            search_result.id
+                        );
                         search_result_id = Some(search_result.id.clone());
-                        
+
                         // Link search result to message
                         if let Err(e) = state_clone.db.link_message_attachment(
                             &user_message_id,
@@ -1112,61 +1215,80 @@ pub async fn send_message(
                         ) {
                             eprintln!("Failed to link search result to message: {}", e);
                         }
-                        
+
                         // Emit attachment update so UI shows SearchPreview immediately
-                        let _ = app_clone.emit("attachment-update", serde_json::json!({
-                            "message_id": user_message_id,
-                            "conversation_id": conversation_id_clone,
-                            "attachment": {
-                                "type": "search_result",
-                                "id": search_result.id,
-                                "query": keywords,
-                                "engine": "duckduckgo",
-                                "total_results": null,
-                                "searched_at": searched_at,
-                            }
-                        }));
+                        let _ = app_clone.emit(
+                            "attachment-update",
+                            serde_json::json!({
+                                "message_id": user_message_id,
+                                "conversation_id": conversation_id_clone,
+                                "attachment": {
+                                    "type": "search_result",
+                                    "id": search_result.id,
+                                    "query": keywords,
+                                    "engine": "duckduckgo",
+                                    "total_results": null,
+                                    "searched_at": searched_at,
+                                }
+                            }),
+                        );
                     }
                     Err(e) => {
                         eprintln!("Failed to create search result: {}", e);
                     }
                 }
-                
+
                 // Now perform the actual search
                 match crate::web_search::search_duckduckgo(&keywords, 5).await {
                     Ok(search_response) => {
-                        println!("✅ [background_task] Search completed, found {} results", search_response.results.len());
-                        
+                        println!(
+                            "✅ [background_task] Search completed, found {} results",
+                            search_response.results.len()
+                        );
+
                         // Update SearchResult with actual results count
                         if let Some(ref sr_id) = search_result_id {
-                            if let Err(e) = state_clone.db.update_search_result_total(sr_id, search_response.total_results as i64) {
+                            if let Err(e) = state_clone.db.update_search_result_total(
+                                sr_id,
+                                search_response.total_results as i64,
+                            ) {
                                 eprintln!("Failed to update search result total: {}", e);
                             }
-                            
+
                             // Emit attachment-update so frontend shows result count immediately
-                            let _ = app_clone.emit("attachment-update", serde_json::json!({
+                            let _ = app_clone.emit(
+                                "attachment-update",
+                                serde_json::json!({
+                                    "message_id": user_message_id,
+                                    "conversation_id": conversation_id_clone,
+                                    "attachment": {
+                                        "type": "search_result",
+                                        "id": sr_id,
+                                        "query": search_response.query,
+                                        "engine": "duckduckgo",
+                                        "total_results": search_response.total_results,
+                                    }
+                                }),
+                            );
+                        }
+
+                        // Emit search completed event
+                        let search_urls: Vec<String> = search_response
+                            .results
+                            .iter()
+                            .map(|r| r.url.clone())
+                            .collect();
+                        let _ = app_clone.emit(
+                            "search-completed",
+                            serde_json::json!({
                                 "message_id": user_message_id,
                                 "conversation_id": conversation_id_clone,
-                                "attachment": {
-                                    "type": "search_result",
-                                    "id": sr_id,
-                                    "query": search_response.query,
-                                    "engine": "duckduckgo",
-                                    "total_results": search_response.total_results,
-                                }
-                            }));
-                        }
-                        
-                        // Emit search completed event
-                        let search_urls: Vec<String> = search_response.results.iter().map(|r| r.url.clone()).collect();
-                        let _ = app_clone.emit("search-completed", serde_json::json!({
-                            "message_id": user_message_id,
-                            "conversation_id": conversation_id_clone,
-                            "search_result_id": search_result_id,
-                            "query": search_response.query,
-                            "results_count": search_response.results.len(),
-                        }));
-                        
+                                "search_result_id": search_result_id,
+                                "query": search_response.query,
+                                "results_count": search_response.results.len(),
+                            }),
+                        );
+
                         search_urls
                     }
                     Err(e) => {
@@ -1176,7 +1298,10 @@ pub async fn send_message(
                     }
                 }
             } else {
-                println!("ℹ️ [background_task] AI decided search is NOT needed: {}", decision.reasoning);
+                println!(
+                    "ℹ️ [background_task] AI decided search is NOT needed: {}",
+                    decision.reasoning
+                );
                 // No search needed, use provided URLs or extract from content
                 urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
             }
@@ -1184,60 +1309,78 @@ pub async fn send_message(
             // Search not enabled, use provided URLs or extract from content
             urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
         };
-        
+
         println!("🔍 [background_task] Processing {} URLs", urls.len());
         if !urls.is_empty() {
-            let _ = app_clone.emit("attachment-processing-started", serde_json::json!({
-                "message_id": user_message_id,
-                "conversation_id": conversation_id_clone,
-                "urls": urls,
-            }));
+            let _ = app_clone.emit(
+                "attachment-processing-started",
+                serde_json::json!({
+                    "message_id": user_message_id,
+                    "conversation_id": conversation_id_clone,
+                    "urls": urls,
+                }),
+            );
         }
-        
+
         // Process URLs and get fetched web resources
         let fetched_resources = web_fetch::fetch_urls(&urls, None).await;
-        println!("📄 [background_task] Fetched {} web resources", fetched_resources.len());
-        
+        println!(
+            "📄 [background_task] Fetched {} web resources",
+            fetched_resources.len()
+        );
+
         // Store fetched resources as fetch_results and link to message
         let mut attachment_ids: Vec<String> = Vec::new();
         for resource in &fetched_resources {
             // Generate storage path and save content to filesystem
             let fetch_id = uuid::Uuid::now_v7().to_string();
-            let storage_path = crate::storage::generate_fetch_storage_path(&fetch_id, &resource.content_format);
-            
+            let storage_path =
+                crate::storage::generate_fetch_storage_path(&fetch_id, &resource.content_format);
+
             // Save content to filesystem
-            if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &resource.content) {
-                eprintln!("Failed to save content to filesystem for {}: {}", resource.url, e);
+            if let Err(e) =
+                crate::storage::write_content(&app_clone, &storage_path, &resource.content)
+            {
+                eprintln!(
+                    "Failed to save content to filesystem for {}: {}",
+                    resource.url, e
+                );
                 continue;
             }
-            
-            let status = if resource.extraction_error.is_some() { "failed" } else { "success" };
+
+            let status = if resource.extraction_error.is_some() {
+                "failed"
+            } else {
+                "success"
+            };
             let headings_json = serde_json::to_string(&resource.metadata.headings).ok();
             let content_size = resource.content.len() as i64;
-            
-            match state_clone.db.create_fetch_result(CreateFetchResultRequest {
-                search_id: search_result_id.clone(), // Link to search if available
-                url: resource.url.clone(),
-                title: resource.title.clone(),
-                description: resource.description.clone(),
-                storage_path: storage_path.clone(),
-                content_type: resource.content_format.clone(),
-                original_mime: Some(resource.mime_type.clone()),
-                status: Some(status.to_string()),
-                error: resource.extraction_error.clone(),
-                keywords: resource.metadata.keywords.clone(),
-                headings: headings_json,
-                original_size: resource.metadata.original_length.map(|l| l as i64),
-                processed_size: Some(content_size),
-                favicon_url: resource.metadata.favicon_url.clone(),
-            }) {
+
+            match state_clone
+                .db
+                .create_fetch_result(CreateFetchResultRequest {
+                    search_id: search_result_id.clone(), // Link to search if available
+                    url: resource.url.clone(),
+                    title: resource.title.clone(),
+                    description: resource.description.clone(),
+                    storage_path: storage_path.clone(),
+                    content_type: resource.content_format.clone(),
+                    original_mime: Some(resource.mime_type.clone()),
+                    status: Some(status.to_string()),
+                    error: resource.extraction_error.clone(),
+                    keywords: resource.metadata.keywords.clone(),
+                    headings: headings_json,
+                    original_size: resource.metadata.original_length.map(|l| l as i64),
+                    processed_size: Some(content_size),
+                    favicon_url: resource.metadata.favicon_url.clone(),
+                }) {
                 Ok(fetch_result) => {
                     // Link fetch_result to message
                     if let Err(e) = state_clone.db.link_message_attachment(
-                        &user_message_id, 
+                        &user_message_id,
                         AttachmentType::FetchResult,
-                        &fetch_result.id, 
-                        None
+                        &fetch_result.id,
+                        None,
                     ) {
                         eprintln!("Failed to link fetch_result to message: {}", e);
                     }
@@ -1250,24 +1393,31 @@ pub async fn send_message(
                 }
             }
         }
-        
+
         // Emit attachment processing complete event with attachment IDs
         if !urls.is_empty() {
-            let _ = app_clone.emit("attachment-processing-complete", serde_json::json!({
-                "message_id": user_message_id,
-                "conversation_id": conversation_id_clone,
-                "attachment_ids": attachment_ids,
-            }));
+            let _ = app_clone.emit(
+                "attachment-processing-complete",
+                serde_json::json!({
+                    "message_id": user_message_id,
+                    "conversation_id": conversation_id_clone,
+                    "attachment_ids": attachment_ids,
+                }),
+            );
         }
-        
+
         // Build LLM content by combining original message with fetched content
-        let processed_content = web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
-        
+        let processed_content =
+            web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
+
         // Parse image attachments from base64 data URLs
         let mut user_images: Vec<llm::ImageData> = Vec::new();
         if let Some(images) = image_base64s_clone {
             if !images.is_empty() {
-                println!("🖼️  [background_task] Processing {} image attachments", images.len());
+                println!(
+                    "🖼️  [background_task] Processing {} image attachments",
+                    images.len()
+                );
                 for image_data_url in images.iter() {
                     // Parse data URL: "data:image/png;base64,xxxxx"
                     if let Some(rest) = image_data_url.strip_prefix("data:") {
@@ -1276,65 +1426,83 @@ pub async fn send_message(
                                 base64: base64_data.to_string(),
                                 media_type: media_type.to_string(),
                             });
-                            println!("   - Parsed image: {} ({} chars)", media_type, base64_data.len());
+                            println!(
+                                "   - Parsed image: {} ({} chars)",
+                                media_type,
+                                base64_data.len()
+                            );
                         }
                     }
                 }
             }
         }
-        
+
         // Convert file attachments to FileData
         let mut user_files: Vec<llm::FileData> = Vec::new();
         if let Some(files) = files_clone {
             if !files.is_empty() {
-                println!("📄 [background_task] Processing {} file attachments", files.len());
+                println!(
+                    "📄 [background_task] Processing {} file attachments",
+                    files.len()
+                );
                 for file in files.iter() {
                     user_files.push(llm::FileData {
                         name: file.name.clone(),
                         content: file.content.clone(),
                         media_type: file.mime_type.clone(),
                     });
-                    println!("   - File: {} ({} chars, {})", file.name, file.content.len(), file.mime_type);
+                    println!(
+                        "   - File: {} ({} chars, {})",
+                        file.name,
+                        file.content.len(),
+                        file.mime_type
+                    );
                 }
             }
         }
-        
+
         // Store file attachments to filesystem and database
         for file in &user_files {
             let file_id = uuid::Uuid::now_v7().to_string();
-            
+
             // Get extension from filename
             let ext = std::path::Path::new(&file.name)
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("txt");
-            
+
             let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
-            
+
             // Write file content to filesystem
-            if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &file.content) {
+            if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &file.content)
+            {
                 eprintln!("Failed to save file {}: {}", file.name, e);
                 continue;
             }
-            
+
             // Create file record in database
-            match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
-                file_name: file.name.clone(),
-                file_size: file.content.len() as i64,
-                mime_type: file.media_type.clone(),
-                storage_path: storage_path.clone(),
-            }) {
+            match state_clone
+                .db
+                .create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: file.name.clone(),
+                    file_size: file.content.len() as i64,
+                    mime_type: file.media_type.clone(),
+                    storage_path: storage_path.clone(),
+                }) {
                 Ok(file_attachment) => {
                     // Link file to message
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
                         AttachmentType::File,
                         &file_attachment.id,
-                        None
+                        None,
                     ) {
                         eprintln!("Failed to link file to message: {}", e);
                     } else {
-                        println!("📎 [background_task] Saved file attachment: {} -> {}", file.name, file_attachment.id);
+                        println!(
+                            "📎 [background_task] Saved file attachment: {} -> {}",
+                            file.name, file_attachment.id
+                        );
                     }
                 }
                 Err(e) => {
@@ -1343,50 +1511,58 @@ pub async fn send_message(
                 }
             }
         }
-        
+
         // Store image attachments to filesystem and database
         for (i, img) in user_images.iter().enumerate() {
             let file_id = uuid::Uuid::now_v7().to_string();
-            
+
             // Get extension from mime type
             let ext = crate::storage::get_extension_for_content_type(&img.media_type);
             let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
-            
+
             // Decode base64 to bytes
-            let bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &img.base64) {
+            let bytes = match base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                &img.base64,
+            ) {
                 Ok(b) => b,
                 Err(e) => {
                     eprintln!("Failed to decode image {}: {}", i, e);
                     continue;
                 }
             };
-            
+
             // Write image to filesystem
             if let Err(e) = crate::storage::write_binary(&app_clone, &storage_path, &bytes) {
                 eprintln!("Failed to save image {}: {}", i, e);
                 continue;
             }
-            
+
             let file_name = format!("image_{}.{}", i + 1, ext);
-            
+
             // Create file record in database
-            match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
-                file_name: file_name.clone(),
-                file_size: bytes.len() as i64,
-                mime_type: img.media_type.clone(),
-                storage_path: storage_path.clone(),
-            }) {
+            match state_clone
+                .db
+                .create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: file_name.clone(),
+                    file_size: bytes.len() as i64,
+                    mime_type: img.media_type.clone(),
+                    storage_path: storage_path.clone(),
+                }) {
                 Ok(file_attachment) => {
                     // Link file to message
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
                         AttachmentType::File,
                         &file_attachment.id,
-                        None
+                        None,
                     ) {
                         eprintln!("Failed to link image to message: {}", e);
                     } else {
-                        println!("🖼️ [background_task] Saved image attachment: {} -> {}", file_name, file_attachment.id);
+                        println!(
+                            "🖼️ [background_task] Saved image attachment: {} -> {}",
+                            file_name, file_attachment.id
+                        );
                     }
                 }
                 Err(e) => {
@@ -1395,12 +1571,12 @@ pub async fn send_message(
                 }
             }
         }
-        
+
         // Build chat messages with system prompt
         // Use assistant's system prompt if provided, otherwise use default
-        let system_prompt_content = system_prompt
-            .unwrap_or_else(|| prompts::DEFAULT_ASSISTANT_SYSTEM_PROMPT.to_string());
-        
+        let system_prompt_content =
+            system_prompt.unwrap_or_else(|| prompts::DEFAULT_ASSISTANT_SYSTEM_PROMPT.to_string());
+
         let mut chat_messages = vec![ChatMessage {
             role: "system".to_string(),
             content: system_prompt_content,
@@ -1411,7 +1587,10 @@ pub async fn send_message(
         // Include message history if requested (default: true)
         let should_include_history = include_history.unwrap_or(true);
         if should_include_history {
-            if let Ok(messages) = state_clone.db.list_messages_by_conversation(&conversation_id_clone) {
+            if let Ok(messages) = state_clone
+                .db
+                .list_messages_by_conversation(&conversation_id_clone)
+            {
                 for msg in messages.iter() {
                     // Skip the user message we just saved (it will be added with processed content below)
                     if msg.id == user_message_id {
@@ -1432,7 +1611,7 @@ pub async fn send_message(
                 }
             }
         }
-        
+
         // Always add the current user message with processed content (URL fetching done)
         // If user_prompt is provided (from assistant), prepend it to the content
         let final_user_content = if let Some(ref prompt) = user_prompt {
@@ -1440,7 +1619,7 @@ pub async fn send_message(
         } else {
             processed_content.clone()
         };
-        
+
         chat_messages.push(ChatMessage {
             role: "user".to_string(),
             content: final_user_content,
@@ -1449,7 +1628,10 @@ pub async fn send_message(
         });
 
         // Send chat request with streaming (unified handler for all providers)
-        println!("📤 [background_task] Sending chat request to LLM (model: {})", model);
+        println!(
+            "📤 [background_task] Sending chat request to LLM (model: {})",
+            model
+        );
         handle_provider_streaming(
             provider,
             model,
@@ -1463,7 +1645,8 @@ pub async fn send_message(
             content,
             model_db_id,
             assistant_db_id,
-        ).await;
+        )
+        .await;
     });
 
     // Return user message immediately
@@ -1477,19 +1660,25 @@ pub async fn stop_generation(
     app: tauri::AppHandle,
     conversation_id: String,
 ) -> Result<bool, String> {
-    println!("🛑 [stop_generation] Stopping generation for conversation: {}", conversation_id);
-    
+    println!(
+        "🛑 [stop_generation] Stopping generation for conversation: {}",
+        conversation_id
+    );
+
     let tasks = state.generation_tasks.read().await;
-    
+
     if let Some(cancel_token) = tasks.get(&conversation_id) {
         cancel_token.cancel();
         println!("✅ [stop_generation] Cancellation token triggered");
-        
+
         // Emit event to notify frontend that generation was stopped
-        let _ = app.emit("generation-stopped", serde_json::json!({
-            "conversation_id": conversation_id,
-        }));
-        
+        let _ = app.emit(
+            "generation-stopped",
+            serde_json::json!({
+                "conversation_id": conversation_id,
+            }),
+        );
+
         Ok(true)
     } else {
         println!("⚠️ [stop_generation] No active task found for conversation");
@@ -1506,8 +1695,11 @@ pub async fn perform_web_search(
     max_results: Option<usize>,
 ) -> Result<crate::web_search::DuckDuckGoSearchResponse, String> {
     let max = max_results.unwrap_or(5);
-    println!("🔍 [perform_web_search] Searching for: {} (max {})", query, max);
-    
+    println!(
+        "🔍 [perform_web_search] Searching for: {} (max {})",
+        query, max
+    );
+
     crate::web_search::search_duckduckgo(&query, max)
         .await
         .map_err(|e| e.to_string())
@@ -1515,9 +1707,6 @@ pub async fn perform_web_search(
 
 /// Extract search keywords from user input
 #[tauri::command]
-pub async fn extract_search_keywords(
-    user_input: String,
-) -> Result<String, String> {
+pub async fn extract_search_keywords(user_input: String) -> Result<String, String> {
     Ok(crate::web_search::extract_search_keywords(&user_input))
 }
-

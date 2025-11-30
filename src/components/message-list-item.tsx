@@ -1,12 +1,7 @@
-import * as React from "react"
-import {
-  Item,
-  ItemContent,
-  ItemTitle,
-  ItemDescription,
-} from "@/components/ui/item"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { cn } from "@/lib/utils"
+import * as React from 'react'
+import { Item, ItemContent, ItemTitle, ItemDescription } from '@/components/ui/item'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { cn } from '@/lib/utils'
 
 export interface AvatarData {
   type: 'text' | 'image'
@@ -70,15 +65,10 @@ export function MessageListItem({
       return (
         <Avatar
           key={index}
-          className={cn(
-            "size-4 ring-1 ring-background",
-            index > 0 && "ml-[-6px]"
-          )}
+          className={cn('size-4 ring-1 ring-background', index > 0 && 'ml-[-6px]')}
         >
           <AvatarImage src={avatar} alt={`Avatar ${index + 1}`} />
-          <AvatarFallback className="text-[10px]">
-            {summary.charAt(index)}
-          </AvatarFallback>
+          <AvatarFallback className="text-[10px]">{summary.charAt(index)}</AvatarFallback>
         </Avatar>
       )
     }
@@ -88,16 +78,13 @@ export function MessageListItem({
       const displayText = avatar.text || avatar.fallback || '?'
       const isPlaceholder = avatar.isPlaceholder === true
       const hasCustomBg = !!avatar.backgroundColor
-      
+
       // For placeholder avatars, use Tailwind's bg-muted class
       if (isPlaceholder) {
         return (
           <Avatar
             key={index}
-            className={cn(
-              "size-4 ring-1 ring-background bg-muted",
-              index > 0 && "ml-[-6px]"
-            )}
+            className={cn('size-4 ring-1 ring-background bg-muted', index > 0 && 'ml-[-6px]')}
           >
             <AvatarFallback className="text-[10px] bg-muted opacity-0">
               {displayText}
@@ -105,16 +92,13 @@ export function MessageListItem({
           </Avatar>
         )
       }
-      
+
       // For text/emoji avatars with custom background (e.g., assistants)
       if (hasCustomBg) {
         return (
           <Avatar
             key={index}
-            className={cn(
-              "size-4 ring-1 ring-background",
-              index > 0 && "ml-[-6px]"
-            )}
+            className={cn('size-4 ring-1 ring-background', index > 0 && 'ml-[-6px]')}
             style={{ backgroundColor: avatar.backgroundColor }}
           >
             <AvatarFallback
@@ -126,33 +110,22 @@ export function MessageListItem({
           </Avatar>
         )
       }
-      
+
       // For text avatars without custom background (e.g., models without logo)
       // Use default AvatarFallback styling (bg-muted)
       return (
         <Avatar
           key={index}
-          className={cn(
-            "size-4 ring-1 ring-background",
-            index > 0 && "ml-[-6px]"
-          )}
+          className={cn('size-4 ring-1 ring-background', index > 0 && 'ml-[-6px]')}
         >
-          <AvatarFallback className="text-[10px]">
-            {displayText}
-          </AvatarFallback>
+          <AvatarFallback className="text-[10px]">{displayText}</AvatarFallback>
         </Avatar>
       )
     }
 
     // Image avatar
     return (
-      <Avatar
-        key={index}
-        className={cn(
-          "size-4 ring-1 ring-background",
-          index > 0 && "ml-[-6px]"
-        )}
-      >
+      <Avatar key={index} className={cn('size-4 ring-1 ring-background', index > 0 && 'ml-[-6px]')}>
         <AvatarImage src={avatar.imageUrl} alt={`Avatar ${index + 1}`} />
         <AvatarFallback className="text-[10px]">
           {avatar.fallback || summary.charAt(index)}
@@ -164,15 +137,15 @@ export function MessageListItem({
   return (
     <Item
       className={cn(
-        "cursor-pointer hover:bg-accent/50 transition-colors",
-        isActive && "bg-accent",
+        'cursor-pointer hover:bg-accent/50 transition-colors',
+        isActive && 'bg-accent',
         className
       )}
       onClick={onClick}
       tabIndex={0}
       role="button"
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onClick?.()
         }
@@ -184,21 +157,17 @@ export function MessageListItem({
         <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
 
         {/* Second line: Last message content (truncated) */}
-        <ItemDescription className="line-clamp-1 text-xs">
-          {lastMessage}
-        </ItemDescription>
+        <ItemDescription className="line-clamp-1 text-xs">{lastMessage}</ItemDescription>
 
         {/* Third line: Timestamp and small avatars */}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
-            {timestamp}
-          </span>
-          
+          <span className="text-xs text-muted-foreground">{timestamp}</span>
+
           {/* Small avatars on the right */}
           <div className="flex -space-x-1.5">
-            {avatars.slice(0, maxVisibleAvatars).map((avatar, index) => 
-              renderAvatar(avatar, index)
-            )}
+            {avatars
+              .slice(0, maxVisibleAvatars)
+              .map((avatar, index) => renderAvatar(avatar, index))}
             {avatars.length > maxVisibleAvatars && (
               <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
                 <AvatarFallback className="text-[10px]">
@@ -222,9 +191,8 @@ export function MessageListItemGroup({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col gap-1", className)} role="list">
+    <div className={cn('flex flex-col gap-1', className)} role="list">
       {children}
     </div>
   )
 }
-

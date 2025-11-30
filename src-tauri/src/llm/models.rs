@@ -140,7 +140,7 @@ fn format_ollama_model_name(model_id: &str) -> String {
     let parts: Vec<&str> = model_id.split(':').collect();
     let base_name = parts[0];
     let size = parts.get(1).map(|s| s.to_uppercase());
-    
+
     // Format the base name
     let formatted_base = base_name
         .split('-')
@@ -153,7 +153,7 @@ fn format_ollama_model_name(model_id: &str) -> String {
                 let mut result = String::new();
                 let mut chars = part.chars().peekable();
                 let mut is_first = true;
-                
+
                 while let Some(ch) = chars.next() {
                     if ch.is_ascii_digit() {
                         if !result.is_empty() && !result.ends_with(' ') {
@@ -181,7 +181,7 @@ fn format_ollama_model_name(model_id: &str) -> String {
         })
         .collect::<Vec<String>>()
         .join(" ");
-    
+
     // Combine with size if present
     if let Some(size_str) = size {
         format!("{} {}", formatted_base, size_str)
@@ -228,4 +228,3 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
 
     Ok(models)
 }
-

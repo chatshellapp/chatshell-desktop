@@ -1,127 +1,134 @@
-import { useEffect, useState } from 'react';
-import { useAssistantStore } from '@/stores/assistantStore';
-import { useModelStore } from '@/stores/modelStore';
-import { useConversationStore } from '@/stores/conversationStore';
-import { useMessageStore } from '@/stores/messageStore';
-import { useSettingsStore } from '@/stores/settingsStore';
-import { useUserStore } from '@/stores/userStore';
+import { useEffect, useState } from 'react'
+import { useAssistantStore } from '@/stores/assistantStore'
+import { useModelStore } from '@/stores/modelStore'
+import { useConversationStore } from '@/stores/conversationStore'
+import { useMessageStore } from '@/stores/messageStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useUserStore } from '@/stores/userStore'
 
 export function useAppInit() {
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Use selector only for reactive state (conversations)
-  const conversations = useConversationStore((state: any) => state.conversations);
+  const conversations = useConversationStore((state: any) => state.conversations)
 
   // Initialize once on mount - use getState() to avoid dependency issues
   useEffect(() => {
     async function initialize() {
       try {
-        console.log('Initializing app...');
-        
+        console.log('Initializing app...')
+
         // Get store actions directly (stable references)
-        const settingsStore = useSettingsStore.getState();
-        const userStore = useUserStore.getState();
-        const modelStore = useModelStore.getState();
-        const assistantStore = useAssistantStore.getState();
-        const conversationStore = useConversationStore.getState();
-        
+        const settingsStore = useSettingsStore.getState()
+        const userStore = useUserStore.getState()
+        const modelStore = useModelStore.getState()
+        const assistantStore = useAssistantStore.getState()
+        const conversationStore = useConversationStore.getState()
+
         // Load settings
-        console.log('Loading settings...');
-        await settingsStore.loadSettings();
+        console.log('Loading settings...')
+        await settingsStore.loadSettings()
 
         // Load self user (needed for participant queries)
-        console.log('Loading self user...');
-        await userStore.loadSelfUser();
+        console.log('Loading self user...')
+        await userStore.loadSelfUser()
 
         // Load models and providers first (assistants reference models)
-        console.log('Loading models and providers...');
-        await modelStore.loadAll();
+        console.log('Loading models and providers...')
+        await modelStore.loadAll()
 
         // Load assistants (optional - users can use models directly)
-        console.log('Loading assistants...');
-        await assistantStore.loadAssistants();
-        
+        console.log('Loading assistants...')
+        await assistantStore.loadAssistants()
+
         // Load conversations
-        console.log('Loading conversations...');
-        await conversationStore.loadConversations();
-        
-        console.log('App initialization complete');
+        console.log('Loading conversations...')
+        await conversationStore.loadConversations()
+
+        console.log('App initialization complete')
       } catch (err) {
-        console.error('Failed to initialize app:', err);
-        setError(String(err));
+        console.error('Failed to initialize app:', err)
+        setError(String(err))
       } finally {
-        setIsInitialized(true);
+        setIsInitialized(true)
       }
     }
 
-    initialize();
+    initialize()
     // Empty deps - run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   // Set up inter-store communication callbacks (runs once on mount)
   useEffect(() => {
-    const messageStore = useMessageStore.getState();
-    const conversationStore = useConversationStore.getState();
-    
+    const messageStore = useMessageStore.getState()
+    const conversationStore = useConversationStore.getState()
+
     // When messageStore creates a new conversation, update conversationStore
     messageStore.onNewConversationCreated = (conversation) => {
-      console.log('[useAppInit] New conversation created via callback:', conversation.id);
-      conversationStore.setCurrentConversation(conversation);
+      console.log('[useAppInit] New conversation created via callback:', conversation.id)
+      conversationStore.setCurrentConversation(conversation)
       // Also add to conversations list if not already there
-      if (!conversationStore.conversations.find(c => c.id === conversation.id)) {
-        conversationStore.loadConversations();
+      if (!conversationStore.conversations.find((c) => c.id === conversation.id)) {
+        conversationStore.loadConversations()
       }
-    };
-    
+    }
+
     // Cleanup on unmount
     return () => {
-      messageStore.onNewConversationCreated = undefined;
-    };
-  }, []);
+      messageStore.onNewConversationCreated = undefined
+    }
+  }, [])
 
   // Once conversations are loaded, handle initial model/assistant selection
   useEffect(() => {
-    const conversationStore = useConversationStore.getState();
-    const modelStore = useModelStore.getState();
-    
+    const conversationStore = useConversationStore.getState()
+    const modelStore = useModelStore.getState()
+
     if (conversations.length > 0 && !conversationStore.currentConversation) {
       // Case 1: Has conversation history - select the most recent conversation
       // The conversation's last joined model/assistant will be auto-selected by selectConversation
-      console.log(`[useAppInit] Found ${conversations.length} conversations, selecting most recent...`);
-      const mostRecentConv = conversations[0]; // Already sorted by updated_at DESC
-      useConversationStore.getState().selectConversation(mostRecentConv.id);
-      console.log('[useAppInit] Selected most recent conversation, last joined model/assistant will be used');
+      console.log(
+        `[useAppInit] Found ${conversations.length} conversations, selecting most recent...`
+      )
+      const mostRecentConv = conversations[0] // Already sorted by updated_at DESC
+      useConversationStore.getState().selectConversation(mostRecentConv.id)
+      console.log(
+        '[useAppInit] Selected most recent conversation, last joined model/assistant will be used'
+      )
     } else if (conversations.length === 0) {
       // No conversation history - determine default model selection
-      console.log('[useAppInit] No conversation history, determining default model...');
-      const models = modelStore.models;
-      
+      console.log('[useAppInit] No conversation history, determining default model...')
+      const models = modelStore.models
+
       if (models.length === 0) {
         // Case 4: No models at all - don't select anything
-        console.log('[useAppInit] No models available, no selection');
+        console.log('[useAppInit] No models available, no selection')
       } else {
-        const starredModels = models.filter((m: any) => m.is_starred);
-        
+        const starredModels = models.filter((m: any) => m.is_starred)
+
         if (starredModels.length > 0) {
           // Case 2: Has starred models - select the last starred model
-          const lastStarredModel = starredModels[starredModels.length - 1];
-          console.log('[useAppInit] Selecting last starred model:', lastStarredModel.name);
-          conversationStore.setSelectedModel(lastStarredModel);
+          const lastStarredModel = starredModels[starredModels.length - 1]
+          console.log('[useAppInit] Selecting last starred model:', lastStarredModel.name)
+          conversationStore.setSelectedModel(lastStarredModel)
           // Mark as initialized since we've set a default
-          useConversationStore.setState({ isFirstConversationSinceStartup: false });
+          useConversationStore.setState({ isFirstConversationSinceStartup: false })
         } else {
           // Case 3: No starred models - select the last added model
-          const lastAddedModel = models[models.length - 1];
-          console.log('[useAppInit] No starred models, selecting last added model:', lastAddedModel.name);
-          conversationStore.setSelectedModel(lastAddedModel);
+          const lastAddedModel = models[models.length - 1]
+          console.log(
+            '[useAppInit] No starred models, selecting last added model:',
+            lastAddedModel.name
+          )
+          conversationStore.setSelectedModel(lastAddedModel)
           // Mark as initialized since we've set a default
-          useConversationStore.setState({ isFirstConversationSinceStartup: false });
+          useConversationStore.setState({ isFirstConversationSinceStartup: false })
         }
       }
     }
-  }, [conversations]);
+  }, [conversations])
 
-  return { isInitialized, error };
+  return { isInitialized, error }
 }

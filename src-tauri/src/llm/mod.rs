@@ -51,4 +51,3 @@ pub struct ChatResponse {
     pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
 }
-

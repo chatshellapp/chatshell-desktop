@@ -1,5 +1,5 @@
-import { MessageSquarePlus } from "lucide-react"
-import { NavUser } from "@/components/nav-user"
+import { MessageSquarePlus } from 'lucide-react'
+import { NavUser } from '@/components/nav-user'
 import {
   Sidebar,
   SidebarContent,
@@ -10,7 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from '@/components/ui/sidebar'
 
 export interface NavItem {
   title: string
@@ -37,13 +37,10 @@ export function SidebarNavigation({
   user,
 }: SidebarNavigationProps) {
   const { state } = useSidebar()
-  const isCollapsed = state === "collapsed"
+  const isCollapsed = state === 'collapsed'
 
   return (
-    <Sidebar
-      collapsible="none"
-      className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
-    >
+    <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
       {/* <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -73,7 +70,7 @@ export function SidebarNavigation({
                       hidden: false,
                     }}
                     onClick={() => {
-                      if (item.title === "Settings") {
+                      if (item.title === 'Settings') {
                         onSettingsClick()
                       } else {
                         onItemClick(item)
@@ -106,4 +103,3 @@ export function SidebarNavigation({
     </Sidebar>
   )
 }
-

@@ -1,9 +1,9 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
 use anyhow::Result;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
@@ -128,4 +128,3 @@ mod tests {
         assert_eq!(keypair.private_key, imported.private_key);
     }
 }
-

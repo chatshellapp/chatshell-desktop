@@ -1,6 +1,6 @@
-import { Sparkles, BookOpen, Plug, File } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PromptList, type Prompt, type PromptGroup } from "@/components/prompt-list"
+import { Sparkles, BookOpen, Plug, File } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PromptList, type Prompt, type PromptGroup } from '@/components/prompt-list'
 
 interface LibraryContentProps {
   activeTab: string
@@ -83,17 +83,17 @@ export function LibraryContent({
             <div className="flex w-full items-center gap-2">
               <Plug className="size-4 text-muted-foreground" />
               <span className="font-medium">{tool.name}</span>
-              <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
-                tool.status === "connected" 
-                  ? "bg-green-500/10 text-green-500" 
-                  : "bg-red-500/10 text-red-500"
-              }`}>
+              <span
+                className={`ml-auto text-xs px-2 py-0.5 rounded ${
+                  tool.status === 'connected'
+                    ? 'bg-green-500/10 text-green-500'
+                    : 'bg-red-500/10 text-red-500'
+                }`}
+              >
                 {tool.status}
               </span>
             </div>
-            <span className="text-muted-foreground text-xs line-clamp-2">
-              {tool.description}
-            </span>
+            <span className="text-muted-foreground text-xs line-clamp-2">{tool.description}</span>
             <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
               <span>Last sync: {tool.lastSync}</span>
             </div>
@@ -103,4 +103,3 @@ export function LibraryContent({
     </Tabs>
   )
 }
-

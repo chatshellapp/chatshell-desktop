@@ -1,5 +1,5 @@
-import { AppSidebar } from "@/components/app-sidebar"
-import { ChatView } from "@/components/chat-view"
+import { AppSidebar } from '@/components/app-sidebar'
+import { ChatView } from '@/components/chat-view'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,16 +7,12 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { useConversationStore } from "@/stores/conversationStore"
-import { useAppInit } from "@/hooks/useAppInit"
-import { SimpleSettingsDialog } from "@/components/simple-settings-dialog"
+} from '@/components/ui/breadcrumb'
+import { Separator } from '@/components/ui/separator'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { useConversationStore } from '@/stores/conversationStore'
+import { useAppInit } from '@/hooks/useAppInit'
+import { SimpleSettingsDialog } from '@/components/simple-settings-dialog'
 
 export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
@@ -51,7 +47,7 @@ export function ChatPage() {
     <SidebarProvider
       style={
         {
-          "--sidebar-width": "350px",
+          '--sidebar-width': '350px',
         } as React.CSSProperties
       }
     >
@@ -59,10 +55,7 @@ export function ChatPage() {
       <SidebarInset className="flex flex-col h-screen overflow-hidden">
         <header className="bg-background flex shrink-0 items-center gap-2 border-b p-4">
           <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
-          />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden md:block">
@@ -71,7 +64,7 @@ export function ChatPage() {
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
                 <BreadcrumbPage>
-                  {currentConversation?.title || "Select a conversation"}
+                  {currentConversation?.title || 'Select a conversation'}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -85,5 +78,3 @@ export function ChatPage() {
     </SidebarProvider>
   )
 }
-
-
