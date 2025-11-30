@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useMessageStore } from '@/stores/messageStore'
 import { useModelStore } from '@/stores/modelStore'
-import { useSettingsStore } from '@/stores/settingsStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import type { Model } from '@/types'
 import { ModelList, type ModelVendor, type Model as ModelListModel } from '@/components/model-list'
@@ -216,8 +215,6 @@ export function ChatInput({}: ChatInputProps) {
   // Get streaming state from current conversation
   const isStreaming = conversationState?.isStreaming || false
   const isWaitingForAI = conversationState?.isWaitingForAI || false
-
-  const getSetting = useSettingsStore((state) => state.getSetting)
 
   // Auto-focus textarea when conversation changes
   useEffect(() => {
@@ -492,20 +489,9 @@ export function ChatInput({}: ChatInputProps) {
     setInput('')
 
     try {
-      // Get API credentials
-      let apiKey: string | undefined = provider.api_key
-      let baseUrl: string | undefined = provider.base_url
-
-      // Fall back to settings if not in provider
-      if (!apiKey && provider.provider_type === 'openai') {
-        apiKey = (await getSetting('openai_api_key')) || undefined
-      } else if (!apiKey && provider.provider_type === 'openrouter') {
-        apiKey = (await getSetting('openrouter_api_key')) || undefined
-      }
-
-      if (!baseUrl && provider.provider_type === 'ollama') {
-        baseUrl = (await getSetting('ollama_base_url')) || 'http://localhost:11434'
-      }
+      // Get API credentials from provider
+      const apiKey: string | undefined = provider.api_key
+      const baseUrl: string | undefined = provider.base_url
 
       // Get prompts from assistant if selected
       let systemPrompt: string | undefined

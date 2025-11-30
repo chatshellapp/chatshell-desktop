@@ -12,7 +12,6 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useAppInit } from '@/hooks/useAppInit'
-import { SimpleSettingsDialog } from '@/components/simple-settings-dialog'
 
 export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
@@ -69,9 +68,6 @@ export function ChatPage() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <div className="ml-auto">
-            <SimpleSettingsDialog />
-          </div>
         </header>
         <ChatView />
       </SidebarInset>
