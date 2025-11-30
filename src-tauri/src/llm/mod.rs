@@ -73,13 +73,13 @@ pub async fn call_provider(
     match provider {
         "openai" => {
             let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            let provider = openai::OpenAIRigProvider::new(api_key_val);
+            let provider = openai::OpenAIRigProvider::new(api_key_val, base_url);
             provider.chat_stream(request, cancel_token, |_| true).await
         }
         "openrouter" => {
             let api_key_val =
                 api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            let provider = openrouter::OpenRouterRigProvider::new(api_key_val);
+            let provider = openrouter::OpenRouterRigProvider::new(api_key_val, base_url);
             provider.chat_stream(request, cancel_token, |_| true).await
         }
         "ollama" => {

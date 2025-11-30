@@ -653,7 +653,7 @@ async fn handle_provider_streaming(
                     return;
                 }
             };
-            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
+            let provider = llm::openai::OpenAIRigProvider::new(api_key_val, base_url.clone());
             provider
                 .chat_stream(
                     request,
@@ -691,7 +691,7 @@ async fn handle_provider_streaming(
                     return;
                 }
             };
-            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
+            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val, base_url.clone());
             provider
                 .chat_stream(
                     request,

@@ -6,13 +6,19 @@ use tokio_util::sync::CancellationToken;
 use crate::llm::common::chat_stream_common;
 use crate::llm::{ChatRequest, ChatResponse};
 
+const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
 pub struct OpenAIRigProvider {
     api_key: String,
+    base_url: String,
 }
 
 impl OpenAIRigProvider {
-    pub fn new(api_key: String) -> Self {
-        Self { api_key }
+    pub fn new(api_key: String, base_url: Option<String>) -> Self {
+        Self {
+            api_key,
+            base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+        }
     }
 
     pub async fn chat_stream(
@@ -21,10 +27,15 @@ impl OpenAIRigProvider {
         cancel_token: CancellationToken,
         callback: impl FnMut(String) -> bool + Send,
     ) -> Result<ChatResponse> {
-        println!("🌐 [openai] Creating OpenAI client");
+        println!(
+            "🌐 [openai] Creating OpenAI client with base_url: {}",
+            self.base_url
+        );
 
-        // Create OpenAI client
-        let client = openai::Client::new(&self.api_key);
+        // Create OpenAI client with custom base URL
+        let client = openai::Client::builder(&self.api_key)
+            .base_url(&self.base_url)
+            .build();
 
         // Get completion model
         let model = client.completion_model(&request.model);
