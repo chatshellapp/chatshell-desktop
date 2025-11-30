@@ -65,12 +65,22 @@ import { Checkbox } from '@/components/ui/checkbox'
 const llmProviders = [
   { id: 'openai', name: 'OpenAI', icon: Bot, baseUrl: 'https://api.openai.com/v1' },
   { id: 'anthropic', name: 'Anthropic', icon: Bot, baseUrl: 'https://api.anthropic.com' },
-  { id: 'google', name: 'Google AI', icon: Bot, baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  {
+    id: 'google',
+    name: 'Google AI',
+    icon: Bot,
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  },
   { id: 'openrouter', name: 'OpenRouter', icon: Server, baseUrl: 'https://openrouter.ai/api/v1' },
   { id: 'ollama', name: 'Ollama', icon: Database, baseUrl: 'http://localhost:11434' },
   { id: 'azure', name: 'Azure OpenAI', icon: Bot, baseUrl: 'https://{resource}.openai.azure.com' },
   { id: 'cohere', name: 'Cohere', icon: Bot, baseUrl: 'https://api.cohere.ai/v1' },
-  { id: 'huggingface', name: 'Hugging Face', icon: Bot, baseUrl: 'https://api-inference.huggingface.co' },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    icon: Bot,
+    baseUrl: 'https://api-inference.huggingface.co',
+  },
 ]
 
 interface ProviderSettingsDialogProps {
@@ -179,7 +189,9 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   }, [selectedProvider, storeProviders, storeModels, isDataLoaded])
 
   const handleUpdateModelName = (id: string, newDisplayName: string) => {
-    setModels(models.map((model) => (model.id === id ? { ...model, displayName: newDisplayName } : model)))
+    setModels(
+      models.map((model) => (model.id === id ? { ...model, displayName: newDisplayName } : model))
+    )
   }
 
   const handleDeleteModel = (id: string) => {
@@ -286,13 +298,18 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const handleSave = async () => {
     // Filter for new models only
     const newModels = models.filter((m) => !m.isExisting)
-    
+
     // Find existing models with changed names
     const modifiedModels = models.filter(
       (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
     )
 
-    if (newModels.length === 0 && modelsToDelete.length === 0 && modifiedModels.length === 0 && !existingProvider) {
+    if (
+      newModels.length === 0 &&
+      modelsToDelete.length === 0 &&
+      modifiedModels.length === 0 &&
+      !existingProvider
+    ) {
       console.warn('No changes to save')
       onOpenChange(false)
       return
@@ -304,10 +321,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
 
       if (existingProvider) {
         // Update existing provider's API key and base URL if changed
-        if (
-          existingProvider.api_key !== apiKey ||
-          existingProvider.base_url !== apiBaseUrl
-        ) {
+        if (existingProvider.api_key !== apiKey || existingProvider.base_url !== apiBaseUrl) {
           await invoke('update_provider', {
             id: existingProvider.id,
             req: {
@@ -591,7 +605,9 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                                         </Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => handleModelSettings(model)}>
+                                        <DropdownMenuItem
+                                          onClick={() => handleModelSettings(model)}
+                                        >
                                           Configure
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
@@ -633,7 +649,12 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   isSaving ||
                   (models.filter((m) => !m.isExisting).length === 0 &&
                     modelsToDelete.length === 0 &&
-                    models.filter((m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName).length === 0 &&
+                    models.filter(
+                      (m) =>
+                        m.isExisting &&
+                        originalModelNames[m.id] &&
+                        originalModelNames[m.id] !== m.displayName
+                    ).length === 0 &&
                     (!existingProvider ||
                       (existingProvider.api_key === apiKey &&
                         existingProvider.base_url === apiBaseUrl)))

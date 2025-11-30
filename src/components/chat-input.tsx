@@ -998,8 +998,8 @@ export function ChatInput({}: ChatInputProps) {
             </DropdownMenuContent>
           </DropdownMenu>
           <div className="ml-auto flex items-center gap-1.5">
-            <CircleProgress percentage={56} size={20} />
-            <span className="text-xs text-muted-foreground">56.0%</span>
+            {/* <CircleProgress percentage={56} size={20} />
+            <span className="text-xs text-muted-foreground">56.0%</span> */}
           </div>
           <Separator orientation="vertical" className="!h-4" />
           {isStreaming || isWaitingForAI ? (

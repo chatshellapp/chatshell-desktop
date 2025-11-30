@@ -32,8 +32,8 @@ pub struct Model {
     pub provider_id: String, // Foreign key to providers table
     pub model_id: String,    // Actual model identifier, e.g., "deepseek-r1:14b"
     pub description: Option<String>,
-    pub is_starred: bool,  // Whether model is starred for quick access
-    pub is_deleted: bool,  // Soft delete flag
+    pub is_starred: bool, // Whether model is starred for quick access
+    pub is_deleted: bool, // Soft delete flag
     pub created_at: String,
     pub updated_at: String,
 }

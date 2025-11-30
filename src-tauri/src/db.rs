@@ -18,13 +18,13 @@ impl Database {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.init_schema()?;
-        
+
         // Initialize encryption key for API key storage
         {
             let conn = db.lock_conn()?;
             crate::crypto::init_encryption_key(&conn)?;
         }
-        
+
         Ok(db)
     }
 
@@ -496,15 +496,19 @@ impl Database {
                 let encrypted_api_key: Option<String> = row.get(3)?;
 
                 // Decrypt API key if present
-                let api_key = encrypted_api_key.and_then(|encrypted| {
-                    match crate::crypto::decrypt(&encrypted) {
-                        Ok(decrypted) => Some(decrypted),
-                        Err(e) => {
-                            eprintln!("⚠️  [db] Failed to decrypt API key for provider {}: {}", provider_id, e);
-                            None
+                let api_key =
+                    encrypted_api_key.and_then(|encrypted| {
+                        match crate::crypto::decrypt(&encrypted) {
+                            Ok(decrypted) => Some(decrypted),
+                            Err(e) => {
+                                eprintln!(
+                                    "⚠️  [db] Failed to decrypt API key for provider {}: {}",
+                                    provider_id, e
+                                );
+                                None
+                            }
                         }
-                    }
-                });
+                    });
 
                 Ok(Provider {
                     id: provider_id,
@@ -536,15 +540,19 @@ impl Database {
                 let encrypted_api_key: Option<String> = row.get(3)?;
 
                 // Decrypt API key if present
-                let api_key = encrypted_api_key.and_then(|encrypted| {
-                    match crate::crypto::decrypt(&encrypted) {
-                        Ok(decrypted) => Some(decrypted),
-                        Err(e) => {
-                            eprintln!("⚠️  [db] Failed to decrypt API key for provider {}: {}", provider_id, e);
-                            None
+                let api_key =
+                    encrypted_api_key.and_then(|encrypted| {
+                        match crate::crypto::decrypt(&encrypted) {
+                            Ok(decrypted) => Some(decrypted),
+                            Err(e) => {
+                                eprintln!(
+                                    "⚠️  [db] Failed to decrypt API key for provider {}: {}",
+                                    provider_id, e
+                                );
+                                None
+                            }
                         }
-                    }
-                });
+                    });
 
                 Ok(Provider {
                     id: provider_id,
@@ -661,7 +669,8 @@ impl Database {
                 params![req.name, req.description, is_starred as i32, now, id],
             )?;
             drop(conn);
-            return self.get_model(&id)?
+            return self
+                .get_model(&id)?
                 .ok_or_else(|| anyhow::anyhow!("Failed to retrieve restored model"));
         }
 

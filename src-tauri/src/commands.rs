@@ -443,7 +443,6 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .map_err(|e| e.to_string())
 }
 
-
 // Helper function to generate conversation title
 async fn generate_conversation_title(
     state: &AppState,
@@ -691,7 +690,8 @@ async fn handle_provider_streaming(
                     return;
                 }
             };
-            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val, base_url.clone());
+            let provider =
+                llm::openrouter::OpenRouterRigProvider::new(api_key_val, base_url.clone());
             provider
                 .chat_stream(
                     request,

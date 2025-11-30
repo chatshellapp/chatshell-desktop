@@ -72,11 +72,11 @@ fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]>
         let key_bytes = general_purpose::STANDARD
             .decode(&key_b64)
             .map_err(|e| anyhow::anyhow!("Failed to decode encryption key: {}", e))?;
-        
+
         if key_bytes.len() != 32 {
             return Err(anyhow::anyhow!("Invalid encryption key length"));
         }
-        
+
         let mut key = [0u8; 32];
         key.copy_from_slice(&key_bytes);
         println!("🔐 [crypto] Loaded encryption key from database");
@@ -85,15 +85,15 @@ fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]>
         // Generate new key
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
-        
+
         let key_b64 = general_purpose::STANDARD.encode(&key);
         let now = chrono::Utc::now().to_rfc3339();
-        
+
         conn.execute(
             "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
             rusqlite::params![ENCRYPTION_KEY_SETTING, key_b64, now],
         )?;
-        
+
         println!("🔐 [crypto] Generated and stored new encryption key in database");
         Ok(key)
     }
@@ -101,10 +101,9 @@ fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]>
 
 /// Get the cached encryption key
 fn get_encryption_key() -> Result<[u8; 32]> {
-    ENCRYPTION_KEY_CACHE
-        .get()
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("Encryption key not initialized. Call init_encryption_key first."))
+    ENCRYPTION_KEY_CACHE.get().copied().ok_or_else(|| {
+        anyhow::anyhow!("Encryption key not initialized. Call init_encryption_key first.")
+    })
 }
 
 /// Encrypt API key or sensitive data

@@ -122,10 +122,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <span>Use current conversation model (default)</span>
                 </DropdownMenuItem>
                 {models.map((model) => (
-                  <DropdownMenuItem
-                    key={model.id}
-                    onClick={() => handleSaveSummaryModel(model.id)}
-                  >
+                  <DropdownMenuItem key={model.id} onClick={() => handleSaveSummaryModel(model.id)}>
                     <span className="truncate">{model.name}</span>
                   </DropdownMenuItem>
                 ))}
