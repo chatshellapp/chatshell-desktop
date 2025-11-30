@@ -18,6 +18,13 @@ impl Database {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.init_schema()?;
+        
+        // Initialize encryption key for API key storage
+        {
+            let conn = db.lock_conn()?;
+            crate::crypto::init_encryption_key(&conn)?;
+        }
+        
         Ok(db)
     }
 
@@ -432,24 +439,26 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
-        // Store API key in OS keychain if provided
-        if let Some(ref api_key) = req.api_key {
+        // Encrypt API key if provided
+        let encrypted_api_key = if let Some(ref api_key) = req.api_key {
             if !api_key.is_empty() {
-                let key_name = crate::keyring_store::provider_api_key_name(&id);
-                if let Err(e) = crate::keyring_store::store_credential(&key_name, api_key) {
-                    eprintln!(
-                        "⚠️  [db] Failed to store API key in keychain, falling back to database: {}",
-                        e
-                    );
-                    // Fall through to store in database
-                } else {
-                    println!("🔐 [db] API key stored securely in OS keychain");
+                match crate::crypto::encrypt(api_key) {
+                    Ok(encrypted) => {
+                        println!("🔐 [db] API key encrypted and stored in database");
+                        Some(encrypted)
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️  [db] Failed to encrypt API key: {}", e);
+                        None
+                    }
                 }
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
-        // Store provider in database (API key is stored in keychain, so we store NULL here)
-        // Note: For backward compatibility with systems without keychain, we still store the key
         {
             let conn = self.lock_conn()?;
             conn.execute(
@@ -459,7 +468,7 @@ impl Database {
                     id,
                     req.name,
                     req.provider_type,
-                    Option::<String>::None, // Don't store API key in database anymore
+                    encrypted_api_key,
                     req.base_url,
                     req.description,
                     is_enabled as i32,
@@ -483,17 +492,18 @@ impl Database {
         let provider = stmt
             .query_row(params![id], |row| {
                 let provider_id: String = row.get(0)?;
-                let db_api_key: Option<String> = row.get(3)?;
+                let encrypted_api_key: Option<String> = row.get(3)?;
 
-                // Try to get API key from keychain first, fall back to database
-                let api_key = {
-                    let key_name = crate::keyring_store::provider_api_key_name(&provider_id);
-                    match crate::keyring_store::get_credential(&key_name) {
-                        Ok(Some(key)) => Some(key),
-                        Ok(None) => db_api_key, // Fallback to database (for migration)
-                        Err(_) => db_api_key,   // Fallback on keychain error
+                // Decrypt API key if present
+                let api_key = encrypted_api_key.and_then(|encrypted| {
+                    match crate::crypto::decrypt(&encrypted) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            eprintln!("⚠️  [db] Failed to decrypt API key for provider {}: {}", provider_id, e);
+                            None
+                        }
                     }
-                };
+                });
 
                 Ok(Provider {
                     id: provider_id,
@@ -522,17 +532,18 @@ impl Database {
         let providers = stmt
             .query_map([], |row| {
                 let provider_id: String = row.get(0)?;
-                let db_api_key: Option<String> = row.get(3)?;
+                let encrypted_api_key: Option<String> = row.get(3)?;
 
-                // Try to get API key from keychain first, fall back to database
-                let api_key = {
-                    let key_name = crate::keyring_store::provider_api_key_name(&provider_id);
-                    match crate::keyring_store::get_credential(&key_name) {
-                        Ok(Some(key)) => Some(key),
-                        Ok(None) => db_api_key, // Fallback to database (for migration)
-                        Err(_) => db_api_key,   // Fallback on keychain error
+                // Decrypt API key if present
+                let api_key = encrypted_api_key.and_then(|encrypted| {
+                    match crate::crypto::decrypt(&encrypted) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            eprintln!("⚠️  [db] Failed to decrypt API key for provider {}: {}", provider_id, e);
+                            None
+                        }
                     }
-                };
+                });
 
                 Ok(Provider {
                     id: provider_id,
@@ -555,21 +566,23 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
-        // Update API key in OS keychain if provided
-        let key_name = crate::keyring_store::provider_api_key_name(id);
-        if let Some(ref api_key) = req.api_key {
+        // Encrypt API key if provided
+        let encrypted_api_key = if let Some(ref api_key) = req.api_key {
             if !api_key.is_empty() {
-                if let Err(e) = crate::keyring_store::store_credential(&key_name, api_key) {
-                    eprintln!(
-                        "⚠️  [db] Failed to update API key in keychain: {}",
-                        e
-                    );
+                match crate::crypto::encrypt(api_key) {
+                    Ok(encrypted) => Some(encrypted),
+                    Err(e) => {
+                        eprintln!("⚠️  [db] Failed to encrypt API key: {}", e);
+                        None
+                    }
                 }
             } else {
-                // Empty API key means delete
-                let _ = crate::keyring_store::delete_credential(&key_name);
+                None // Empty API key means clear it
             }
-        }
+        } else {
+            // No API key in request - keep existing (don't update api_key column)
+            return self.update_provider_without_api_key(id, &req, &now, is_enabled);
+        };
 
         {
             let conn = self.lock_conn()?;
@@ -578,7 +591,7 @@ impl Database {
                 params![
                     req.name,
                     req.provider_type,
-                    Option::<String>::None, // Don't store API key in database
+                    encrypted_api_key,
                     req.base_url,
                     req.description,
                     is_enabled as i32,
@@ -592,13 +605,33 @@ impl Database {
             .ok_or_else(|| anyhow::anyhow!("Provider not found"))
     }
 
-    pub fn delete_provider(&self, id: &str) -> Result<()> {
-        // Delete API key from keychain
-        let key_name = crate::keyring_store::provider_api_key_name(id);
-        if let Err(e) = crate::keyring_store::delete_credential(&key_name) {
-            eprintln!("⚠️  [db] Failed to delete API key from keychain: {}", e);
-        }
+    fn update_provider_without_api_key(
+        &self,
+        id: &str,
+        req: &CreateProviderRequest,
+        now: &str,
+        is_enabled: bool,
+    ) -> Result<Provider> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "UPDATE providers SET name = ?1, provider_type = ?2, base_url = ?3, description = ?4, is_enabled = ?5, updated_at = ?6 WHERE id = ?7",
+            params![
+                req.name,
+                req.provider_type,
+                req.base_url,
+                req.description,
+                is_enabled as i32,
+                now,
+                id
+            ],
+        )?;
+        drop(conn);
 
+        self.get_provider(id)?
+            .ok_or_else(|| anyhow::anyhow!("Provider not found"))
+    }
+
+    pub fn delete_provider(&self, id: &str) -> Result<()> {
         let conn = self.lock_conn()?;
         conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
         Ok(())

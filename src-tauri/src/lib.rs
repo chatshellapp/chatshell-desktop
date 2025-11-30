@@ -1,7 +1,6 @@
 mod commands;
 mod crypto;
 pub mod db;
-pub mod keyring_store;
 mod llm;
 pub mod models;
 mod prompts;

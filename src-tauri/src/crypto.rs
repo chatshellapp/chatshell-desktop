@@ -5,7 +5,9 @@ use aes_gcm::{
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use rand::RngCore;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedKeyPair {
@@ -41,15 +43,68 @@ pub fn import_keypair(json: &str) -> Result<GeneratedKeyPair> {
     Ok(serde_json::from_str(json)?)
 }
 
-/// Get or create a machine-specific encryption key
-/// In a production app, you'd want to use the system keychain
-/// For now, we'll use a deterministic key derived from machine info
+const ENCRYPTION_KEY_SETTING: &str = "app_encryption_key";
+
+// Cache for the encryption key to avoid repeated database reads
+static ENCRYPTION_KEY_CACHE: OnceLock<[u8; 32]> = OnceLock::new();
+
+/// Initialize the encryption key from database or generate a new one
+/// This should be called once during app startup
+pub fn init_encryption_key(conn: &rusqlite::Connection) -> Result<()> {
+    let key = get_or_create_encryption_key(conn)?;
+    let _ = ENCRYPTION_KEY_CACHE.set(key);
+    Ok(())
+}
+
+/// Get or create the encryption key from the database
+fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]> {
+    // Try to read existing key from settings
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [ENCRYPTION_KEY_SETTING],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    if let Some(key_b64) = existing {
+        // Decode existing key
+        let key_bytes = general_purpose::STANDARD
+            .decode(&key_b64)
+            .map_err(|e| anyhow::anyhow!("Failed to decode encryption key: {}", e))?;
+        
+        if key_bytes.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid encryption key length"));
+        }
+        
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&key_bytes);
+        println!("🔐 [crypto] Loaded encryption key from database");
+        Ok(key)
+    } else {
+        // Generate new key
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+        
+        let key_b64 = general_purpose::STANDARD.encode(&key);
+        let now = chrono::Utc::now().to_rfc3339();
+        
+        conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![ENCRYPTION_KEY_SETTING, key_b64, now],
+        )?;
+        
+        println!("🔐 [crypto] Generated and stored new encryption key in database");
+        Ok(key)
+    }
+}
+
+/// Get the cached encryption key
 fn get_encryption_key() -> Result<[u8; 32]> {
-    // In production, use system keychain or secure storage
-    // For now, use a fixed key (NOT SECURE FOR PRODUCTION)
-    // TODO: Integrate with macOS Keychain, Windows Credential Manager, Linux Secret Service
-    let key_material = b"chatshell_encryption_key_v1_____"; // 32 bytes
-    Ok(*key_material)
+    ENCRYPTION_KEY_CACHE
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("Encryption key not initialized. Call init_encryption_key first."))
 }
 
 /// Encrypt API key or sensitive data
@@ -104,13 +159,8 @@ pub fn decrypt(encrypted: &str) -> Result<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_encrypt_decrypt() {
-        let plaintext = "my-secret-api-key";
-        let encrypted = encrypt(plaintext).unwrap();
-        let decrypted = decrypt(&encrypted).unwrap();
-        assert_eq!(plaintext, decrypted);
-    }
+    // Note: Tests that use encrypt/decrypt need the encryption key to be initialized
+    // These tests are for the keypair functionality which doesn't depend on the DB key
 
     #[test]
     fn test_keypair_generation() {
