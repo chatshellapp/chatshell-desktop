@@ -6,11 +6,12 @@ import {
   Bot,
   Database,
   Server,
-  Plus,
   MoreHorizontal,
-  Download,
+  ListChecks,
   Loader2,
   ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -63,14 +64,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Checkbox } from '@/components/ui/checkbox'
 
 const llmProviders = [
-  { id: 'openai', name: 'OpenAI', icon: Bot },
-  { id: 'anthropic', name: 'Anthropic', icon: Bot },
-  { id: 'google', name: 'Google AI', icon: Bot },
-  { id: 'openrouter', name: 'OpenRouter', icon: Server },
-  { id: 'ollama', name: 'Ollama', icon: Database },
-  { id: 'azure', name: 'Azure OpenAI', icon: Bot },
-  { id: 'cohere', name: 'Cohere', icon: Bot },
-  { id: 'huggingface', name: 'Hugging Face', icon: Bot },
+  { id: 'openai', name: 'OpenAI', icon: Bot, baseUrl: 'https://api.openai.com/v1' },
+  { id: 'anthropic', name: 'Anthropic', icon: Bot, baseUrl: 'https://api.anthropic.com' },
+  { id: 'google', name: 'Google AI', icon: Bot, baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  { id: 'openrouter', name: 'OpenRouter', icon: Server, baseUrl: 'https://openrouter.ai/api/v1' },
+  { id: 'ollama', name: 'Ollama', icon: Database, baseUrl: 'http://localhost:11434' },
+  { id: 'azure', name: 'Azure OpenAI', icon: Bot, baseUrl: 'https://{resource}.openai.azure.com' },
+  { id: 'cohere', name: 'Cohere', icon: Bot, baseUrl: 'https://api.cohere.ai/v1' },
+  { id: 'huggingface', name: 'Hugging Face', icon: Bot, baseUrl: 'https://api-inference.huggingface.co' },
 ]
 
 interface ProviderSettingsDialogProps {
@@ -108,9 +109,9 @@ function isSupportedFetchProvider(id: string): id is SupportedFetchProvider {
 export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
   const [selectedProvider, setSelectedProvider] = React.useState(llmProviders[0])
   const [apiKey, setApiKey] = React.useState('')
-  const [apiBaseUrl, setApiBaseUrl] = React.useState('http://localhost:11434')
+  const [showApiKey, setShowApiKey] = React.useState(false)
+  const [apiBaseUrl, setApiBaseUrl] = React.useState(llmProviders[0].baseUrl)
   const [models, setModels] = React.useState<ModelItem[]>([])
-  const [newModelName, setNewModelName] = React.useState('')
   const [fetchModalOpen, setFetchModalOpen] = React.useState(false)
   const [availableModels, setAvailableModels] = React.useState<ModelInfo[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -118,6 +119,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const [isSaving, setIsSaving] = React.useState(false)
   const [existingProvider, setExistingProvider] = React.useState<Provider | null>(null)
   const [modelsToDelete, setModelsToDelete] = React.useState<string[]>([])
+  const [originalModelNames, setOriginalModelNames] = React.useState<Record<string, string>>({})
 
   // Store hooks
   const loadAll = useModelStore((state) => state.loadAll)
@@ -141,8 +143,9 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     if (!isDataLoaded) return // Don't populate until data is loaded
 
     const loadProviderData = async () => {
-      // Reset modelsToDelete when switching providers
+      // Reset modelsToDelete and originalModelNames when switching providers
       setModelsToDelete([])
+      setOriginalModelNames({})
 
       // Find existing provider of the selected type
       const existing = storeProviders.find((p) => p.provider_type === selectedProvider.id)
@@ -162,7 +165,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         }
 
         setApiKey(key)
-        setApiBaseUrl(existing.base_url || 'http://localhost:11434')
+        setApiBaseUrl(existing.base_url || selectedProvider.baseUrl)
 
         // Load existing models for this provider
         const existingModels = storeModels
@@ -174,31 +177,23 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
             isExisting: true, // Mark as existing
           }))
         setModels(existingModels)
+        
+        // Store original names to track changes
+        const nameMap: Record<string, string> = {}
+        existingModels.forEach((m) => {
+          nameMap[m.id] = m.displayName
+        })
+        setOriginalModelNames(nameMap)
       } else {
         // Reset to defaults for new provider
         setApiKey('')
-        setApiBaseUrl('http://localhost:11434')
+        setApiBaseUrl(selectedProvider.baseUrl)
         setModels([])
       }
     }
 
     loadProviderData()
   }, [selectedProvider, storeProviders, storeModels, isDataLoaded, getSetting])
-
-  const handleAddModel = () => {
-    if (newModelName.trim()) {
-      const trimmedName = newModelName.trim()
-      setModels([
-        ...models,
-        {
-          id: Date.now().toString(),
-          displayName: trimmedName, // Manual input: use as both display and model ID
-          modelId: trimmedName,
-        },
-      ])
-      setNewModelName('')
-    }
-  }
 
   const handleUpdateModelName = (id: string, newDisplayName: string) => {
     setModels(models.map((model) => (model.id === id ? { ...model, displayName: newDisplayName } : model)))
@@ -308,8 +303,13 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const handleSave = async () => {
     // Filter for new models only
     const newModels = models.filter((m) => !m.isExisting)
+    
+    // Find existing models with changed names
+    const modifiedModels = models.filter(
+      (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
+    )
 
-    if (newModels.length === 0 && modelsToDelete.length === 0 && !existingProvider) {
+    if (newModels.length === 0 && modelsToDelete.length === 0 && modifiedModels.length === 0 && !existingProvider) {
       console.warn('No changes to save')
       onOpenChange(false)
       return
@@ -357,6 +357,18 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       for (const modelId of modelsToDelete) {
         await invoke('soft_delete_model', { id: modelId })
         console.log('Soft deleted model:', modelId)
+      }
+
+      // Update existing models with changed names
+      for (const model of modifiedModels) {
+        const modelReq: CreateModelRequest = {
+          name: model.displayName,
+          provider_id: providerId,
+          model_id: model.modelId,
+          is_starred: false, // Preserve starred status would require loading from store
+        }
+        await invoke('update_model', { id: model.id, req: modelReq })
+        console.log('Updated model:', model.id, 'with new name:', model.displayName)
       }
 
       // Create only new models
@@ -488,13 +500,29 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="api-key">API Key</Label>
-                    <Input
-                      id="api-key"
-                      type="password"
-                      placeholder="Enter your API key"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="api-key"
+                        type={showApiKey ? 'text' : 'password'}
+                        placeholder="Enter your API key"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="size-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="size-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Your API key will be stored securely
                     </p>
@@ -515,58 +543,47 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="model-name">Models</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="model-name"
-                        placeholder="Enter model name"
-                        value={newModelName}
-                        onChange={(e) => setNewModelName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleAddModel()
-                          }
-                        }}
-                      />
-                      <Button type="button" onClick={handleAddModel} size="icon">
-                        <Plus className="size-4" />
+                    <div className="flex items-center justify-between">
+                      <Label>Models</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenFetchModal}
+                        disabled={
+                          !isSupportedFetchProvider(selectedProvider.id) ||
+                          (selectedProvider.id !== 'ollama' && !apiKey)
+                        }
+                      >
+                        <ListChecks className="size-4 mr-2" />
+                        Manage Models
                       </Button>
                     </div>
                     <div className="rounded-md border">
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-[100px]">ID</TableHead>
+                            <TableHead className="w-[200px]">ID</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead className="w-[100px]"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {models.length > 0 ? (
-                            models.map((model, index) => (
+                            models.map((model) => (
                               <TableRow key={model.id}>
-                                <TableCell className="font-mono text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-1">
-                                    {index + 1}
-                                    {model.isExisting && (
-                                      <span
-                                        className="text-green-500 text-xs"
-                                        title="Saved in database"
-                                      >
-                                        ✓
-                                      </span>
-                                    )}
+                                <TableCell className="font-mono text-xs text-muted-foreground">
+                                  <div className="truncate" title={model.modelId}>
+                                    {model.modelId}
                                   </div>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="w-full">
                                   <Input
                                     value={model.displayName}
                                     onChange={(e) =>
                                       handleUpdateModelName(model.id, e.target.value)
                                     }
-                                    className="h-8"
-                                    disabled={model.isExisting}
+                                    className="h-8 w-full"
                                     title={model.modelId} // Show raw model ID on hover
                                   />
                                 </TableCell>
@@ -607,30 +624,6 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                         </TableBody>
                       </Table>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleOpenFetchModal}
-                        className="w-full"
-                        disabled={
-                          !isSupportedFetchProvider(selectedProvider.id) ||
-                          (selectedProvider.id !== 'ollama' && !apiKey)
-                        }
-                      >
-                        <Download className="size-4 mr-2" />
-                        Fetch Model List
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {isSupportedFetchProvider(selectedProvider.id)
-                        ? selectedProvider.id === 'ollama'
-                          ? 'Fetch models from your local Ollama instance'
-                          : apiKey
-                            ? `Fetch available models from ${selectedProvider.name}`
-                            : `Enter your API key above to fetch models from ${selectedProvider.name}`
-                        : `Model fetching is not supported for ${selectedProvider.name}. Add models manually.`}
-                    </p>
                   </div>
                 </div>
               </div>
@@ -645,6 +638,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   isSaving ||
                   (models.filter((m) => !m.isExisting).length === 0 &&
                     modelsToDelete.length === 0 &&
+                    models.filter((m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName).length === 0 &&
                     (!existingProvider ||
                       (existingProvider.api_key === apiKey &&
                         existingProvider.base_url === apiBaseUrl)))
