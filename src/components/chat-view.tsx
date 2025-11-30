@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { AlertTriangle } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
 import { ChatMessage } from '@/components/chat-message'
 import { AttachmentPreview } from '@/components/attachment-preview'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useMessageStore } from '@/stores/messageStore'
 import { useModelStore } from '@/stores/modelStore'
@@ -27,6 +36,59 @@ const CHAT_CONFIG = {
   userMessageShowBackground: true,
 }
 
+// API Error Preview component - displays errors in attachment-preview style
+function ApiErrorPreview({
+  error,
+  onDismiss,
+}: {
+  error: string
+  onDismiss?: () => void
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        onClick={() => setIsDialogOpen(true)}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-destructive/50 bg-destructive/5 text-left hover:border-destructive/70 transition-colors cursor-pointer"
+      >
+        <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+        <span className="flex-1 text-sm truncate">
+          <span className="font-medium text-destructive">API Error</span>
+          <span className="text-muted-foreground ml-2 truncate">{error}</span>
+        </span>
+      </button>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+              API Error
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="px-3 py-2 bg-destructive/10 rounded-md">
+            <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDialogOpen(false)
+                onDismiss?.()
+              }}
+            >
+              Dismiss
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export function ChatView() {
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
@@ -38,6 +100,7 @@ export function ChatView() {
   )
 
   const loadMessages = useMessageStore((state) => state.loadMessages)
+  const clearApiError = useMessageStore((state) => state.clearApiError)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const getAssistantById = useAssistantStore((state) => state.getAssistantById)
@@ -70,6 +133,7 @@ export function ChatView() {
   const isWaitingForAI = conversationState?.isWaitingForAI || false
   const urlStatuses = conversationState?.urlStatuses || {}
   const pendingSearchDecisions = conversationState?.pendingSearchDecisions || {}
+  const apiError = conversationState?.apiError || null
 
   // Store attachments for each message (keyed by message id)
   const [messageAttachments, setMessageAttachments] = useState<Record<string, Attachment[]>>({})
@@ -557,6 +621,19 @@ export function ChatView() {
                   />
                 )
               })()}
+            {/* API Error display */}
+            {apiError && (
+              <div className="py-2">
+                <ApiErrorPreview
+                  error={apiError}
+                  onDismiss={() => {
+                    if (currentConversation) {
+                      clearApiError(currentConversation.id)
+                    }
+                  }}
+                />
+              </div>
+            )}
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
           </div>

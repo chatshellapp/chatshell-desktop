@@ -17,6 +17,8 @@ interface ConversationState {
   urlStatuses: Record<string, Record<string, 'fetching' | 'fetched'>>
   // Track pending search decisions per message: { messageId: true/false }
   pendingSearchDecisions: Record<string, boolean>
+  // API error state - shown when LLM request fails
+  apiError: string | null
 }
 
 // Default state for a new conversation
@@ -30,6 +32,7 @@ const createDefaultConversationState = (): ConversationState => ({
   attachmentRefreshKey: 0,
   urlStatuses: {},
   pendingSearchDecisions: {},
+  apiError: null,
 })
 
 interface MessageStore {
@@ -81,6 +84,8 @@ interface MessageStore {
   appendStreamingChunk: (conversationId: string, chunk: string) => void
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
   setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
+  setApiError: (conversationId: string, error: string | null) => void
+  clearApiError: (conversationId: string) => void
   cleanupConversation: (conversationId: string) => void
   removeConversationState: (conversationId: string) => void
 }
@@ -487,6 +492,30 @@ export const useMessageStore = create<MessageStore>()(
           } else {
             delete convState.pendingSearchDecisions[messageId]
           }
+        }
+      })
+    },
+
+    setApiError: (conversationId: string, error: string | null) => {
+      get().getConversationState(conversationId) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.apiError = error
+          // Reset streaming states when error occurs
+          convState.isStreaming = false
+          convState.isWaitingForAI = false
+          convState.streamingContent = ''
+        }
+      })
+    },
+
+    clearApiError: (conversationId: string) => {
+      get().getConversationState(conversationId) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.apiError = null
         }
       })
     },

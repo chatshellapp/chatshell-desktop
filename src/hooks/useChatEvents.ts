@@ -5,6 +5,7 @@ import { useConversationStore } from '@/stores/conversationStore'
 import type {
   ChatStreamEvent,
   ChatCompleteEvent,
+  ChatErrorEvent,
   AttachmentProcessingStartedEvent,
   AttachmentProcessingCompleteEvent,
   AttachmentProcessingErrorEvent,
@@ -136,6 +137,12 @@ export function useChatEvents(conversationId: string | null) {
     store.setPendingSearchDecision(convId, messageId, true)
   }, [])
 
+  const handleChatError = useCallback((convId: string, error: string) => {
+    console.log('[useChatEvents] handleChatError called for conversation:', convId, 'error:', error)
+    const store = useMessageStore.getState()
+    store.setApiError(convId, error)
+  }, [])
+
   useEffect(() => {
     if (!conversationId) return
 
@@ -165,6 +172,12 @@ export function useChatEvents(conversationId: string | null) {
       )
       // Process the event for the specific conversation (no need to check if it's current)
       handleChatComplete(event.payload.conversation_id, event.payload.message)
+    })
+
+    // Listen for chat errors (API failures)
+    const unlistenChatError = listen<ChatErrorEvent>('chat-error', (event) => {
+      console.log('[useChatEvents] Received chat-error event:', event.payload)
+      handleChatError(event.payload.conversation_id, event.payload.error)
     })
 
     // Listen for attachment processing started
@@ -235,6 +248,7 @@ export function useChatEvents(conversationId: string | null) {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
       unlistenStream.then((fn) => fn())
       unlistenComplete.then((fn) => fn())
+      unlistenChatError.then((fn) => fn())
       unlistenAttachmentStarted.then((fn) => fn())
       unlistenAttachmentComplete.then((fn) => fn())
       unlistenAttachmentError.then((fn) => fn())
@@ -247,6 +261,7 @@ export function useChatEvents(conversationId: string | null) {
     conversationId,
     handleStreamChunk,
     handleChatComplete,
+    handleChatError,
     handleAttachmentProcessingStarted,
     handleAttachmentProcessingComplete,
     handleAttachmentProcessingError,

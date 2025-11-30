@@ -760,6 +760,14 @@ async fn handle_provider_streaming(
         Ok(r) => r,
         Err(e) => {
             eprintln!("LLM request failed: {}", e);
+
+            // Emit error event to frontend
+            let error_payload = serde_json::json!({
+                "conversation_id": conversation_id_clone,
+                "error": e.to_string(),
+            });
+            let _ = app.emit("chat-error", error_payload);
+
             let mut tasks = state_clone.generation_tasks.write().await;
             tasks.remove(&conversation_id_clone);
             return;

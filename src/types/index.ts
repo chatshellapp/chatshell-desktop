@@ -409,6 +409,11 @@ export interface ChatCompleteEvent {
   message: Message
 }
 
+export interface ChatErrorEvent {
+  conversation_id: string
+  error: string
+}
+
 export interface AttachmentProcessingStartedEvent {
   message_id: string
   conversation_id: string
