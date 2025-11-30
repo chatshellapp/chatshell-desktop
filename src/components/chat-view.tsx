@@ -68,7 +68,7 @@ export function ChatView() {
   const attachmentStatus = conversationState?.attachmentStatus || 'idle'
   const attachmentRefreshKey = conversationState?.attachmentRefreshKey || 0
   const isWaitingForAI = conversationState?.isWaitingForAI || false
-  const processingUrls = conversationState?.processingUrls || {}
+  const urlStatuses = conversationState?.urlStatuses || {}
   const pendingSearchDecisions = conversationState?.pendingSearchDecisions || {}
 
   // Store attachments for each message (keyed by message id)
@@ -411,7 +411,8 @@ export function ChatView() {
 
               // Check if this message has a search result (URLs will be shown inside it)
               const hasSearchResult = allAttachments.some((a) => a.type === 'search_result')
-              const urls = hasSearchResult ? [] : processingUrls[message.id] || []
+              const messageUrlStatuses = hasSearchResult ? undefined : urlStatuses[message.id]
+              const urls = messageUrlStatuses ? Object.keys(messageUrlStatuses) : []
 
               const hasUserAttachments =
                 isUserMessage && (userAttachments.length > 0 || urls.length > 0)
@@ -438,9 +439,9 @@ export function ChatView() {
                       <AttachmentPreview
                         key={(attachment as any).id}
                         attachment={attachment}
-                        processingUrls={
+                        urlStatuses={
                           attachment.type === 'search_result' && prevUserMessageId
-                            ? processingUrls[prevUserMessageId] || []
+                            ? urlStatuses[prevUserMessageId]
                             : undefined
                         }
                       />
@@ -519,9 +520,9 @@ export function ChatView() {
                           <AttachmentPreview
                             key={(attachment as any).id}
                             attachment={attachment}
-                            processingUrls={
+                            urlStatuses={
                               attachment.type === 'search_result'
-                                ? processingUrls[lastUserMessage.id] || []
+                                ? urlStatuses[lastUserMessage.id]
                                 : undefined
                             }
                           />

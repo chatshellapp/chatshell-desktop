@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
-use futures::future::join_all;
+use futures::stream::{FuturesUnordered, StreamExt};
 use headless_chrome::{Browser, LaunchOptions};
 use lazy_static::lazy_static;
 use readability::extractor::extract;
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::Cursor;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use url::Url;
 
 /// Metadata for web fetch results
@@ -743,51 +744,57 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
     }
 }
 
-pub async fn fetch_and_convert_to_markdown(url: &str, max_chars: Option<usize>) -> Result<String> {
-    let result = fetch_web_resource(url, max_chars).await;
-    if let Some(error) = result.extraction_error {
-        return Err(anyhow::anyhow!("{}", error));
-    }
-    Ok(result.content)
-}
-
-/// Process multiple URLs in parallel (extracts URLs from content)
-pub async fn process_message_urls(
-    content: &str,
+/// Fetch multiple URLs in parallel, sending results through a channel as they complete.
+/// Returns a receiver for streaming results and a join handle for the fetch task.
+/// Results are sent one by one as each URL completes, enabling real-time UI updates.
+pub async fn fetch_urls_with_channel(
+    urls: &[String],
     max_chars: Option<usize>,
-) -> Vec<FetchedWebResource> {
-    let urls = extract_urls(content);
-    fetch_urls(&urls, max_chars).await
-}
+) -> (
+    mpsc::Receiver<FetchedWebResource>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (tx, rx) = mpsc::channel(urls.len().max(1));
 
-/// Fetch multiple URLs in parallel (takes a list of URLs directly)
-pub async fn fetch_urls(urls: &[String], max_chars: Option<usize>) -> Vec<FetchedWebResource> {
     if urls.is_empty() {
-        return vec![];
+        drop(tx);
+        return (rx, tokio::spawn(async {}));
     }
 
-    println!("🌐 [fetcher] Processing {} URLs in parallel", urls.len());
+    println!(
+        "🌐 [fetcher] Processing {} URLs in parallel (streaming)",
+        urls.len()
+    );
 
-    let futures: Vec<_> = urls
-        .iter()
-        .map(|url| {
-            let url = url.clone();
-            async move {
-                println!("🔗 [fetcher] Fetching: {}", url);
-                let result = fetch_web_resource(&url, max_chars).await;
-                println!(
-                    "✅ [fetcher] Completed: {} (error: {:?})",
-                    url, result.extraction_error
-                );
-                result
+    let urls_owned: Vec<String> = urls.to_vec();
+
+    let handle = tokio::spawn(async move {
+        let mut futures: FuturesUnordered<_> = urls_owned
+            .iter()
+            .map(|url| {
+                let url = url.clone();
+                async move {
+                    println!("🔗 [fetcher] Fetching: {}", url);
+                    let result = fetch_web_resource(&url, max_chars).await;
+                    println!(
+                        "✅ [fetcher] Completed: {} (error: {:?})",
+                        url, result.extraction_error
+                    );
+                    result
+                }
+            })
+            .collect();
+
+        while let Some(result) = futures.next().await {
+            if tx.send(result).await.is_err() {
+                break; // Receiver dropped
             }
-        })
-        .collect();
+        }
 
-    let results = join_all(futures).await;
+        println!("📦 [fetcher] All URLs processed (streaming)");
+    });
 
-    println!("📦 [fetcher] All {} URLs processed", results.len());
-    results
+    (rx, handle)
 }
 
 pub fn build_llm_content_with_attachments(

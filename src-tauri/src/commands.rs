@@ -1295,16 +1295,15 @@ pub async fn send_message(
             );
         }
 
-        // Process URLs and get fetched web resources
-        let fetched_resources = web_fetch::fetch_urls(&urls, None).await;
-        println!(
-            "📄 [background_task] Fetched {} web resources",
-            fetched_resources.len()
-        );
+        // Process URLs with streaming - results are sent one by one as they complete
+        let (mut rx, fetch_handle) = web_fetch::fetch_urls_with_channel(&urls, None).await;
 
-        // Store fetched resources as fetch_results and link to message
+        // Collect fetched resources and process each as it arrives
+        let mut fetched_resources: Vec<web_fetch::FetchedWebResource> = Vec::new();
         let mut attachment_ids: Vec<String> = Vec::new();
-        for resource in &fetched_resources {
+
+        // Process each result as it arrives from the channel
+        while let Some(resource) = rx.recv().await {
             // Generate storage path and save content to filesystem
             let fetch_id = uuid::Uuid::now_v7().to_string();
             let storage_path =
@@ -1318,6 +1317,7 @@ pub async fn send_message(
                     "Failed to save content to filesystem for {}: {}",
                     resource.url, e
                 );
+                fetched_resources.push(resource);
                 continue;
             }
 
@@ -1357,6 +1357,18 @@ pub async fn send_message(
                     ) {
                         eprintln!("Failed to link fetch_result to message: {}", e);
                     }
+
+                    // Emit attachment-update immediately so UI shows this result
+                    let _ = app_clone.emit(
+                        "attachment-update",
+                        serde_json::json!({
+                            "message_id": user_message_id,
+                            "conversation_id": conversation_id_clone,
+                            "attachment_id": fetch_result.id,
+                            "completed_url": resource.url,
+                        }),
+                    );
+
                     attachment_ids.push(fetch_result.id);
                 }
                 Err(e) => {
@@ -1365,7 +1377,17 @@ pub async fn send_message(
                     let _ = crate::storage::delete_file(&app_clone, &storage_path);
                 }
             }
+
+            fetched_resources.push(resource);
         }
+
+        // Wait for all fetches to complete
+        let _ = fetch_handle.await;
+
+        println!(
+            "📄 [background_task] Fetched {} web resources",
+            fetched_resources.len()
+        );
 
         // Emit attachment processing complete event with attachment IDs
         if !urls.is_empty() {

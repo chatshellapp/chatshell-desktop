@@ -31,8 +31,8 @@ interface AttachmentPreviewProps {
   attachment?: Attachment
   /** URL being processed (for loading state) */
   processingUrl?: string
-  /** URLs being processed (for search results) */
-  processingUrls?: string[]
+  /** URL fetch statuses for search results: { url: 'fetching' | 'fetched' } */
+  urlStatuses?: Record<string, 'fetching' | 'fetched'>
   /** Show pending search decision state (AI is deciding if search is needed) */
   pendingSearchDecision?: boolean
 }
@@ -362,18 +362,19 @@ function ProcessingUrlItem({ url }: { url: string }) {
 // SearchResult preview component - expandable inline list
 function SearchResultPreview({
   searchResult,
-  processingUrls,
+  urlStatuses,
 }: {
   searchResult: SearchResult
-  processingUrls?: string[]
+  urlStatuses?: Record<string, 'fetching' | 'fetched'>
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [fetchResults, setFetchResults] = useState<FetchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
 
-  // Track processing state
-  const isProcessing = processingUrls && processingUrls.length > 0
+  // Track processing state - check if any URL is still fetching
+  const hasUrlStatuses = urlStatuses && Object.keys(urlStatuses).length > 0
+  const isProcessing = hasUrlStatuses && Object.values(urlStatuses).some((s) => s === 'fetching')
 
   // Check if search is still in progress (no total_results yet)
   const isSearching =
@@ -386,10 +387,15 @@ function SearchResultPreview({
     }
   }, [isSearching, searchResult.total_results])
 
-  // Load linked fetch results - also reload when processing completes
+  // Count of fetched URLs - triggers reload when each one completes
+  const fetchedCount = urlStatuses
+    ? Object.values(urlStatuses).filter((s) => s === 'fetched').length
+    : 0
+
+  // Load linked fetch results - reload when any URL status changes to 'fetched'
   useEffect(() => {
-    // Skip loading while still processing (will show processingUrls instead)
-    if (isProcessing || isSearching) {
+    // Skip loading while still searching (no results yet)
+    if (isSearching) {
       return
     }
 
@@ -401,12 +407,13 @@ function SearchResultPreview({
         })
         setFetchResults(results)
 
-        // If we expect results but got none, schedule a retry (up to 5 times)
+        // If we expect results but got none and not processing, schedule a retry (up to 5 times)
         if (
           results.length === 0 &&
           searchResult.total_results &&
           searchResult.total_results > 0 &&
-          retryCount < 5
+          retryCount < 5 &&
+          !isProcessing
         ) {
           setTimeout(() => setRetryCount((c) => c + 1), 1000)
         }
@@ -419,14 +426,13 @@ function SearchResultPreview({
     }
 
     loadResults()
-  }, [searchResult.id, searchResult.total_results, retryCount, isProcessing, isSearching])
+  }, [searchResult.id, searchResult.total_results, retryCount, isProcessing, isSearching, fetchedCount])
 
-  const resultCount =
-    fetchResults.length || processingUrls?.length || searchResult.total_results || 0
-  const hasProcessingUrls = processingUrls && processingUrls.length > 0
+  const urlCount = urlStatuses ? Object.keys(urlStatuses).length : 0
+  const resultCount = urlCount || fetchResults.length || searchResult.total_results || 0
 
-  // Determine if expandable (has results or processing URLs)
-  const canExpand = !isSearching && (resultCount > 0 || hasProcessingUrls)
+  // Determine if expandable (has URL statuses or results)
+  const canExpand = !isSearching && (resultCount > 0 || hasUrlStatuses)
 
   return (
     <div className="w-full rounded-lg border border-muted overflow-hidden">
@@ -465,28 +471,34 @@ function SearchResultPreview({
 
       {/* Expandable results list */}
       {isExpanded && canExpand && (
-        <div className="border-t border-muted">
-          {/* Show processing URLs first */}
-          {hasProcessingUrls && (
-            <div className="divide-y divide-muted">
-              {processingUrls.map((url) => (
-                <ProcessingUrlItem key={url} url={url} />
-              ))}
-            </div>
-          )}
-          {/* Show fetched results */}
-          {!hasProcessingUrls &&
-            (loading ? (
-              <p className="text-sm text-muted-foreground px-3 py-2">Loading search results...</p>
-            ) : fetchResults.length > 0 ? (
-              <div className="divide-y divide-muted">
-                {fetchResults.map((result) => (
-                  <SearchResultFetchItem key={result.id} fetchResult={result} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground px-3 py-2">No results fetched yet.</p>
+        <div className="border-t border-muted divide-y divide-muted">
+          {/* Show URLs with their status (during processing) */}
+          {hasUrlStatuses &&
+            Object.entries(urlStatuses).map(([url, status]) => {
+              if (status === 'fetching') {
+                return <ProcessingUrlItem key={url} url={url} />
+              }
+              // For fetched URLs, find and show the actual fetch result
+              const fetchResult = fetchResults.find((r) => r.url === url)
+              if (fetchResult) {
+                return <SearchResultFetchItem key={fetchResult.id} fetchResult={fetchResult} />
+              }
+              // Fallback if result not yet loaded (brief transition state)
+              return <ProcessingUrlItem key={url} url={url} />
+            })}
+          {/* Show fetch results after processing is complete (no URL statuses) */}
+          {!hasUrlStatuses &&
+            fetchResults.map((result) => (
+              <SearchResultFetchItem key={result.id} fetchResult={result} />
             ))}
+          {/* Loading state when no URL statuses and no results */}
+          {!hasUrlStatuses && fetchResults.length === 0 && loading && (
+            <p className="text-sm text-muted-foreground px-3 py-2">Loading search results...</p>
+          )}
+          {/* Empty state */}
+          {!hasUrlStatuses && fetchResults.length === 0 && !loading && (
+            <p className="text-sm text-muted-foreground px-3 py-2">No results fetched yet.</p>
+          )}
         </div>
       )}
     </div>
@@ -702,7 +714,7 @@ function PendingSearchDecisionPreview() {
 export function AttachmentPreview({
   attachment,
   processingUrl,
-  processingUrls,
+  urlStatuses,
   pendingSearchDecision,
 }: AttachmentPreviewProps) {
   // Pending search decision state
@@ -740,7 +752,7 @@ export function AttachmentPreview({
       return (
         <SearchResultPreview
           searchResult={attachment as SearchResult}
-          processingUrls={processingUrls}
+          urlStatuses={urlStatuses}
         />
       )
     case 'file':

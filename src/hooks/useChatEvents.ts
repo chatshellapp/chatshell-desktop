@@ -66,7 +66,7 @@ export function useChatEvents(conversationId: string | null) {
     (convId: string, messageId: string, urls: string[]) => {
       const store = useMessageStore.getState()
       store.setAttachmentStatus(convId, 'processing')
-      store.setProcessingUrls(convId, messageId, urls)
+      store.setUrlStatuses(convId, messageId, urls)
     },
     []
   )
@@ -74,7 +74,7 @@ export function useChatEvents(conversationId: string | null) {
   const handleAttachmentProcessingComplete = useCallback((convId: string, messageId: string) => {
     const store = useMessageStore.getState()
     store.setAttachmentStatus(convId, 'complete')
-    store.clearProcessingUrls(convId, messageId)
+    store.clearUrlStatuses(convId, messageId)
   }, [])
 
   const handleAttachmentProcessingError = useCallback((convId: string, error: string) => {
@@ -82,15 +82,22 @@ export function useChatEvents(conversationId: string | null) {
     console.error('Attachment processing error:', error)
   }, [])
 
-  const handleAttachmentUpdate = useCallback((convId: string, messageId?: string) => {
-    // Trigger a refresh by incrementing the refresh key
-    const store = useMessageStore.getState()
-    store.incrementAttachmentRefreshKey(convId)
-    // Clear pending search decision when actual decision arrives
-    if (messageId) {
-      store.setPendingSearchDecision(convId, messageId, false)
-    }
-  }, [])
+  const handleAttachmentUpdate = useCallback(
+    (convId: string, messageId?: string, completedUrl?: string) => {
+      const store = useMessageStore.getState()
+      // Mark the completed URL as fetched
+      if (messageId && completedUrl) {
+        store.markUrlFetched(convId, messageId, completedUrl)
+      }
+      // Trigger a refresh by incrementing the refresh key
+      store.incrementAttachmentRefreshKey(convId)
+      // Clear pending search decision when actual decision arrives
+      if (messageId) {
+        store.setPendingSearchDecision(convId, messageId, false)
+      }
+    },
+    []
+  )
 
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
     console.log('[useChatEvents] Conversation title updated:', conversationId, title)
@@ -190,7 +197,11 @@ export function useChatEvents(conversationId: string | null) {
 
     // Listen for attachment updates (new attachments added)
     const unlistenAttachmentUpdate = listen<AttachmentUpdateEvent>('attachment-update', (event) => {
-      handleAttachmentUpdate(event.payload.conversation_id, event.payload.message_id)
+      handleAttachmentUpdate(
+        event.payload.conversation_id,
+        event.payload.message_id,
+        event.payload.completed_url
+      )
     })
 
     // Listen for search decision started (AI is deciding if search is needed)

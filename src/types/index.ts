@@ -431,7 +431,8 @@ export interface AttachmentProcessingErrorEvent {
 export interface AttachmentUpdateEvent {
   message_id: string
   conversation_id: string
-  attachment: {
+  completed_url?: string
+  attachment?: {
     type: string
     id: string
     [key: string]: unknown
