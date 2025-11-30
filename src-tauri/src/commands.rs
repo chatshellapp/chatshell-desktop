@@ -433,43 +433,6 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .map_err(|e| e.to_string())
 }
 
-// Helper function to call LLM provider (unified for all providers)
-async fn call_llm_provider(
-    provider: &str,
-    model: String,
-    messages: Vec<ChatMessage>,
-    api_key: Option<String>,
-    base_url: Option<String>,
-) -> Result<llm::ChatResponse> {
-    let request = llm::ChatRequest {
-        model,
-        messages,
-        stream: false,
-    };
-    let cancel_token = CancellationToken::new();
-
-    match provider {
-        "openai" => {
-            let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            let provider = llm::openai::OpenAIRigProvider::new(api_key_val);
-            provider.chat_stream(request, cancel_token, |_| true).await
-        }
-        "openrouter" => {
-            let api_key_val =
-                api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            let provider = llm::openrouter::OpenRouterRigProvider::new(api_key_val);
-            provider.chat_stream(request, cancel_token, |_| true).await
-        }
-        "ollama" => {
-            let provider = llm::ollama::OllamaRigProvider::new(base_url);
-            provider.chat_stream(request, cancel_token, |_| true).await
-        }
-        _ => Err(anyhow::anyhow!(
-            "Unknown provider: {}. Use openai, openrouter, or ollama",
-            provider
-        )),
-    }
-}
 
 // Helper function to generate conversation title
 async fn generate_conversation_title(
@@ -548,7 +511,7 @@ async fn generate_conversation_title(
     };
 
     // Generate title using unified provider handler
-    let response = call_llm_provider(
+    let response = llm::call_provider(
         &summary_provider,
         summary_model,
         vec![

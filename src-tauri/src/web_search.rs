@@ -5,15 +5,13 @@
 
 use anyhow::Result;
 use chrono::Utc;
-use rig::client::CompletionClient;
-use rig::completion::Prompt;
-use rig::providers::{ollama, openai};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 use url::form_urlencoded;
 
+use crate::llm::{self, ChatMessage};
 use crate::prompts::SEARCH_DECISION_SYSTEM_PROMPT;
 use crate::web_fetch::{STEALTH_JS, create_new_browser};
 
@@ -56,63 +54,33 @@ pub async fn decide_search_needed(
         user_input.chars().take(100).collect::<String>()
     );
 
-    let response = match provider {
-        "openai" => {
-            let api_key = api_key.ok_or_else(|| anyhow::anyhow!("API key required for OpenAI"))?;
+    // Use the unified LLM provider function
+    let response = llm::call_provider(
+        provider,
+        model.to_string(),
+        vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: SEARCH_DECISION_SYSTEM_PROMPT.to_string(),
+                images: vec![],
+                files: vec![],
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_input.to_string(),
+                images: vec![],
+                files: vec![],
+            },
+        ],
+        api_key.map(|s| s.to_string()),
+        base_url.map(|s| s.to_string()),
+    )
+    .await?;
 
-            let client = openai::Client::new(api_key);
-            let agent = client
-                .agent(model)
-                .preamble(SEARCH_DECISION_SYSTEM_PROMPT)
-                .build();
-
-            agent
-                .prompt(user_input)
-                .await
-                .map_err(|e| anyhow::anyhow!("OpenAI request failed: {}", e))?
-        }
-        "openrouter" => {
-            let api_key =
-                api_key.ok_or_else(|| anyhow::anyhow!("API key required for OpenRouter"))?;
-
-            let client = openai::Client::builder(api_key)
-                .base_url("https://openrouter.ai/api/v1")
-                .build();
-            let agent = client
-                .agent(model)
-                .preamble(SEARCH_DECISION_SYSTEM_PROMPT)
-                .build();
-
-            agent
-                .prompt(user_input)
-                .await
-                .map_err(|e| anyhow::anyhow!("OpenRouter request failed: {}", e))?
-        }
-        "ollama" => {
-            let base = base_url.unwrap_or("http://localhost:11434");
-            let client = ollama::Client::builder().base_url(base).build();
-            let agent = client
-                .agent(model)
-                .preamble(SEARCH_DECISION_SYSTEM_PROMPT)
-                .build();
-
-            agent
-                .prompt(user_input)
-                .await
-                .map_err(|e| anyhow::anyhow!("Ollama request failed: {}", e))?
-        }
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Unsupported provider for search decision: {}",
-                provider
-            ));
-        }
-    };
-
-    println!("📝 [search_decision] AI response: {}", response);
+    println!("📝 [search_decision] AI response: {}", response.content);
 
     // Parse JSON from response
-    let json_str = extract_json_from_response(&response)?;
+    let json_str = extract_json_from_response(&response.content)?;
     let parsed: Value = serde_json::from_str(&json_str)
         .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {}", e))?;
 
