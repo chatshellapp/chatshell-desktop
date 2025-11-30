@@ -80,7 +80,8 @@ interface ProviderSettingsDialogProps {
 
 interface ModelItem {
   id: string
-  name: string
+  displayName: string // Human-friendly display name
+  modelId: string // Raw model identifier for API calls
   isExisting?: boolean // true if already saved in database
 }
 
@@ -168,7 +169,8 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
           .filter((m) => m.provider_id === existing.id)
           .map((m) => ({
             id: m.id, // Use the database ID
-            name: m.model_id, // model_id is the actual model identifier
+            displayName: m.name, // Human-friendly display name
+            modelId: m.model_id, // Raw model identifier for API calls
             isExisting: true, // Mark as existing
           }))
         setModels(existingModels)
@@ -185,19 +187,21 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
 
   const handleAddModel = () => {
     if (newModelName.trim()) {
+      const trimmedName = newModelName.trim()
       setModels([
         ...models,
         {
           id: Date.now().toString(),
-          name: newModelName.trim(),
+          displayName: trimmedName, // Manual input: use as both display and model ID
+          modelId: trimmedName,
         },
       ])
       setNewModelName('')
     }
   }
 
-  const handleUpdateModelName = (id: string, newName: string) => {
-    setModels(models.map((model) => (model.id === id ? { ...model, name: newName } : model)))
+  const handleUpdateModelName = (id: string, newDisplayName: string) => {
+    setModels(models.map((model) => (model.id === id ? { ...model, displayName: newDisplayName } : model)))
   }
 
   const handleDeleteModel = (id: string) => {
@@ -252,7 +256,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   }
 
   const handleToggleImportModel = (model: ModelInfo) => {
-    const existingIndex = models.findIndex((m) => m.name === model.id)
+    const existingIndex = models.findIndex((m) => m.modelId === model.id)
     if (existingIndex >= 0) {
       // Model is currently in list - remove it
       const existingModel = models[existingIndex]
@@ -277,26 +281,28 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
             ...models,
             {
               id: originalModel.id,
-              name: originalModel.model_id,
+              displayName: originalModel.name,
+              modelId: originalModel.model_id,
               isExisting: true,
             },
           ])
         }
       } else {
-        // Add as new model
+        // Add as new model - use processed name from API, raw ID for API calls
         setModels([
           ...models,
           {
             id: Date.now().toString(),
-            name: model.id,
+            displayName: model.name, // Human-friendly display name from API
+            modelId: model.id, // Raw model identifier for API calls
           },
         ])
       }
     }
   }
 
-  const isModelImported = (modelId: string) => {
-    return models.some((m) => m.name === modelId)
+  const isModelImported = (rawModelId: string) => {
+    return models.some((m) => m.modelId === rawModelId)
   }
 
   const handleSave = async () => {
@@ -356,13 +362,13 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       // Create only new models
       for (const model of newModels) {
         const modelReq: CreateModelRequest = {
-          name: model.name,
+          name: model.displayName, // Human-friendly display name
           provider_id: providerId,
-          model_id: model.name, // model.name contains the actual model ID
+          model_id: model.modelId, // Raw model identifier for API calls
           is_starred: false,
         }
         await invoke('create_model', { req: modelReq })
-        console.log('Created model:', model.name)
+        console.log('Created model:', model.displayName, 'with ID:', model.modelId)
       }
 
       // Refresh the model store to show new models in sidebar
@@ -555,12 +561,13 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                                 </TableCell>
                                 <TableCell>
                                   <Input
-                                    value={model.name}
+                                    value={model.displayName}
                                     onChange={(e) =>
                                       handleUpdateModelName(model.id, e.target.value)
                                     }
                                     className="h-8"
                                     disabled={model.isExisting}
+                                    title={model.modelId} // Show raw model ID on hover
                                   />
                                 </TableCell>
                                 <TableCell>
