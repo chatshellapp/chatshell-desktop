@@ -64,19 +64,27 @@ function cleanupMermaidElements(elementId: string) {
   })
 }
 
+// Debounce delay for mermaid rendering during streaming
+const MERMAID_RENDER_DEBOUNCE_MS = 300
+
 function MermaidBlock({ code }: MermaidBlockProps) {
   const uniqueId = useId()
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [renderKey, setRenderKey] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [isWaiting, setIsWaiting] = useState(true) // Start in waiting state
 
   useEffect(() => {
     let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    // Show waiting state immediately when code changes
+    setIsWaiting(true)
 
     const renderDiagram = async () => {
       // Generate a valid DOM id from useId (remove colons) with render key for uniqueness
-      const elementId = `mermaid-${uniqueId.replace(/:/g, '-')}-${renderKey}`
+      const elementId = `mermaid-${uniqueId.replace(/:/g, '-')}-${renderKey}-${Date.now()}`
 
       try {
         // Ensure mermaid is initialized before rendering
@@ -86,6 +94,7 @@ function MermaidBlock({ code }: MermaidBlockProps) {
         if (!cancelled) {
           setSvg(renderedSvg)
           setError(null)
+          setIsWaiting(false)
         }
       } catch (err) {
         // Clean up any leftover DOM elements from failed render
@@ -94,16 +103,22 @@ function MermaidBlock({ code }: MermaidBlockProps) {
         if (!cancelled) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to render diagram'
           setError(errorMessage)
-          setSvg(null)
-          console.error('Mermaid render error:', err)
+          // Don't clear svg - keep showing last successful render if any
+          setIsWaiting(false)
         }
       }
     }
 
-    renderDiagram()
+    // Debounce rendering to avoid flickering during streaming
+    timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        renderDiagram()
+      }
+    }, MERMAID_RENDER_DEBOUNCE_MS)
 
     return () => {
       cancelled = true
+      clearTimeout(timeoutId)
     }
   }, [code, uniqueId, renderKey])
 
@@ -137,7 +152,8 @@ function MermaidBlock({ code }: MermaidBlockProps) {
     }
   }, [svg])
 
-  if (error) {
+  // Show error only when not waiting and no successful render exists
+  if (error && !isWaiting && !svg) {
     return (
       <div className="my-2 border border-amber-500/50 rounded-md overflow-hidden isolate">
         <div className="flex items-center justify-between px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/50">
@@ -169,7 +185,8 @@ function MermaidBlock({ code }: MermaidBlockProps) {
     )
   }
 
-  if (!svg) {
+  // Show loading state only when waiting and no previous render exists
+  if (isWaiting && !svg) {
     return (
       <div className="my-2 border border-border rounded-md p-4 flex items-center justify-center bg-muted/30">
         <span className="text-sm text-muted-foreground">Rendering diagram...</span>
@@ -177,10 +194,24 @@ function MermaidBlock({ code }: MermaidBlockProps) {
     )
   }
 
+  // No SVG and not in any special state - shouldn't normally happen
+  if (!svg) {
+    return (
+      <div className="my-2 border border-border rounded-md p-4 flex items-center justify-center bg-muted/30">
+        <span className="text-sm text-muted-foreground">Waiting for diagram code...</span>
+      </div>
+    )
+  }
+
   return (
     <div className="my-2 border border-border rounded-md overflow-hidden mermaid-container">
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
-        <span className="text-xs text-muted-foreground font-mono">mermaid</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-mono">mermaid</span>
+          {isWaiting && (
+            <span className="text-xs text-muted-foreground/60 italic">updating...</span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
