@@ -461,9 +461,7 @@ export type ProcessStep =
   | ({ type: 'code_execution' } & CodeExecution)
 
 // Helper type guards for process steps
-export function isThinkingStep(
-  step: ProcessStep
-): step is { type: 'thinking' } & ThinkingStep {
+export function isThinkingStep(step: ProcessStep): step is { type: 'thinking' } & ThinkingStep {
   return step.type === 'thinking'
 }
 
@@ -473,9 +471,7 @@ export function isSearchDecision(
   return step.type === 'search_decision'
 }
 
-export function isToolCall(
-  step: ProcessStep
-): step is { type: 'tool_call' } & ToolCall {
+export function isToolCall(step: ProcessStep): step is { type: 'tool_call' } & ToolCall {
   return step.type === 'tool_call'
 }
 

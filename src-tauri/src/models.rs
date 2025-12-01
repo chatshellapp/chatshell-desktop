@@ -382,7 +382,7 @@ pub struct CreateSearchResultRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchResult {
     pub id: String,
-    pub source_type: String, // "search" | "user_link"
+    pub source_type: String,       // "search" | "user_link"
     pub source_id: Option<String>, // FK to search_results.id or user_links.id
     pub url: String,
     pub title: Option<String>,
@@ -518,7 +518,7 @@ pub struct ToolCall {
     pub tool_name: String,
     pub tool_input: Option<String>,  // JSON
     pub tool_output: Option<String>, // JSON
-    pub status: String, // "pending" | "running" | "success" | "error"
+    pub status: String,              // "pending" | "running" | "success" | "error"
     pub error: Option<String>,
     pub duration_ms: Option<i64>,
     pub created_at: String,
@@ -669,4 +669,3 @@ pub struct Setting {
     pub value: String,
     pub updated_at: String,
 }
-

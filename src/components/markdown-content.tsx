@@ -33,9 +33,7 @@ function CodeBlock({ language, code }: CodeBlockProps) {
   return (
     <div className="relative group my-2 border border-border rounded-md overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
-        <span className="text-xs text-muted-foreground font-mono">
-          {language || 'text'}
-        </span>
+        <span className="text-xs text-muted-foreground font-mono">{language || 'text'}</span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"

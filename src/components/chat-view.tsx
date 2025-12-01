@@ -23,12 +23,7 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import { useChatEvents } from '@/hooks/useChatEvents'
 import { getModelLogo } from '@/lib/model-logos'
 import { parseThinkingContent } from '@/lib/utils'
-import type {
-  Message,
-  MessageResources,
-  ContextEnrichment,
-  ProcessStep,
-} from '@/types'
+import type { Message, MessageResources, ContextEnrichment, ProcessStep } from '@/types'
 
 // Helper function to format model name with provider
 const formatModelDisplayName = (
@@ -47,13 +42,7 @@ const CHAT_CONFIG = {
 }
 
 // API Error Preview component - displays errors in attachment-preview style
-function ApiErrorPreview({
-  error,
-  onDismiss,
-}: {
-  error: string
-  onDismiss?: () => void
-}) {
+function ApiErrorPreview({ error, onDismiss }: { error: string; onDismiss?: () => void }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   return (
@@ -505,7 +494,8 @@ export function ChatView() {
               const urls = messageUrlStatuses ? Object.keys(messageUrlStatuses) : []
 
               const hasUserAttachments =
-                isUserMessage && (userAttachments.length > 0 || userFetchResults.length > 0 || urls.length > 0)
+                isUserMessage &&
+                (userAttachments.length > 0 || userFetchResults.length > 0 || urls.length > 0)
 
               // For assistant messages in history, get context and steps from previous user message
               let contextsToShow: ContextEnrichment[] = []
@@ -521,13 +511,9 @@ export function ChatView() {
                     steps: [],
                   }
                   // Only show search_result - fetch_results from search are shown inside SearchResultPreview
-                  contextsToShow = prevResources.contexts.filter(
-                    (c) => c.type === 'search_result'
-                  )
+                  contextsToShow = prevResources.contexts.filter((c) => c.type === 'search_result')
                   // Show search decisions from previous user message
-                  stepsToShow = prevResources.steps.filter(
-                    (s) => s.type === 'search_decision'
-                  )
+                  stepsToShow = prevResources.steps.filter((s) => s.type === 'search_decision')
                 }
               }
 
@@ -542,10 +528,7 @@ export function ChatView() {
                   <div className="space-y-1.5 mb-2">
                     {/* Search decisions first */}
                     {stepsToShow.map((step) => (
-                      <AttachmentPreview
-                        key={(step as any).id}
-                        step={step}
-                      />
+                      <AttachmentPreview key={(step as any).id} step={step} />
                     ))}
                     {/* Then search results */}
                     {contextsToShow.map((context) => (
@@ -561,10 +544,7 @@ export function ChatView() {
                     ))}
                     {/* Finally thinking content */}
                     {thinkingSteps.map((step) => (
-                      <ThinkingPreview
-                        key={(step as any).id}
-                        content={(step as any).content}
-                      />
+                      <ThinkingPreview key={(step as any).id} content={(step as any).content} />
                     ))}
                   </div>
                 ) : undefined
@@ -599,9 +579,7 @@ export function ChatView() {
                         {(() => {
                           // Collect all image attachments for lightbox navigation
                           const imageAttachments = userAttachments.filter(
-                            (a) =>
-                              a.type === 'file' &&
-                              (a as any).mime_type?.startsWith('image/')
+                            (a) => a.type === 'file' && (a as any).mime_type?.startsWith('image/')
                           )
                           const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
                             id: (a as any).id,
@@ -632,10 +610,7 @@ export function ChatView() {
                         })()}
                         {/* User-provided fetch results (webpage attachments) */}
                         {userFetchResults.map((context) => (
-                          <AttachmentPreview
-                            key={(context as any).id}
-                            context={context}
-                          />
+                          <AttachmentPreview key={(context as any).id} context={context} />
                         ))}
                         {/* Standalone processing URLs (no search result) */}
                         {urls.map((url) => (
@@ -664,9 +639,13 @@ export function ChatView() {
                 // Build headerContent with contexts, steps, and thinking preview
                 let streamingHeaderContent: React.ReactNode = undefined
                 const lastUserResources = lastUserMessage
-                  ? messageResources[lastUserMessage.id] || { attachments: [], contexts: [], steps: [] }
+                  ? messageResources[lastUserMessage.id] || {
+                      attachments: [],
+                      contexts: [],
+                      steps: [],
+                    }
                   : { attachments: [], contexts: [], steps: [] }
-                
+
                 // Only get search results - fetch results from search are shown inside SearchResultPreview
                 const searchResultContexts = lastUserResources.contexts.filter(
                   (c) => c.type === 'search_result'
@@ -675,11 +654,12 @@ export function ChatView() {
                 const searchDecisionSteps = lastUserResources.steps.filter(
                   (s) => s.type === 'search_decision'
                 )
-                
+
                 const hasPendingDecision = lastUserMessage
                   ? pendingSearchDecisions[lastUserMessage.id]
                   : false
-                const hasAssistantResources = searchResultContexts.length > 0 || searchDecisionSteps.length > 0
+                const hasAssistantResources =
+                  searchResultContexts.length > 0 || searchDecisionSteps.length > 0
                 const hasStreamingThinking = parsedStreaming.thinkingContent !== null
 
                 if (hasAssistantResources || hasPendingDecision || hasStreamingThinking) {
@@ -691,10 +671,7 @@ export function ChatView() {
                       )}
                       {/* Show search decisions */}
                       {searchDecisionSteps.map((step) => (
-                        <AttachmentPreview
-                          key={(step as any).id}
-                          step={step}
-                        />
+                        <AttachmentPreview key={(step as any).id} step={step} />
                       ))}
                       {/* Show search results (fetch results from search are shown inside) */}
                       {searchResultContexts.map((context) => (

@@ -501,7 +501,8 @@ export function ChatInput({}: ChatInputProps) {
         const fileDesc = unsupportedFiles[0]
         if (unsupportedFiles.length === 1) {
           toast.error(`Unsupported file format: ${fileDesc}`, {
-            description: 'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
+            description:
+              'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
           })
         } else {
           toast.error(`${unsupportedFiles.length} unsupported files`, {
@@ -614,91 +615,89 @@ export function ChatInput({}: ChatInputProps) {
     e.stopPropagation()
   }, [])
 
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dragCounterRef.current = 0
-      setIsDraggingOver(false)
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDraggingOver(false)
 
-      const files = Array.from(e.dataTransfer.files)
-      if (files.length === 0) return
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
 
-      const unsupportedFiles: string[] = []
-      const documentsToProcess: File[] = []
-      const imagesToProcess: File[] = []
+    const unsupportedFiles: string[] = []
+    const documentsToProcess: File[] = []
+    const imagesToProcess: File[] = []
 
-      // Categorize files
-      for (const file of files) {
-        const fileType = getFileType(file.name)
-        if (fileType === 'document') {
-          documentsToProcess.push(file)
-        } else if (fileType === 'image') {
-          imagesToProcess.push(file)
-        } else {
-          unsupportedFiles.push(file.name)
-        }
+    // Categorize files
+    for (const file of files) {
+      const fileType = getFileType(file.name)
+      if (fileType === 'document') {
+        documentsToProcess.push(file)
+      } else if (fileType === 'image') {
+        imagesToProcess.push(file)
+      } else {
+        unsupportedFiles.push(file.name)
       }
+    }
 
-      // Show error for unsupported files
-      if (unsupportedFiles.length > 0) {
-        const ext = unsupportedFiles[0].split('.').pop()?.toLowerCase() || 'unknown'
-        if (unsupportedFiles.length === 1) {
-          toast.error(`Unsupported file format: .${ext}`, {
-            description: 'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
-          })
-        } else {
-          toast.error(`${unsupportedFiles.length} unsupported files`, {
-            description: `Including: ${unsupportedFiles.slice(0, 3).join(', ')}${unsupportedFiles.length > 3 ? '...' : ''}`,
-          })
-        }
+    // Show error for unsupported files
+    if (unsupportedFiles.length > 0) {
+      const ext = unsupportedFiles[0].split('.').pop()?.toLowerCase() || 'unknown'
+      if (unsupportedFiles.length === 1) {
+        toast.error(`Unsupported file format: .${ext}`, {
+          description:
+            'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
+        })
+      } else {
+        toast.error(`${unsupportedFiles.length} unsupported files`, {
+          description: `Including: ${unsupportedFiles.slice(0, 3).join(', ')}${unsupportedFiles.length > 3 ? '...' : ''}`,
+        })
       }
+    }
 
-      // Process documents
-      for (const file of documentsToProcess) {
-        try {
-          const content = await file.text()
-          const newAttachment: Attachment = {
-            id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            type: 'file',
-            name: file.name,
-            content,
-            mimeType: getMimeType(file.name),
-            size: content.length,
-          }
-          setAttachments((prev) => [...prev, newAttachment])
-        } catch (error) {
-          console.error('Failed to read file:', file.name, error)
-          toast.error(`Failed to read: ${file.name}`)
+    // Process documents
+    for (const file of documentsToProcess) {
+      try {
+        const content = await file.text()
+        const newAttachment: Attachment = {
+          id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: 'file',
+          name: file.name,
+          content,
+          mimeType: getMimeType(file.name),
+          size: content.length,
         }
+        setAttachments((prev) => [...prev, newAttachment])
+      } catch (error) {
+        console.error('Failed to read file:', file.name, error)
+        toast.error(`Failed to read: ${file.name}`)
       }
+    }
 
-      // Process images
-      for (const file of imagesToProcess) {
-        try {
-          const arrayBuffer = await file.arrayBuffer()
-          const base64 = btoa(
-            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-          )
-          const mimeType = getImageMimeType(file.name)
+    // Process images
+    for (const file of imagesToProcess) {
+      try {
+        const arrayBuffer = await file.arrayBuffer()
+        const base64 = btoa(
+          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        )
+        const mimeType = getImageMimeType(file.name)
 
-          const newAttachment: Attachment = {
-            id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            type: 'image',
-            name: file.name,
-            base64: `data:${mimeType};base64,${base64}`,
-            mimeType,
-            size: file.size,
-          }
-          setAttachments((prev) => [...prev, newAttachment])
-        } catch (error) {
-          console.error('Failed to read image:', file.name, error)
-          toast.error(`Failed to read image: ${file.name}`)
+        const newAttachment: Attachment = {
+          id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: 'image',
+          name: file.name,
+          base64: `data:${mimeType};base64,${base64}`,
+          mimeType,
+          size: file.size,
         }
+        setAttachments((prev) => [...prev, newAttachment])
+      } catch (error) {
+        console.error('Failed to read image:', file.name, error)
+        toast.error(`Failed to read image: ${file.name}`)
       }
-    },
-    []
-  )
+    }
+  }, [])
 
   const handleSend = async () => {
     console.log('handleSend called', {
@@ -1097,10 +1096,13 @@ export function ChatInput({}: ChatInputProps) {
           <div className="order-first w-full flex flex-wrap gap-2 px-3 pt-3 pb-0">
             {attachments.map((attachment, _index) => {
               // Get image index for lightbox navigation
-              const imageAttachments = attachments.filter((att) => att.type === 'image' && att.base64)
-              const imageIndex = attachment.type === 'image'
-                ? imageAttachments.findIndex((img) => img.id === attachment.id)
-                : -1
+              const imageAttachments = attachments.filter(
+                (att) => att.type === 'image' && att.base64
+              )
+              const imageIndex =
+                attachment.type === 'image'
+                  ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                  : -1
 
               const handlePreviewClick = () => {
                 if (attachment.type === 'image' && attachment.base64) {
@@ -1146,7 +1148,9 @@ export function ChatInput({}: ChatInputProps) {
                       )}
                       <span className="max-w-[150px] truncate">{attachment.name}</span>
                       {attachment.size !== undefined && (
-                        <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
+                        <span className="text-xs opacity-60">
+                          ({formatFileSize(attachment.size)})
+                        </span>
                       )}
                     </button>
                   ) : (
@@ -1172,7 +1176,9 @@ export function ChatInput({}: ChatInputProps) {
                         <span className="max-w-[150px] truncate">{attachment.name}</span>
                       )}
                       {attachment.size !== undefined && (
-                        <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
+                        <span className="text-xs opacity-60">
+                          ({formatFileSize(attachment.size)})
+                        </span>
                       )}
                     </>
                   )}
@@ -1429,16 +1435,10 @@ export function ChatInput({}: ChatInputProps) {
               aria-invalid={!!webPageUrlError}
               autoFocus
             />
-            {webPageUrlError && (
-              <p className="text-sm text-destructive">{webPageUrlError}</p>
-            )}
+            {webPageUrlError && <p className="text-sm text-destructive">{webPageUrlError}</p>}
           </div>
           <DialogFooter className="sm:justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setIsWebPageDialogOpen(false)}
-            >
+            <Button type="button" variant="ghost" onClick={() => setIsWebPageDialogOpen(false)}>
               Cancel
             </Button>
             <Button type="button" onClick={handleWebPageUrlSubmit}>

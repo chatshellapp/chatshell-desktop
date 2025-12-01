@@ -307,10 +307,7 @@ pub async fn get_file_attachment(
 }
 
 #[tauri::command]
-pub async fn get_user_link(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<UserLink, String> {
+pub async fn get_user_link(state: State<'_, AppState>, id: String) -> Result<UserLink, String> {
     state.db.get_user_link(&id).map_err(|e| e.to_string())
 }
 
@@ -886,10 +883,12 @@ async fn handle_provider_streaming(
     // Save thinking content as a ThinkingStep if present
     if let Some(thinking_content) = response.thinking_content {
         if !thinking_content.is_empty() {
-            match state_clone.db.create_thinking_step(CreateThinkingStepRequest {
-                content: thinking_content,
-                source: Some("llm".to_string()),
-            }) {
+            match state_clone
+                .db
+                .create_thinking_step(CreateThinkingStepRequest {
+                    content: thinking_content,
+                    source: Some("llm".to_string()),
+                }) {
                 Ok(thinking_step) => {
                     if let Err(e) = state_clone.db.link_message_step(
                         &assistant_message.id,
@@ -999,10 +998,7 @@ pub async fn send_message(
     println!("   model_db_id: {:?}", model_db_id);
     println!("   assistant_db_id: {:?}", assistant_db_id);
     println!("   urls_to_fetch: {:?}", urls_to_fetch);
-    println!(
-        "   images count: {:?}",
-        images.as_ref().map(|v| v.len())
-    );
+    println!("   images count: {:?}", images.as_ref().map(|v| v.len()));
     println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
     println!("   search_enabled: {:?}", search_enabled);
 
@@ -1704,7 +1700,10 @@ pub async fn send_message(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to create file record for image {}: {}", file_name, e);
+                    eprintln!(
+                        "Failed to create file record for image {}: {}",
+                        file_name, e
+                    );
                     let _ = crate::storage::delete_file(&app_clone, &storage_path);
                 }
             }

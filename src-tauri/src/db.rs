@@ -1689,7 +1689,11 @@ impl Database {
         .map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
     }
 
-    pub fn get_fetch_results_by_source(&self, source_type: &str, source_id: &str) -> Result<Vec<FetchResult>> {
+    pub fn get_fetch_results_by_source(
+        &self,
+        source_type: &str,
+        source_id: &str,
+    ) -> Result<Vec<FetchResult>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
@@ -1769,9 +1773,8 @@ impl Database {
 
     pub fn get_user_link(&self, id: &str) -> Result<UserLink> {
         let conn = self.lock_conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, url, title, created_at FROM user_links WHERE id = ?1",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, url, title, created_at FROM user_links WHERE id = ?1")?;
 
         stmt.query_row(params![id], |row| {
             Ok(UserLink {
@@ -1912,9 +1915,8 @@ impl Database {
 
     pub fn get_thinking_step(&self, id: &str) -> Result<ThinkingStep> {
         let conn = self.lock_conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, content, source, created_at FROM thinking_steps WHERE id = ?1",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT id, content, source, created_at FROM thinking_steps WHERE id = ?1")?;
 
         stmt.query_row(params![id], |row| {
             Ok(ThinkingStep {
@@ -1975,7 +1977,14 @@ impl Database {
         .map_err(|e| anyhow::anyhow!("Tool call not found: {}", e))
     }
 
-    pub fn update_tool_call_status(&self, id: &str, status: &str, output: Option<&str>, error: Option<&str>, duration_ms: Option<i64>) -> Result<()> {
+    pub fn update_tool_call_status(
+        &self,
+        id: &str,
+        status: &str,
+        output: Option<&str>,
+        error: Option<&str>,
+        duration_ms: Option<i64>,
+    ) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = self.lock_conn()?;
         conn.execute(
@@ -2222,14 +2231,7 @@ impl Database {
             "INSERT OR IGNORE INTO message_steps
              (id, message_id, step_type, step_id, display_order, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                id,
-                message_id,
-                step_type.to_string(),
-                step_id,
-                order,
-                now
-            ],
+            params![id, message_id, step_type.to_string(), step_id, order, now],
         )?;
 
         Ok(())
@@ -2262,10 +2264,7 @@ impl Database {
                     .get_search_decision(&step_id)
                     .map(ProcessStep::SearchDecision)
                     .ok(),
-                "tool_call" => self
-                    .get_tool_call(&step_id)
-                    .map(ProcessStep::ToolCall)
-                    .ok(),
+                "tool_call" => self.get_tool_call(&step_id).map(ProcessStep::ToolCall).ok(),
                 "code_execution" => self
                     .get_code_execution(&step_id)
                     .map(ProcessStep::CodeExecution)
