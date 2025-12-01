@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { AlertTriangle } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
 import { ChatMessage } from '@/components/chat-message'
-import { AttachmentPreview } from '@/components/attachment-preview'
+import { AttachmentPreview, ThinkingPreview } from '@/components/attachment-preview'
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,7 @@ import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useChatEvents } from '@/hooks/useChatEvents'
 import { getModelLogo } from '@/lib/model-logos'
+import { parseThinkingContent } from '@/lib/utils'
 import type { Message, Attachment } from '@/types'
 
 // Helper function to format model name with provider
@@ -495,9 +496,11 @@ export function ChatView() {
                 }
               }
 
-              // Build headerContent for assistant messages (attachments shown between header and content)
+              // Build headerContent for assistant messages (attachments + thinking shown between header and content)
+              const hasThinkingContent = isAssistantMessage && message.thinking_content
+              const hasAssistantAttachments = assistantAttachmentsToShow.length > 0
               const headerContent =
-                isAssistantMessage && assistantAttachmentsToShow.length > 0 ? (
+                isAssistantMessage && (hasAssistantAttachments || hasThinkingContent) ? (
                   <div className="space-y-1.5 mb-2">
                     {assistantAttachmentsToShow.map((attachment) => (
                       <AttachmentPreview
@@ -510,6 +513,9 @@ export function ChatView() {
                         }
                       />
                     ))}
+                    {message.thinking_content && (
+                      <ThinkingPreview content={message.thinking_content} />
+                    )}
                   </div>
                 ) : undefined
 
@@ -557,50 +563,65 @@ export function ChatView() {
               (() => {
                 const info = getDisplayInfo()
 
+                // Parse thinking content from streaming output
+                const parsedStreaming = isWaitingForAI
+                  ? { content: '', thinkingContent: null, isThinkingInProgress: false }
+                  : parseThinkingContent(streamingContent)
+
                 // Get the last user message to show its assistant attachments
                 const lastUserMessage = messages
                   .filter((m) => m.sender_type === 'user')
                   .slice(-1)[0]
 
-                // Build headerContent with attachments (shown between header and content)
+                // Build headerContent with attachments and thinking preview
                 let streamingHeaderContent: React.ReactNode = undefined
-                if (lastUserMessage) {
-                  const lastUserAttachments = messageAttachments[lastUserMessage.id] || []
-                  const assistantAttachments = lastUserAttachments.filter(
-                    (a) => a.type === 'search_result' || a.type === 'search_decision'
-                  )
-                  const hasPendingDecision = pendingSearchDecisions[lastUserMessage.id]
-                  const hasAssistantAttachments = assistantAttachments.length > 0
+                const lastUserAttachments = lastUserMessage
+                  ? messageAttachments[lastUserMessage.id] || []
+                  : []
+                const assistantAttachments = lastUserAttachments.filter(
+                  (a) => a.type === 'search_result' || a.type === 'search_decision'
+                )
+                const hasPendingDecision = lastUserMessage
+                  ? pendingSearchDecisions[lastUserMessage.id]
+                  : false
+                const hasAssistantAttachments = assistantAttachments.length > 0
+                const hasStreamingThinking = parsedStreaming.thinkingContent !== null
 
-                  if (hasAssistantAttachments || hasPendingDecision) {
-                    streamingHeaderContent = (
-                      <div className="space-y-1.5 mb-2">
-                        {/* Show pending search decision preview */}
-                        {hasPendingDecision &&
-                          !assistantAttachments.some((a) => a.type === 'search_decision') && (
-                            <AttachmentPreview pendingSearchDecision={true} />
-                          )}
-                        {assistantAttachments.map((attachment) => (
-                          <AttachmentPreview
-                            key={(attachment as any).id}
-                            attachment={attachment}
-                            urlStatuses={
-                              attachment.type === 'search_result'
-                                ? urlStatuses[lastUserMessage.id]
-                                : undefined
-                            }
-                          />
-                        ))}
-                      </div>
-                    )
-                  }
+                if (hasAssistantAttachments || hasPendingDecision || hasStreamingThinking) {
+                  streamingHeaderContent = (
+                    <div className="space-y-1.5 mb-2">
+                      {/* Show pending search decision preview */}
+                      {hasPendingDecision &&
+                        !assistantAttachments.some((a) => a.type === 'search_decision') && (
+                          <AttachmentPreview pendingSearchDecision={true} />
+                        )}
+                      {assistantAttachments.map((attachment) => (
+                        <AttachmentPreview
+                          key={(attachment as any).id}
+                          attachment={attachment}
+                          urlStatuses={
+                            attachment.type === 'search_result' && lastUserMessage
+                              ? urlStatuses[lastUserMessage.id]
+                              : undefined
+                          }
+                        />
+                      ))}
+                      {/* Show streaming thinking content */}
+                      {parsedStreaming.thinkingContent && (
+                        <ThinkingPreview
+                          content={parsedStreaming.thinkingContent}
+                          isStreaming={parsedStreaming.isThinkingInProgress}
+                        />
+                      )}
+                    </div>
+                  )
                 }
 
                 return (
                   <ChatMessage
                     key={isWaitingForAI ? 'waiting' : 'streaming'}
                     role="assistant"
-                    content={isWaitingForAI ? '' : streamingContent}
+                    content={isWaitingForAI ? '' : parsedStreaming.content}
                     timestamp="Now"
                     displayName={info.displayName}
                     senderType={info.senderType}
