@@ -164,6 +164,8 @@ pub async fn chat_stream_common<M: CompletionModel>(
 
     let mut full_content = String::new();
     let mut cancelled = false;
+    let mut consecutive_errors = 0;
+    const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
     println!("📥 [{}] Processing stream...", log_prefix);
 
@@ -178,6 +180,7 @@ pub async fn chat_stream_common<M: CompletionModel>(
 
         match result {
             Ok(StreamedAssistantContent::Text(text)) => {
+                consecutive_errors = 0; // Reset error counter on successful chunk
                 let text_str = &text.text;
                 if !text_str.is_empty() {
                     full_content.push_str(text_str);
@@ -191,11 +194,50 @@ pub async fn chat_stream_common<M: CompletionModel>(
                 }
             }
             Ok(_) => {
+                consecutive_errors = 0; // Reset error counter on any successful response
                 // Ignore tool calls, reasoning, and final responses
             }
             Err(e) => {
-                eprintln!("❌ [{}] Stream error: {}", log_prefix, e);
-                return Err(e.into());
+                consecutive_errors += 1;
+                let error_str = e.to_string();
+
+                // Check if this is a recoverable error
+                let is_decode_error = error_str.contains("decoding response body")
+                    || error_str.contains("error reading a body")
+                    || error_str.contains("connection")
+                    || error_str.contains("stream");
+
+                // If we already have content and hit a decode error, treat as stream end
+                if is_decode_error && !full_content.is_empty() {
+                    eprintln!(
+                        "⚠️ [{}] Stream decode error after receiving content, treating as stream end: {}",
+                        log_prefix, error_str
+                    );
+                    break;
+                }
+
+                // Allow some consecutive errors before failing
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    eprintln!(
+                        "❌ [{}] Too many consecutive stream errors ({}): {}",
+                        log_prefix, consecutive_errors, error_str
+                    );
+                    // If we have some content, return it instead of failing completely
+                    if !full_content.is_empty() {
+                        eprintln!(
+                            "⚠️ [{}] Returning partial content ({} chars) due to stream errors",
+                            log_prefix,
+                            full_content.len()
+                        );
+                        break;
+                    }
+                    return Err(e.into());
+                }
+
+                eprintln!(
+                    "⚠️ [{}] Stream error ({}/{}), continuing: {}",
+                    log_prefix, consecutive_errors, MAX_CONSECUTIVE_ERRORS, error_str
+                );
             }
         }
     }
