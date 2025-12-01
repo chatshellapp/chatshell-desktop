@@ -13,6 +13,7 @@ import {
   Search,
   Package,
   Upload,
+  Link,
 } from 'lucide-react'
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -22,12 +23,22 @@ import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import {
   InputGroup,
   InputGroupAddon,
@@ -186,6 +197,9 @@ export function ChatInput({}: ChatInputProps) {
   const [artifactsEnabled, setArtifactsEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const [isWebPageDialogOpen, setIsWebPageDialogOpen] = useState(false)
+  const [webPageUrl, setWebPageUrl] = useState('')
+  const [webPageUrlError, setWebPageUrlError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
@@ -405,7 +419,44 @@ export function ChatInput({}: ChatInputProps) {
   }
 
   const handleWebPageSelect = () => {
-    addAttachment('webpage', 'https://example.com')
+    setWebPageUrl('')
+    setWebPageUrlError('')
+    setIsWebPageDialogOpen(true)
+  }
+
+  const validateUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }
+
+  const handleWebPageUrlSubmit = () => {
+    const trimmedUrl = webPageUrl.trim()
+
+    if (!trimmedUrl) {
+      setWebPageUrlError('Please enter a URL')
+      return
+    }
+
+    if (!validateUrl(trimmedUrl)) {
+      setWebPageUrlError('Please enter a valid URL (e.g., https://example.com)')
+      return
+    }
+
+    // Check for duplicate
+    const isDuplicate = attachments.some((att) => att.type === 'webpage' && att.name === trimmedUrl)
+    if (isDuplicate) {
+      setWebPageUrlError('This URL has already been added')
+      return
+    }
+
+    addAttachment('webpage', trimmedUrl)
+    setIsWebPageDialogOpen(false)
+    setWebPageUrl('')
+    setWebPageUrlError('')
   }
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1157,6 +1208,54 @@ export function ChatInput({}: ChatInputProps) {
           )}
         </InputGroupAddon>
       </InputGroup>
+
+      {/* Web Page URL Dialog */}
+      <Dialog open={isWebPageDialogOpen} onOpenChange={setIsWebPageDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link className="size-5" />
+              Add Web Page
+            </DialogTitle>
+            <DialogDescription>
+              Enter a URL to attach web page content to your message.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Input
+              placeholder="https://example.com"
+              value={webPageUrl}
+              onChange={(e) => {
+                setWebPageUrl(e.target.value)
+                setWebPageUrlError('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleWebPageUrlSubmit()
+                }
+              }}
+              aria-invalid={!!webPageUrlError}
+              autoFocus
+            />
+            {webPageUrlError && (
+              <p className="text-sm text-destructive">{webPageUrlError}</p>
+            )}
+          </div>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setIsWebPageDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleWebPageUrlSubmit}>
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
