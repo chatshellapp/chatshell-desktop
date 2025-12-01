@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Globe,
   ExternalLink,
@@ -13,6 +14,9 @@ import {
   CircleQuestionMark,
   CheckCircle2,
   Lightbulb,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
@@ -27,6 +31,13 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { Attachment, FetchResult, SearchResult, FileAttachment, SearchDecision } from '@/types'
 
+/** Image data for lightbox navigation */
+export interface ImageAttachmentData {
+  id: string
+  fileName: string
+  storagePath: string
+}
+
 interface AttachmentPreviewProps {
   /** Attachment resource (for completed processing) */
   attachment?: Attachment
@@ -36,6 +47,10 @@ interface AttachmentPreviewProps {
   urlStatuses?: Record<string, 'fetching' | 'fetched'>
   /** Show pending search decision state (AI is deciding if search is needed) */
   pendingSearchDecision?: boolean
+  /** All image attachments for lightbox navigation (only used when attachment is an image) */
+  allImages?: ImageAttachmentData[]
+  /** Current image index in allImages array */
+  currentImageIndex?: number
 }
 
 // Extract domain from URL
@@ -586,11 +601,178 @@ function isMarkdownFile(fileName: string, mimeType: string): boolean {
   )
 }
 
-// FileAttachment preview component - handles both text files and images
-function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachment }) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [content, setContent] = useState<string | null>(null)
+// Fullscreen Image Lightbox component with keyboard navigation
+function ImageLightbox({
+  images,
+  initialIndex,
+  onClose,
+}: {
+  images: ImageAttachmentData[]
+  initialIndex: number
+  onClose: () => void
+}) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [imageSrc, setImageSrc] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const currentImage = images[currentIndex]
+  const hasMultiple = images.length > 1
+  const canGoPrev = currentIndex > 0
+  const canGoNext = currentIndex < images.length - 1
+
+  // Load current image
+  useEffect(() => {
+    setLoading(true)
+    setImageSrc(null)
+
+    invoke<string>('get_attachment_url', { storagePath: currentImage.storagePath })
+      .then((fullPath) => {
+        setImageSrc(convertFileSrc(fullPath))
+      })
+      .catch((err) => {
+        console.error('Failed to load image:', err)
+        setImageSrc(null)
+      })
+      .finally(() => setLoading(false))
+  }, [currentImage.storagePath])
+
+  const goToPrev = useCallback(() => {
+    if (canGoPrev) {
+      setCurrentIndex((i) => i - 1)
+    }
+  }, [canGoPrev])
+
+  const goToNext = useCallback(() => {
+    if (canGoNext) {
+      setCurrentIndex((i) => i + 1)
+    }
+  }, [canGoNext])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'ArrowLeft') {
+        goToPrev()
+      } else if (e.key === 'ArrowRight') {
+        goToNext()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, goToPrev, goToNext])
+
+  // Prevent body scroll when lightbox is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  return createPortal(
+    <div
+      className="fixed top-0 left-0 right-0 bottom-0 z-[9999] flex items-center justify-center bg-black"
+      style={{ width: '100vw', height: '100vh' }}
+      onClick={onClose}
+    >
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        aria-label="Close"
+      >
+        <X className="h-6 w-6 text-white" />
+      </button>
+
+      {/* Image counter */}
+      {hasMultiple && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm font-medium">
+          {currentIndex + 1} / {images.length}
+        </div>
+      )}
+
+      {/* Previous button */}
+      {hasMultiple && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            goToPrev()
+          }}
+          disabled={!canGoPrev}
+          className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full transition-colors ${
+            canGoPrev
+              ? 'bg-white/10 hover:bg-white/20 text-white cursor-pointer'
+              : 'bg-white/5 text-white/30 cursor-not-allowed'
+          }`}
+          aria-label="Previous image"
+        >
+          <ChevronLeft className="h-8 w-8" />
+        </button>
+      )}
+
+      {/* Next button */}
+      {hasMultiple && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            goToNext()
+          }}
+          disabled={!canGoNext}
+          className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full transition-colors ${
+            canGoNext
+              ? 'bg-white/10 hover:bg-white/20 text-white cursor-pointer'
+              : 'bg-white/5 text-white/30 cursor-not-allowed'
+          }`}
+          aria-label="Next image"
+        >
+          <ChevronRight className="h-8 w-8" />
+        </button>
+      )}
+
+      {/* Image container */}
+      <div
+        className="w-full h-full p-16 flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {loading ? (
+          <div className="text-white/50 text-lg">Loading...</div>
+        ) : imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={currentImage.fileName}
+            className="max-w-full max-h-full object-contain select-none"
+            draggable={false}
+          />
+        ) : (
+          <div className="text-white/50 text-lg">Failed to load image</div>
+        )}
+      </div>
+
+      {/* File name */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-lg bg-white/10 text-white text-sm max-w-[80%] truncate">
+        {currentImage.fileName}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// FileAttachment preview component - handles both text files and images
+function FileAttachmentPreview({
+  fileAttachment,
+  allImages,
+  currentImageIndex,
+}: {
+  fileAttachment: FileAttachment
+  allImages?: ImageAttachmentData[]
+  currentImageIndex?: number
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const isImage = fileAttachment.mime_type.startsWith('image/')
@@ -601,39 +783,50 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
       ? FileText
       : FileIconLucide
 
-  // Load content/image when dialog opens
-  useEffect(() => {
-    if (isDialogOpen && !content && !imageSrc && !loading) {
-      setLoading(true)
-
-      if (isImage) {
-        // Load image via file path (more efficient than base64)
-        invoke<string>('get_attachment_url', { storagePath: fileAttachment.storage_path })
-          .then((fullPath) => {
-            setImageSrc(convertFileSrc(fullPath))
-          })
-          .catch((err) => {
-            console.error('Failed to load image:', err)
-            setImageSrc(null)
-          })
-          .finally(() => setLoading(false))
-      } else {
-        // Load text content
-        invoke<string>('read_file_content', { storagePath: fileAttachment.storage_path })
-          .then(setContent)
-          .catch((err) => {
-            console.error('Failed to load file content:', err)
-            setContent(null)
-          })
-          .finally(() => setLoading(false))
-      }
+  // For images, use lightbox; for other files, use dialog
+  const handleClick = () => {
+    if (isImage) {
+      setIsLightboxOpen(true)
+    } else {
+      setIsDialogOpen(true)
     }
-  }, [isDialogOpen, content, imageSrc, loading, fileAttachment, isImage])
+  }
+
+  // Load content when dialog opens (only for non-images)
+  useEffect(() => {
+    if (isDialogOpen && !content && !loading && !isImage) {
+      setLoading(true)
+      invoke<string>('read_file_content', { storagePath: fileAttachment.storage_path })
+        .then(setContent)
+        .catch((err) => {
+          console.error('Failed to load file content:', err)
+          setContent(null)
+        })
+        .finally(() => setLoading(false))
+    }
+  }, [isDialogOpen, content, loading, fileAttachment, isImage])
+
+  // Prepare images array for lightbox
+  const lightboxImages: ImageAttachmentData[] = useMemo(() => {
+    if (allImages && allImages.length > 0) {
+      return allImages
+    }
+    // Fallback to single image if no allImages provided
+    return [
+      {
+        id: fileAttachment.id,
+        fileName: fileAttachment.file_name,
+        storagePath: fileAttachment.storage_path,
+      },
+    ]
+  }, [allImages, fileAttachment])
+
+  const lightboxIndex = currentImageIndex ?? 0
 
   return (
     <>
       <button
-        onClick={() => setIsDialogOpen(true)}
+        onClick={handleClick}
         className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
       >
         <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -647,60 +840,54 @@ function FileAttachmentPreview({ fileAttachment }: { fileAttachment: FileAttachm
         </span>
       </button>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent
-          className={
-            isImage
-              ? 'max-w-3xl max-h-[90vh] flex flex-col'
-              : 'max-w-2xl max-h-[80vh] flex flex-col'
-          }
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              {fileAttachment.file_name}
-            </DialogTitle>
-          </DialogHeader>
+      {/* Lightbox for images */}
+      {isImage && isLightboxOpen && (
+        <ImageLightbox
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setIsLightboxOpen(false)}
+        />
+      )}
 
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>{formatFileSize(fileAttachment.file_size)}</span>
-            <span>{fileAttachment.mime_type}</span>
-          </div>
+      {/* Dialog for non-image files */}
+      {!isImage && (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                {fileAttachment.file_name}
+              </DialogTitle>
+            </DialogHeader>
 
-          {/* Content preview area */}
-          <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : isImage ? (
-              imageSrc ? (
-                <div className="flex items-center justify-center h-full">
-                  <img
-                    src={imageSrc}
-                    alt={fileAttachment.file_name}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                </div>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span>{formatFileSize(fileAttachment.file_size)}</span>
+              <span>{fileAttachment.mime_type}</span>
+            </div>
+
+            {/* Content preview area */}
+            <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : content ? (
+                isMarkdown ? (
+                  <MarkdownContent content={content} className="text-sm" />
+                ) : (
+                  <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
+                )
               ) : (
-                <p className="text-sm text-muted-foreground">Failed to load image</p>
-              )
-            ) : content ? (
-              isMarkdown ? (
-                <MarkdownContent content={content} className="text-sm" />
-              ) : (
-                <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
-              )
-            ) : (
-              <p className="text-sm text-muted-foreground">No content available</p>
-            )}
-          </div>
+                <p className="text-sm text-muted-foreground">No content available</p>
+              )}
+            </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }
@@ -775,6 +962,8 @@ export function AttachmentPreview({
   processingUrl,
   urlStatuses,
   pendingSearchDecision,
+  allImages,
+  currentImageIndex,
 }: AttachmentPreviewProps) {
   // Pending search decision state
   if (pendingSearchDecision) {
@@ -812,7 +1001,13 @@ export function AttachmentPreview({
         <SearchResultPreview searchResult={attachment as SearchResult} urlStatuses={urlStatuses} />
       )
     case 'file':
-      return <FileAttachmentPreview fileAttachment={attachment as FileAttachment} />
+      return (
+        <FileAttachmentPreview
+          fileAttachment={attachment as FileAttachment}
+          allImages={allImages}
+          currentImageIndex={currentImageIndex}
+        />
+      )
     case 'search_decision':
       return <SearchDecisionPreview decision={attachment as SearchDecision} />
     default:

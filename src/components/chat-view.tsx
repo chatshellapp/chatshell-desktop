@@ -3,7 +3,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { AlertTriangle } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
 import { ChatMessage } from '@/components/chat-message'
-import { AttachmentPreview, ThinkingPreview } from '@/components/attachment-preview'
+import {
+  AttachmentPreview,
+  ThinkingPreview,
+  type ImageAttachmentData,
+} from '@/components/attachment-preview'
 import {
   Dialog,
   DialogContent,
@@ -546,9 +550,40 @@ export function ChatView() {
                   {hasUserAttachments && (
                     <div className="flex justify-end px-4 my-1">
                       <div className="max-w-[80%] space-y-1.5">
-                        {userAttachments.map((attachment) => (
-                          <AttachmentPreview key={(attachment as any).id} attachment={attachment} />
-                        ))}
+                        {(() => {
+                          // Collect all image attachments for lightbox navigation
+                          const imageAttachments = userAttachments.filter(
+                            (a) =>
+                              a.type === 'file' &&
+                              (a as any).mime_type?.startsWith('image/')
+                          )
+                          const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
+                            id: (a as any).id,
+                            fileName: (a as any).file_name,
+                            storagePath: (a as any).storage_path,
+                          }))
+
+                          return userAttachments.map((attachment) => {
+                            // Check if this is an image to determine index
+                            const isImage =
+                              attachment.type === 'file' &&
+                              (attachment as any).mime_type?.startsWith('image/')
+                            const imageIndex = isImage
+                              ? imageAttachments.findIndex(
+                                  (img) => (img as any).id === (attachment as any).id
+                                )
+                              : undefined
+
+                            return (
+                              <AttachmentPreview
+                                key={(attachment as any).id}
+                                attachment={attachment}
+                                allImages={isImage ? allImages : undefined}
+                                currentImageIndex={imageIndex}
+                              />
+                            )
+                          })
+                        })()}
                         {/* Standalone processing URLs (no search result) */}
                         {urls.map((url) => (
                           <AttachmentPreview key={url} processingUrl={url} />
