@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
 import {
@@ -17,6 +18,22 @@ import { useAppInit } from '@/hooks/useAppInit'
 export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError } = useAppInit()
+
+  // Prevent default browser drag-drop behavior (which opens files)
+  // This allows only the chat-input component to handle file drops
+  useEffect(() => {
+    const preventDefaultDrag = (e: DragEvent) => {
+      e.preventDefault()
+    }
+
+    document.addEventListener('dragover', preventDefaultDrag)
+    document.addEventListener('drop', preventDefaultDrag)
+
+    return () => {
+      document.removeEventListener('dragover', preventDefaultDrag)
+      document.removeEventListener('drop', preventDefaultDrag)
+    }
+  }, [])
 
   const currentConversation = useConversationStore((state) => state.currentConversation)
 
