@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Check, Copy } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 
 interface MarkdownContentProps {
@@ -11,6 +14,62 @@ interface MarkdownContentProps {
   className?: string
   /** Use smaller text sizes, suitable for previews */
   compact?: boolean
+}
+
+interface CodeBlockProps {
+  language: string
+  code: string
+}
+
+function CodeBlock({ language, code }: CodeBlockProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [code])
+
+  return (
+    <div className="relative group my-2 border border-border rounded-md overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
+        <span className="text-xs text-muted-foreground font-mono">
+          {language || 'text'}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
+          aria-label={copied ? 'Copied!' : 'Copy code'}
+        >
+          {copied ? (
+            <>
+              <Check className="h-3.5 w-3.5" />
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3.5 w-3.5" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        language={language || 'text'}
+        style={oneLight}
+        customStyle={{
+          margin: 0,
+          borderRadius: 0,
+          fontSize: '0.875rem',
+          background: '#fafafa',
+        }}
+        showLineNumbers={code.split('\n').length > 3}
+        wrapLines
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  )
 }
 
 export function MarkdownContent({
@@ -21,21 +80,16 @@ export function MarkdownContent({
   const markdownComponents = useMemo(
     () => ({
       code(props: any) {
-        const { className, children, ...rest } = props
+        const { className, children, node, ...rest } = props
         const languageMatch = /language-([\w-+]+)/.exec(className || '')
         const codeContent = String(children).replace(/\n$/, '')
         const isMultiline = codeContent.includes('\n')
-        const isCodeBlock = languageMatch || isMultiline
+        // Check if this is inside a <pre> tag (code block) vs inline code
+        const isCodeBlock = node?.position && (languageMatch || isMultiline)
 
         if (isCodeBlock) {
-          return (
-            <code
-              className={`${className || ''} block p-3 rounded-md bg-muted overflow-x-auto text-sm`}
-              {...rest}
-            >
-              {children}
-            </code>
-          )
+          const language = languageMatch ? languageMatch[1] : ''
+          return <CodeBlock language={language} code={codeContent} />
         }
 
         return (
@@ -46,7 +100,8 @@ export function MarkdownContent({
       },
 
       pre({ children }: any) {
-        return <pre className="my-2 overflow-visible">{children}</pre>
+        // Just return children directly since CodeBlock handles its own wrapper
+        return <>{children}</>
       },
 
       p({ children }: any) {
