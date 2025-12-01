@@ -283,15 +283,49 @@ pub async fn clear_messages_by_conversation(
         .map_err(|e| e.to_string())
 }
 
-// Attachment commands (new split schema)
+// ==========================================================================
+// CATEGORY 1: USER ATTACHMENTS (user-provided files and links)
+// ==========================================================================
+
 #[tauri::command]
 pub async fn get_message_attachments(
     state: State<'_, AppState>,
     message_id: String,
-) -> Result<Vec<Attachment>, String> {
+) -> Result<Vec<UserAttachment>, String> {
     state
         .db
         .get_message_attachments(&message_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_file_attachment(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FileAttachment, String> {
+    state.db.get_file_attachment(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_user_link(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<UserLink, String> {
+    state.db.get_user_link(&id).map_err(|e| e.to_string())
+}
+
+// ==========================================================================
+// CATEGORY 2: CONTEXT ENRICHMENTS (system-fetched content)
+// ==========================================================================
+
+#[tauri::command]
+pub async fn get_message_contexts(
+    state: State<'_, AppState>,
+    message_id: String,
+) -> Result<Vec<ContextEnrichment>, String> {
+    state
+        .db
+        .get_message_contexts(&message_id)
         .map_err(|e| e.to_string())
 }
 
@@ -312,22 +346,61 @@ pub async fn get_fetch_result(
 }
 
 #[tauri::command]
-pub async fn get_fetch_results_by_search(
+pub async fn get_fetch_results_by_source(
     state: State<'_, AppState>,
-    search_id: String,
+    source_type: String,
+    source_id: String,
 ) -> Result<Vec<FetchResult>, String> {
     state
         .db
-        .get_fetch_results_by_search(&search_id)
+        .get_fetch_results_by_source(&source_type, &source_id)
+        .map_err(|e| e.to_string())
+}
+
+// ==========================================================================
+// CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
+// ==========================================================================
+
+#[tauri::command]
+pub async fn get_message_steps(
+    state: State<'_, AppState>,
+    message_id: String,
+) -> Result<Vec<ProcessStep>, String> {
+    state
+        .db
+        .get_message_steps(&message_id)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_file_attachment(
+pub async fn get_thinking_step(
     state: State<'_, AppState>,
     id: String,
-) -> Result<FileAttachment, String> {
-    state.db.get_file_attachment(&id).map_err(|e| e.to_string())
+) -> Result<ThinkingStep, String> {
+    state.db.get_thinking_step(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_search_decision(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<SearchDecision, String> {
+    state.db.get_search_decision(&id).map_err(|e| e.to_string())
+}
+
+// ==========================================================================
+// COMBINED: Get All Message Resources
+// ==========================================================================
+
+#[tauri::command]
+pub async fn get_message_resources(
+    state: State<'_, AppState>,
+    message_id: String,
+) -> Result<MessageResources, String> {
+    state
+        .db
+        .get_message_resources(&message_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -799,7 +872,6 @@ async fn handle_provider_streaming(
         sender_type,
         sender_id,
         content: final_content.clone(),
-        thinking_content: response.thinking_content,
         tokens: response.tokens,
     }) {
         Ok(msg) => msg,
@@ -810,6 +882,30 @@ async fn handle_provider_streaming(
             return;
         }
     };
+
+    // Save thinking content as a ThinkingStep if present
+    if let Some(thinking_content) = response.thinking_content {
+        if !thinking_content.is_empty() {
+            match state_clone.db.create_thinking_step(CreateThinkingStepRequest {
+                content: thinking_content,
+                source: Some("llm".to_string()),
+            }) {
+                Ok(thinking_step) => {
+                    if let Err(e) = state_clone.db.link_message_step(
+                        &assistant_message.id,
+                        StepType::Thinking,
+                        &thinking_step.id,
+                        Some(0),
+                    ) {
+                        eprintln!("Failed to link thinking step: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to save thinking step: {}", e);
+                }
+            }
+        }
+    }
 
     println!(
         "✅ [background_task] Assistant message saved with id: {}",
@@ -920,7 +1016,6 @@ pub async fn send_message(
             sender_type: "user".to_string(),
             sender_id: None,
             content: content.clone(),
-            thinking_content: None,
             tokens: None,
         })
         .map_err(|e| {
@@ -1128,13 +1223,14 @@ pub async fn send_message(
                 }
             };
 
-            // Store the search decision in database
+            // Store the search decision in database (as a process step)
             match state_clone
                 .db
                 .create_search_decision(CreateSearchDecisionRequest {
                     reasoning: decision.reasoning.clone(),
                     search_needed: decision.search_needed,
                     search_query: decision.search_query.clone(),
+                    search_result_id: None, // Will be updated if search is performed
                 }) {
                 Ok(search_decision) => {
                     println!(
@@ -1142,19 +1238,19 @@ pub async fn send_message(
                         search_decision.id
                     );
 
-                    // Link to user message (show first, before search results)
-                    if let Err(e) = state_clone.db.link_message_attachment(
+                    // Link to user message as a process step
+                    if let Err(e) = state_clone.db.link_message_step(
                         &user_message_id,
-                        AttachmentType::SearchDecision,
+                        StepType::SearchDecision,
                         &search_decision.id,
                         Some(0),
                     ) {
                         eprintln!("Failed to link search decision to message: {}", e);
                     }
 
-                    // Emit attachment update for UI
+                    // Emit step update for UI
                     let _ = app_clone.emit(
-                        "attachment-update",
+                        "step-update",
                         serde_json::json!({
                             "message_id": user_message_id,
                             "conversation_id": conversation_id_clone,
@@ -1196,12 +1292,12 @@ pub async fn send_message(
                         );
                         search_result_id = Some(search_result.id.clone());
 
-                        // Link search result to message
-                        if let Err(e) = state_clone.db.link_message_attachment(
+                        // Link search result to message as context enrichment
+                        if let Err(e) = state_clone.db.link_message_context(
                             &user_message_id,
-                            AttachmentType::SearchResult,
+                            ContextType::SearchResult,
                             &search_result.id,
-                            Some(1), // After search decision
+                            Some(0), // First context item
                         ) {
                             eprintln!("Failed to link search result to message: {}", e);
                         }
@@ -1346,10 +1442,18 @@ pub async fn send_message(
             let headings_json = serde_json::to_string(&resource.metadata.headings).ok();
             let content_size = resource.content.len() as i64;
 
+            // Determine source type: if we have a search_result_id, it's from search; otherwise from user
+            let (source_type, source_id) = if search_result_id.is_some() {
+                ("search".to_string(), search_result_id.clone())
+            } else {
+                ("user_link".to_string(), None)
+            };
+
             match state_clone
                 .db
                 .create_fetch_result(CreateFetchResultRequest {
-                    search_id: search_result_id.clone(), // Link to search if available
+                    source_type: Some(source_type),
+                    source_id: source_id,
                     url: resource.url.clone(),
                     title: resource.title.clone(),
                     description: resource.description.clone(),
@@ -1365,10 +1469,10 @@ pub async fn send_message(
                     favicon_url: resource.metadata.favicon_url.clone(),
                 }) {
                 Ok(fetch_result) => {
-                    // Link fetch_result to message
-                    if let Err(e) = state_clone.db.link_message_attachment(
+                    // Link fetch_result to message as context enrichment
+                    if let Err(e) = state_clone.db.link_message_context(
                         &user_message_id,
-                        AttachmentType::FetchResult,
+                        ContextType::FetchResult,
                         &fetch_result.id,
                         None,
                     ) {
@@ -1506,10 +1610,10 @@ pub async fn send_message(
                     storage_path: storage_path.clone(),
                 }) {
                 Ok(file_attachment) => {
-                    // Link file to message
+                    // Link file to message (user attachment)
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
-                        AttachmentType::File,
+                        UserAttachmentType::File,
                         &file_attachment.id,
                         None,
                     ) {
@@ -1574,10 +1678,10 @@ pub async fn send_message(
                     storage_path: storage_path.clone(),
                 }) {
                 Ok(file_attachment) => {
-                    // Link file to message
+                    // Link file (image) to message (user attachment)
                     if let Err(e) = state_clone.db.link_message_attachment(
                         &user_message_id,
-                        AttachmentType::File,
+                        UserAttachmentType::File,
                         &file_attachment.id,
                         None,
                     ) {

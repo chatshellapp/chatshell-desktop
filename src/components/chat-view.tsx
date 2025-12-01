@@ -23,7 +23,12 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import { useChatEvents } from '@/hooks/useChatEvents'
 import { getModelLogo } from '@/lib/model-logos'
 import { parseThinkingContent } from '@/lib/utils'
-import type { Message, Attachment } from '@/types'
+import type {
+  Message,
+  MessageResources,
+  ContextEnrichment,
+  ProcessStep,
+} from '@/types'
 
 // Helper function to format model name with provider
 const formatModelDisplayName = (
@@ -140,8 +145,9 @@ export function ChatView() {
   const pendingSearchDecisions = conversationState?.pendingSearchDecisions || {}
   const apiError = conversationState?.apiError || null
 
-  // Store attachments for each message (keyed by message id)
-  const [messageAttachments, setMessageAttachments] = useState<Record<string, Attachment[]>>({})
+  // Store resources for each message (keyed by message id)
+  // Contains { attachments, contexts, steps } for each message
+  const [messageResources, setMessageResources] = useState<Record<string, MessageResources>>({})
 
   // Get display info for currently selected model/assistant (used for streaming messages)
   const getDisplayInfo = (): {
@@ -251,45 +257,50 @@ export function ChatView() {
     }
   }, [currentConversation, loadMessages])
 
-  // Fetch attachments for user messages
+  // Fetch resources (attachments, contexts, steps) for messages
   // Re-run when attachmentStatus changes to 'complete' or attachmentRefreshKey changes
   useEffect(() => {
-    const fetchAttachments = async () => {
-      const userMessages = messages.filter((m) => m.sender_type === 'user')
-      const attachmentMap: Record<string, Attachment[]> = {}
+    const fetchResources = async () => {
+      // Fetch resources for all messages (both user and assistant)
+      const resourceMap: Record<string, MessageResources> = {}
 
-      for (const msg of userMessages) {
+      for (const msg of messages) {
         // When processing just completed or refresh key changed, always re-fetch for the latest message
-        // Otherwise, skip if we already have attachments for this message
-        const isLatestMessage = userMessages.indexOf(msg) === userMessages.length - 1
+        // Otherwise, skip if we already have resources for this message
+        const isLatestMessage = messages.indexOf(msg) === messages.length - 1
         const shouldRefetch =
           (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage
 
-        if (messageAttachments[msg.id] && !shouldRefetch) {
-          attachmentMap[msg.id] = messageAttachments[msg.id]
+        if (messageResources[msg.id] && !shouldRefetch) {
+          resourceMap[msg.id] = messageResources[msg.id]
           continue
         }
 
         try {
-          const attachments = await invoke<Attachment[]>('get_message_attachments', {
+          const resources = await invoke<MessageResources>('get_message_resources', {
             messageId: msg.id,
           })
-          if (attachments.length > 0) {
-            attachmentMap[msg.id] = attachments
+          // Only store if there are any resources
+          if (
+            resources.attachments.length > 0 ||
+            resources.contexts.length > 0 ||
+            resources.steps.length > 0
+          ) {
+            resourceMap[msg.id] = resources
           }
         } catch (e) {
-          console.error('Failed to fetch attachments for message:', msg.id, e)
+          console.error('Failed to fetch resources for message:', msg.id, e)
         }
       }
 
       // Only update if there are changes
-      if (Object.keys(attachmentMap).length > 0) {
-        setMessageAttachments((prev) => ({ ...prev, ...attachmentMap }))
+      if (Object.keys(resourceMap).length > 0) {
+        setMessageResources((prev) => ({ ...prev, ...resourceMap }))
       }
     }
 
     if (messages.length > 0) {
-      fetchAttachments()
+      fetchResources()
     }
   }, [messages, attachmentStatus, attachmentRefreshKey])
 
@@ -470,56 +481,91 @@ export function ChatView() {
               const isUserMessage = message.sender_type === 'user'
               const isAssistantMessage = !isUserMessage
 
-              // Split attachments into user and assistant categories
-              const allAttachments = messageAttachments[message.id] || []
+              // Get resources for this message
+              const resources = messageResources[message.id] || {
+                attachments: [],
+                contexts: [],
+                steps: [],
+              }
 
-              // User attachments: file, fetch_result (without search_id) - shown right-aligned
-              const userAttachments = allAttachments.filter(
-                (a) => a.type === 'file' || (a.type === 'fetch_result' && !(a as any).search_id)
-              )
+              // User attachments (files, user links) - shown right-aligned after user message
+              const userAttachments = resources.attachments
+
+              // Get fetch results for user message - only user-initiated ones (not from search)
+              // Search-initiated fetch results should be shown inside SearchResultPreview
+              const userFetchResults = isUserMessage
+                ? resources.contexts.filter(
+                    (c) => c.type === 'fetch_result' && (c as any).source_type !== 'search'
+                  )
+                : []
 
               // Check if this message has a search result (URLs will be shown inside it)
-              const hasSearchResult = allAttachments.some((a) => a.type === 'search_result')
+              const hasSearchResult = resources.contexts.some((c) => c.type === 'search_result')
               const messageUrlStatuses = hasSearchResult ? undefined : urlStatuses[message.id]
               const urls = messageUrlStatuses ? Object.keys(messageUrlStatuses) : []
 
               const hasUserAttachments =
-                isUserMessage && (userAttachments.length > 0 || urls.length > 0)
+                isUserMessage && (userAttachments.length > 0 || userFetchResults.length > 0 || urls.length > 0)
 
-              // For assistant messages in history, get assistant attachments from previous user message
-              let assistantAttachmentsToShow: typeof allAttachments = []
+              // For assistant messages in history, get context and steps from previous user message
+              let contextsToShow: ContextEnrichment[] = []
+              let stepsToShow: ProcessStep[] = []
               let prevUserMessageId: string | null = null
               if (isAssistantMessage && index > 0) {
                 const prevMessage = messages[index - 1]
                 if (prevMessage.sender_type === 'user') {
                   prevUserMessageId = prevMessage.id
-                  const prevAttachments = messageAttachments[prevMessage.id] || []
-                  assistantAttachmentsToShow = prevAttachments.filter(
-                    (a) => a.type === 'search_result' || a.type === 'search_decision'
+                  const prevResources = messageResources[prevMessage.id] || {
+                    attachments: [],
+                    contexts: [],
+                    steps: [],
+                  }
+                  // Only show search_result - fetch_results from search are shown inside SearchResultPreview
+                  contextsToShow = prevResources.contexts.filter(
+                    (c) => c.type === 'search_result'
+                  )
+                  // Show search decisions from previous user message
+                  stepsToShow = prevResources.steps.filter(
+                    (s) => s.type === 'search_decision'
                   )
                 }
               }
 
-              // Build headerContent for assistant messages (attachments + thinking shown between header and content)
-              const hasThinkingContent = isAssistantMessage && message.thinking_content
-              const hasAssistantAttachments = assistantAttachmentsToShow.length > 0
+              // Get thinking steps from the assistant message itself
+              const thinkingSteps = resources.steps.filter((s) => s.type === 'thinking')
+              const hasThinkingContent = isAssistantMessage && thinkingSteps.length > 0
+              const hasAssistantResources = contextsToShow.length > 0 || stepsToShow.length > 0
+
+              // Build headerContent for assistant messages (steps, contexts, thinking shown between header and content)
               const headerContent =
-                isAssistantMessage && (hasAssistantAttachments || hasThinkingContent) ? (
+                isAssistantMessage && (hasAssistantResources || hasThinkingContent) ? (
                   <div className="space-y-1.5 mb-2">
-                    {assistantAttachmentsToShow.map((attachment) => (
+                    {/* Search decisions first */}
+                    {stepsToShow.map((step) => (
                       <AttachmentPreview
-                        key={(attachment as any).id}
-                        attachment={attachment}
+                        key={(step as any).id}
+                        step={step}
+                      />
+                    ))}
+                    {/* Then search results */}
+                    {contextsToShow.map((context) => (
+                      <AttachmentPreview
+                        key={(context as any).id}
+                        context={context}
                         urlStatuses={
-                          attachment.type === 'search_result' && prevUserMessageId
+                          context.type === 'search_result' && prevUserMessageId
                             ? urlStatuses[prevUserMessageId]
                             : undefined
                         }
                       />
                     ))}
-                    {message.thinking_content && (
-                      <ThinkingPreview content={message.thinking_content} />
-                    )}
+                    {/* Finally thinking content */}
+                    {thinkingSteps.map((step) => (
+                      <ThinkingPreview
+                        key={(step as any).id}
+                        content={(step as any).content}
+                      />
+                    ))}
                   </div>
                 ) : undefined
 
@@ -577,13 +623,20 @@ export function ChatView() {
                             return (
                               <AttachmentPreview
                                 key={(attachment as any).id}
-                                attachment={attachment}
+                                userAttachment={attachment}
                                 allImages={isImage ? allImages : undefined}
                                 currentImageIndex={imageIndex}
                               />
                             )
                           })
                         })()}
+                        {/* User-provided fetch results (webpage attachments) */}
+                        {userFetchResults.map((context) => (
+                          <AttachmentPreview
+                            key={(context as any).id}
+                            context={context}
+                          />
+                        ))}
                         {/* Standalone processing URLs (no search result) */}
                         {urls.map((url) => (
                           <AttachmentPreview key={url} processingUrl={url} />
@@ -603,41 +656,53 @@ export function ChatView() {
                   ? { content: '', thinkingContent: null, isThinkingInProgress: false }
                   : parseThinkingContent(streamingContent)
 
-                // Get the last user message to show its assistant attachments
+                // Get the last user message to show its resources
                 const lastUserMessage = messages
                   .filter((m) => m.sender_type === 'user')
                   .slice(-1)[0]
 
-                // Build headerContent with attachments and thinking preview
+                // Build headerContent with contexts, steps, and thinking preview
                 let streamingHeaderContent: React.ReactNode = undefined
-                const lastUserAttachments = lastUserMessage
-                  ? messageAttachments[lastUserMessage.id] || []
-                  : []
-                const assistantAttachments = lastUserAttachments.filter(
-                  (a) => a.type === 'search_result' || a.type === 'search_decision'
+                const lastUserResources = lastUserMessage
+                  ? messageResources[lastUserMessage.id] || { attachments: [], contexts: [], steps: [] }
+                  : { attachments: [], contexts: [], steps: [] }
+                
+                // Only get search results - fetch results from search are shown inside SearchResultPreview
+                const searchResultContexts = lastUserResources.contexts.filter(
+                  (c) => c.type === 'search_result'
                 )
+                // Get search decisions from steps
+                const searchDecisionSteps = lastUserResources.steps.filter(
+                  (s) => s.type === 'search_decision'
+                )
+                
                 const hasPendingDecision = lastUserMessage
                   ? pendingSearchDecisions[lastUserMessage.id]
                   : false
-                const hasAssistantAttachments = assistantAttachments.length > 0
+                const hasAssistantResources = searchResultContexts.length > 0 || searchDecisionSteps.length > 0
                 const hasStreamingThinking = parsedStreaming.thinkingContent !== null
 
-                if (hasAssistantAttachments || hasPendingDecision || hasStreamingThinking) {
+                if (hasAssistantResources || hasPendingDecision || hasStreamingThinking) {
                   streamingHeaderContent = (
                     <div className="space-y-1.5 mb-2">
                       {/* Show pending search decision preview */}
-                      {hasPendingDecision &&
-                        !assistantAttachments.some((a) => a.type === 'search_decision') && (
-                          <AttachmentPreview pendingSearchDecision={true} />
-                        )}
-                      {assistantAttachments.map((attachment) => (
+                      {hasPendingDecision && searchDecisionSteps.length === 0 && (
+                        <AttachmentPreview pendingSearchDecision={true} />
+                      )}
+                      {/* Show search decisions */}
+                      {searchDecisionSteps.map((step) => (
                         <AttachmentPreview
-                          key={(attachment as any).id}
-                          attachment={attachment}
+                          key={(step as any).id}
+                          step={step}
+                        />
+                      ))}
+                      {/* Show search results (fetch results from search are shown inside) */}
+                      {searchResultContexts.map((context) => (
+                        <AttachmentPreview
+                          key={(context as any).id}
+                          context={context}
                           urlStatuses={
-                            attachment.type === 'search_result' && lastUserMessage
-                              ? urlStatuses[lastUserMessage.id]
-                              : undefined
+                            lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined
                           }
                         />
                       ))}

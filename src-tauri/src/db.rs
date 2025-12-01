@@ -239,7 +239,7 @@ impl Database {
             [],
         )?;
 
-        // Messages table
+        // Messages table (thinking_content moved to thinking_steps)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
@@ -247,7 +247,6 @@ impl Database {
                 sender_type TEXT NOT NULL,
                 sender_id TEXT,
                 content TEXT NOT NULL,
-                thinking_content TEXT,
                 tokens INTEGER,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -262,7 +261,57 @@ impl Database {
             [],
         )?;
 
-        // ========== Attachment Tables (Split Schema) ==========
+        // ==========================================================================
+        // CATEGORY 1: USER ATTACHMENTS (user-provided files and links)
+        // ==========================================================================
+
+        // Files table - stores user uploaded file metadata
+        // Content is stored in filesystem at storage_path
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS files (
+                id TEXT PRIMARY KEY,
+                file_name TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                mime_type TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // User links table - stores URLs explicitly shared by user (not from search)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS user_links (
+                id TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
+                title TEXT,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Junction: message <-> user attachments
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_attachments (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                attachment_type TEXT NOT NULL CHECK(attachment_type IN ('file', 'user_link')),
+                attachment_id TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id)",
+            [],
+        )?;
+
+        // ==========================================================================
+        // CATEGORY 2: CONTEXT ENRICHMENTS (system-fetched content)
+        // ==========================================================================
 
         // Search results table - stores web search metadata only
         conn.execute(
@@ -279,10 +328,12 @@ impl Database {
 
         // Fetch results table - stores fetched web resource metadata
         // Content is stored in filesystem at storage_path
+        // source_type distinguishes between search-initiated and user-link fetches
         conn.execute(
             "CREATE TABLE IF NOT EXISTS fetch_results (
                 id TEXT PRIMARY KEY,
-                search_id TEXT,
+                source_type TEXT NOT NULL DEFAULT 'search',
+                source_id TEXT,
                 url TEXT NOT NULL,
                 title TEXT,
                 description TEXT,
@@ -297,27 +348,45 @@ impl Database {
                 processed_size INTEGER,
                 favicon_url TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (search_id) REFERENCES search_results(id) ON DELETE CASCADE
+                updated_at TEXT NOT NULL
             )",
             [],
         )?;
 
-        // Index for fetch results by search_id
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fetch_results_search ON fetch_results(search_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fetch_results_source ON fetch_results(source_type, source_id)",
             [],
         )?;
 
-        // Files table - stores user uploaded file metadata
-        // Content is stored in filesystem at storage_path
+        // Junction: message <-> context enrichments
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS files (
+            "CREATE TABLE IF NOT EXISTS message_contexts (
                 id TEXT PRIMARY KEY,
-                file_name TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                mime_type TEXT NOT NULL,
-                storage_path TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                context_type TEXT NOT NULL CHECK(context_type IN ('search_result', 'fetch_result')),
+                context_id TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_message_contexts_message ON message_contexts(message_id)",
+            [],
+        )?;
+
+        // ==========================================================================
+        // CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
+        // ==========================================================================
+
+        // Thinking steps table - stores AI's reasoning/thinking process
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS thinking_steps (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                source TEXT DEFAULT 'llm',
                 created_at TEXT NOT NULL
             )",
             [],
@@ -330,18 +399,53 @@ impl Database {
                 reasoning TEXT NOT NULL,
                 search_needed INTEGER NOT NULL,
                 search_query TEXT,
-                created_at TEXT NOT NULL
+                search_result_id TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (search_result_id) REFERENCES search_results(id)
             )",
             [],
         )?;
 
-        // Message-Attachment polymorphic junction table
+        // Tool calls table - stores tool/function invocations (future MCP support)
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS message_attachments (
+            "CREATE TABLE IF NOT EXISTS tool_calls (
+                id TEXT PRIMARY KEY,
+                tool_name TEXT NOT NULL,
+                tool_input TEXT,
+                tool_output TEXT,
+                status TEXT DEFAULT 'pending',
+                error TEXT,
+                duration_ms INTEGER,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            )",
+            [],
+        )?;
+
+        // Code executions table - stores code interpreter results (future)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS code_executions (
+                id TEXT PRIMARY KEY,
+                language TEXT NOT NULL,
+                code TEXT NOT NULL,
+                output TEXT,
+                exit_code INTEGER,
+                status TEXT DEFAULT 'pending',
+                error TEXT,
+                duration_ms INTEGER,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            )",
+            [],
+        )?;
+
+        // Junction: message <-> process steps
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_steps (
                 id TEXT PRIMARY KEY,
                 message_id TEXT NOT NULL,
-                attachment_type TEXT NOT NULL CHECK(attachment_type IN ('search_result', 'fetch_result', 'file', 'search_decision')),
-                attachment_id TEXT NOT NULL,
+                step_type TEXT NOT NULL CHECK(step_type IN ('thinking', 'search_decision', 'tool_call', 'code_execution')),
+                step_id TEXT NOT NULL,
                 display_order INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
@@ -349,15 +453,8 @@ impl Database {
             [],
         )?;
 
-        // Index for message attachment lookups
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id)",
-            [],
-        )?;
-
-        // Index for attachment type lookups
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_message_attachments_type ON message_attachments(attachment_type, attachment_id)",
+            "CREATE INDEX IF NOT EXISTS idx_message_steps_message ON message_steps(message_id)",
             [],
         )?;
 
@@ -1380,15 +1477,14 @@ impl Database {
                 target_id
             );
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     id,
                     req.conversation_id,
                     req.sender_type,
                     req.sender_id,
                     req.content,
-                    req.thinking_content,
                     req.tokens,
                     now
                 ],
@@ -1408,7 +1504,7 @@ impl Database {
     pub fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
              FROM messages WHERE id = ?1",
         )?;
 
@@ -1420,9 +1516,8 @@ impl Database {
                     sender_type: row.get(2)?,
                     sender_id: row.get(3)?,
                     content: row.get(4)?,
-                    thinking_content: row.get(5)?,
-                    tokens: row.get(6)?,
-                    created_at: row.get(7)?,
+                    tokens: row.get(5)?,
+                    created_at: row.get(6)?,
                 })
             })
             .optional()?;
@@ -1433,7 +1528,7 @@ impl Database {
     pub fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, sender_type, sender_id, content, thinking_content, tokens, created_at
+            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
              FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
         )?;
 
@@ -1445,9 +1540,8 @@ impl Database {
                     sender_type: row.get(2)?,
                     sender_id: row.get(3)?,
                     content: row.get(4)?,
-                    thinking_content: row.get(5)?,
-                    tokens: row.get(6)?,
-                    created_at: row.get(7)?,
+                    tokens: row.get(5)?,
+                    created_at: row.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1519,23 +1613,25 @@ impl Database {
         self.get_search_result(id)
     }
 
-    // ========== Fetch Result Operations ==========
+    // ========== Fetch Result Operations (Context Enrichment) ==========
 
     pub fn create_fetch_result(&self, req: CreateFetchResultRequest) -> Result<FetchResult> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let status = req.status.unwrap_or_else(|| "pending".to_string());
+        let source_type = req.source_type.unwrap_or_else(|| "search".to_string());
 
         {
             let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO fetch_results 
-                 (id, search_id, url, title, description, storage_path, content_type, original_mime,
+                 (id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
                   status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
                 params![
                     id,
-                    req.search_id,
+                    source_type,
+                    req.source_id,
                     req.url,
                     req.title,
                     req.description,
@@ -1561,7 +1657,7 @@ impl Database {
     pub fn get_fetch_result(&self, id: &str) -> Result<FetchResult> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, search_id, url, title, description, storage_path, content_type, original_mime,
+            "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
                     status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
              FROM fetch_results WHERE id = ?1"
         )?;
@@ -1569,60 +1665,62 @@ impl Database {
         stmt.query_row(params![id], |row| {
             Ok(FetchResult {
                 id: row.get(0)?,
-                search_id: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                description: row.get(4)?,
-                storage_path: row.get(5)?,
-                content_type: row.get(6)?,
-                original_mime: row.get(7)?,
+                source_type: row.get(1)?,
+                source_id: row.get(2)?,
+                url: row.get(3)?,
+                title: row.get(4)?,
+                description: row.get(5)?,
+                storage_path: row.get(6)?,
+                content_type: row.get(7)?,
+                original_mime: row.get(8)?,
                 status: row
-                    .get::<_, Option<String>>(8)?
+                    .get::<_, Option<String>>(9)?
                     .unwrap_or_else(|| "pending".to_string()),
-                error: row.get(9)?,
-                keywords: row.get(10)?,
-                headings: row.get(11)?,
-                original_size: row.get(12)?,
-                processed_size: row.get(13)?,
-                favicon_url: row.get(14)?,
-                created_at: row.get(15)?,
-                updated_at: row.get(16)?,
+                error: row.get(10)?,
+                keywords: row.get(11)?,
+                headings: row.get(12)?,
+                original_size: row.get(13)?,
+                processed_size: row.get(14)?,
+                favicon_url: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
             })
         })
         .map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
     }
 
-    pub fn get_fetch_results_by_search(&self, search_id: &str) -> Result<Vec<FetchResult>> {
+    pub fn get_fetch_results_by_source(&self, source_type: &str, source_id: &str) -> Result<Vec<FetchResult>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, search_id, url, title, description, storage_path, content_type, original_mime,
+            "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
                     status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
-             FROM fetch_results WHERE search_id = ?1
+             FROM fetch_results WHERE source_type = ?1 AND source_id = ?2
              ORDER BY created_at"
         )?;
 
         let results = stmt
-            .query_map(params![search_id], |row| {
+            .query_map(params![source_type, source_id], |row| {
                 Ok(FetchResult {
                     id: row.get(0)?,
-                    search_id: row.get(1)?,
-                    url: row.get(2)?,
-                    title: row.get(3)?,
-                    description: row.get(4)?,
-                    storage_path: row.get(5)?,
-                    content_type: row.get(6)?,
-                    original_mime: row.get(7)?,
+                    source_type: row.get(1)?,
+                    source_id: row.get(2)?,
+                    url: row.get(3)?,
+                    title: row.get(4)?,
+                    description: row.get(5)?,
+                    storage_path: row.get(6)?,
+                    content_type: row.get(7)?,
+                    original_mime: row.get(8)?,
                     status: row
-                        .get::<_, Option<String>>(8)?
+                        .get::<_, Option<String>>(9)?
                         .unwrap_or_else(|| "pending".to_string()),
-                    error: row.get(9)?,
-                    keywords: row.get(10)?,
-                    headings: row.get(11)?,
-                    original_size: row.get(12)?,
-                    processed_size: row.get(13)?,
-                    favicon_url: row.get(14)?,
-                    created_at: row.get(15)?,
-                    updated_at: row.get(16)?,
+                    error: row.get(10)?,
+                    keywords: row.get(11)?,
+                    headings: row.get(12)?,
+                    original_size: row.get(13)?,
+                    processed_size: row.get(14)?,
+                    favicon_url: row.get(15)?,
+                    created_at: row.get(16)?,
+                    updated_at: row.get(17)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1648,6 +1746,47 @@ impl Database {
     pub fn delete_fetch_result(&self, id: &str) -> Result<()> {
         let conn = self.lock_conn()?;
         conn.execute("DELETE FROM fetch_results WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== User Link Operations (User Attachment) ==========
+
+    pub fn create_user_link(&self, req: CreateUserLinkRequest) -> Result<UserLink> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO user_links (id, url, title, created_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![id, req.url, req.title, now],
+            )?;
+        }
+
+        self.get_user_link(&id)
+    }
+
+    pub fn get_user_link(&self, id: &str) -> Result<UserLink> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, url, title, created_at FROM user_links WHERE id = ?1",
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(UserLink {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| anyhow::anyhow!("User link not found: {}", e))
+    }
+
+    pub fn delete_user_link(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM user_links WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -1705,7 +1844,7 @@ impl Database {
         Ok(())
     }
 
-    // ========== Search Decision Operations ==========
+    // ========== Search Decision Operations (Process Step) ==========
 
     pub fn create_search_decision(
         &self,
@@ -1717,9 +1856,9 @@ impl Database {
         {
             let conn = self.lock_conn()?;
             conn.execute(
-                "INSERT INTO search_decisions (id, reasoning, search_needed, search_query, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![id, req.reasoning, req.search_needed as i32, req.search_query, now],
+                "INSERT INTO search_decisions (id, reasoning, search_needed, search_query, search_result_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, req.reasoning, req.search_needed as i32, req.search_query, req.search_result_id, now],
             )?;
         }
 
@@ -1729,7 +1868,7 @@ impl Database {
     pub fn get_search_decision(&self, id: &str) -> Result<SearchDecision> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, reasoning, search_needed, search_query, created_at
+            "SELECT id, reasoning, search_needed, search_query, search_result_id, created_at
              FROM search_decisions WHERE id = ?1",
         )?;
 
@@ -1739,7 +1878,8 @@ impl Database {
                 reasoning: row.get(1)?,
                 search_needed: row.get::<_, i32>(2)? != 0,
                 search_query: row.get(3)?,
-                created_at: row.get(4)?,
+                search_result_id: row.get(4)?,
+                created_at: row.get(5)?,
             })
         })
         .map_err(|e| anyhow::anyhow!("Search decision not found: {}", e))
@@ -1751,12 +1891,161 @@ impl Database {
         Ok(())
     }
 
-    // ========== Message Attachment Link Operations ==========
+    // ========== Thinking Step Operations (Process Step) ==========
+
+    pub fn create_thinking_step(&self, req: CreateThinkingStepRequest) -> Result<ThinkingStep> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let source = req.source.unwrap_or_else(|| "llm".to_string());
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO thinking_steps (id, content, source, created_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![id, req.content, source, now],
+            )?;
+        }
+
+        self.get_thinking_step(&id)
+    }
+
+    pub fn get_thinking_step(&self, id: &str) -> Result<ThinkingStep> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, content, source, created_at FROM thinking_steps WHERE id = ?1",
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(ThinkingStep {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                source: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| anyhow::anyhow!("Thinking step not found: {}", e))
+    }
+
+    pub fn delete_thinking_step(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM thinking_steps WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== Tool Call Operations (Process Step) ==========
+
+    pub fn create_tool_call(&self, req: CreateToolCallRequest) -> Result<ToolCall> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let status = req.status.unwrap_or_else(|| "pending".to_string());
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO tool_calls (id, tool_name, tool_input, tool_output, status, error, duration_ms, created_at, completed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![id, req.tool_name, req.tool_input, req.tool_output, status, req.error, req.duration_ms, now, req.completed_at],
+            )?;
+        }
+
+        self.get_tool_call(&id)
+    }
+
+    pub fn get_tool_call(&self, id: &str) -> Result<ToolCall> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, tool_name, tool_input, tool_output, status, error, duration_ms, created_at, completed_at
+             FROM tool_calls WHERE id = ?1",
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(ToolCall {
+                id: row.get(0)?,
+                tool_name: row.get(1)?,
+                tool_input: row.get(2)?,
+                tool_output: row.get(3)?,
+                status: row.get(4)?,
+                error: row.get(5)?,
+                duration_ms: row.get(6)?,
+                created_at: row.get(7)?,
+                completed_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| anyhow::anyhow!("Tool call not found: {}", e))
+    }
+
+    pub fn update_tool_call_status(&self, id: &str, status: &str, output: Option<&str>, error: Option<&str>, duration_ms: Option<i64>) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "UPDATE tool_calls SET status = ?1, tool_output = ?2, error = ?3, duration_ms = ?4, completed_at = ?5 WHERE id = ?6",
+            params![status, output, error, duration_ms, now, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_tool_call(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM tool_calls WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== Code Execution Operations (Process Step) ==========
+
+    pub fn create_code_execution(&self, req: CreateCodeExecutionRequest) -> Result<CodeExecution> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let status = req.status.unwrap_or_else(|| "pending".to_string());
+
+        {
+            let conn = self.lock_conn()?;
+            conn.execute(
+                "INSERT INTO code_executions (id, language, code, output, exit_code, status, error, duration_ms, created_at, completed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![id, req.language, req.code, req.output, req.exit_code, status, req.error, req.duration_ms, now, req.completed_at],
+            )?;
+        }
+
+        self.get_code_execution(&id)
+    }
+
+    pub fn get_code_execution(&self, id: &str) -> Result<CodeExecution> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, language, code, output, exit_code, status, error, duration_ms, created_at, completed_at
+             FROM code_executions WHERE id = ?1",
+        )?;
+
+        stmt.query_row(params![id], |row| {
+            Ok(CodeExecution {
+                id: row.get(0)?,
+                language: row.get(1)?,
+                code: row.get(2)?,
+                output: row.get(3)?,
+                exit_code: row.get(4)?,
+                status: row.get(5)?,
+                error: row.get(6)?,
+                duration_ms: row.get(7)?,
+                created_at: row.get(8)?,
+                completed_at: row.get(9)?,
+            })
+        })
+        .map_err(|e| anyhow::anyhow!("Code execution not found: {}", e))
+    }
+
+    pub fn delete_code_execution(&self, id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("DELETE FROM code_executions WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ========== Message Attachment Link Operations (User Attachments Only) ==========
 
     pub fn link_message_attachment(
         &self,
         message_id: &str,
-        attachment_type: AttachmentType,
+        attachment_type: UserAttachmentType,
         attachment_id: &str,
         display_order: Option<i32>,
     ) -> Result<()> {
@@ -1782,7 +2071,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_message_attachments(&self, message_id: &str) -> Result<Vec<Attachment>> {
+    pub fn get_message_attachments(&self, message_id: &str) -> Result<Vec<UserAttachment>> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT attachment_type, attachment_id, display_order
@@ -1801,21 +2090,13 @@ impl Database {
         let mut attachments = Vec::new();
         for (attachment_type, attachment_id) in links {
             let attachment = match attachment_type.as_str() {
-                "search_result" => self
-                    .get_search_result(&attachment_id)
-                    .map(Attachment::SearchResult)
-                    .ok(),
-                "fetch_result" => self
-                    .get_fetch_result(&attachment_id)
-                    .map(Attachment::FetchResult)
-                    .ok(),
                 "file" => self
                     .get_file_attachment(&attachment_id)
-                    .map(Attachment::File)
+                    .map(UserAttachment::File)
                     .ok(),
-                "search_decision" => self
-                    .get_search_decision(&attachment_id)
-                    .map(Attachment::SearchDecision)
+                "user_link" => self
+                    .get_user_link(&attachment_id)
+                    .map(UserAttachment::UserLink)
                     .ok(),
                 _ => None,
             };
@@ -1830,7 +2111,7 @@ impl Database {
     pub fn unlink_message_attachment(
         &self,
         message_id: &str,
-        attachment_type: AttachmentType,
+        attachment_type: UserAttachmentType,
         attachment_id: &str,
     ) -> Result<()> {
         let conn = self.lock_conn()?;
@@ -1839,6 +2120,188 @@ impl Database {
             params![message_id, attachment_type.to_string(), attachment_id],
         )?;
         Ok(())
+    }
+
+    // ========== Message Context Link Operations (Context Enrichments) ==========
+
+    pub fn link_message_context(
+        &self,
+        message_id: &str,
+        context_type: ContextType,
+        context_id: &str,
+        display_order: Option<i32>,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let order = display_order.unwrap_or(0);
+
+        conn.execute(
+            "INSERT OR IGNORE INTO message_contexts
+             (id, message_id, context_type, context_id, display_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                id,
+                message_id,
+                context_type.to_string(),
+                context_id,
+                order,
+                now
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_message_contexts(&self, message_id: &str) -> Result<Vec<ContextEnrichment>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT context_type, context_id, display_order
+             FROM message_contexts
+             WHERE message_id = ?1
+             ORDER BY display_order, created_at",
+        )?;
+
+        let links: Vec<(String, String)> = stmt
+            .query_map(params![message_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        drop(stmt);
+        drop(conn);
+
+        let mut contexts = Vec::new();
+        for (context_type, context_id) in links {
+            let context = match context_type.as_str() {
+                "search_result" => self
+                    .get_search_result(&context_id)
+                    .map(ContextEnrichment::SearchResult)
+                    .ok(),
+                "fetch_result" => self
+                    .get_fetch_result(&context_id)
+                    .map(ContextEnrichment::FetchResult)
+                    .ok(),
+                _ => None,
+            };
+            if let Some(c) = context {
+                contexts.push(c);
+            }
+        }
+
+        Ok(contexts)
+    }
+
+    pub fn unlink_message_context(
+        &self,
+        message_id: &str,
+        context_type: ContextType,
+        context_id: &str,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "DELETE FROM message_contexts WHERE message_id = ?1 AND context_type = ?2 AND context_id = ?3",
+            params![message_id, context_type.to_string(), context_id],
+        )?;
+        Ok(())
+    }
+
+    // ========== Message Step Link Operations (Process Steps) ==========
+
+    pub fn link_message_step(
+        &self,
+        message_id: &str,
+        step_type: StepType,
+        step_id: &str,
+        display_order: Option<i32>,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+        let order = display_order.unwrap_or(0);
+
+        conn.execute(
+            "INSERT OR IGNORE INTO message_steps
+             (id, message_id, step_type, step_id, display_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                id,
+                message_id,
+                step_type.to_string(),
+                step_id,
+                order,
+                now
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_message_steps(&self, message_id: &str) -> Result<Vec<ProcessStep>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT step_type, step_id, display_order
+             FROM message_steps
+             WHERE message_id = ?1
+             ORDER BY display_order, created_at",
+        )?;
+
+        let links: Vec<(String, String)> = stmt
+            .query_map(params![message_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        drop(stmt);
+        drop(conn);
+
+        let mut steps = Vec::new();
+        for (step_type, step_id) in links {
+            let step = match step_type.as_str() {
+                "thinking" => self
+                    .get_thinking_step(&step_id)
+                    .map(ProcessStep::Thinking)
+                    .ok(),
+                "search_decision" => self
+                    .get_search_decision(&step_id)
+                    .map(ProcessStep::SearchDecision)
+                    .ok(),
+                "tool_call" => self
+                    .get_tool_call(&step_id)
+                    .map(ProcessStep::ToolCall)
+                    .ok(),
+                "code_execution" => self
+                    .get_code_execution(&step_id)
+                    .map(ProcessStep::CodeExecution)
+                    .ok(),
+                _ => None,
+            };
+            if let Some(s) = step {
+                steps.push(s);
+            }
+        }
+
+        Ok(steps)
+    }
+
+    pub fn unlink_message_step(
+        &self,
+        message_id: &str,
+        step_type: StepType,
+        step_id: &str,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "DELETE FROM message_steps WHERE message_id = ?1 AND step_type = ?2 AND step_id = ?3",
+            params![message_id, step_type.to_string(), step_id],
+        )?;
+        Ok(())
+    }
+
+    // ========== Convenience: Get All Message Resources ==========
+
+    pub fn get_message_resources(&self, message_id: &str) -> Result<MessageResources> {
+        Ok(MessageResources {
+            attachments: self.get_message_attachments(message_id)?,
+            contexts: self.get_message_contexts(message_id)?,
+            steps: self.get_message_steps(message_id)?,
+        })
     }
 
     // Settings operations

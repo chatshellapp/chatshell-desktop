@@ -212,14 +212,13 @@ export interface ParticipantSummary {
   avatar_image_url?: string
 }
 
-// Message types
+// Message types (thinking_content moved to ThinkingStep)
 export interface Message {
   id: string
   conversation_id?: string
   sender_type: string
   sender_id?: string
   content: string
-  thinking_content?: string
   tokens?: number
   created_at: string
 }
@@ -229,14 +228,67 @@ export interface CreateMessageRequest {
   sender_type: string
   sender_id?: string
   content: string
-  thinking_content?: string
   tokens?: number
 }
 
-// ========== Attachment Types (Split Schema) ==========
+// ==========================================================================
+// CATEGORY 1: USER ATTACHMENTS (user-provided files and links)
+// ==========================================================================
 
-// Attachment type enum
-export type AttachmentType = 'search_result' | 'fetch_result' | 'file' | 'search_decision'
+// File attachment - stores user uploaded file metadata (content in filesystem)
+export interface FileAttachment {
+  id: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  storage_path: string // Path relative to attachments dir: "files/{uuid}.pdf"
+  created_at: string
+}
+
+export interface CreateFileAttachmentRequest {
+  file_name: string
+  file_size: number
+  mime_type: string
+  storage_path: string
+}
+
+// User link - stores URL explicitly shared by user (not from search)
+export interface UserLink {
+  id: string
+  url: string
+  title?: string
+  created_at: string
+}
+
+export interface CreateUserLinkRequest {
+  url: string
+  title?: string
+}
+
+// User attachment type enum
+export type UserAttachmentType = 'file' | 'user_link'
+
+// Unified user attachment type
+export type UserAttachment =
+  | ({ type: 'file' } & FileAttachment)
+  | ({ type: 'user_link' } & UserLink)
+
+// Helper type guards for user attachments
+export function isFileAttachment(
+  attachment: UserAttachment
+): attachment is { type: 'file' } & FileAttachment {
+  return attachment.type === 'file'
+}
+
+export function isUserLink(
+  attachment: UserAttachment
+): attachment is { type: 'user_link' } & UserLink {
+  return attachment.type === 'user_link'
+}
+
+// ==========================================================================
+// CATEGORY 2: CONTEXT ENRICHMENTS (system-fetched content)
+// ==========================================================================
 
 // Search result - stores web search metadata only (no content in filesystem)
 export interface SearchResult {
@@ -258,7 +310,8 @@ export interface CreateSearchResultRequest {
 // Fetch result - stores fetched web resource metadata (content in filesystem)
 export interface FetchResult {
   id: string
-  search_id?: string // FK to search_results (null if standalone fetch)
+  source_type: string // "search" | "user_link"
+  source_id?: string // FK to search_results.id or user_links.id
   url: string
   title?: string
   description?: string
@@ -277,7 +330,8 @@ export interface FetchResult {
 }
 
 export interface CreateFetchResultRequest {
-  search_id?: string
+  source_type?: string
+  source_id?: string
   url: string
   title?: string
   description?: string
@@ -293,21 +347,42 @@ export interface CreateFetchResultRequest {
   favicon_url?: string
 }
 
-// File attachment - stores user uploaded file metadata (content in filesystem)
-export interface FileAttachment {
+// Context enrichment type enum
+export type ContextType = 'search_result' | 'fetch_result'
+
+// Unified context enrichment type
+export type ContextEnrichment =
+  | ({ type: 'search_result' } & SearchResult)
+  | ({ type: 'fetch_result' } & FetchResult)
+
+// Helper type guards for context enrichments
+export function isSearchResult(
+  context: ContextEnrichment
+): context is { type: 'search_result' } & SearchResult {
+  return context.type === 'search_result'
+}
+
+export function isFetchResult(
+  context: ContextEnrichment
+): context is { type: 'fetch_result' } & FetchResult {
+  return context.type === 'fetch_result'
+}
+
+// ==========================================================================
+// CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
+// ==========================================================================
+
+// Thinking step - stores AI's reasoning/thinking process
+export interface ThinkingStep {
   id: string
-  file_name: string
-  file_size: number
-  mime_type: string
-  storage_path: string // Path relative to attachments dir: "files/{uuid}.pdf"
+  content: string
+  source: string // "llm" | "extended_thinking"
   created_at: string
 }
 
-export interface CreateFileAttachmentRequest {
-  file_name: string
-  file_size: number
-  mime_type: string
-  storage_path: string
+export interface CreateThinkingStepRequest {
+  content: string
+  source?: string
 }
 
 // Search decision - stores AI's reasoning about whether web search is needed
@@ -316,6 +391,7 @@ export interface SearchDecision {
   reasoning: string
   search_needed: boolean
   search_query?: string
+  search_result_id?: string // Link to resulting search if approved
   created_at: string
 }
 
@@ -323,39 +399,109 @@ export interface CreateSearchDecisionRequest {
   reasoning: string
   search_needed: boolean
   search_query?: string
+  search_result_id?: string
 }
 
-// Unified attachment type (discriminated union from backend)
-export type Attachment =
-  | ({ type: 'search_result' } & SearchResult)
-  | ({ type: 'fetch_result' } & FetchResult)
-  | ({ type: 'file' } & FileAttachment)
+// Tool call - stores tool/function invocations (for MCP support)
+export interface ToolCall {
+  id: string
+  tool_name: string
+  tool_input?: string // JSON
+  tool_output?: string // JSON
+  status: string // "pending" | "running" | "success" | "error"
+  error?: string
+  duration_ms?: number
+  created_at: string
+  completed_at?: string
+}
+
+export interface CreateToolCallRequest {
+  tool_name: string
+  tool_input?: string
+  tool_output?: string
+  status?: string
+  error?: string
+  duration_ms?: number
+  completed_at?: string
+}
+
+// Code execution - stores code interpreter results
+export interface CodeExecution {
+  id: string
+  language: string
+  code: string
+  output?: string
+  exit_code?: number
+  status: string // "pending" | "running" | "success" | "error"
+  error?: string
+  duration_ms?: number
+  created_at: string
+  completed_at?: string
+}
+
+export interface CreateCodeExecutionRequest {
+  language: string
+  code: string
+  output?: string
+  exit_code?: number
+  status?: string
+  error?: string
+  duration_ms?: number
+  completed_at?: string
+}
+
+// Process step type enum
+export type StepType = 'thinking' | 'search_decision' | 'tool_call' | 'code_execution'
+
+// Unified process step type
+export type ProcessStep =
+  | ({ type: 'thinking' } & ThinkingStep)
   | ({ type: 'search_decision' } & SearchDecision)
+  | ({ type: 'tool_call' } & ToolCall)
+  | ({ type: 'code_execution' } & CodeExecution)
 
-// Helper type guards
-export function isSearchResult(
-  attachment: Attachment
-): attachment is { type: 'search_result' } & SearchResult {
-  return attachment.type === 'search_result'
-}
-
-export function isFetchResult(
-  attachment: Attachment
-): attachment is { type: 'fetch_result' } & FetchResult {
-  return attachment.type === 'fetch_result'
-}
-
-export function isFileAttachment(
-  attachment: Attachment
-): attachment is { type: 'file' } & FileAttachment {
-  return attachment.type === 'file'
+// Helper type guards for process steps
+export function isThinkingStep(
+  step: ProcessStep
+): step is { type: 'thinking' } & ThinkingStep {
+  return step.type === 'thinking'
 }
 
 export function isSearchDecision(
-  attachment: Attachment
-): attachment is { type: 'search_decision' } & SearchDecision {
-  return attachment.type === 'search_decision'
+  step: ProcessStep
+): step is { type: 'search_decision' } & SearchDecision {
+  return step.type === 'search_decision'
 }
+
+export function isToolCall(
+  step: ProcessStep
+): step is { type: 'tool_call' } & ToolCall {
+  return step.type === 'tool_call'
+}
+
+export function isCodeExecution(
+  step: ProcessStep
+): step is { type: 'code_execution' } & CodeExecution {
+  return step.type === 'code_execution'
+}
+
+// ==========================================================================
+// MESSAGE RESOURCES (Combined Response)
+// ==========================================================================
+
+// All resources associated with a message
+export interface MessageResources {
+  attachments: UserAttachment[]
+  contexts: ContextEnrichment[]
+  steps: ProcessStep[]
+}
+
+// ==========================================================================
+// LEGACY COMPATIBILITY (deprecated - use specific types above)
+// ==========================================================================
+
+// @deprecated Use UserAttachment, ContextEnrichment, or ProcessStep instead
+export type Attachment = UserAttachment | ContextEnrichment | ProcessStep
 
 // Prompt types
 export interface Prompt {

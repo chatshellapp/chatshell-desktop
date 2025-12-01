@@ -239,7 +239,7 @@ pub struct ParticipantSummary {
     pub avatar_image_url: Option<String>,
 }
 
-// Message models
+// Message models (thinking_content moved to thinking_steps table)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
@@ -247,7 +247,6 @@ pub struct Message {
     pub sender_type: String,
     pub sender_id: Option<String>,
     pub content: String,
-    pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
     pub created_at: String,
 }
@@ -258,11 +257,104 @@ pub struct CreateMessageRequest {
     pub sender_type: String,
     pub sender_id: Option<String>,
     pub content: String,
-    pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
 }
 
-// ========== Attachment Models (Split Tables) ==========
+// ==========================================================================
+// CATEGORY 1: USER ATTACHMENTS (user-provided files and links)
+// ==========================================================================
+
+/// File attachment - stores metadata about a user-uploaded file
+/// Content is stored in filesystem at storage_path
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAttachment {
+    pub id: String,
+    pub file_name: String,
+    pub file_size: i64,
+    pub mime_type: String,
+    pub storage_path: String, // Path relative to attachments dir: "files/{uuid}.pdf"
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateFileAttachmentRequest {
+    pub file_name: String,
+    pub file_size: i64,
+    pub mime_type: String,
+    pub storage_path: String,
+}
+
+/// User link - stores URL explicitly shared by user (not from search)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserLink {
+    pub id: String,
+    pub url: String,
+    pub title: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUserLinkRequest {
+    pub url: String,
+    pub title: Option<String>,
+}
+
+/// User attachment type enum
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UserAttachmentType {
+    File,
+    UserLink,
+}
+
+impl std::fmt::Display for UserAttachmentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserAttachmentType::File => write!(f, "file"),
+            UserAttachmentType::UserLink => write!(f, "user_link"),
+        }
+    }
+}
+
+impl std::str::FromStr for UserAttachmentType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "file" => Ok(UserAttachmentType::File),
+            "user_link" => Ok(UserAttachmentType::UserLink),
+            _ => Err(format!("Invalid user attachment type: {}", s)),
+        }
+    }
+}
+
+/// Unified user attachment enum for API responses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UserAttachment {
+    File(FileAttachment),
+    UserLink(UserLink),
+}
+
+impl UserAttachment {
+    pub fn id(&self) -> &str {
+        match self {
+            UserAttachment::File(f) => &f.id,
+            UserAttachment::UserLink(l) => &l.id,
+        }
+    }
+
+    pub fn attachment_type(&self) -> UserAttachmentType {
+        match self {
+            UserAttachment::File(_) => UserAttachmentType::File,
+            UserAttachment::UserLink(_) => UserAttachmentType::UserLink,
+        }
+    }
+}
+
+// ==========================================================================
+// CATEGORY 2: CONTEXT ENRICHMENTS (system-fetched content)
+// ==========================================================================
 
 /// Search result - stores metadata about a web search operation
 /// Content is not stored in filesystem, only metadata in database
@@ -286,10 +378,12 @@ pub struct CreateSearchResultRequest {
 
 /// Fetch result - stores metadata about a fetched web resource
 /// Content is stored in filesystem at storage_path
+/// source_type distinguishes between search-initiated and user-link fetches
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchResult {
     pub id: String,
-    pub search_id: Option<String>, // FK to search_results (NULL if standalone fetch)
+    pub source_type: String, // "search" | "user_link"
+    pub source_id: Option<String>, // FK to search_results.id or user_links.id
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
@@ -309,7 +403,8 @@ pub struct FetchResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateFetchResultRequest {
-    pub search_id: Option<String>,
+    pub source_type: Option<String>, // defaults to "search"
+    pub source_id: Option<String>,
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
@@ -325,24 +420,76 @@ pub struct CreateFetchResultRequest {
     pub favicon_url: Option<String>,
 }
 
-/// File attachment - stores metadata about a user-uploaded file
-/// Content is stored in filesystem at storage_path
+/// Context enrichment type enum
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextType {
+    SearchResult,
+    FetchResult,
+}
+
+impl std::fmt::Display for ContextType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContextType::SearchResult => write!(f, "search_result"),
+            ContextType::FetchResult => write!(f, "fetch_result"),
+        }
+    }
+}
+
+impl std::str::FromStr for ContextType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "search_result" => Ok(ContextType::SearchResult),
+            "fetch_result" => Ok(ContextType::FetchResult),
+            _ => Err(format!("Invalid context type: {}", s)),
+        }
+    }
+}
+
+/// Unified context enrichment enum for API responses
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileAttachment {
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContextEnrichment {
+    SearchResult(SearchResult),
+    FetchResult(FetchResult),
+}
+
+impl ContextEnrichment {
+    pub fn id(&self) -> &str {
+        match self {
+            ContextEnrichment::SearchResult(s) => &s.id,
+            ContextEnrichment::FetchResult(f) => &f.id,
+        }
+    }
+
+    pub fn context_type(&self) -> ContextType {
+        match self {
+            ContextEnrichment::SearchResult(_) => ContextType::SearchResult,
+            ContextEnrichment::FetchResult(_) => ContextType::FetchResult,
+        }
+    }
+}
+
+// ==========================================================================
+// CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
+// ==========================================================================
+
+/// Thinking step - stores AI's reasoning/thinking process
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThinkingStep {
     pub id: String,
-    pub file_name: String,
-    pub file_size: i64,
-    pub mime_type: String,
-    pub storage_path: String, // Path relative to attachments dir: "files/{uuid}.pdf"
+    pub content: String,
+    pub source: String, // "llm" | "extended_thinking"
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateFileAttachmentRequest {
-    pub file_name: String,
-    pub file_size: i64,
-    pub mime_type: String,
-    pub storage_path: String,
+pub struct CreateThinkingStepRequest {
+    pub content: String,
+    pub source: Option<String>,
 }
 
 /// Search decision - stores AI's reasoning about whether web search is needed
@@ -352,6 +499,7 @@ pub struct SearchDecision {
     pub reasoning: String,
     pub search_needed: bool,
     pub search_query: Option<String>,
+    pub search_result_id: Option<String>, // Link to resulting search if approved
     pub created_at: String,
 }
 
@@ -360,82 +508,136 @@ pub struct CreateSearchDecisionRequest {
     pub reasoning: String,
     pub search_needed: bool,
     pub search_query: Option<String>,
+    pub search_result_id: Option<String>,
 }
 
-/// Attachment type enum for polymorphic handling
+/// Tool call - stores tool/function invocations (for MCP support)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub tool_name: String,
+    pub tool_input: Option<String>,  // JSON
+    pub tool_output: Option<String>, // JSON
+    pub status: String, // "pending" | "running" | "success" | "error"
+    pub error: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateToolCallRequest {
+    pub tool_name: String,
+    pub tool_input: Option<String>,
+    pub tool_output: Option<String>,
+    pub status: Option<String>,
+    pub error: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub completed_at: Option<String>,
+}
+
+/// Code execution - stores code interpreter results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeExecution {
+    pub id: String,
+    pub language: String,
+    pub code: String,
+    pub output: Option<String>,
+    pub exit_code: Option<i32>,
+    pub status: String, // "pending" | "running" | "success" | "error"
+    pub error: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCodeExecutionRequest {
+    pub language: String,
+    pub code: String,
+    pub output: Option<String>,
+    pub exit_code: Option<i32>,
+    pub status: Option<String>,
+    pub error: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub completed_at: Option<String>,
+}
+
+/// Process step type enum
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum AttachmentType {
-    SearchResult,
-    FetchResult,
-    File,
+pub enum StepType {
+    Thinking,
     SearchDecision,
+    ToolCall,
+    CodeExecution,
 }
 
-impl std::fmt::Display for AttachmentType {
+impl std::fmt::Display for StepType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AttachmentType::SearchResult => write!(f, "search_result"),
-            AttachmentType::FetchResult => write!(f, "fetch_result"),
-            AttachmentType::File => write!(f, "file"),
-            AttachmentType::SearchDecision => write!(f, "search_decision"),
+            StepType::Thinking => write!(f, "thinking"),
+            StepType::SearchDecision => write!(f, "search_decision"),
+            StepType::ToolCall => write!(f, "tool_call"),
+            StepType::CodeExecution => write!(f, "code_execution"),
         }
     }
 }
 
-impl std::str::FromStr for AttachmentType {
+impl std::str::FromStr for StepType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "search_result" => Ok(AttachmentType::SearchResult),
-            "fetch_result" => Ok(AttachmentType::FetchResult),
-            "file" => Ok(AttachmentType::File),
-            "search_decision" => Ok(AttachmentType::SearchDecision),
-            _ => Err(format!("Invalid attachment type: {}", s)),
+            "thinking" => Ok(StepType::Thinking),
+            "search_decision" => Ok(StepType::SearchDecision),
+            "tool_call" => Ok(StepType::ToolCall),
+            "code_execution" => Ok(StepType::CodeExecution),
+            _ => Err(format!("Invalid step type: {}", s)),
         }
     }
 }
 
-/// Message attachment link - polymorphic junction table record
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageAttachment {
-    pub id: String,
-    pub message_id: String,
-    pub attachment_type: AttachmentType,
-    pub attachment_id: String,
-    pub display_order: i32,
-    pub created_at: String,
-}
-
-/// Unified attachment enum for API responses
+/// Unified process step enum for API responses
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum Attachment {
-    SearchResult(SearchResult),
-    FetchResult(FetchResult),
-    File(FileAttachment),
+pub enum ProcessStep {
+    Thinking(ThinkingStep),
     SearchDecision(SearchDecision),
+    ToolCall(ToolCall),
+    CodeExecution(CodeExecution),
 }
 
-impl Attachment {
+impl ProcessStep {
     pub fn id(&self) -> &str {
         match self {
-            Attachment::SearchResult(s) => &s.id,
-            Attachment::FetchResult(f) => &f.id,
-            Attachment::File(f) => &f.id,
-            Attachment::SearchDecision(d) => &d.id,
+            ProcessStep::Thinking(t) => &t.id,
+            ProcessStep::SearchDecision(d) => &d.id,
+            ProcessStep::ToolCall(t) => &t.id,
+            ProcessStep::CodeExecution(c) => &c.id,
         }
     }
 
-    pub fn attachment_type(&self) -> AttachmentType {
+    pub fn step_type(&self) -> StepType {
         match self {
-            Attachment::SearchResult(_) => AttachmentType::SearchResult,
-            Attachment::FetchResult(_) => AttachmentType::FetchResult,
-            Attachment::File(_) => AttachmentType::File,
-            Attachment::SearchDecision(_) => AttachmentType::SearchDecision,
+            ProcessStep::Thinking(_) => StepType::Thinking,
+            ProcessStep::SearchDecision(_) => StepType::SearchDecision,
+            ProcessStep::ToolCall(_) => StepType::ToolCall,
+            ProcessStep::CodeExecution(_) => StepType::CodeExecution,
         }
     }
+}
+
+// ==========================================================================
+// MESSAGE RESOURCES (Combined Response)
+// ==========================================================================
+
+/// All resources associated with a message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageResources {
+    pub attachments: Vec<UserAttachment>,
+    pub contexts: Vec<ContextEnrichment>,
+    pub steps: Vec<ProcessStep>,
 }
 
 // Prompt models
@@ -467,3 +669,4 @@ pub struct Setting {
     pub value: String,
     pub updated_at: String,
 }
+

@@ -29,7 +29,15 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
-import type { Attachment, FetchResult, SearchResult, FileAttachment, SearchDecision } from '@/types'
+import type {
+  UserAttachment,
+  ContextEnrichment,
+  ProcessStep,
+  FetchResult,
+  SearchResult,
+  FileAttachment,
+  SearchDecision,
+} from '@/types'
 
 /** Image data for lightbox navigation - supports both storage paths and base64 data */
 export interface ImageAttachmentData {
@@ -42,8 +50,12 @@ export interface ImageAttachmentData {
 }
 
 interface AttachmentPreviewProps {
-  /** Attachment resource (for completed processing) */
-  attachment?: Attachment
+  /** User attachment (files, user links) */
+  userAttachment?: UserAttachment
+  /** Context enrichment (search results, fetch results) */
+  context?: ContextEnrichment
+  /** Process step (thinking, search decision, tool call, code execution) */
+  step?: ProcessStep
   /** URL being processed (for loading state) */
   processingUrl?: string
   /** URL fetch statuses for search results: { url: 'fetching' | 'fetched' } */
@@ -421,8 +433,10 @@ function SearchResultPreview({
     const loadResults = async () => {
       setLoading(true)
       try {
-        const results = await invoke<FetchResult[]>('get_fetch_results_by_search', {
-          searchId: searchResult.id,
+        // Use the new API with source_type and source_id
+        const results = await invoke<FetchResult[]>('get_fetch_results_by_source', {
+          sourceType: 'search',
+          sourceId: searchResult.id,
         })
         setFetchResults(results)
 
@@ -1024,7 +1038,9 @@ export function ThinkingPreview({
 }
 
 export function AttachmentPreview({
-  attachment,
+  userAttachment,
+  context,
+  step,
   processingUrl,
   urlStatuses,
   pendingSearchDecision,
@@ -1053,30 +1069,58 @@ export function AttachmentPreview({
     )
   }
 
-  // No attachment provided
-  if (!attachment) {
-    return null
+  // Handle user attachments (files, user links)
+  if (userAttachment) {
+    switch (userAttachment.type) {
+      case 'file':
+        return (
+          <FileAttachmentPreview
+            fileAttachment={userAttachment as FileAttachment}
+            allImages={allImages}
+            currentImageIndex={currentImageIndex}
+          />
+        )
+      case 'user_link':
+        // For now, treat user links as URLs to fetch
+        // TODO: Add UserLinkPreview component
+        return null
+      default:
+        return null
+    }
   }
 
-  // Route to appropriate component based on type
-  switch (attachment.type) {
-    case 'fetch_result':
-      return <FetchResultPreview fetchResult={attachment as FetchResult} />
-    case 'search_result':
-      return (
-        <SearchResultPreview searchResult={attachment as SearchResult} urlStatuses={urlStatuses} />
-      )
-    case 'file':
-      return (
-        <FileAttachmentPreview
-          fileAttachment={attachment as FileAttachment}
-          allImages={allImages}
-          currentImageIndex={currentImageIndex}
-        />
-      )
-    case 'search_decision':
-      return <SearchDecisionPreview decision={attachment as SearchDecision} />
-    default:
-      return null
+  // Handle context enrichments (search results, fetch results)
+  if (context) {
+    switch (context.type) {
+      case 'fetch_result':
+        return <FetchResultPreview fetchResult={context as FetchResult} />
+      case 'search_result':
+        return (
+          <SearchResultPreview searchResult={context as SearchResult} urlStatuses={urlStatuses} />
+        )
+      default:
+        return null
+    }
   }
+
+  // Handle process steps (search decisions, thinking - note: thinking is handled by ThinkingPreview)
+  if (step) {
+    switch (step.type) {
+      case 'search_decision':
+        return <SearchDecisionPreview decision={step as SearchDecision} />
+      case 'thinking':
+        // Thinking is handled by ThinkingPreview component directly
+        return null
+      case 'tool_call':
+        // TODO: Add ToolCallPreview component
+        return null
+      case 'code_execution':
+        // TODO: Add CodeExecutionPreview component
+        return null
+      default:
+        return null
+    }
+  }
+
+  return null
 }

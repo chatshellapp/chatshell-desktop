@@ -102,12 +102,22 @@ pub fn run() {
             commands::create_message,
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
-            // Attachment commands (new split schema)
+            // User Attachments (files, user links)
             commands::get_message_attachments,
+            commands::get_file_attachment,
+            commands::get_user_link,
+            // Context Enrichments (search results, fetch results)
+            commands::get_message_contexts,
             commands::get_search_result,
             commands::get_fetch_result,
-            commands::get_fetch_results_by_search,
-            commands::get_file_attachment,
+            commands::get_fetch_results_by_source,
+            // Process Steps (thinking, decisions, tool calls)
+            commands::get_message_steps,
+            commands::get_thinking_step,
+            commands::get_search_decision,
+            // Combined resources
+            commands::get_message_resources,
+            // Content reading
             commands::read_fetch_content,
             commands::read_file_content,
             commands::read_image_base64,
