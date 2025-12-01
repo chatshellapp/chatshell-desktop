@@ -31,11 +31,14 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { Attachment, FetchResult, SearchResult, FileAttachment, SearchDecision } from '@/types'
 
-/** Image data for lightbox navigation */
+/** Image data for lightbox navigation - supports both storage paths and base64 data */
 export interface ImageAttachmentData {
   id: string
   fileName: string
-  storagePath: string
+  /** Storage path for persisted images (loaded via Tauri) */
+  storagePath?: string
+  /** Base64 data URL for in-memory images (e.g., data:image/png;base64,...) */
+  base64?: string
 }
 
 interface AttachmentPreviewProps {
@@ -591,7 +594,7 @@ function formatFileSize(bytes: number): string {
 }
 
 // Helper function to check if file is markdown
-function isMarkdownFile(fileName: string, mimeType: string): boolean {
+function isMarkdownFile(fileName: string, mimeType?: string): boolean {
   const lowerName = fileName.toLowerCase()
   return (
     lowerName.endsWith('.md') ||
@@ -601,8 +604,102 @@ function isMarkdownFile(fileName: string, mimeType: string): boolean {
   )
 }
 
+/** Props for FilePreviewDialog - supports both storage paths and in-memory content */
+export interface FilePreviewDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  fileName: string
+  /** In-memory content (used directly if provided) */
+  content?: string
+  /** Storage path (loads content via Tauri if content not provided) */
+  storagePath?: string
+  mimeType?: string
+  size?: number
+}
+
+// File preview dialog component - supports both storage paths and in-memory content
+// Exported for reuse in other components (e.g., chat-input)
+export function FilePreviewDialog({
+  isOpen,
+  onClose,
+  fileName,
+  content: inMemoryContent,
+  storagePath,
+  mimeType,
+  size,
+}: FilePreviewDialogProps) {
+  const [loadedContent, setLoadedContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const isMarkdown = isMarkdownFile(fileName, mimeType)
+
+  // Determine content source
+  const content = inMemoryContent ?? loadedContent
+
+  // Load content from storage path when dialog opens (only if no in-memory content)
+  useEffect(() => {
+    if (isOpen && !inMemoryContent && storagePath && !loadedContent && !loading) {
+      setLoading(true)
+      invoke<string>('read_file_content', { storagePath })
+        .then(setLoadedContent)
+        .catch((err) => {
+          console.error('Failed to load file content:', err)
+          setLoadedContent(null)
+        })
+        .finally(() => setLoading(false))
+    }
+  }, [isOpen, inMemoryContent, storagePath, loadedContent, loading])
+
+  // Reset loaded content when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setLoadedContent(null)
+    }
+  }, [isOpen])
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+            {fileName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          {size !== undefined && <span>{formatFileSize(size)}</span>}
+          {mimeType && <span>{mimeType}</span>}
+        </div>
+
+        {/* Content preview area */}
+        <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : content ? (
+            isMarkdown ? (
+              <MarkdownContent content={content} className="text-sm" />
+            ) : (
+              <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
+            )
+          ) : (
+            <p className="text-sm text-muted-foreground">No content available</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // Fullscreen Image Lightbox component with keyboard navigation
-function ImageLightbox({
+// Exported for reuse in other components (e.g., chat-input)
+export function ImageLightbox({
   images,
   initialIndex,
   onClose,
@@ -620,21 +717,35 @@ function ImageLightbox({
   const canGoPrev = currentIndex > 0
   const canGoNext = currentIndex < images.length - 1
 
-  // Load current image
+  // Load current image - supports both storage paths and base64 data
   useEffect(() => {
-    setLoading(true)
-    setImageSrc(null)
+    // If base64 is provided, use it directly (no loading needed)
+    if (currentImage.base64) {
+      setImageSrc(currentImage.base64)
+      setLoading(false)
+      return
+    }
 
-    invoke<string>('get_attachment_url', { storagePath: currentImage.storagePath })
-      .then((fullPath) => {
-        setImageSrc(convertFileSrc(fullPath))
-      })
-      .catch((err) => {
-        console.error('Failed to load image:', err)
-        setImageSrc(null)
-      })
-      .finally(() => setLoading(false))
-  }, [currentImage.storagePath])
+    // Otherwise, load from storage path
+    if (currentImage.storagePath) {
+      setLoading(true)
+      setImageSrc(null)
+
+      invoke<string>('get_attachment_url', { storagePath: currentImage.storagePath })
+        .then((fullPath) => {
+          setImageSrc(convertFileSrc(fullPath))
+        })
+        .catch((err) => {
+          console.error('Failed to load image:', err)
+          setImageSrc(null)
+        })
+        .finally(() => setLoading(false))
+    } else {
+      // No source available
+      setLoading(false)
+      setImageSrc(null)
+    }
+  }, [currentImage.storagePath, currentImage.base64])
 
   const goToPrev = useCallback(() => {
     if (canGoPrev) {
@@ -772,11 +883,8 @@ function FileAttachmentPreview({
 }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
-  const [content, setContent] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
 
   const isImage = fileAttachment.mime_type.startsWith('image/')
-  const isMarkdown = isMarkdownFile(fileAttachment.file_name, fileAttachment.mime_type)
   const IconComponent = isImage
     ? Image
     : fileAttachment.mime_type.startsWith('text/')
@@ -791,20 +899,6 @@ function FileAttachmentPreview({
       setIsDialogOpen(true)
     }
   }
-
-  // Load content when dialog opens (only for non-images)
-  useEffect(() => {
-    if (isDialogOpen && !content && !loading && !isImage) {
-      setLoading(true)
-      invoke<string>('read_file_content', { storagePath: fileAttachment.storage_path })
-        .then(setContent)
-        .catch((err) => {
-          console.error('Failed to load file content:', err)
-          setContent(null)
-        })
-        .finally(() => setLoading(false))
-    }
-  }, [isDialogOpen, content, loading, fileAttachment, isImage])
 
   // Prepare images array for lightbox
   const lightboxImages: ImageAttachmentData[] = useMemo(() => {
@@ -849,44 +943,16 @@ function FileAttachmentPreview({
         />
       )}
 
-      {/* Dialog for non-image files */}
+      {/* Dialog for non-image files - uses reusable FilePreviewDialog */}
       {!isImage && (
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                {fileAttachment.file_name}
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{formatFileSize(fileAttachment.file_size)}</span>
-              <span>{fileAttachment.mime_type}</span>
-            </div>
-
-            {/* Content preview area */}
-            <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : content ? (
-                isMarkdown ? (
-                  <MarkdownContent content={content} className="text-sm" />
-                ) : (
-                  <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
-                )
-              ) : (
-                <p className="text-sm text-muted-foreground">No content available</p>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <FilePreviewDialog
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+          fileName={fileAttachment.file_name}
+          storagePath={fileAttachment.storage_path}
+          mimeType={fileAttachment.mime_type}
+          size={fileAttachment.file_size}
+        />
       )}
     </>
   )

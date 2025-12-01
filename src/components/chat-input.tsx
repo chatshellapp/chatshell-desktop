@@ -31,6 +31,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  ImageLightbox,
+  FilePreviewDialog,
+  type ImageAttachmentData,
+} from '@/components/attachment-preview'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -200,6 +205,9 @@ export function ChatInput({}: ChatInputProps) {
   const [isWebPageDialogOpen, setIsWebPageDialogOpen] = useState(false)
   const [webPageUrl, setWebPageUrl] = useState('')
   const [webPageUrlError, setWebPageUrlError] = useState('')
+  // Preview state for attachments
+  const [previewingFileId, setPreviewingFileId] = useState<string | null>(null)
+  const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
@@ -1044,47 +1052,133 @@ export function ChatInput({}: ChatInputProps) {
           </div>
         </div>
       )}
+      {/* Get all image attachments for lightbox navigation */}
+      {(() => {
+        const imageAttachments = attachments.filter((att) => att.type === 'image' && att.base64)
+        const lightboxImages: ImageAttachmentData[] = imageAttachments.map((img) => ({
+          id: img.id,
+          fileName: img.name,
+          base64: img.base64!,
+        }))
+
+        // Get previewing file attachment
+        const previewingFile = previewingFileId
+          ? attachments.find((att) => att.id === previewingFileId && att.type === 'file')
+          : null
+
+        return (
+          <>
+            {/* Lightbox for images - reuses shared component */}
+            {lightboxImageIndex !== null && lightboxImages.length > 0 && (
+              <ImageLightbox
+                images={lightboxImages}
+                initialIndex={lightboxImageIndex}
+                onClose={() => setLightboxImageIndex(null)}
+              />
+            )}
+
+            {/* File preview dialog - reuses shared component */}
+            {previewingFile && previewingFile.content && (
+              <FilePreviewDialog
+                isOpen={true}
+                onClose={() => setPreviewingFileId(null)}
+                fileName={previewingFile.name}
+                content={previewingFile.content}
+                mimeType={previewingFile.mimeType}
+                size={previewingFile.size}
+              />
+            )}
+          </>
+        )
+      })()}
+
       <InputGroup>
         {attachments.length > 0 && (
           <div className="order-first w-full flex flex-wrap gap-2 px-3 pt-3 pb-0">
-            {attachments.map((attachment) => (
-              <Badge
-                key={attachment.id}
-                variant="outline"
-                className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
-              >
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(attachment.id)}
-                  className="hover:text-destructive transition-colors -ml-0.5"
+            {attachments.map((attachment, _index) => {
+              // Get image index for lightbox navigation
+              const imageAttachments = attachments.filter((att) => att.type === 'image' && att.base64)
+              const imageIndex = attachment.type === 'image'
+                ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                : -1
+
+              const handlePreviewClick = () => {
+                if (attachment.type === 'image' && attachment.base64) {
+                  // Open lightbox at the correct index
+                  setLightboxImageIndex(imageIndex)
+                } else if (attachment.type === 'file' && attachment.content) {
+                  // Open file preview dialog
+                  setPreviewingFileId(attachment.id)
+                }
+              }
+
+              const isPreviewable =
+                (attachment.type === 'image' && attachment.base64) ||
+                (attachment.type === 'file' && attachment.content)
+
+              return (
+                <Badge
+                  key={attachment.id}
+                  variant="outline"
+                  className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
                 >
-                  <X className="size-3" />
-                </button>
-                {attachment.type === 'image' && attachment.base64 ? (
-                  <img
-                    src={attachment.base64}
-                    alt={attachment.name}
-                    className="h-4 w-4 object-cover rounded"
-                  />
-                ) : (
-                  getAttachmentIcon(attachment.type)
-                )}
-                {attachment.type === 'webpage' ? (
                   <button
                     type="button"
-                    onClick={() => openUrl(attachment.name)}
-                    className="hover:underline cursor-pointer"
+                    onClick={() => removeAttachment(attachment.id)}
+                    className="hover:text-destructive transition-colors -ml-0.5"
                   >
-                    {attachment.name}
+                    <X className="size-3" />
                   </button>
-                ) : (
-                  <span className="max-w-[150px] truncate">{attachment.name}</span>
-                )}
-                {attachment.size !== undefined && (
-                  <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
-                )}
-              </Badge>
-            ))}
+                  {isPreviewable ? (
+                    <button
+                      type="button"
+                      onClick={handlePreviewClick}
+                      className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
+                    >
+                      {attachment.type === 'image' && attachment.base64 ? (
+                        <img
+                          src={attachment.base64}
+                          alt={attachment.name}
+                          className="h-4 w-4 object-cover rounded"
+                        />
+                      ) : (
+                        getAttachmentIcon(attachment.type)
+                      )}
+                      <span className="max-w-[150px] truncate">{attachment.name}</span>
+                      {attachment.size !== undefined && (
+                        <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
+                      )}
+                    </button>
+                  ) : (
+                    <>
+                      {attachment.type === 'image' && attachment.base64 ? (
+                        <img
+                          src={attachment.base64}
+                          alt={attachment.name}
+                          className="h-4 w-4 object-cover rounded"
+                        />
+                      ) : (
+                        getAttachmentIcon(attachment.type)
+                      )}
+                      {attachment.type === 'webpage' ? (
+                        <button
+                          type="button"
+                          onClick={() => openUrl(attachment.name)}
+                          className="hover:underline cursor-pointer"
+                        >
+                          {attachment.name}
+                        </button>
+                      ) : (
+                        <span className="max-w-[150px] truncate">{attachment.name}</span>
+                      )}
+                      {attachment.size !== undefined && (
+                        <span className="text-xs opacity-60">({formatFileSize(attachment.size)})</span>
+                      )}
+                    </>
+                  )}
+                </Badge>
+              )
+            })}
           </div>
         )}
         <InputGroupTextarea
