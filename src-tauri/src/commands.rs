@@ -862,6 +862,15 @@ pub struct FileAttachmentInput {
     pub mime_type: String,
 }
 
+/// Image attachment data from frontend
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ImageAttachmentInput {
+    pub name: String,
+    pub base64: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+}
+
 // Chat command - now returns immediately and processes in background
 #[tauri::command]
 pub async fn send_message(
@@ -879,7 +888,7 @@ pub async fn send_message(
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
     urls_to_fetch: Option<Vec<String>>,
-    image_base64s: Option<Vec<String>>,
+    images: Option<Vec<ImageAttachmentInput>>,
     files: Option<Vec<FileAttachmentInput>>,
     search_enabled: Option<bool>,
 ) -> Result<Message, String> {
@@ -895,8 +904,8 @@ pub async fn send_message(
     println!("   assistant_db_id: {:?}", assistant_db_id);
     println!("   urls_to_fetch: {:?}", urls_to_fetch);
     println!(
-        "   image_base64s count: {:?}",
-        image_base64s.as_ref().map(|v| v.len())
+        "   images count: {:?}",
+        images.as_ref().map(|v| v.len())
     );
     println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
     println!("   search_enabled: {:?}", search_enabled);
@@ -1070,9 +1079,9 @@ pub async fn send_message(
     let model_db_id = model_db_id.clone();
     let assistant_db_id = assistant_db_id.clone();
 
-    // Clone urls_to_fetch, image_base64s, files, and search_enabled for the background task
+    // Clone urls_to_fetch, images, files, and search_enabled for the background task
     let urls_to_fetch_clone = urls_to_fetch.clone();
-    let image_base64s_clone = image_base64s.clone();
+    let images_clone = images.clone();
     let files_clone = files.clone();
     let search_enabled_clone = search_enabled.unwrap_or(false);
 
@@ -1413,24 +1422,28 @@ pub async fn send_message(
         let processed_content =
             web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
 
-        // Parse image attachments from base64 data URLs
-        let mut user_images: Vec<llm::ImageData> = Vec::new();
-        if let Some(images) = image_base64s_clone {
+        // Parse image attachments from ImageAttachmentInput
+        let mut user_images: Vec<(String, llm::ImageData)> = Vec::new(); // (name, data)
+        if let Some(images) = images_clone {
             if !images.is_empty() {
                 println!(
                     "🖼️  [background_task] Processing {} image attachments",
                     images.len()
                 );
-                for image_data_url in images.iter() {
+                for img in images.iter() {
                     // Parse data URL: "data:image/png;base64,xxxxx"
-                    if let Some(rest) = image_data_url.strip_prefix("data:") {
+                    if let Some(rest) = img.base64.strip_prefix("data:") {
                         if let Some((media_type, base64_data)) = rest.split_once(";base64,") {
-                            user_images.push(llm::ImageData {
-                                base64: base64_data.to_string(),
-                                media_type: media_type.to_string(),
-                            });
+                            user_images.push((
+                                img.name.clone(),
+                                llm::ImageData {
+                                    base64: base64_data.to_string(),
+                                    media_type: media_type.to_string(),
+                                },
+                            ));
                             println!(
-                                "   - Parsed image: {} ({} chars)",
+                                "   - Parsed image: {} - {} ({} chars)",
+                                img.name,
                                 media_type,
                                 base64_data.len()
                             );
@@ -1526,7 +1539,7 @@ pub async fn send_message(
         }
 
         // Store image attachments to filesystem and database
-        for (i, img) in user_images.iter().enumerate() {
+        for (file_name, img) in user_images.iter() {
             let file_id = uuid::Uuid::now_v7().to_string();
 
             // Get extension from mime type
@@ -1540,20 +1553,18 @@ pub async fn send_message(
             ) {
                 Ok(b) => b,
                 Err(e) => {
-                    eprintln!("Failed to decode image {}: {}", i, e);
+                    eprintln!("Failed to decode image {}: {}", file_name, e);
                     continue;
                 }
             };
 
             // Write image to filesystem
             if let Err(e) = crate::storage::write_binary(&app_clone, &storage_path, &bytes) {
-                eprintln!("Failed to save image {}: {}", i, e);
+                eprintln!("Failed to save image {}: {}", file_name, e);
                 continue;
             }
 
-            let file_name = format!("image_{}.{}", i + 1, ext);
-
-            // Create file record in database
+            // Create file record in database with original filename
             match state_clone
                 .db
                 .create_file_attachment(CreateFileAttachmentRequest {
@@ -1589,7 +1600,7 @@ pub async fn send_message(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to create file record for image {}: {}", i, e);
+                    eprintln!("Failed to create file record for image {}: {}", file_name, e);
                     let _ = crate::storage::delete_file(&app_clone, &storage_path);
                 }
             }
@@ -1643,10 +1654,13 @@ pub async fn send_message(
             processed_content.clone()
         };
 
+        // Extract just the ImageData for LLM (dropping filenames which were used for storage)
+        let llm_images: Vec<llm::ImageData> = user_images.into_iter().map(|(_, img)| img).collect();
+
         chat_messages.push(ChatMessage {
             role: "user".to_string(),
             content: final_user_content,
-            images: user_images,
+            images: llm_images,
             files: user_files,
         });
 

@@ -64,7 +64,7 @@ interface MessageStore {
     modelDbId?: string,
     assistantDbId?: string,
     urlsToFetch?: string[],
-    imageBase64s?: string[],
+    images?: { name: string; base64: string; mimeType: string }[],
     files?: { name: string; content: string; mimeType: string }[],
     searchEnabled?: boolean
   ) => Promise<void>
@@ -172,7 +172,7 @@ export const useMessageStore = create<MessageStore>()(
       modelDbId?: string,
       assistantDbId?: string,
       urlsToFetch?: string[],
-      imageBase64s?: string[],
+      images?: { name: string; base64: string; mimeType: string }[],
       files?: { name: string; content: string; mimeType: string }[],
       searchEnabled?: boolean
     ) => {
@@ -222,7 +222,7 @@ export const useMessageStore = create<MessageStore>()(
           hasUserPrompt: !!userPrompt,
           modelDbId,
           assistantDbId,
-          hasImageBase64s: !!imageBase64s?.length,
+          hasImages: !!images?.length,
           hasFiles: !!files?.length,
           searchEnabled,
         })
@@ -241,7 +241,7 @@ export const useMessageStore = create<MessageStore>()(
           modelDbId,
           assistantDbId,
           urlsToFetch,
-          imageBase64s,
+          images,
           files,
           searchEnabled,
         })

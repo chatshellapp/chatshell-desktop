@@ -624,9 +624,13 @@ export function ChatInput({}: ChatInputProps) {
         mimeType: file.mimeType || 'text/plain',
       }))
 
-      // Extract image base64 data
+      // Extract image attachments with filename
       const imageAttachments = attachments.filter((att) => att.type === 'image' && att.base64)
-      const imageBase64s = imageAttachments.map((img) => img.base64!)
+      const images = imageAttachments.map((img) => ({
+        name: img.name,
+        base64: img.base64!,
+        mimeType: img.mimeType || 'image/png',
+      }))
 
       console.log('Sending message:', {
         content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
@@ -643,7 +647,7 @@ export function ChatInput({}: ChatInputProps) {
         selectedModel: selectedModel?.name,
         modelToUse: modelToUse?.name,
         fileAttachmentsCount: files.length,
-        imageAttachmentsCount: imageAttachments.length,
+        imagesCount: images.length,
       })
 
       // Extract webpage URLs from attachments
@@ -662,7 +666,7 @@ export function ChatInput({}: ChatInputProps) {
         selectedAssistant ? undefined : modelToUse.id, // modelDbId - only send if not using assistant
         selectedAssistant?.id, // assistantDbId
         webpageUrls.length > 0 ? webpageUrls : undefined, // urlsToFetch
-        imageBase64s.length > 0 ? imageBase64s : undefined, // imageBase64s
+        images.length > 0 ? images : undefined, // images
         files.length > 0 ? files : undefined, // files
         webSearchEnabled // searchEnabled
       )
