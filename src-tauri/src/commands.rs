@@ -1283,8 +1283,8 @@ pub async fn send_message(
                     }
                     Err(e) => {
                         eprintln!("❌ [background_task] Search failed: {}", e);
-                        // Fall back to extracting URLs from content
-                        urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+                        // Fall back to explicitly provided URLs only (from webpage attachments)
+                        urls_to_fetch_clone.unwrap_or_default()
                     }
                 }
             } else {
@@ -1292,12 +1292,12 @@ pub async fn send_message(
                     "ℹ️ [background_task] AI decided search is NOT needed: {}",
                     decision.reasoning
                 );
-                // No search needed, use provided URLs or extract from content
-                urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+                // No search needed, use explicitly provided URLs only (from webpage attachments)
+                urls_to_fetch_clone.unwrap_or_default()
             }
         } else {
-            // Search not enabled, use provided URLs or extract from content
-            urls_to_fetch_clone.unwrap_or_else(|| web_fetch::extract_urls(&content))
+            // Search not enabled, use explicitly provided URLs only (from webpage attachments)
+            urls_to_fetch_clone.unwrap_or_default()
         };
 
         println!("🔍 [background_task] Processing {} URLs", urls.len());
