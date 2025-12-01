@@ -12,11 +12,13 @@ import {
   Settings2,
   Search,
   Package,
+  Upload,
 } from 'lucide-react'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -118,6 +120,45 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Supported file extensions
+const SUPPORTED_DOCUMENT_EXTENSIONS = [
+  'md',
+  'txt',
+  'json',
+  'js',
+  'ts',
+  'tsx',
+  'jsx',
+  'py',
+  'rs',
+  'go',
+  'java',
+  'c',
+  'cpp',
+  'h',
+  'css',
+  'html',
+  'xml',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'sh',
+  'bash',
+  'zsh',
+  'sql',
+]
+
+const SUPPORTED_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
+
+// Helper function to check if file type is supported
+function getFileType(fileName: string): 'document' | 'image' | 'unsupported' {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  if (SUPPORTED_IMAGE_EXTENSIONS.includes(ext)) return 'image'
+  if (SUPPORTED_DOCUMENT_EXTENSIONS.includes(ext)) return 'document'
+  return 'unsupported'
+}
+
 interface ChatInputProps {}
 
 // Helper function to get icon for attachment type
@@ -144,7 +185,10 @@ export function ChatInput({}: ChatInputProps) {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [artifactsEnabled, setArtifactsEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dropZoneRef = useRef<HTMLDivElement>(null)
+  const dragCounterRef = useRef(0)
 
   // Store hooks - use granular selectors to avoid unnecessary re-renders
   const currentConversation = useConversationStore((state) => state.currentConversation)
@@ -389,6 +433,116 @@ export function ChatInput({}: ChatInputProps) {
       }
     }
   }
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) {
+      setIsDraggingOver(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      dragCounterRef.current = 0
+      setIsDraggingOver(false)
+
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length === 0) return
+
+      const unsupportedFiles: string[] = []
+      const documentsToProcess: File[] = []
+      const imagesToProcess: File[] = []
+
+      // Categorize files
+      for (const file of files) {
+        const fileType = getFileType(file.name)
+        if (fileType === 'document') {
+          documentsToProcess.push(file)
+        } else if (fileType === 'image') {
+          imagesToProcess.push(file)
+        } else {
+          unsupportedFiles.push(file.name)
+        }
+      }
+
+      // Show error for unsupported files
+      if (unsupportedFiles.length > 0) {
+        const ext = unsupportedFiles[0].split('.').pop()?.toLowerCase() || 'unknown'
+        if (unsupportedFiles.length === 1) {
+          toast.error(`Unsupported file format: .${ext}`, {
+            description: 'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
+          })
+        } else {
+          toast.error(`${unsupportedFiles.length} unsupported files`, {
+            description: `Including: ${unsupportedFiles.slice(0, 3).join(', ')}${unsupportedFiles.length > 3 ? '...' : ''}`,
+          })
+        }
+      }
+
+      // Process documents
+      for (const file of documentsToProcess) {
+        try {
+          const content = await file.text()
+          const newAttachment: Attachment = {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: 'file',
+            name: file.name,
+            content,
+            mimeType: getMimeType(file.name),
+            size: content.length,
+          }
+          setAttachments((prev) => [...prev, newAttachment])
+        } catch (error) {
+          console.error('Failed to read file:', file.name, error)
+          toast.error(`Failed to read: ${file.name}`)
+        }
+      }
+
+      // Process images
+      for (const file of imagesToProcess) {
+        try {
+          const arrayBuffer = await file.arrayBuffer()
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          )
+          const mimeType = getImageMimeType(file.name)
+
+          const newAttachment: Attachment = {
+            id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: 'image',
+            name: file.name,
+            base64: `data:${mimeType};base64,${base64}`,
+            mimeType,
+            size: file.size,
+          }
+          setAttachments((prev) => [...prev, newAttachment])
+        } catch (error) {
+          console.error('Failed to read image:', file.name, error)
+          toast.error(`Failed to read image: ${file.name}`)
+        }
+      }
+    },
+    []
+  )
 
   const handleSend = async () => {
     console.log('handleSend called', {
@@ -720,7 +874,24 @@ export function ChatInput({}: ChatInputProps) {
   }, [assistants, getModelById])
 
   return (
-    <div className="grid w-full gap-6">
+    <div
+      ref={dropZoneRef}
+      className="grid w-full gap-6 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drop zone overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary rounded-lg">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <Upload className="size-8" />
+            <span className="text-sm font-medium">Drop files here</span>
+            <span className="text-xs text-muted-foreground">Documents or Images</span>
+          </div>
+        </div>
+      )}
       <InputGroup>
         {attachments.length > 0 && (
           <div className="order-first w-full flex flex-wrap gap-2 px-3 pt-3 pb-0">

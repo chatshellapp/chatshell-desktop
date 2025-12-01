@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { Toaster } from '@/components/ui/sonner'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useAppInit } from '@/hooks/useAppInit'
 
@@ -43,34 +44,37 @@ export function ChatPage() {
   }
 
   return (
-    <SidebarProvider
-      style={
-        {
-          '--sidebar-width': '350px',
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar />
-      <SidebarInset className="flex flex-col h-screen overflow-hidden">
-        <header className="bg-background flex shrink-0 items-center gap-2 border-b p-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">Conversations</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>
-                  {currentConversation?.title || 'Select a conversation'}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </header>
-        <ChatView />
-      </SidebarInset>
-    </SidebarProvider>
+    <>
+      <SidebarProvider
+        style={
+          {
+            '--sidebar-width': '350px',
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar />
+        <SidebarInset className="flex flex-col h-screen overflow-hidden">
+          <header className="bg-background flex shrink-0 items-center gap-2 border-b p-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#">Conversations</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>
+                    {currentConversation?.title || 'Select a conversation'}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </header>
+          <ChatView />
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster position="top-center" />
+    </>
   )
 }
