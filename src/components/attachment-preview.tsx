@@ -750,9 +750,7 @@ export function ThinkingPreview({
         />
 
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium">
-            {isStreaming ? 'Thinking...' : 'Thought process'}
-          </span>
+          {isStreaming ? 'Thinking...' : 'Thought process'}
         </span>
 
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
