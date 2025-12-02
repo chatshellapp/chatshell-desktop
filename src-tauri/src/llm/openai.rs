@@ -33,10 +33,9 @@ impl OpenAIRigProvider {
         );
 
         // Create OpenAI client with custom base URL
-        let client: openai::Client = openai::Client::builder()
-            .api_key(&self.api_key)
+        let client = openai::Client::builder(&self.api_key)
             .base_url(&self.base_url)
-            .build()?;
+            .build();
 
         // Get completion model
         let model = client.completion_model(&request.model);
