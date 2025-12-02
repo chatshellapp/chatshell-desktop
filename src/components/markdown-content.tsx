@@ -344,8 +344,12 @@ export function MarkdownContent({
       ul({ children }: any) {
         return <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>
       },
-      ol({ children }: any) {
-        return <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>
+      ol({ children, start }: any) {
+        return (
+          <ol className="list-decimal pl-5 mb-2 space-y-1" start={start}>
+            {children}
+          </ol>
+        )
       },
       li({ children }: any) {
         return <li className="pl-1">{children}</li>
