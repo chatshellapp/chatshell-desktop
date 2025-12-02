@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::client::Nothing;
 use rig::client::CompletionClient;
 use rig::providers::ollama;
 use tokio_util::sync::CancellationToken;
@@ -28,8 +29,11 @@ impl OllamaRigProvider {
             self.base_url
         );
 
-        // Create Ollama client with custom base URL
-        let client = ollama::Client::builder().base_url(&self.base_url).build();
+        // Create Ollama client with custom base URL (Ollama doesn't need API key)
+        let client: ollama::Client = ollama::Client::builder()
+            .api_key(Nothing)
+            .base_url(&self.base_url)
+            .build()?;
 
         // Get completion model
         let model = client.completion_model(&request.model);

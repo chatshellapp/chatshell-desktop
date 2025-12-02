@@ -56,7 +56,7 @@ lazy_static = "1.4"
 async-trait = "0.1"
 
 # LLM framework
-rig-core = "0.24"
+rig-core = "0.25"
 
 # Web scraping
 scraper = "0.18"
