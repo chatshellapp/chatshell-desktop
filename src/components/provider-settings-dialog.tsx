@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Search,
 } from 'lucide-react'
 import { useModelStore } from '@/stores/modelStore'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
@@ -125,6 +126,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   const [availableModels, setAvailableModels] = React.useState<ModelInfo[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [fetchError, setFetchError] = React.useState<string | null>(null)
+  const [modelSearchQuery, setModelSearchQuery] = React.useState('')
   const [isSaving, setIsSaving] = React.useState(false)
   const [existingProvider, setExistingProvider] = React.useState<Provider | null>(null)
   const [modelsToDelete, setModelsToDelete] = React.useState<string[]>([])
@@ -241,6 +243,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   }
 
   const handleOpenFetchModal = () => {
+    setModelSearchQuery('')
     setFetchModalOpen(true)
     handleFetchModels()
   }
@@ -392,10 +395,24 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     }
   }
 
+  // Filter models by search query
+  const filteredModels = React.useMemo(() => {
+    if (!modelSearchQuery.trim()) {
+      return availableModels
+    }
+    const query = modelSearchQuery.toLowerCase()
+    return availableModels.filter(
+      (model) =>
+        model.id.toLowerCase().includes(query) ||
+        model.name.toLowerCase().includes(query) ||
+        model.description?.toLowerCase().includes(query)
+    )
+  }, [availableModels, modelSearchQuery])
+
   // Group models by vendor/family
   const groupedModels = React.useMemo(() => {
     const groups: Record<string, ModelInfo[]> = {}
-    availableModels.forEach((model) => {
+    filteredModels.forEach((model) => {
       let groupName: string
 
       if (selectedProvider.id === 'openrouter') {
@@ -424,7 +441,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       })
 
     return sortedGroups
-  }, [availableModels, selectedProvider])
+  }, [filteredModels, selectedProvider])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -686,6 +703,19 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
             </DialogDescription>
           </div>
 
+          {/* Search Input */}
+          {!isLoading && !fetchError && availableModels.length > 0 && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search models..."
+                value={modelSearchQuery}
+                onChange={(e) => setModelSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center h-32">
@@ -700,6 +730,11 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
               </div>
             ) : availableModels.length > 0 ? (
               <div className="space-y-3">
+                {Object.keys(groupedModels).length === 0 && modelSearchQuery && (
+                  <div className="flex items-center justify-center h-32 text-muted-foreground">
+                    No models matching "{modelSearchQuery}"
+                  </div>
+                )}
                 {Object.entries(groupedModels).map(([groupName, groupModels]) => (
                   <Collapsible key={groupName} defaultOpen={Object.keys(groupedModels).length <= 5}>
                     <div className="rounded-md border">
@@ -724,11 +759,16 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                               {groupModels.map((model) => {
                                 const imported = isModelImported(model.id)
                                 return (
-                                  <TableRow key={model.id}>
+                                  <TableRow
+                                    key={model.id}
+                                    className="cursor-pointer hover:bg-accent/50"
+                                    onClick={() => handleToggleImportModel(model)}
+                                  >
                                     <TableCell className="w-[40px]">
                                       <Checkbox
                                         checked={imported}
                                         onCheckedChange={() => handleToggleImportModel(model)}
+                                        onClick={(e) => e.stopPropagation()}
                                       />
                                     </TableCell>
                                     <TableCell className="font-medium max-w-[200px]">
