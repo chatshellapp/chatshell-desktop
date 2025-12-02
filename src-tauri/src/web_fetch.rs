@@ -359,7 +359,7 @@ fn truncate_by_chars(s: &str, max_chars: usize) -> (String, bool) {
     }
 }
 
-/// Normalize HTML img tags to simple format for better html2md conversion
+/// Normalize HTML img tags to simple format for better htmd conversion
 /// Handles complex img tags with srcset, sizes, and other attributes
 /// Converts them to simple <img src="..." alt="..."> format
 fn normalize_html_images(html: &str) -> String {
@@ -477,7 +477,7 @@ fn process_html_with_readability(
     let normalized_html = normalize_html_images(&content_html);
 
     // Convert extracted HTML to markdown
-    let markdown = html2md::parse_html(&normalized_html);
+    let markdown = htmd::convert(&normalized_html).unwrap_or_default();
     let original_length = markdown.chars().count();
 
     let (extracted_content, truncated) = match max_chars {
