@@ -1413,12 +1413,48 @@ pub async fn send_message(
 
         // Process each result as it arrives from the channel
         while let Some(resource) = rx.recv().await {
-            // Generate storage path and save content to filesystem
-            let fetch_id = uuid::Uuid::now_v7().to_string();
-            let storage_path =
-                crate::storage::generate_fetch_storage_path(&fetch_id, &resource.content_format);
+            // Hash the converted content (markdown) for deduplication
+            let content_hash = crate::storage::hash_content(&resource.content);
 
-            // Save content to filesystem
+            // Check if we already have this content (deduplication)
+            if let Ok(Some(existing)) = state_clone.db.find_fetch_by_hash(&content_hash) {
+                println!(
+                    "♻️ [dedup] Reusing existing fetch content for {} (hash: {}...)",
+                    resource.url,
+                    &content_hash[..16]
+                );
+
+                // Link existing fetch_result to this message
+                if let Err(e) = state_clone.db.link_message_context(
+                    &user_message_id,
+                    ContextType::FetchResult,
+                    &existing.id,
+                    None,
+                ) {
+                    eprintln!("Failed to link existing fetch_result to message: {}", e);
+                }
+
+                // Emit attachment-update immediately so UI shows this result
+                let _ = app_clone.emit(
+                    "attachment-update",
+                    serde_json::json!({
+                        "message_id": user_message_id,
+                        "conversation_id": conversation_id_clone,
+                        "attachment_id": existing.id,
+                        "completed_url": resource.url,
+                    }),
+                );
+
+                attachment_ids.push(existing.id);
+                fetched_resources.push(resource);
+                continue;
+            }
+
+            // Generate storage path using content hash for deduplication
+            let storage_path =
+                crate::storage::generate_fetch_storage_path(&content_hash, &resource.content_format);
+
+            // Save content to filesystem (hash-based path)
             if let Err(e) =
                 crate::storage::write_content(&app_clone, &storage_path, &resource.content)
             {
@@ -1463,6 +1499,7 @@ pub async fn send_message(
                     original_size: resource.metadata.original_length.map(|l| l as i64),
                     processed_size: Some(content_size),
                     favicon_url: resource.metadata.favicon_url.clone(),
+                    content_hash: Some(content_hash.clone()),
                 }) {
                 Ok(fetch_result) => {
                     // Link fetch_result to message as context enrichment
@@ -1577,9 +1614,58 @@ pub async fn send_message(
             }
         }
 
-        // Store file attachments to filesystem and database
+        // Store file attachments to filesystem and database (with deduplication)
         for file in &user_files {
-            let file_id = uuid::Uuid::now_v7().to_string();
+            // Hash file content for deduplication
+            let content_hash = crate::storage::hash_content(&file.content);
+
+            // Check if we already have this content (deduplication)
+            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash) {
+                println!(
+                    "♻️ [dedup] Reusing existing file content for {} (hash: {}...)",
+                    file.name,
+                    &content_hash[..16]
+                );
+
+                // Create new file record pointing to existing storage
+                match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: file.name.clone(),
+                    file_size: file.content.len() as i64,
+                    mime_type: file.media_type.clone(),
+                    storage_path: existing.storage_path.clone(),
+                    content_hash: content_hash.clone(),
+                }) {
+                    Ok(file_attachment) => {
+                        // Link file to message (user attachment)
+                        if let Err(e) = state_clone.db.link_message_attachment(
+                            &user_message_id,
+                            UserAttachmentType::File,
+                            &file_attachment.id,
+                            None,
+                        ) {
+                            eprintln!("Failed to link file to message: {}", e);
+                        } else {
+                            println!(
+                                "📎 [background_task] Saved file attachment (dedup): {} -> {}",
+                                file.name, file_attachment.id
+                            );
+
+                            let _ = app_clone.emit(
+                                "attachment-update",
+                                serde_json::json!({
+                                    "message_id": user_message_id,
+                                    "conversation_id": conversation_id_clone,
+                                    "attachment_id": file_attachment.id,
+                                }),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create file record for {}: {}", file.name, e);
+                    }
+                }
+                continue;
+            }
 
             // Get extension from filename
             let ext = std::path::Path::new(&file.name)
@@ -1587,7 +1673,8 @@ pub async fn send_message(
                 .and_then(|e| e.to_str())
                 .unwrap_or("txt");
 
-            let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
+            // Generate storage path using content hash for deduplication
+            let storage_path = crate::storage::generate_file_storage_path(&content_hash, ext);
 
             // Write file content to filesystem
             if let Err(e) = crate::storage::write_content(&app_clone, &storage_path, &file.content)
@@ -1604,6 +1691,7 @@ pub async fn send_message(
                     file_size: file.content.len() as i64,
                     mime_type: file.media_type.clone(),
                     storage_path: storage_path.clone(),
+                    content_hash: content_hash.clone(),
                 }) {
                 Ok(file_attachment) => {
                     // Link file to message (user attachment)
@@ -1638,15 +1726,9 @@ pub async fn send_message(
             }
         }
 
-        // Store image attachments to filesystem and database
+        // Store image attachments to filesystem and database (with deduplication)
         for (file_name, img) in user_images.iter() {
-            let file_id = uuid::Uuid::now_v7().to_string();
-
-            // Get extension from mime type
-            let ext = crate::storage::get_extension_for_content_type(&img.media_type);
-            let storage_path = crate::storage::generate_file_storage_path(&file_id, ext);
-
-            // Decode base64 to bytes
+            // Decode base64 to bytes first (needed for hashing)
             let bytes = match base64::Engine::decode(
                 &base64::engine::general_purpose::STANDARD,
                 &img.base64,
@@ -1657,6 +1739,63 @@ pub async fn send_message(
                     continue;
                 }
             };
+
+            // Hash image bytes for deduplication
+            let content_hash = crate::storage::hash_bytes(&bytes);
+
+            // Check if we already have this image (deduplication)
+            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash) {
+                println!(
+                    "♻️ [dedup] Reusing existing image content for {} (hash: {}...)",
+                    file_name,
+                    &content_hash[..16]
+                );
+
+                // Create new file record pointing to existing storage
+                match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: file_name.clone(),
+                    file_size: bytes.len() as i64,
+                    mime_type: img.media_type.clone(),
+                    storage_path: existing.storage_path.clone(),
+                    content_hash: content_hash.clone(),
+                }) {
+                    Ok(file_attachment) => {
+                        // Link file (image) to message (user attachment)
+                        if let Err(e) = state_clone.db.link_message_attachment(
+                            &user_message_id,
+                            UserAttachmentType::File,
+                            &file_attachment.id,
+                            None,
+                        ) {
+                            eprintln!("Failed to link image to message: {}", e);
+                        } else {
+                            println!(
+                                "🖼️ [background_task] Saved image attachment (dedup): {} -> {}",
+                                file_name, file_attachment.id
+                            );
+
+                            let _ = app_clone.emit(
+                                "attachment-update",
+                                serde_json::json!({
+                                    "message_id": user_message_id,
+                                    "conversation_id": conversation_id_clone,
+                                    "attachment_id": file_attachment.id,
+                                }),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create file record for image {}: {}", file_name, e);
+                    }
+                }
+                continue;
+            }
+
+            // Get extension from mime type
+            let ext = crate::storage::get_extension_for_content_type(&img.media_type);
+
+            // Generate storage path using content hash for deduplication
+            let storage_path = crate::storage::generate_file_storage_path(&content_hash, ext);
 
             // Write image to filesystem
             if let Err(e) = crate::storage::write_binary(&app_clone, &storage_path, &bytes) {
@@ -1672,6 +1811,7 @@ pub async fn send_message(
                     file_size: bytes.len() as i64,
                     mime_type: img.media_type.clone(),
                     storage_path: storage_path.clone(),
+                    content_hash: content_hash.clone(),
                 }) {
                 Ok(file_attachment) => {
                     // Link file (image) to message (user attachment)

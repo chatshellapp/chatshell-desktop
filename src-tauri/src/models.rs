@@ -266,13 +266,15 @@ pub struct CreateMessageRequest {
 
 /// File attachment - stores metadata about a user-uploaded file
 /// Content is stored in filesystem at storage_path
+/// content_hash enables deduplication - same content shares storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAttachment {
     pub id: String,
     pub file_name: String,
     pub file_size: i64,
     pub mime_type: String,
-    pub storage_path: String, // Path relative to attachments dir: "files/{uuid}.pdf"
+    pub storage_path: String, // Path relative to attachments dir: "files/{hash}.pdf"
+    pub content_hash: String, // Blake3 hash of file content
     pub created_at: String,
 }
 
@@ -282,6 +284,7 @@ pub struct CreateFileAttachmentRequest {
     pub file_size: i64,
     pub mime_type: String,
     pub storage_path: String,
+    pub content_hash: String,
 }
 
 /// User link - stores URL explicitly shared by user (not from search)
@@ -379,6 +382,7 @@ pub struct CreateSearchResultRequest {
 /// Fetch result - stores metadata about a fetched web resource
 /// Content is stored in filesystem at storage_path
 /// source_type distinguishes between search-initiated and user-link fetches
+/// content_hash enables deduplication - same content shares storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchResult {
     pub id: String,
@@ -387,7 +391,7 @@ pub struct FetchResult {
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub storage_path: String, // Path relative to attachments dir: "fetch/{uuid}.md"
+    pub storage_path: String, // Path relative to attachments dir: "fetch/{hash}.md"
     pub content_type: String, // MIME type of stored content: "text/markdown", "text/plain"
     pub original_mime: Option<String>, // Original MIME type from HTTP response
     pub status: String,       // "pending" | "processing" | "success" | "failed"
@@ -397,6 +401,7 @@ pub struct FetchResult {
     pub original_size: Option<i64>,
     pub processed_size: Option<i64>,
     pub favicon_url: Option<String>,
+    pub content_hash: Option<String>, // Blake3 hash of stored content for deduplication
     pub created_at: String,
     pub updated_at: String,
 }
@@ -418,6 +423,7 @@ pub struct CreateFetchResultRequest {
     pub original_size: Option<i64>,
     pub processed_size: Option<i64>,
     pub favicon_url: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 /// Context enrichment type enum

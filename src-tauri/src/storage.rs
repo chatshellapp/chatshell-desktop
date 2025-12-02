@@ -3,6 +3,18 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
+// ========== Content Hashing (Blake3) ==========
+
+/// Hash binary content using Blake3 (for files, images)
+pub fn hash_bytes(data: &[u8]) -> String {
+    blake3::hash(data).to_hex().to_string()
+}
+
+/// Hash string content using Blake3 (for web pages, markdown)
+pub fn hash_content(content: &str) -> String {
+    blake3::hash(content.as_bytes()).to_hex().to_string()
+}
+
 /// Get the attachments directory path
 pub fn get_attachments_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
     let app_data_dir = app_handle
@@ -57,20 +69,22 @@ pub fn get_extension_for_content_type(content_type: &str) -> &'static str {
     }
 }
 
-/// Generate storage path for a fetch result
-pub fn generate_fetch_storage_path(id: &str, content_type: &str) -> String {
+/// Generate storage path for a fetch result using content hash for deduplication
+/// Uses hash as filename to enable content-based deduplication
+pub fn generate_fetch_storage_path(content_hash: &str, content_type: &str) -> String {
     let ext = get_extension_for_content_type(content_type);
-    format!("fetch/{}.{}", id, ext)
+    format!("fetch/{}.{}", content_hash, ext)
 }
 
-/// Generate storage path for a file attachment
-pub fn generate_file_storage_path(id: &str, original_ext: &str) -> String {
+/// Generate storage path for a file attachment using content hash for deduplication
+/// Uses hash as filename to enable content-based deduplication
+pub fn generate_file_storage_path(content_hash: &str, original_ext: &str) -> String {
     let ext = if original_ext.starts_with('.') {
         &original_ext[1..]
     } else {
         original_ext
     };
-    format!("files/{}.{}", id, ext)
+    format!("files/{}.{}", content_hash, ext)
 }
 
 /// Get full path for a storage path
@@ -167,6 +181,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_hash_bytes() {
+        let data = b"hello world";
+        let hash = hash_bytes(data);
+        // Blake3 produces 64-char hex string (256 bits)
+        assert_eq!(hash.len(), 64);
+        // Same input should produce same hash
+        assert_eq!(hash, hash_bytes(data));
+        // Different input should produce different hash
+        assert_ne!(hash, hash_bytes(b"hello world!"));
+    }
+
+    #[test]
+    fn test_hash_content() {
+        let content = "hello world";
+        let hash = hash_content(content);
+        assert_eq!(hash.len(), 64);
+        // Should be consistent with hash_bytes for same content
+        assert_eq!(hash, hash_bytes(content.as_bytes()));
+    }
+
+    #[test]
     fn test_get_extension_for_content_type() {
         assert_eq!(get_extension_for_content_type("text/markdown"), "md");
         assert_eq!(get_extension_for_content_type("text/plain"), "txt");
@@ -177,16 +212,18 @@ mod tests {
 
     #[test]
     fn test_generate_fetch_storage_path() {
-        let path = generate_fetch_storage_path("abc123", "text/markdown");
-        assert_eq!(path, "fetch/abc123.md");
+        let hash = "a1b2c3d4e5f6";
+        let path = generate_fetch_storage_path(hash, "text/markdown");
+        assert_eq!(path, "fetch/a1b2c3d4e5f6.md");
     }
 
     #[test]
     fn test_generate_file_storage_path() {
-        let path = generate_file_storage_path("xyz789", ".pdf");
-        assert_eq!(path, "files/xyz789.pdf");
+        let hash = "x1y2z3";
+        let path = generate_file_storage_path(hash, ".pdf");
+        assert_eq!(path, "files/x1y2z3.pdf");
 
-        let path2 = generate_file_storage_path("xyz789", "pdf");
-        assert_eq!(path2, "files/xyz789.pdf");
+        let path2 = generate_file_storage_path(hash, "pdf");
+        assert_eq!(path2, "files/x1y2z3.pdf");
     }
 }

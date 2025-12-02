@@ -267,6 +267,7 @@ impl Database {
 
         // Files table - stores user uploaded file metadata
         // Content is stored in filesystem at storage_path
+        // content_hash enables deduplication - same content shares storage
         conn.execute(
             "CREATE TABLE IF NOT EXISTS files (
                 id TEXT PRIMARY KEY,
@@ -274,8 +275,14 @@ impl Database {
                 file_size INTEGER NOT NULL,
                 mime_type TEXT NOT NULL,
                 storage_path TEXT NOT NULL,
+                content_hash TEXT,
                 created_at TEXT NOT NULL
             )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files(content_hash)",
             [],
         )?;
 
@@ -329,6 +336,7 @@ impl Database {
         // Fetch results table - stores fetched web resource metadata
         // Content is stored in filesystem at storage_path
         // source_type distinguishes between search-initiated and user-link fetches
+        // content_hash enables deduplication - same content shares storage
         conn.execute(
             "CREATE TABLE IF NOT EXISTS fetch_results (
                 id TEXT PRIMARY KEY,
@@ -347,6 +355,7 @@ impl Database {
                 original_size INTEGER,
                 processed_size INTEGER,
                 favicon_url TEXT,
+                content_hash TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )",
@@ -355,6 +364,11 @@ impl Database {
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_fetch_results_source ON fetch_results(source_type, source_id)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fetch_results_content_hash ON fetch_results(content_hash)",
             [],
         )?;
 
@@ -1626,8 +1640,8 @@ impl Database {
             conn.execute(
                 "INSERT INTO fetch_results 
                  (id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
-                  status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                  status, error, keywords, headings, original_size, processed_size, favicon_url, content_hash, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     id,
                     source_type,
@@ -1645,6 +1659,7 @@ impl Database {
                     req.original_size,
                     req.processed_size,
                     req.favicon_url,
+                    req.content_hash,
                     now,
                     now
                 ],
@@ -1658,7 +1673,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
-                    status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
+                    status, error, keywords, headings, original_size, processed_size, favicon_url, content_hash, created_at, updated_at
              FROM fetch_results WHERE id = ?1"
         )?;
 
@@ -1682,11 +1697,54 @@ impl Database {
                 original_size: row.get(13)?,
                 processed_size: row.get(14)?,
                 favicon_url: row.get(15)?,
-                created_at: row.get(16)?,
-                updated_at: row.get(17)?,
+                content_hash: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
             })
         })
         .map_err(|e| anyhow::anyhow!("Fetch result not found: {}", e))
+    }
+
+    /// Find fetch result by content hash (for deduplication)
+    pub fn find_fetch_by_hash(&self, content_hash: &str) -> Result<Option<FetchResult>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
+                    status, error, keywords, headings, original_size, processed_size, favicon_url, content_hash, created_at, updated_at
+             FROM fetch_results WHERE content_hash = ?1 LIMIT 1"
+        )?;
+
+        let result = stmt.query_row(params![content_hash], |row| {
+            Ok(FetchResult {
+                id: row.get(0)?,
+                source_type: row.get(1)?,
+                source_id: row.get(2)?,
+                url: row.get(3)?,
+                title: row.get(4)?,
+                description: row.get(5)?,
+                storage_path: row.get(6)?,
+                content_type: row.get(7)?,
+                original_mime: row.get(8)?,
+                status: row
+                    .get::<_, Option<String>>(9)?
+                    .unwrap_or_else(|| "pending".to_string()),
+                error: row.get(10)?,
+                keywords: row.get(11)?,
+                headings: row.get(12)?,
+                original_size: row.get(13)?,
+                processed_size: row.get(14)?,
+                favicon_url: row.get(15)?,
+                content_hash: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
+            })
+        });
+
+        match result {
+            Ok(fetch) => Ok(Some(fetch)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Database error: {}", e)),
+        }
     }
 
     pub fn get_fetch_results_by_source(
@@ -1697,7 +1755,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
-                    status, error, keywords, headings, original_size, processed_size, favicon_url, created_at, updated_at
+                    status, error, keywords, headings, original_size, processed_size, favicon_url, content_hash, created_at, updated_at
              FROM fetch_results WHERE source_type = ?1 AND source_id = ?2
              ORDER BY created_at"
         )?;
@@ -1723,8 +1781,9 @@ impl Database {
                     original_size: row.get(13)?,
                     processed_size: row.get(14)?,
                     favicon_url: row.get(15)?,
-                    created_at: row.get(16)?,
-                    updated_at: row.get(17)?,
+                    content_hash: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1805,14 +1864,15 @@ impl Database {
         {
             let conn = self.lock_conn()?;
             conn.execute(
-                "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, content_hash, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     id,
                     req.file_name,
                     req.file_size,
                     req.mime_type,
                     req.storage_path,
+                    req.content_hash,
                     now
                 ],
             )?;
@@ -1824,7 +1884,7 @@ impl Database {
     pub fn get_file_attachment(&self, id: &str) -> Result<FileAttachment> {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, file_name, file_size, mime_type, storage_path, created_at
+            "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
              FROM files WHERE id = ?1",
         )?;
 
@@ -1835,10 +1895,38 @@ impl Database {
                 file_size: row.get(2)?,
                 mime_type: row.get(3)?,
                 storage_path: row.get(4)?,
-                created_at: row.get(5)?,
+                content_hash: row.get(5)?,
+                created_at: row.get(6)?,
             })
         })
         .map_err(|e| anyhow::anyhow!("File attachment not found: {}", e))
+    }
+
+    /// Find file attachment by content hash (for deduplication)
+    pub fn find_file_by_hash(&self, content_hash: &str) -> Result<Option<FileAttachment>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
+             FROM files WHERE content_hash = ?1 LIMIT 1",
+        )?;
+
+        let result = stmt.query_row(params![content_hash], |row| {
+            Ok(FileAttachment {
+                id: row.get(0)?,
+                file_name: row.get(1)?,
+                file_size: row.get(2)?,
+                mime_type: row.get(3)?,
+                storage_path: row.get(4)?,
+                content_hash: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        });
+
+        match result {
+            Ok(attachment) => Ok(Some(attachment)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Database error: {}", e)),
+        }
     }
 
     pub fn delete_file_attachment(&self, id: &str) -> Result<()> {
