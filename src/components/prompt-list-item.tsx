@@ -60,7 +60,7 @@ export function PromptListItem({
   return (
     <Item
       className={cn(
-        'cursor-pointer hover:bg-accent/50 transition-colors relative pr-0',
+        'cursor-pointer hover:bg-accent/50 transition-colors',
         isActive && 'bg-accent',
         className
       )}
@@ -79,20 +79,24 @@ export function PromptListItem({
     >
       {/* Prompt info */}
       <ItemContent>
-        {/* First row: Name and Action buttons */}
-        <ItemHeader>
+        {/* First row: Name */}
+        <ItemHeader className="relative">
           <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            {/* Star button - show on hover */}
+          {/* Floating action overlay */}
+          <div
+            className={cn(
+              'absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity bg-accent rounded-md',
+              !isHovered && 'opacity-0 pointer-events-none'
+            )}
+          >
+            {/* Star button */}
             <Button
               variant="ghost"
               size="icon-sm"
               className={cn(
-                'size-7 transition-opacity',
-                isStarred && 'text-yellow-500 hover:text-yellow-600',
-                !isHovered && 'opacity-0'
+                'size-7',
+                isStarred && 'text-yellow-500 hover:text-yellow-600'
               )}
               onClick={(e) => {
                 e.stopPropagation()
@@ -102,13 +106,13 @@ export function PromptListItem({
               <Star className={cn('size-4', isStarred && 'fill-current')} />
             </Button>
 
-            {/* Menu button - only visible on hover */}
+            {/* Menu button */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn('size-7 transition-opacity', !isHovered && 'opacity-0')}
+                  className="size-7"
                   onClick={(e) => {
                     e.stopPropagation()
                   }}
