@@ -546,6 +546,12 @@ export interface ChatStreamEvent {
   content: string
 }
 
+// Event for streaming reasoning/thinking content (from models like GPT-5, Gemini with thinking)
+export interface ChatStreamReasoningEvent {
+  conversation_id: string
+  content: string
+}
+
 export interface ChatCompleteEvent {
   conversation_id: string
   message: Message

@@ -9,6 +9,8 @@ interface ConversationState {
   isLoading: boolean
   isStreaming: boolean
   streamingContent: string
+  // Streaming reasoning/thinking content from models like GPT-5, Gemini with thinking
+  streamingReasoningContent: string
   isWaitingForAI: boolean
   attachmentStatus: 'idle' | 'processing' | 'complete' | 'error'
   // Counter that increments to force attachment refresh
@@ -27,6 +29,7 @@ const createDefaultConversationState = (): ConversationState => ({
   isLoading: false,
   isStreaming: false,
   streamingContent: '',
+  streamingReasoningContent: '',
   isWaitingForAI: false,
   attachmentStatus: 'idle',
   attachmentRefreshKey: 0,
@@ -82,6 +85,7 @@ interface MessageStore {
   markUrlFetched: (conversationId: string, messageId: string, url: string) => void
   clearUrlStatuses: (conversationId: string, messageId: string) => void
   appendStreamingChunk: (conversationId: string, chunk: string) => void
+  appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
   setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
   setApiError: (conversationId: string, error: string | null) => void
@@ -95,6 +99,11 @@ const pendingChunks: Map<string, string[]> = new Map()
 const updateScheduled: Map<string, boolean> = new Map()
 const updateTimeoutIds: Map<string, NodeJS.Timeout> = new Map()
 const THROTTLE_MS = 50 // Update UI every 50ms for smooth rendering
+
+// Separate throttling for reasoning content
+const pendingReasoningChunks: Map<string, string[]> = new Map()
+const reasoningUpdateScheduled: Map<string, boolean> = new Map()
+const reasoningUpdateTimeoutIds: Map<string, NodeJS.Timeout> = new Map()
 
 // Maximum messages to keep in memory to prevent memory leaks
 const MAX_MESSAGES_IN_MEMORY = 100
@@ -199,7 +208,7 @@ export const useMessageStore = create<MessageStore>()(
           }
         }
 
-        // Set waiting state for this conversation
+        // Set waiting state for this conversation and clear previous streaming content
         get().getConversationState(targetId) // Ensure state exists
         set((draft) => {
           const convState = draft.conversationStates[targetId]
@@ -207,6 +216,7 @@ export const useMessageStore = create<MessageStore>()(
             convState.isStreaming = true
             convState.isWaitingForAI = true
             convState.streamingContent = ''
+            convState.streamingReasoningContent = '' // Clear previous reasoning content
           }
         })
 
@@ -356,6 +366,10 @@ export const useMessageStore = create<MessageStore>()(
         const convState = draft.conversationStates[conversationId]
         if (convState) {
           convState.streamingContent = content
+          // When clearing streaming content, also clear reasoning content
+          if (content === '') {
+            convState.streamingReasoningContent = ''
+          }
         }
       })
     },
@@ -472,6 +486,48 @@ export const useMessageStore = create<MessageStore>()(
       }
     },
 
+    appendStreamingReasoningChunk: (conversationId: string, chunk: string) => {
+      // Initialize arrays for this conversation if needed
+      if (!pendingReasoningChunks.has(conversationId)) {
+        pendingReasoningChunks.set(conversationId, [])
+      }
+      if (!reasoningUpdateScheduled.has(conversationId)) {
+        reasoningUpdateScheduled.set(conversationId, false)
+      }
+
+      pendingReasoningChunks.get(conversationId)!.push(chunk)
+
+      if (!reasoningUpdateScheduled.get(conversationId)) {
+        reasoningUpdateScheduled.set(conversationId, true)
+
+        // Clear any existing timeout to prevent leaks
+        const existingTimeout = reasoningUpdateTimeoutIds.get(conversationId)
+        if (existingTimeout !== undefined) {
+          clearTimeout(existingTimeout)
+        }
+
+        // Use setTimeout for consistent throttling
+        const timeoutId = setTimeout(() => {
+          get().getConversationState(conversationId) // Ensure state exists
+          const chunks = pendingReasoningChunks.get(conversationId) || []
+          const allChunks = chunks.join('')
+          pendingReasoningChunks.set(conversationId, [])
+          reasoningUpdateScheduled.set(conversationId, false)
+          reasoningUpdateTimeoutIds.delete(conversationId)
+
+          set((draft) => {
+            const convState = draft.conversationStates[conversationId]
+            if (convState) {
+              convState.streamingReasoningContent = convState.streamingReasoningContent + allChunks
+              convState.isWaitingForAI = false
+            }
+          })
+        }, THROTTLE_MS)
+
+        reasoningUpdateTimeoutIds.set(conversationId, timeoutId)
+      }
+    },
+
     setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => {
       get().getConversationState(conversationId) // Ensure state exists
       set((draft) => {
@@ -521,16 +577,25 @@ export const useMessageStore = create<MessageStore>()(
     },
 
     cleanupConversation: (conversationId: string) => {
-      // Clear any pending timeouts for this conversation
+      // Clear any pending timeouts for this conversation (text)
       const timeoutId = updateTimeoutIds.get(conversationId)
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId)
         updateTimeoutIds.delete(conversationId)
       }
 
+      // Clear any pending timeouts for reasoning
+      const reasoningTimeoutId = reasoningUpdateTimeoutIds.get(conversationId)
+      if (reasoningTimeoutId !== undefined) {
+        clearTimeout(reasoningTimeoutId)
+        reasoningUpdateTimeoutIds.delete(conversationId)
+      }
+
       // Clear pending chunks
       pendingChunks.delete(conversationId)
       updateScheduled.delete(conversationId)
+      pendingReasoningChunks.delete(conversationId)
+      reasoningUpdateScheduled.delete(conversationId)
 
       // Reset streaming state for this conversation
       get().getConversationState(conversationId) // Ensure state exists
@@ -538,6 +603,7 @@ export const useMessageStore = create<MessageStore>()(
         const convState = draft.conversationStates[conversationId]
         if (convState) {
           convState.streamingContent = ''
+          convState.streamingReasoningContent = ''
           convState.isStreaming = false
           convState.isWaitingForAI = false
           convState.attachmentStatus = 'idle'
@@ -546,16 +612,25 @@ export const useMessageStore = create<MessageStore>()(
     },
 
     removeConversationState: (conversationId: string) => {
-      // Clear any pending timeouts for this conversation
+      // Clear any pending timeouts for this conversation (text)
       const timeoutId = updateTimeoutIds.get(conversationId)
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId)
         updateTimeoutIds.delete(conversationId)
       }
 
+      // Clear any pending timeouts for reasoning
+      const reasoningTimeoutId = reasoningUpdateTimeoutIds.get(conversationId)
+      if (reasoningTimeoutId !== undefined) {
+        clearTimeout(reasoningTimeoutId)
+        reasoningUpdateTimeoutIds.delete(conversationId)
+      }
+
       // Clear pending chunks
       pendingChunks.delete(conversationId)
       updateScheduled.delete(conversationId)
+      pendingReasoningChunks.delete(conversationId)
+      reasoningUpdateScheduled.delete(conversationId)
 
       // Completely remove conversation state from memory
       set((draft) => {

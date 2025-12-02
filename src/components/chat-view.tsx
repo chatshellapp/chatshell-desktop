@@ -127,6 +127,8 @@ export function ChatView() {
   const messages = conversationState?.messages || []
   const isStreaming = conversationState?.isStreaming || false
   const streamingContent = conversationState?.streamingContent || ''
+  // Streaming reasoning content from API (GPT-5, Gemini with thinking)
+  const streamingReasoningContent = conversationState?.streamingReasoningContent || ''
   const attachmentStatus = conversationState?.attachmentStatus || 'idle'
   const attachmentRefreshKey = conversationState?.attachmentRefreshKey || 0
   const isWaitingForAI = conversationState?.isWaitingForAI || false
@@ -622,14 +624,25 @@ export function ChatView() {
                 </div>
               )
             })}
-            {(isWaitingForAI || (isStreaming && streamingContent && !isWaitingForAI)) &&
+            {(isWaitingForAI ||
+              (isStreaming &&
+                (streamingContent || streamingReasoningContent) &&
+                !isWaitingForAI)) &&
               (() => {
                 const info = getDisplayInfo()
 
-                // Parse thinking content from streaming output
+                // Parse thinking content from streaming output (XML tags like <think>)
                 const parsedStreaming = isWaitingForAI
                   ? { content: '', thinkingContent: null, isThinkingInProgress: false }
                   : parseThinkingContent(streamingContent)
+
+                // Combine API-provided reasoning (GPT-5, Gemini) with XML-parsed thinking
+                // API reasoning takes precedence as it's the native format for reasoning models
+                const combinedThinkingContent =
+                  streamingReasoningContent || parsedStreaming.thinkingContent
+                const isThinkingInProgress = streamingReasoningContent
+                  ? isStreaming // If we have API reasoning, it's in progress while streaming
+                  : parsedStreaming.isThinkingInProgress
 
                 // Get the last user message to show its resources
                 const lastUserMessage = messages
@@ -660,9 +673,19 @@ export function ChatView() {
                   : false
                 const hasAssistantResources =
                   searchResultContexts.length > 0 || searchDecisionSteps.length > 0
-                const hasStreamingThinking = parsedStreaming.thinkingContent !== null
+                const hasStreamingThinking = combinedThinkingContent !== null
 
-                if (hasAssistantResources || hasPendingDecision || hasStreamingThinking) {
+                // Show thinking placeholder while waiting for AI (before any content arrives)
+                // This provides visual feedback that reasoning models (GPT-5, o1, etc.) are thinking
+                // Note: OpenAI reasoning models don't stream thinking incrementally - it arrives all at once after completion
+                const showThinkingPlaceholder = isWaitingForAI && !hasPendingDecision
+
+                if (
+                  hasAssistantResources ||
+                  hasPendingDecision ||
+                  hasStreamingThinking ||
+                  showThinkingPlaceholder
+                ) {
                   streamingHeaderContent = (
                     <div className="space-y-1.5 mb-2">
                       {/* Show pending search decision preview */}
@@ -683,11 +706,11 @@ export function ChatView() {
                           }
                         />
                       ))}
-                      {/* Show streaming thinking content */}
-                      {parsedStreaming.thinkingContent && (
+                      {/* Show thinking placeholder while waiting, or actual content when available */}
+                      {(showThinkingPlaceholder || combinedThinkingContent) && (
                         <ThinkingPreview
-                          content={parsedStreaming.thinkingContent}
-                          isStreaming={parsedStreaming.isThinkingInProgress}
+                          content={combinedThinkingContent || ''}
+                          isStreaming={showThinkingPlaceholder || isThinkingInProgress}
                         />
                       )}
                     </div>

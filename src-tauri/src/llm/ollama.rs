@@ -3,7 +3,7 @@ use rig::client::CompletionClient;
 use rig::providers::ollama;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::common::chat_stream_common;
+use crate::llm::common::{StreamChunkType, chat_stream_common};
 use crate::llm::{ChatRequest, ChatResponse};
 
 pub struct OllamaRigProvider {
@@ -21,7 +21,7 @@ impl OllamaRigProvider {
         &self,
         request: ChatRequest,
         cancel_token: CancellationToken,
-        callback: impl FnMut(String) -> bool + Send,
+        callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     ) -> Result<ChatResponse> {
         println!(
             "🌐 [ollama] Creating client with base_url: {}",

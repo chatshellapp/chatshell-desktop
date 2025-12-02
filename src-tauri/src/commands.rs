@@ -1,6 +1,6 @@
 use crate::crypto;
 use crate::db::Database;
-use crate::llm::{self, ChatMessage};
+use crate::llm::{self, ChatMessage, StreamChunkType};
 use crate::models::*;
 use crate::prompts;
 use crate::web_fetch;
@@ -705,7 +705,9 @@ async fn handle_provider_streaming(
 
     // Track accumulated content for cancellation handling
     let accumulated_content = Arc::new(RwLock::new(String::new()));
+    let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
     let accumulated_content_clone = accumulated_content.clone();
+    let accumulated_reasoning_clone = accumulated_reasoning.clone();
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
@@ -727,23 +729,39 @@ async fn handle_provider_streaming(
                 .chat_stream(
                     request,
                     cancel_token.clone(),
-                    move |chunk: String| -> bool {
+                    move |chunk: String, chunk_type: StreamChunkType| -> bool {
                         // Check if cancelled
                         if cancel_token_for_callback.is_cancelled() {
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
 
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
+                        match chunk_type {
+                            StreamChunkType::Text => {
+                                // Accumulate text content
+                                if let Ok(mut content) = accumulated_content_clone.try_write() {
+                                    content.push_str(&chunk);
+                                }
 
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream", payload);
+                            }
+                            StreamChunkType::Reasoning => {
+                                // Accumulate reasoning content
+                                if let Ok(mut reasoning) = accumulated_reasoning_clone.try_write() {
+                                    reasoning.push_str(&chunk);
+                                }
+
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream-reasoning", payload);
+                            }
+                        }
 
                         true // Continue streaming
                     },
@@ -760,29 +778,50 @@ async fn handle_provider_streaming(
                     return;
                 }
             };
+            let accumulated_content_clone = accumulated_content.clone();
+            let accumulated_reasoning_clone = accumulated_reasoning.clone();
+            let conversation_id_for_stream = conversation_id_clone.clone();
+            let app_for_stream = app.clone();
+            let cancel_token_for_callback = cancel_token.clone();
             let provider =
                 llm::openrouter::OpenRouterRigProvider::new(api_key_val, base_url.clone());
             provider
                 .chat_stream(
                     request,
                     cancel_token.clone(),
-                    move |chunk: String| -> bool {
+                    move |chunk: String, chunk_type: StreamChunkType| -> bool {
                         // Check if cancelled
                         if cancel_token_for_callback.is_cancelled() {
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
 
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
+                        match chunk_type {
+                            StreamChunkType::Text => {
+                                // Accumulate text content
+                                if let Ok(mut content) = accumulated_content_clone.try_write() {
+                                    content.push_str(&chunk);
+                                }
 
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream", payload);
+                            }
+                            StreamChunkType::Reasoning => {
+                                // Accumulate reasoning content
+                                if let Ok(mut reasoning) = accumulated_reasoning_clone.try_write() {
+                                    reasoning.push_str(&chunk);
+                                }
+
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream-reasoning", payload);
+                            }
+                        }
 
                         true // Continue streaming
                     },
@@ -790,28 +829,49 @@ async fn handle_provider_streaming(
                 .await
         }
         "ollama" => {
+            let accumulated_content_clone = accumulated_content.clone();
+            let accumulated_reasoning_clone = accumulated_reasoning.clone();
+            let conversation_id_for_stream = conversation_id_clone.clone();
+            let app_for_stream = app.clone();
+            let cancel_token_for_callback = cancel_token.clone();
             let provider = llm::ollama::OllamaRigProvider::new(base_url.clone());
             provider
                 .chat_stream(
                     request,
                     cancel_token.clone(),
-                    move |chunk: String| -> bool {
+                    move |chunk: String, chunk_type: StreamChunkType| -> bool {
                         // Check if cancelled
                         if cancel_token_for_callback.is_cancelled() {
                             println!("🛑 [streaming] Generation cancelled, stopping stream");
                             return false;
                         }
 
-                        // Accumulate content
-                        if let Ok(mut content) = accumulated_content_clone.try_write() {
-                            content.push_str(&chunk);
-                        }
+                        match chunk_type {
+                            StreamChunkType::Text => {
+                                // Accumulate text content
+                                if let Ok(mut content) = accumulated_content_clone.try_write() {
+                                    content.push_str(&chunk);
+                                }
 
-                        let payload = serde_json::json!({
-                            "conversation_id": conversation_id_for_stream,
-                            "content": chunk,
-                        });
-                        let _ = app_for_stream.emit("chat-stream", payload);
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream", payload);
+                            }
+                            StreamChunkType::Reasoning => {
+                                // Accumulate reasoning content
+                                if let Ok(mut reasoning) = accumulated_reasoning_clone.try_write() {
+                                    reasoning.push_str(&chunk);
+                                }
+
+                                let payload = serde_json::json!({
+                                    "conversation_id": conversation_id_for_stream,
+                                    "content": chunk,
+                                });
+                                let _ = app_for_stream.emit("chat-stream-reasoning", payload);
+                            }
+                        }
 
                         true // Continue streaming
                     },
@@ -1451,8 +1511,10 @@ pub async fn send_message(
             }
 
             // Generate storage path using content hash for deduplication
-            let storage_path =
-                crate::storage::generate_fetch_storage_path(&content_hash, &resource.content_format);
+            let storage_path = crate::storage::generate_fetch_storage_path(
+                &content_hash,
+                &resource.content_format,
+            );
 
             // Save content to filesystem (hash-based path)
             if let Err(e) =
@@ -1628,13 +1690,15 @@ pub async fn send_message(
                 );
 
                 // Create new file record pointing to existing storage
-                match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
-                    file_name: file.name.clone(),
-                    file_size: file.content.len() as i64,
-                    mime_type: file.media_type.clone(),
-                    storage_path: existing.storage_path.clone(),
-                    content_hash: content_hash.clone(),
-                }) {
+                match state_clone
+                    .db
+                    .create_file_attachment(CreateFileAttachmentRequest {
+                        file_name: file.name.clone(),
+                        file_size: file.content.len() as i64,
+                        mime_type: file.media_type.clone(),
+                        storage_path: existing.storage_path.clone(),
+                        content_hash: content_hash.clone(),
+                    }) {
                     Ok(file_attachment) => {
                         // Link file to message (user attachment)
                         if let Err(e) = state_clone.db.link_message_attachment(
@@ -1752,13 +1816,15 @@ pub async fn send_message(
                 );
 
                 // Create new file record pointing to existing storage
-                match state_clone.db.create_file_attachment(CreateFileAttachmentRequest {
-                    file_name: file_name.clone(),
-                    file_size: bytes.len() as i64,
-                    mime_type: img.media_type.clone(),
-                    storage_path: existing.storage_path.clone(),
-                    content_hash: content_hash.clone(),
-                }) {
+                match state_clone
+                    .db
+                    .create_file_attachment(CreateFileAttachmentRequest {
+                        file_name: file_name.clone(),
+                        file_size: bytes.len() as i64,
+                        mime_type: img.media_type.clone(),
+                        storage_path: existing.storage_path.clone(),
+                        content_hash: content_hash.clone(),
+                    }) {
                     Ok(file_attachment) => {
                         // Link file (image) to message (user attachment)
                         if let Err(e) = state_clone.db.link_message_attachment(
@@ -1785,7 +1851,10 @@ pub async fn send_message(
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to create file record for image {}: {}", file_name, e);
+                        eprintln!(
+                            "Failed to create file record for image {}: {}",
+                            file_name, e
+                        );
                     }
                 }
                 continue;

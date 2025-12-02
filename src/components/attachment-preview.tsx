@@ -1029,7 +1029,11 @@ export function ThinkingPreview({
       {isExpanded && (
         <div className="border-t border-muted px-3 py-3 max-h-80 overflow-y-auto">
           <div className="text-sm text-muted-foreground/80 leading-relaxed whitespace-pre-wrap">
-            <MarkdownContent content={content} className="text-sm" />
+            {content ? (
+              <MarkdownContent content={content} className="text-sm" />
+            ) : isStreaming ? (
+              <span className="text-muted-foreground/60 italic">Processing...</span>
+            ) : null}
           </div>
         </div>
       )}

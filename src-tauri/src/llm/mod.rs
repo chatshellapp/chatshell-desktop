@@ -4,6 +4,8 @@ pub mod ollama;
 pub mod openai;
 pub mod openrouter;
 
+pub use common::StreamChunkType;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -74,17 +76,23 @@ pub async fn call_provider(
         "openai" => {
             let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
             let provider = openai::OpenAIRigProvider::new(api_key_val, base_url);
-            provider.chat_stream(request, cancel_token, |_| true).await
+            provider
+                .chat_stream(request, cancel_token, |_, _| true)
+                .await
         }
         "openrouter" => {
             let api_key_val =
                 api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
             let provider = openrouter::OpenRouterRigProvider::new(api_key_val, base_url);
-            provider.chat_stream(request, cancel_token, |_| true).await
+            provider
+                .chat_stream(request, cancel_token, |_, _| true)
+                .await
         }
         "ollama" => {
             let provider = ollama::OllamaRigProvider::new(base_url);
-            provider.chat_stream(request, cancel_token, |_| true).await
+            provider
+                .chat_stream(request, cancel_token, |_, _| true)
+                .await
         }
         _ => Err(anyhow::anyhow!(
             "Unknown provider: {}. Use openai, openrouter, or ollama",

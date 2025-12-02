@@ -4,6 +4,7 @@ import { useMessageStore } from '@/stores/messageStore'
 import { useConversationStore } from '@/stores/conversationStore'
 import type {
   ChatStreamEvent,
+  ChatStreamReasoningEvent,
   ChatCompleteEvent,
   ChatErrorEvent,
   AttachmentProcessingStartedEvent,
@@ -39,6 +40,11 @@ export function useChatEvents(conversationId: string | null) {
   const handleStreamChunk = useCallback((convId: string, chunk: string) => {
     console.log('[useChatEvents] Appending chunk to conversation:', convId)
     useMessageStore.getState().appendStreamingChunk(convId, chunk)
+  }, [])
+
+  const handleStreamReasoningChunk = useCallback((convId: string, chunk: string) => {
+    console.log('[useChatEvents] Appending reasoning chunk to conversation:', convId)
+    useMessageStore.getState().appendStreamingReasoningChunk(convId, chunk)
   }, [])
 
   const handleChatComplete = useCallback((convId: string, message: any) => {
@@ -161,6 +167,15 @@ export function useChatEvents(conversationId: string | null) {
       handleStreamChunk(event.payload.conversation_id, event.payload.content)
     })
 
+    // Listen for streaming reasoning/thinking content (from models like GPT-5, Gemini)
+    const unlistenStreamReasoning = listen<ChatStreamReasoningEvent>(
+      'chat-stream-reasoning',
+      (event) => {
+        console.log('[useChatEvents] Received chat-stream-reasoning event:', event.payload)
+        handleStreamReasoningChunk(event.payload.conversation_id, event.payload.content)
+      }
+    )
+
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
       console.log('[useChatEvents] Received chat-complete event:', event.payload)
@@ -247,6 +262,7 @@ export function useChatEvents(conversationId: string | null) {
     return () => {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
       unlistenStream.then((fn) => fn())
+      unlistenStreamReasoning.then((fn) => fn())
       unlistenComplete.then((fn) => fn())
       unlistenChatError.then((fn) => fn())
       unlistenAttachmentStarted.then((fn) => fn())
@@ -260,6 +276,7 @@ export function useChatEvents(conversationId: string | null) {
   }, [
     conversationId,
     handleStreamChunk,
+    handleStreamReasoningChunk,
     handleChatComplete,
     handleChatError,
     handleAttachmentProcessingStarted,

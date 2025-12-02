@@ -133,11 +133,7 @@ export const ChatMessage = memo(function ChatMessage({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
-                  {isCopied ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
+                  {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -212,11 +208,7 @@ export const ChatMessage = memo(function ChatMessage({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
-                {isCopied ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
+                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </Button>
             </TooltipTrigger>
             <TooltipContent>

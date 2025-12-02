@@ -4,13 +4,20 @@ use rig::OneOrMany;
 use rig::completion::{CompletionModel, CompletionRequest, Message};
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
-    UserContent,
+    Reasoning, UserContent,
 };
 use rig::streaming::StreamedAssistantContent;
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::{ChatRequest, ChatResponse, FileData, ImageData};
 use crate::thinking_parser;
+
+/// Type of streamed chunk for callback
+#[derive(Debug, Clone)]
+pub enum StreamChunkType {
+    Text,
+    Reasoning,
+}
 
 /// Convert MIME type string to rig's ImageMediaType
 fn mime_to_image_media_type(mime: &str) -> Option<ImageMediaType> {
@@ -85,11 +92,12 @@ fn build_user_content(
 
 /// Common streaming handler for all LLM providers
 /// This eliminates code duplication across openai, openrouter, and ollama
+/// The callback receives (content, chunk_type) where chunk_type indicates text or reasoning
 pub async fn chat_stream_common<M: CompletionModel>(
     model: M,
     request: ChatRequest,
     cancel_token: CancellationToken,
-    mut callback: impl FnMut(String) -> bool + Send,
+    mut callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     log_prefix: &str,
 ) -> Result<ChatResponse> {
     println!("🤖 [{}] Model created: {}", log_prefix, request.model);
@@ -163,6 +171,7 @@ pub async fn chat_stream_common<M: CompletionModel>(
     let mut stream = model.stream(completion_request).await?;
 
     let mut full_content = String::new();
+    let mut full_reasoning = String::new();
     let mut cancelled = false;
     let mut consecutive_errors = 0;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
@@ -186,7 +195,28 @@ pub async fn chat_stream_common<M: CompletionModel>(
                     full_content.push_str(text_str);
 
                     // Call callback and check if it signals cancellation
-                    if !callback(text_str.to_string()) {
+                    if !callback(text_str.to_string(), StreamChunkType::Text) {
+                        println!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                        cancelled = true;
+                        break;
+                    }
+                }
+            }
+            Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning, .. })) => {
+                consecutive_errors = 0; // Reset error counter on successful chunk
+                // reasoning is a Vec<String>, join into single string
+                let reasoning_text = reasoning.join("");
+                if !reasoning_text.is_empty() {
+                    full_reasoning.push_str(&reasoning_text);
+
+                    println!(
+                        "🧠 [{}] Received reasoning chunk: {} chars",
+                        log_prefix,
+                        reasoning_text.len()
+                    );
+
+                    // Call callback with reasoning type
+                    if !callback(reasoning_text, StreamChunkType::Reasoning) {
                         println!("🛑 [{}] Callback signaled cancellation", log_prefix);
                         cancelled = true;
                         break;
@@ -195,7 +225,7 @@ pub async fn chat_stream_common<M: CompletionModel>(
             }
             Ok(_) => {
                 consecutive_errors = 0; // Reset error counter on any successful response
-                // Ignore tool calls, reasoning, and final responses
+                // Ignore tool calls and final responses
             }
             Err(e) => {
                 consecutive_errors += 1;
@@ -248,19 +278,30 @@ pub async fn chat_stream_common<M: CompletionModel>(
         println!("✅ [{}] Stream completed successfully", log_prefix);
     }
 
-    // Parse thinking content
+    // Parse thinking content from XML tags in the text
     let parsed = thinking_parser::parse_thinking_content(&full_content);
 
+    // Combine API-provided reasoning with XML-parsed thinking content
+    // Prioritize API-provided reasoning (from models like GPT-5, Gemini) over XML tags
+    let final_thinking = if !full_reasoning.is_empty() {
+        // Use API-provided reasoning content
+        Some(full_reasoning.trim().to_string())
+    } else {
+        // Fall back to XML-parsed thinking content
+        parsed.thinking_content
+    };
+
     println!(
-        "📊 [{}] Parsed content: {} chars, thinking: {}",
+        "📊 [{}] Parsed content: {} chars, API reasoning: {} chars, final thinking: {}",
         log_prefix,
         parsed.content.len(),
-        parsed.thinking_content.is_some()
+        full_reasoning.len(),
+        final_thinking.is_some()
     );
 
     Ok(ChatResponse {
         content: parsed.content,
-        thinking_content: parsed.thinking_content,
+        thinking_content: final_thinking,
         tokens: None,
     })
 }
