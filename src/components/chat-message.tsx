@@ -6,8 +6,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, Languages, Undo, Scan } from 'lucide-react'
-import { useState, memo } from 'react'
+import { Copy, Languages, Undo, Scan, Check } from 'lucide-react'
+import { useState, memo, useCallback } from 'react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { ModelAvatar } from '@/components/model-avatar'
 import { AssistantAvatar } from '@/components/assistant-avatar'
@@ -79,6 +79,7 @@ export const ChatMessage = memo(function ChatMessage({
   onExportMessage,
 }: ChatMessageProps) {
   const [isExportOpen, setIsExportOpen] = useState(false)
+  const [isCopied, setIsCopied] = useState(false)
 
   // Render the appropriate avatar based on sender type
   const renderAvatar = () => {
@@ -100,10 +101,12 @@ export const ChatMessage = memo(function ChatMessage({
     return <ModelAvatar logo={modelLogo} name={modelName} size="xs" />
   }
 
-  const handleCopy = () => {
+  const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content)
+    setIsCopied(true)
+    setTimeout(() => setIsCopied(false), 2000)
     onCopy?.()
-  }
+  }, [content, onCopy])
 
   if (role === 'user') {
     const alignClass = userMessageAlign === 'right' ? 'justify-end' : 'justify-start'
@@ -130,11 +133,15 @@ export const ChatMessage = memo(function ChatMessage({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
-                  <Copy className="h-3.5 w-3.5" />
+                  {isCopied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Copy</p>
+                <p>{isCopied ? 'Copied!' : 'Copy'}</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -205,11 +212,15 @@ export const ChatMessage = memo(function ChatMessage({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
-                <Copy className="h-3.5 w-3.5" />
+                {isCopied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Copy</p>
+              <p>{isCopied ? 'Copied!' : 'Copy'}</p>
             </TooltipContent>
           </Tooltip>
           <Tooltip>
