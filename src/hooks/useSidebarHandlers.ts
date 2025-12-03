@@ -174,23 +174,14 @@ export function useSidebarHandlers() {
   )
 
   const handleEditTitle = useCallback(
-    async (conversationId: string) => {
-      const conversation = conversations.find((c) => c.id === conversationId)
-      if (!conversation) return
-
-      const newTitle = prompt('Edit conversation title:', conversation.title)
-      if (newTitle && newTitle !== conversation.title) {
-        try {
-          await updateConversation(conversationId, newTitle)
-        } catch (error) {
-          console.error('Failed to update title:', error)
-          alert(
-            `Failed to update title: ${error instanceof Error ? error.message : String(error)}`
-          )
-        }
+    async (conversationId: string, newTitle: string) => {
+      try {
+        await updateConversation(conversationId, newTitle)
+      } catch (error) {
+        console.error('Failed to update title:', error)
       }
     },
-    [conversations, updateConversation]
+    [updateConversation]
   )
 
   const handleDeleteConversation = useCallback(

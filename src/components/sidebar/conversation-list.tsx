@@ -9,7 +9,7 @@ interface ConversationListProps {
   conversationParticipantsMap: Map<string, ParticipantSummary[]>
   onConversationClick: (conversationId: string) => void
   onGenerateTitle?: (conversationId: string) => void
-  onEditTitle?: (conversationId: string) => void
+  onEditTitle?: (conversationId: string, newTitle: string) => void
   onDelete?: (conversationId: string) => void
 }
 
@@ -64,7 +64,9 @@ export function ConversationList({
             isActive={currentConversation?.id === conversation.id}
             onClick={() => onConversationClick(conversation.id)}
             onGenerateTitle={onGenerateTitle ? () => onGenerateTitle(conversation.id) : undefined}
-            onEditTitle={onEditTitle ? () => onEditTitle(conversation.id) : undefined}
+            onEditTitle={
+              onEditTitle ? (newTitle: string) => onEditTitle(conversation.id, newTitle) : undefined
+            }
             onDelete={onDelete ? () => onDelete(conversation.id) : undefined}
           />
         )

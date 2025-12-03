@@ -18,6 +18,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -68,9 +77,9 @@ interface MessageListItemProps {
    */
   onGenerateTitle?: () => void
   /**
-   * Handler for edit title action
+   * Handler for edit title action - receives the new title
    */
-  onEditTitle?: () => void
+  onEditTitle?: (newTitle: string) => void
   /**
    * Handler for delete action
    */
@@ -91,8 +100,24 @@ export function MessageListItem({
 }: MessageListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
+  const [showRenameDialog, setShowRenameDialog] = React.useState(false)
+  const [renameValue, setRenameValue] = React.useState(summary)
   const maxVisibleAvatars = 3
   const hasActions = onGenerateTitle || onEditTitle || onDelete
+
+  // Update rename value when summary changes (e.g., when dialog opens)
+  React.useEffect(() => {
+    if (showRenameDialog) {
+      setRenameValue(summary)
+    }
+  }, [showRenameDialog, summary])
+
+  const handleRenameSubmit = () => {
+    if (renameValue.trim() && renameValue !== summary) {
+      onEditTitle?.(renameValue.trim())
+    }
+    setShowRenameDialog(false)
+  }
 
   // Helper function to render an avatar
   const renderAvatar = (avatar: string | AvatarData, index: number) => {
@@ -232,7 +257,7 @@ export function MessageListItem({
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation()
-                          onEditTitle()
+                          setShowRenameDialog(true)
                         }}
                       >
                         Rename
@@ -278,6 +303,34 @@ export function MessageListItem({
           </div>
         </ItemContent>
       </Item>
+
+      {/* Rename dialog */}
+      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
+        <DialogContent onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Rename Conversation</DialogTitle>
+            <DialogDescription>Enter a new title for this conversation.</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder="Conversation title"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleRenameSubmit()
+              }
+            }}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
