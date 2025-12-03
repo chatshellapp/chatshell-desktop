@@ -8,6 +8,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -80,6 +90,7 @@ export function MessageListItem({
   onDelete,
 }: MessageListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
   const maxVisibleAvatars = 3
   const hasActions = onGenerateTitle || onEditTitle || onDelete
 
@@ -160,112 +171,138 @@ export function MessageListItem({
   }
 
   return (
-    <Item
-      className={cn(
-        'cursor-pointer hover:bg-accent/50 transition-colors',
-        isActive && 'bg-accent',
-        className
-      )}
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      tabIndex={0}
-      role="button"
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onClick?.()
-        }
-      }}
-    >
-      {/* Content area - full width */}
-      <ItemContent>
-        {/* First line: Summary (can wrap) with action overlay */}
-        <ItemHeader className="relative">
-          <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
+    <>
+      <Item
+        className={cn(
+          'cursor-pointer hover:bg-accent/50 transition-colors',
+          isActive && 'bg-accent',
+          className
+        )}
+        onClick={onClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        tabIndex={0}
+        role="button"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick?.()
+          }
+        }}
+      >
+        {/* Content area - full width */}
+        <ItemContent>
+          {/* First line: Summary (can wrap) with action overlay */}
+          <ItemHeader className="relative">
+            <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
 
-          {/* Floating action overlay */}
-          {hasActions && (
-            <div
-              className={cn(
-                'absolute right-0 top-1/2 -translate-y-1/2 flex items-center transition-opacity bg-accent rounded-md',
-                !isHovered && 'opacity-0 pointer-events-none'
-              )}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                    }}
-                  >
-                    <MoreVertical className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  {onGenerateTitle && (
-                    <DropdownMenuItem
+            {/* Floating action overlay */}
+            {hasActions && (
+              <div
+                className={cn(
+                  'absolute right-0 top-1/2 -translate-y-1/2 flex items-center transition-opacity bg-accent rounded-md',
+                  !isHovered && 'opacity-0 pointer-events-none'
+                )}
+              >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onGenerateTitle()
                       }}
                     >
-                      Auto Title
-                    </DropdownMenuItem>
-                  )}
-                  {onEditTitle && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onEditTitle()
-                      }}
-                    >
-                      Rename
-                    </DropdownMenuItem>
-                  )}
-                  {onDelete && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete()
-                      }}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
-        </ItemHeader>
-
-        {/* Second line: Last message content (truncated) */}
-        <ItemDescription className="line-clamp-1 text-xs">{lastMessage}</ItemDescription>
-
-        {/* Third line: Timestamp and small avatars */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{timestamp}</span>
-
-          {/* Small avatars on the right */}
-          <div className="flex -space-x-1.5">
-            {avatars
-              .slice(0, maxVisibleAvatars)
-              .map((avatar, index) => renderAvatar(avatar, index))}
-            {avatars.length > maxVisibleAvatars && (
-              <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
-                <AvatarFallback className="text-[10px]">
-                  +{avatars.length - maxVisibleAvatars}
-                </AvatarFallback>
-              </Avatar>
+                      <MoreVertical className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    {onGenerateTitle && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onGenerateTitle()
+                        }}
+                      >
+                        Auto Title
+                      </DropdownMenuItem>
+                    )}
+                    {onEditTitle && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onEditTitle()
+                        }}
+                      >
+                        Rename
+                      </DropdownMenuItem>
+                    )}
+                    {onDelete && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setShowDeleteDialog(true)
+                        }}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
+          </ItemHeader>
+
+          {/* Second line: Last message content (truncated) */}
+          <ItemDescription className="line-clamp-1 text-xs">{lastMessage}</ItemDescription>
+
+          {/* Third line: Timestamp and small avatars */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">{timestamp}</span>
+
+            {/* Small avatars on the right */}
+            <div className="flex -space-x-1.5">
+              {avatars
+                .slice(0, maxVisibleAvatars)
+                .map((avatar, index) => renderAvatar(avatar, index))}
+              {avatars.length > maxVisibleAvatars && (
+                <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
+                  <AvatarFallback className="text-[10px]">
+                    +{avatars.length - maxVisibleAvatars}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </div>
           </div>
-        </div>
-      </ItemContent>
-    </Item>
+        </ItemContent>
+      </Item>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this conversation? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onDelete?.()
+                setShowDeleteDialog(false)
+              }}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

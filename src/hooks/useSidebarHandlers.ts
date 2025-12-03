@@ -195,16 +195,10 @@ export function useSidebarHandlers() {
 
   const handleDeleteConversation = useCallback(
     async (conversationId: string) => {
-      const confirmed = confirm('Are you sure you want to delete this conversation?')
-      if (!confirmed) return
-
       try {
         await deleteConversation(conversationId)
       } catch (error) {
         console.error('Failed to delete conversation:', error)
-        alert(
-          `Failed to delete conversation: ${error instanceof Error ? error.message : String(error)}`
-        )
       }
     },
     [deleteConversation]
