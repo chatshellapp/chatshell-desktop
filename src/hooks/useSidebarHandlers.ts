@@ -11,6 +11,8 @@ export function useSidebarHandlers() {
   const createConversation = useConversationStore((state) => state.createConversation)
   const setCurrentConversation = useConversationStore((state) => state.setCurrentConversation)
   const selectConversation = useConversationStore((state) => state.selectConversation)
+  const updateConversation = useConversationStore((state) => state.updateConversation)
+  const deleteConversation = useConversationStore((state) => state.deleteConversation)
   const setSelectedModel = useConversationStore((state) => state.setSelectedModel)
   const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
   const getModelById = useModelStore((state) => state.getModelById)
@@ -156,6 +158,58 @@ export function useSidebarHandlers() {
     }
   }, [createConversation, setCurrentConversation])
 
+  const handleGenerateTitle = useCallback(
+    async (conversationId: string) => {
+      try {
+        const newTitle = await invoke<string>('generate_conversation_title_manually', {
+          conversationId,
+        })
+        await updateConversation(conversationId, newTitle)
+      } catch (error) {
+        console.error('Failed to generate title:', error)
+        alert(`Failed to generate title: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    },
+    [updateConversation]
+  )
+
+  const handleEditTitle = useCallback(
+    async (conversationId: string) => {
+      const conversation = conversations.find((c) => c.id === conversationId)
+      if (!conversation) return
+
+      const newTitle = prompt('Edit conversation title:', conversation.title)
+      if (newTitle && newTitle !== conversation.title) {
+        try {
+          await updateConversation(conversationId, newTitle)
+        } catch (error) {
+          console.error('Failed to update title:', error)
+          alert(
+            `Failed to update title: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
+      }
+    },
+    [conversations, updateConversation]
+  )
+
+  const handleDeleteConversation = useCallback(
+    async (conversationId: string) => {
+      const confirmed = confirm('Are you sure you want to delete this conversation?')
+      if (!confirmed) return
+
+      try {
+        await deleteConversation(conversationId)
+      } catch (error) {
+        console.error('Failed to delete conversation:', error)
+        alert(
+          `Failed to delete conversation: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    },
+    [deleteConversation]
+  )
+
   return {
     handleModelClick,
     handleAssistantClick,
@@ -163,5 +217,8 @@ export function useSidebarHandlers() {
     handleAssistantStarToggle,
     handleConversationClick,
     handleNewConversation,
+    handleGenerateTitle,
+    handleEditTitle,
+    handleDeleteConversation,
   }
 }

@@ -94,6 +94,7 @@ pub fn run() {
             commands::list_conversations,
             commands::update_conversation,
             commands::delete_conversation,
+            commands::generate_conversation_title_manually,
             commands::add_conversation_participant,
             commands::list_conversation_participants,
             commands::get_conversation_participant_summary,

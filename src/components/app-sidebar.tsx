@@ -64,6 +64,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <ConversationList
             conversationParticipantsMap={conversationParticipantsMap}
             onConversationClick={handlers.handleConversationClick}
+            onGenerateTitle={handlers.handleGenerateTitle}
+            onEditTitle={handlers.handleEditTitle}
+            onDelete={handlers.handleDeleteConversation}
           />
         )
       case 'Contacts':

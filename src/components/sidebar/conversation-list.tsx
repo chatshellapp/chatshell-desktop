@@ -8,11 +8,17 @@ import type { ParticipantSummary } from '@/types'
 interface ConversationListProps {
   conversationParticipantsMap: Map<string, ParticipantSummary[]>
   onConversationClick: (conversationId: string) => void
+  onGenerateTitle?: (conversationId: string) => void
+  onEditTitle?: (conversationId: string) => void
+  onDelete?: (conversationId: string) => void
 }
 
 export function ConversationList({
   conversationParticipantsMap,
   onConversationClick,
+  onGenerateTitle,
+  onEditTitle,
+  onDelete,
 }: ConversationListProps) {
   const conversations = useConversationStore((state) => state.conversations)
   const currentConversation = useConversationStore((state) => state.currentConversation)
@@ -57,6 +63,9 @@ export function ConversationList({
             lastMessage={lastMessage}
             isActive={currentConversation?.id === conversation.id}
             onClick={() => onConversationClick(conversation.id)}
+            onGenerateTitle={onGenerateTitle ? () => onGenerateTitle(conversation.id) : undefined}
+            onEditTitle={onEditTitle ? () => onEditTitle(conversation.id) : undefined}
+            onDelete={onDelete ? () => onDelete(conversation.id) : undefined}
           />
         )
       })}

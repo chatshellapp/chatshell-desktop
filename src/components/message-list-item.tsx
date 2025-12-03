@@ -1,6 +1,14 @@
 import * as React from 'react'
-import { Item, ItemContent, ItemTitle, ItemDescription } from '@/components/ui/item'
+import { Item, ItemContent, ItemTitle, ItemDescription, ItemHeader } from '@/components/ui/item'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface AvatarData {
@@ -45,6 +53,18 @@ interface MessageListItemProps {
    * Whether the item is selected/active
    */
   isActive?: boolean
+  /**
+   * Handler for generate title action
+   */
+  onGenerateTitle?: () => void
+  /**
+   * Handler for edit title action
+   */
+  onEditTitle?: () => void
+  /**
+   * Handler for delete action
+   */
+  onDelete?: () => void
 }
 
 export function MessageListItem({
@@ -55,8 +75,13 @@ export function MessageListItem({
   onClick,
   className,
   isActive = false,
+  onGenerateTitle,
+  onEditTitle,
+  onDelete,
 }: MessageListItemProps) {
+  const [isHovered, setIsHovered] = React.useState(false)
   const maxVisibleAvatars = 3
+  const hasActions = onGenerateTitle || onEditTitle || onDelete
 
   // Helper function to render an avatar
   const renderAvatar = (avatar: string | AvatarData, index: number) => {
@@ -142,6 +167,8 @@ export function MessageListItem({
         className
       )}
       onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       tabIndex={0}
       role="button"
       onKeyDown={(e) => {
@@ -153,8 +180,68 @@ export function MessageListItem({
     >
       {/* Content area - full width */}
       <ItemContent>
-        {/* First line: Summary (can wrap) */}
-        <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
+        {/* First line: Summary (can wrap) with action overlay */}
+        <ItemHeader className="relative">
+          <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
+
+          {/* Floating action overlay */}
+          {hasActions && (
+            <div
+              className={cn(
+                'absolute right-0 top-1/2 -translate-y-1/2 flex items-center transition-opacity bg-accent rounded-md',
+                !isHovered && 'opacity-0 pointer-events-none'
+              )}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-7"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                    }}
+                  >
+                    <MoreVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  {onGenerateTitle && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onGenerateTitle()
+                      }}
+                    >
+                      Auto Title
+                    </DropdownMenuItem>
+                  )}
+                  {onEditTitle && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEditTitle()
+                      }}
+                    >
+                      Rename
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete()
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </ItemHeader>
 
         {/* Second line: Last message content (truncated) */}
         <ItemDescription className="line-clamp-1 text-xs">{lastMessage}</ItemDescription>

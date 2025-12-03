@@ -206,6 +206,128 @@ pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Resu
     state.db.delete_conversation(&id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn generate_conversation_title_manually(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<String, String> {
+    println!(
+        "🏷️ [manual_title] Generating title for conversation: {}",
+        conversation_id
+    );
+
+    // Get conversation messages
+    let messages = state
+        .db
+        .list_messages_by_conversation(&conversation_id)
+        .map_err(|e| e.to_string())?;
+
+    if messages.is_empty() {
+        return Err("No messages in conversation to generate title from".to_string());
+    }
+
+    // Find first user message and first assistant message
+    let user_message = messages
+        .iter()
+        .find(|m| m.sender_type == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+
+    let assistant_message = messages
+        .iter()
+        .find(|m| m.sender_type == "model" || m.sender_type == "assistant")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+
+    if user_message.is_empty() {
+        return Err("No user message found to generate title from".to_string());
+    }
+
+    // Get conversation participants to find the model
+    let participants = state
+        .db
+        .list_conversation_participants(&conversation_id)
+        .map_err(|e| e.to_string())?;
+
+    // Find the model or assistant participant
+    let model_participant = participants
+        .iter()
+        .find(|p| p.participant_type == "model" || p.participant_type == "assistant");
+
+    let (provider, model, api_key, base_url) = if let Some(participant) = model_participant {
+        if let Some(ref participant_id) = participant.participant_id {
+            if participant.participant_type == "model" {
+                // Direct model
+                let model_info = state
+                    .db
+                    .get_model(participant_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Model not found".to_string())?;
+
+                let provider_info = state
+                    .db
+                    .get_provider(&model_info.provider_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Provider not found".to_string())?;
+
+                (
+                    provider_info.provider_type,
+                    model_info.model_id,
+                    provider_info.api_key,
+                    provider_info.base_url,
+                )
+            } else {
+                // Assistant - get its model
+                let assistant = state
+                    .db
+                    .get_assistant(participant_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Assistant not found".to_string())?;
+
+                let model_info = state
+                    .db
+                    .get_model(&assistant.model_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Assistant's model not found".to_string())?;
+
+                let provider_info = state
+                    .db
+                    .get_provider(&model_info.provider_id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Provider not found".to_string())?;
+
+                (
+                    provider_info.provider_type,
+                    model_info.model_id,
+                    provider_info.api_key,
+                    provider_info.base_url,
+                )
+            }
+        } else {
+            return Err("Participant has no ID".to_string());
+        }
+    } else {
+        return Err("No model or assistant found in conversation".to_string());
+    };
+
+    // Generate the title
+    let title = generate_conversation_title(
+        &state,
+        &conversation_id,
+        &user_message,
+        &assistant_message,
+        &provider,
+        &model,
+        api_key,
+        base_url,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    println!("🏷️ [manual_title] Generated title: {}", title);
+    Ok(title)
+}
+
 // Conversation Participant commands
 #[tauri::command]
 pub async fn add_conversation_participant(
