@@ -1438,9 +1438,9 @@ pub async fn send_message(
                         eprintln!("Failed to link search decision to message: {}", e);
                     }
 
-                    // Emit step update for UI
+                    // Emit search decision complete for UI
                     let _ = app_clone.emit(
-                        "step-update",
+                        "search-decision-complete",
                         serde_json::json!({
                             "message_id": user_message_id,
                             "conversation_id": conversation_id_clone,

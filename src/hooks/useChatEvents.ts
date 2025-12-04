@@ -11,6 +11,7 @@ import type {
   AttachmentProcessingCompleteEvent,
   AttachmentProcessingErrorEvent,
   AttachmentUpdateEvent,
+  SearchDecisionCompleteEvent,
 } from '@/types'
 
 interface ConversationUpdatedEvent {
@@ -157,6 +158,17 @@ export function useChatEvents(conversationId: string | null) {
     store.setPendingSearchDecision(convId, messageId, true)
   }, [])
 
+  const handleSearchDecisionComplete = useCallback((convId: string, messageId: string) => {
+    console.log('[useChatEvents] Search decision complete for message:', messageId)
+    const store = useMessageStore.getState()
+    // Trigger a refresh by incrementing the attachment refresh key
+    // This will cause the UI to re-fetch resources and show the search decision
+    // NOTE: We don't clear pending search decision here. The pending state is resolved
+    // automatically when the resources are loaded and the search decision step exists.
+    // This ensures the UI shows the search decision step BEFORE showing thinking/content.
+    store.incrementAttachmentRefreshKey(convId)
+  }, [])
+
   const handleChatError = useCallback((convId: string, error: string) => {
     console.log('[useChatEvents] handleChatError called for conversation:', convId, 'error:', error)
     const store = useMessageStore.getState()
@@ -254,6 +266,15 @@ export function useChatEvents(conversationId: string | null) {
       }
     )
 
+    // Listen for search decision complete (AI has finished deciding if search is needed)
+    const unlistenSearchDecisionComplete = listen<SearchDecisionCompleteEvent>(
+      'search-decision-complete',
+      (event) => {
+        console.log('[useChatEvents] Received search-decision-complete event:', event.payload)
+        handleSearchDecisionComplete(event.payload.conversation_id, event.payload.message_id)
+      }
+    )
+
     // Listen for conversation updates (title changes)
     const unlistenConversationUpdated = listen<ConversationUpdatedEvent>(
       'conversation-updated',
@@ -293,6 +314,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenAttachmentError.then((fn) => fn())
       unlistenAttachmentUpdate.then((fn) => fn())
       unlistenSearchDecisionStarted.then((fn) => fn())
+      unlistenSearchDecisionComplete.then((fn) => fn())
       unlistenConversationUpdated.then((fn) => fn())
       unlistenGenerationStopped.then((fn) => fn())
       unlistenReasoningStarted.then((fn) => fn())
@@ -308,6 +330,7 @@ export function useChatEvents(conversationId: string | null) {
     handleAttachmentProcessingError,
     handleAttachmentUpdate,
     handleSearchDecisionStarted,
+    handleSearchDecisionComplete,
     handleConversationUpdated,
     handleGenerationStopped,
     handleReasoningStarted,

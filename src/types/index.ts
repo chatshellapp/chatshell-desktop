@@ -641,3 +641,8 @@ export interface AttachmentUpdateEvent {
     [key: string]: unknown
   }
 }
+
+export interface SearchDecisionCompleteEvent {
+  message_id: string
+  conversation_id: string
+}

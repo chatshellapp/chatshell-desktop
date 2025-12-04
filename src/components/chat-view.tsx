@@ -679,8 +679,16 @@ export function ChatView() {
 
                 // Show thinking when reasoning has actually started (received first reasoning chunk)
                 // This provides visual feedback that reasoning models (GPT-5, o1, etc.) are actively thinking
-                // Note: We only show thinking when isReasoningActive is true, not during the initial waiting phase
-                const showThinkingPlaceholder = isReasoningActive && !hasPendingDecision
+                // Note: We only show thinking when:
+                // 1. isReasoningActive is true (not during the initial waiting phase)
+                // 2. Search decision process is resolved - either:
+                //    - No pending decision was started, OR
+                //    - The search decision step has been loaded
+                // This ensures the "Deciding if web search is needed..." / "No search needed" UI
+                // appears BEFORE the thinking placeholder
+                const searchDecisionResolved =
+                  !hasPendingDecision || searchDecisionSteps.length > 0
+                const showThinkingPlaceholder = isReasoningActive && searchDecisionResolved
 
                 if (
                   hasAssistantResources ||
@@ -709,21 +717,29 @@ export function ChatView() {
                         />
                       ))}
                       {/* Show thinking placeholder while waiting, or actual content when available */}
-                      {(showThinkingPlaceholder || combinedThinkingContent) && (
-                        <ThinkingPreview
-                          content={combinedThinkingContent || ''}
-                          isStreaming={showThinkingPlaceholder || isThinkingInProgress}
-                        />
-                      )}
+                      {/* Only show when search decision is resolved */}
+                      {searchDecisionResolved &&
+                        (showThinkingPlaceholder || combinedThinkingContent) && (
+                          <ThinkingPreview
+                            content={combinedThinkingContent || ''}
+                            isStreaming={showThinkingPlaceholder || isThinkingInProgress}
+                          />
+                        )}
                     </div>
                   )
                 }
+
+                // Only show content when:
+                // 1. Not waiting for AI, AND
+                // 2. Search decision is resolved (no pending decision, or decision step exists)
+                // This ensures the "No search needed" UI appears BEFORE the response content
+                const showContent = !isWaitingForAI && searchDecisionResolved
 
                 return (
                   <ChatMessage
                     key={isWaitingForAI ? 'waiting' : 'streaming'}
                     role="assistant"
-                    content={isWaitingForAI ? '' : parsedStreaming.content}
+                    content={showContent ? parsedStreaming.content : ''}
                     timestamp="Now"
                     displayName={info.displayName}
                     senderType={info.senderType}
@@ -733,7 +749,7 @@ export function ChatView() {
                     avatarText={info.avatarText}
                     userMessageAlign={CHAT_CONFIG.userMessageAlign}
                     userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-                    isLoading={isWaitingForAI}
+                    isLoading={isWaitingForAI || !searchDecisionResolved}
                     headerContent={streamingHeaderContent}
                     onCopy={handleCopy}
                     onResend={handleResend}
