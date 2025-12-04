@@ -588,10 +588,7 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Search Query
               </p>
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 rounded-md">
-                <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                <code className="text-sm font-mono">{decision.search_query}</code>
-              </div>
+              <p className="text-sm text-foreground/80 leading-relaxed">{decision.search_query}</p>
             </div>
           )}
         </div>
