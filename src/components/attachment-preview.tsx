@@ -145,7 +145,7 @@ function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
           )}
 
           <span className="flex-1 text-sm truncate">
-            <span className="font-medium">Failed to fetch</span>
+            <span>Failed to fetch</span>
             <span className="text-muted-foreground ml-1">{fetchResult.url}</span>
           </span>
 
@@ -209,7 +209,7 @@ function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
         )}
 
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium">Fetched</span>
+          <span>Fetched</span>
           <span className="text-muted-foreground ml-1">{title}</span>
         </span>
 
@@ -312,12 +312,12 @@ function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResult }) {
         <span className="flex-1 text-sm truncate">
           {isFailed ? (
             <>
-              <span className="font-medium text-destructive">Failed</span>
+              <span className="text-destructive">Failed</span>
               <span className="text-muted-foreground ml-1">{title}</span>
             </>
           ) : (
             <>
-              <span className="font-medium">Fetched</span>
+              <span>Fetched</span>
               <span className="text-muted-foreground ml-1">{title}</span>
             </>
           )}
@@ -576,7 +576,7 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
         <div className="border-t border-muted px-3 py-3 space-y-3">
           {/* Reasoning */}
           <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">
               Reasoning
             </p>
             <p className="text-sm text-foreground/80 leading-relaxed">{decision.reasoning}</p>
@@ -585,7 +585,7 @@ function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
           {/* Search query if search was needed */}
           {decision.search_needed && decision.search_query && (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
                 Search Query
               </p>
               <p className="text-sm text-foreground/80 leading-relaxed">{decision.search_query}</p>
@@ -811,7 +811,7 @@ export function ImageLightbox({
 
       {/* Image counter */}
       {hasMultiple && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm font-medium">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
           {currentIndex + 1} / {images.length}
         </div>
       )}
@@ -937,7 +937,7 @@ function FileAttachmentPreview({
         <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium">{fileAttachment.file_name}</span>
+          <span>{fileAttachment.file_name}</span>
         </span>
 
         <span className="text-sm text-muted-foreground flex-shrink-0">
