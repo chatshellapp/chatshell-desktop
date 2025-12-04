@@ -9,12 +9,13 @@ use rig::agent::{Agent, MultiTurnStreamItem};
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, Reasoning};
-use rig::providers::{ollama, openai};
+use rig::providers::{ollama, openai, openrouter};
 use rig::streaming::{StreamingChat, StreamedAssistantContent};
 use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::common::{build_user_content, StreamChunkType};
+use crate::llm::{ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider};
 use crate::llm::ChatResponse;
 use crate::models::ModelParameters;
 use crate::thinking_parser;
@@ -63,13 +64,14 @@ impl AgentConfig {
 // Type aliases for the completion model types used by each provider
 // OpenAI uses ResponsesCompletionModel by default for agent()
 type OpenAICompletionModel = openai::responses_api::ResponsesCompletionModel;
+type OpenRouterCompletionModel = openrouter::CompletionModel;
 type OllamaCompletionModel = ollama::CompletionModel;
 
 /// Enum to hold different provider agent types
 /// This allows us to handle all providers uniformly while maintaining type safety
 pub enum ProviderAgent {
     OpenAI(Agent<OpenAICompletionModel>),
-    OpenRouter(Agent<OpenAICompletionModel>),
+    OpenRouter(Agent<OpenRouterCompletionModel>),
     Ollama(Agent<OllamaCompletionModel>),
 }
 
@@ -80,25 +82,23 @@ pub fn create_openai_agent(
     model_id: &str,
     config: &AgentConfig,
 ) -> Agent<OpenAICompletionModel> {
-    let default_url = "https://api.openai.com/v1";
     let client = openai::Client::builder(api_key)
-        .base_url(base_url.unwrap_or(default_url))
+        .base_url(base_url.unwrap_or(openai_provider::DEFAULT_BASE_URL))
         .build();
 
     build_agent(client.agent(model_id), config)
 }
 
 /// Create an OpenRouter agent with full configuration
-/// OpenRouter uses OpenAI-compatible API
+/// Uses the dedicated OpenRouter provider for better compatibility
 pub fn create_openrouter_agent(
     api_key: &str,
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Agent<OpenAICompletionModel> {
-    let default_url = "https://openrouter.ai/api/v1";
-    let client = openai::Client::builder(api_key)
-        .base_url(base_url.unwrap_or(default_url))
+) -> Agent<OpenRouterCompletionModel> {
+    let client = openrouter::Client::builder(api_key)
+        .base_url(base_url.unwrap_or(openrouter_provider::DEFAULT_BASE_URL))
         .build();
 
     build_agent(client.agent(model_id), config)
@@ -110,9 +110,8 @@ pub fn create_ollama_agent(
     model_id: &str,
     config: &AgentConfig,
 ) -> Agent<OllamaCompletionModel> {
-    let default_url = "http://localhost:11434";
     let client = ollama::Client::builder()
-        .base_url(base_url.unwrap_or(default_url))
+        .base_url(base_url.unwrap_or(ollama_provider::DEFAULT_BASE_URL))
         .build();
 
     build_agent(client.agent(model_id), config)

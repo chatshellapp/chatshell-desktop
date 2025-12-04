@@ -7,7 +7,12 @@ pub mod openrouter;
 
 pub use common::StreamChunkType;
 
+use agent_builder::{
+    build_assistant_message, build_user_message, create_provider_agent, stream_chat_with_agent,
+    AgentConfig,
+};
 use anyhow::Result;
+use rig::completion::Message as RigMessage;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -44,13 +49,6 @@ pub struct ChatMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatRequest {
-    pub model: String,
-    pub messages: Vec<ChatMessage>,
-    pub stream: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub content: String,
     pub thinking_content: Option<String>,
@@ -58,6 +56,7 @@ pub struct ChatResponse {
 }
 
 /// Unified function to call any LLM provider (non-streaming)
+/// Uses the agent-based approach for consistency across the codebase.
 /// This eliminates code duplication across different features (title generation, search decision, etc.)
 pub async fn call_provider(
     provider: &str,
@@ -66,38 +65,56 @@ pub async fn call_provider(
     api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<ChatResponse> {
-    let request = ChatRequest {
-        model,
-        messages,
-        stream: false,
+    // Extract system prompt if present
+    let system_prompt = messages
+        .first()
+        .filter(|m| m.role == "system")
+        .map(|m| m.content.clone());
+
+    // Build agent config (no custom model params for simple calls)
+    let config = AgentConfig::new();
+    let config = if let Some(prompt) = system_prompt.clone() {
+        config.with_system_prompt(prompt)
+    } else {
+        config
     };
+
+    // Create the agent
+    let agent = create_provider_agent(provider, &model, api_key.as_deref(), base_url.as_deref(), &config)?;
+
+    // Convert ChatMessages to rig Message format
+    let mut chat_history: Vec<RigMessage> = Vec::new();
+    let mut current_prompt: Option<RigMessage> = None;
+
+    for (i, msg) in messages.iter().enumerate() {
+        let is_last = i == messages.len() - 1;
+        let message = match msg.role.as_str() {
+            "user" => build_user_message(&msg.content, &msg.images, &msg.files),
+            "assistant" => build_assistant_message(&msg.content),
+            "system" => {
+                // System messages are handled via preamble in agent config
+                if system_prompt.is_some() {
+                    continue;
+                }
+                build_user_message(&format!("[System]: {}", msg.content), &[], &[])
+            }
+            _ => build_user_message(&msg.content, &msg.images, &msg.files),
+        };
+
+        if is_last && msg.role == "user" {
+            current_prompt = Some(message);
+        } else {
+            chat_history.push(message);
+        }
+    }
+
+    // Use the last user message as prompt
+    let prompt = current_prompt.ok_or_else(|| anyhow::anyhow!("No user message found in request"))?;
+
+    // Create a no-op cancel token (not really cancellable for non-streaming)
     let cancel_token = CancellationToken::new();
 
-    match provider {
-        "openai" => {
-            let api_key_val = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            let provider = openai::OpenAIRigProvider::new(api_key_val, base_url);
-            provider
-                .chat_stream(request, cancel_token, |_, _| true)
-                .await
-        }
-        "openrouter" => {
-            let api_key_val =
-                api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            let provider = openrouter::OpenRouterRigProvider::new(api_key_val, base_url);
-            provider
-                .chat_stream(request, cancel_token, |_, _| true)
-                .await
-        }
-        "ollama" => {
-            let provider = ollama::OllamaRigProvider::new(base_url);
-            provider
-                .chat_stream(request, cancel_token, |_, _| true)
-                .await
-        }
-        _ => Err(anyhow::anyhow!(
-            "Unknown provider: {}. Use openai, openrouter, or ollama",
-            provider
-        )),
-    }
+    // Use stream_chat_with_agent with a no-op callback
+    // This collects the full response
+    stream_chat_with_agent(agent, prompt, chat_history, cancel_token, |_, _| true, provider).await
 }
