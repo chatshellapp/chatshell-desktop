@@ -1,6 +1,7 @@
 use anyhow::Result;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
+use crate::llm::common::create_http_client;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -64,7 +65,7 @@ struct OllamaModel {
 
 /// Fetch available models from OpenAI
 pub async fn fetch_openai_models(api_key: String) -> Result<Vec<ModelInfo>> {
-    let client = Client::new();
+    let client = create_http_client();
 
     let response = client
         .get("https://api.openai.com/v1/models")
@@ -97,7 +98,7 @@ pub async fn fetch_openai_models(api_key: String) -> Result<Vec<ModelInfo>> {
 
 /// Fetch available models from OpenRouter
 pub async fn fetch_openrouter_models(api_key: String) -> Result<Vec<ModelInfo>> {
-    let client = Client::new();
+    let client = create_http_client();
 
     let response = client
         .get("https://openrouter.ai/api/v1/models")
@@ -192,7 +193,7 @@ fn format_ollama_model_name(model_id: &str) -> String {
 
 /// Fetch available models from Ollama
 pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
-    let client = Client::new();
+    let client = create_http_client();
 
     let url = if base_url.ends_with('/') {
         format!("{}api/tags", base_url)

@@ -14,7 +14,7 @@ use rig::streaming::{StreamingChat, StreamedAssistantContent};
 use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::common::{build_user_content, StreamChunkType};
+use crate::llm::common::{build_user_content, create_http_client, StreamChunkType};
 use crate::llm::{ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider};
 use crate::llm::ChatResponse;
 use crate::models::ModelParameters;
@@ -82,9 +82,11 @@ pub fn create_openai_agent(
     model_id: &str,
     config: &AgentConfig,
 ) -> Result<Agent<OpenAICompletionModel>> {
-    let client = openai::Client::builder()
+    let http_client = create_http_client();
+    let client = openai::Client::<reqwest::Client>::builder()
         .api_key(api_key)
         .base_url(base_url.unwrap_or(openai_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
         .build()?;
 
     Ok(build_agent(client.agent(model_id), config))
@@ -99,9 +101,11 @@ pub fn create_openrouter_agent(
     model_id: &str,
     config: &AgentConfig,
 ) -> Result<Agent<OpenRouterCompletionModel>> {
-    let client = openrouter::Client::builder()
+    let http_client = create_http_client();
+    let client = openrouter::Client::<reqwest::Client>::builder()
         .api_key(api_key)
         .base_url(base_url.unwrap_or(openrouter_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
         .build()?;
 
     // Add default reasoning param if user hasn't set additional_params
@@ -121,9 +125,11 @@ pub fn create_ollama_agent(
     model_id: &str,
     config: &AgentConfig,
 ) -> Result<Agent<OllamaCompletionModel>> {
-    let client = ollama::Client::builder()
+    let http_client = create_http_client();
+    let client = ollama::Client::<reqwest::Client>::builder()
         .api_key(Nothing)
         .base_url(base_url.unwrap_or(ollama_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
         .build()?;
 
     Ok(build_agent(client.agent(model_id), config))

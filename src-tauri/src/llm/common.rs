@@ -1,9 +1,28 @@
+use reqwest::header::{HeaderMap, HeaderValue};
 use rig::OneOrMany;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, UserContent,
 };
 
 use crate::llm::{FileData, ImageData};
+
+/// App attribution headers for API providers (especially OpenRouter)
+/// See: https://openrouter.ai/docs/app-attribution
+const APP_REFERER: &str = "https://chatshell.app";
+const APP_TITLE: &str = "ChatShell";
+
+/// Create a reqwest client with app attribution headers
+/// Used for all API calls to include HTTP-Referer and X-Title headers
+pub fn create_http_client() -> reqwest::Client {
+    let mut headers = HeaderMap::new();
+    headers.insert("HTTP-Referer", HeaderValue::from_static(APP_REFERER));
+    headers.insert("X-Title", HeaderValue::from_static(APP_TITLE));
+    
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap_or_default()
+}
 
 /// Type of streamed chunk for callback
 #[derive(Debug, Clone)]
