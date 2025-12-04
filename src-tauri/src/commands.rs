@@ -964,7 +964,7 @@ async fn handle_agent_streaming(
                 let accumulated = accumulated_content.read().await.clone();
                 let accumulated_reasoning_content = accumulated_reasoning.read().await.clone();
 
-                if !accumulated.is_empty() {
+                if !accumulated.trim().is_empty() {
                     println!(
                         "📝 [agent_streaming] Saving partial response ({} chars)",
                         accumulated.len()
@@ -1035,6 +1035,15 @@ async fn handle_agent_streaming(
         "✅ [agent_streaming] Response complete: {} chars",
         final_content.len()
     );
+
+    // Don't save empty responses - they cause API errors on subsequent requests
+    // ("all messages must have non-empty content")
+    if final_content.trim().is_empty() {
+        println!("⚠️ [agent_streaming] Skipping save of empty response");
+        let mut tasks = state_clone.generation_tasks.write().await;
+        tasks.remove(&conversation_id_clone);
+        return;
+    }
 
     // Determine sender type and ID
     let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {

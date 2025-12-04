@@ -139,6 +139,10 @@ export function useChatEvents(conversationId: string | null) {
     store.setIsStreaming(convId, false)
     store.setIsWaitingForAI(convId, false)
     store.setStreamingContent(convId, '')
+    // Clear all pending search decisions for this conversation
+    store.clearPendingSearchDecisions(convId)
+    // Reset reasoning state
+    store.setIsReasoningActive(convId, false)
   }, [])
 
   const handleReasoningStarted = useCallback((convId: string) => {

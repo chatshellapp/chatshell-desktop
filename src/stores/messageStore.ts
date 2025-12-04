@@ -92,6 +92,7 @@ interface MessageStore {
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
   setIsReasoningActive: (conversationId: string, isActive: boolean) => void
   setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
+  clearPendingSearchDecisions: (conversationId: string) => void
   setApiError: (conversationId: string, error: string | null) => void
   clearApiError: (conversationId: string) => void
   cleanupConversation: (conversationId: string) => void
@@ -567,6 +568,16 @@ export const useMessageStore = create<MessageStore>()(
           } else {
             delete convState.pendingSearchDecisions[messageId]
           }
+        }
+      })
+    },
+
+    clearPendingSearchDecisions: (conversationId: string) => {
+      get().getConversationState(conversationId) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.pendingSearchDecisions = {}
         }
       })
     },
