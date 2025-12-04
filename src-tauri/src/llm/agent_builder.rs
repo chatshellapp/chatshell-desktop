@@ -91,6 +91,7 @@ pub fn create_openai_agent(
 
 /// Create an OpenRouter agent with full configuration
 /// Uses the dedicated OpenRouter provider for better compatibility
+/// Adds default reasoning: {"effort": "medium"} parameter for extended thinking support
 pub fn create_openrouter_agent(
     api_key: &str,
     base_url: Option<&str>,
@@ -101,7 +102,15 @@ pub fn create_openrouter_agent(
         .base_url(base_url.unwrap_or(openrouter_provider::DEFAULT_BASE_URL))
         .build();
 
-    build_agent(client.agent(model_id), config)
+    // Add default reasoning param if user hasn't set additional_params
+    let mut openrouter_config = config.clone();
+    if openrouter_config.model_params.additional_params.is_none() {
+        openrouter_config.model_params.additional_params = Some(serde_json::json!({
+            "reasoning": { "effort": "medium" }
+        }));
+    }
+
+    build_agent(client.agent(model_id), &openrouter_config)
 }
 
 /// Create an Ollama agent with full configuration
