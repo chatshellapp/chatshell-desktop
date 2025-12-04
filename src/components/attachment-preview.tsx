@@ -60,6 +60,8 @@ interface AttachmentPreviewProps {
   processingUrl?: string
   /** URL fetch statuses for search results: { url: 'fetching' | 'fetched' } */
   urlStatuses?: Record<string, 'fetching' | 'fetched'>
+  /** Message ID - used to query fetch results via message_contexts (for deduplication support) */
+  messageId?: string
   /** Show pending search decision state (AI is deciding if search is needed) */
   pendingSearchDecision?: boolean
   /** All image attachments for lightbox navigation (only used when attachment is an image) */
@@ -394,9 +396,11 @@ function ProcessingUrlItem({ url }: { url: string }) {
 function SearchResultPreview({
   searchResult,
   urlStatuses,
+  messageId,
 }: {
   searchResult: SearchResult
   urlStatuses?: Record<string, 'fetching' | 'fetched'>
+  messageId?: string
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [fetchResults, setFetchResults] = useState<FetchResult[]>([])
@@ -425,18 +429,17 @@ function SearchResultPreview({
 
   // Load linked fetch results - reload when any URL status changes to 'fetched'
   useEffect(() => {
-    // Skip loading while still searching (no results yet)
-    if (isSearching) {
+    // Skip loading while still searching (no results yet) or no message ID
+    if (isSearching || !messageId) {
       return
     }
 
     const loadResults = async () => {
       setLoading(true)
       try {
-        // Use the new API with source_type and source_id
-        const results = await invoke<FetchResult[]>('get_fetch_results_by_source', {
-          sourceType: 'search',
-          sourceId: searchResult.id,
+        // Query via message_contexts to correctly get deduplicated fetch results
+        const results = await invoke<FetchResult[]>('get_fetch_results_by_message', {
+          messageId: messageId,
         })
         setFetchResults(results)
 
@@ -460,7 +463,7 @@ function SearchResultPreview({
 
     loadResults()
   }, [
-    searchResult.id,
+    messageId,
     searchResult.total_results,
     retryCount,
     isProcessing,
@@ -1044,6 +1047,7 @@ export function AttachmentPreview({
   step,
   processingUrl,
   urlStatuses,
+  messageId,
   pendingSearchDecision,
   allImages,
   currentImageIndex,
@@ -1097,7 +1101,11 @@ export function AttachmentPreview({
         return <FetchResultPreview fetchResult={context as FetchResult} />
       case 'search_result':
         return (
-          <SearchResultPreview searchResult={context as SearchResult} urlStatuses={urlStatuses} />
+          <SearchResultPreview
+            searchResult={context as SearchResult}
+            urlStatuses={urlStatuses}
+            messageId={messageId}
+          />
         )
       default:
         return null

@@ -544,6 +544,7 @@ export function ChatView() {
                             ? urlStatuses[prevUserMessageId]
                             : undefined
                         }
+                        messageId={prevUserMessageId ?? undefined}
                       />
                     ))}
                     {/* Finally thinking content */}
@@ -714,6 +715,7 @@ export function ChatView() {
                           urlStatuses={
                             lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined
                           }
+                          messageId={lastUserMessage?.id}
                         />
                       ))}
                       {/* Show thinking placeholder while waiting, or actual content when available */}

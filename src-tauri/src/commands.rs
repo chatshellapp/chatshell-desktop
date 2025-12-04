@@ -484,6 +484,17 @@ pub async fn get_fetch_results_by_source(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn get_fetch_results_by_message(
+    state: State<'_, AppState>,
+    message_id: String,
+) -> Result<Vec<FetchResult>, String> {
+    state
+        .db
+        .get_fetch_results_by_message(&message_id)
+        .map_err(|e| e.to_string())
+}
+
 // ==========================================================================
 // CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
 // ==========================================================================

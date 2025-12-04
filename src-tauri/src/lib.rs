@@ -112,6 +112,7 @@ pub fn run() {
             commands::get_search_result,
             commands::get_fetch_result,
             commands::get_fetch_results_by_source,
+            commands::get_fetch_results_by_message,
             // Process Steps (thinking, decisions, tool calls)
             commands::get_message_steps,
             commands::get_thinking_step,

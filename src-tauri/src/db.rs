@@ -1854,6 +1854,50 @@ impl Database {
         Ok(results)
     }
 
+    /// Get all fetch_results linked to a message via message_contexts table
+    /// This correctly returns deduplicated fetch results (which may have different source_id)
+    pub fn get_fetch_results_by_message(&self, message_id: &str) -> Result<Vec<FetchResult>> {
+        let conn = self.lock_conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT f.id, f.source_type, f.source_id, f.url, f.title, f.description, f.storage_path, f.content_type, f.original_mime,
+                    f.status, f.error, f.keywords, f.headings, f.original_size, f.processed_size, f.favicon_url, f.content_hash, f.created_at, f.updated_at
+             FROM fetch_results f
+             INNER JOIN message_contexts mc ON mc.context_id = f.id AND mc.context_type = 'fetch_result'
+             WHERE mc.message_id = ?1
+             ORDER BY mc.display_order, mc.created_at"
+        )?;
+
+        let results = stmt
+            .query_map(params![message_id], |row| {
+                Ok(FetchResult {
+                    id: row.get(0)?,
+                    source_type: row.get(1)?,
+                    source_id: row.get(2)?,
+                    url: row.get(3)?,
+                    title: row.get(4)?,
+                    description: row.get(5)?,
+                    storage_path: row.get(6)?,
+                    content_type: row.get(7)?,
+                    original_mime: row.get(8)?,
+                    status: row
+                        .get::<_, Option<String>>(9)?
+                        .unwrap_or_else(|| "pending".to_string()),
+                    error: row.get(10)?,
+                    keywords: row.get(11)?,
+                    headings: row.get(12)?,
+                    original_size: row.get(13)?,
+                    processed_size: row.get(14)?,
+                    favicon_url: row.get(15)?,
+                    content_hash: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(results)
+    }
+
     pub fn update_fetch_result_status(
         &self,
         id: &str,
