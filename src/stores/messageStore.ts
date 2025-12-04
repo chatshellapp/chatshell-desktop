@@ -11,6 +11,8 @@ interface ConversationState {
   streamingContent: string
   // Streaming reasoning/thinking content from models like GPT-5, Gemini with thinking
   streamingReasoningContent: string
+  // Whether reasoning has actually started (received first reasoning chunk)
+  isReasoningActive: boolean
   isWaitingForAI: boolean
   attachmentStatus: 'idle' | 'processing' | 'complete' | 'error'
   // Counter that increments to force attachment refresh
@@ -30,6 +32,7 @@ const createDefaultConversationState = (): ConversationState => ({
   isStreaming: false,
   streamingContent: '',
   streamingReasoningContent: '',
+  isReasoningActive: false,
   isWaitingForAI: false,
   attachmentStatus: 'idle',
   attachmentRefreshKey: 0,
@@ -87,6 +90,7 @@ interface MessageStore {
   appendStreamingChunk: (conversationId: string, chunk: string) => void
   appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
+  setIsReasoningActive: (conversationId: string, isActive: boolean) => void
   setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
   setApiError: (conversationId: string, error: string | null) => void
   clearApiError: (conversationId: string) => void
@@ -380,6 +384,11 @@ export const useMessageStore = create<MessageStore>()(
         const convState = draft.conversationStates[conversationId]
         if (convState) {
           convState.isStreaming = isStreaming
+          // Reset reasoning state when streaming ends
+          if (!isStreaming) {
+            convState.isReasoningActive = false
+            convState.streamingReasoningContent = ''
+          }
         }
       })
     },
@@ -534,6 +543,16 @@ export const useMessageStore = create<MessageStore>()(
         const convState = draft.conversationStates[conversationId]
         if (convState) {
           convState.isWaitingForAI = isWaiting
+        }
+      })
+    },
+
+    setIsReasoningActive: (conversationId: string, isActive: boolean) => {
+      get().getConversationState(conversationId) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.isReasoningActive = isActive
         }
       })
     },

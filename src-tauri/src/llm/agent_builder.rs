@@ -6,7 +6,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, Nothing};
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, Reasoning};
 use rig::providers::{ollama, openai, openrouter};
@@ -81,12 +81,13 @@ pub fn create_openai_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Agent<OpenAICompletionModel> {
-    let client = openai::Client::builder(api_key)
+) -> Result<Agent<OpenAICompletionModel>> {
+    let client = openai::Client::builder()
+        .api_key(api_key)
         .base_url(base_url.unwrap_or(openai_provider::DEFAULT_BASE_URL))
-        .build();
+        .build()?;
 
-    build_agent(client.agent(model_id), config)
+    Ok(build_agent(client.agent(model_id), config))
 }
 
 /// Create an OpenRouter agent with full configuration
@@ -97,10 +98,11 @@ pub fn create_openrouter_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Agent<OpenRouterCompletionModel> {
-    let client = openrouter::Client::builder(api_key)
+) -> Result<Agent<OpenRouterCompletionModel>> {
+    let client = openrouter::Client::builder()
+        .api_key(api_key)
         .base_url(base_url.unwrap_or(openrouter_provider::DEFAULT_BASE_URL))
-        .build();
+        .build()?;
 
     // Add default reasoning param if user hasn't set additional_params
     let mut openrouter_config = config.clone();
@@ -110,7 +112,7 @@ pub fn create_openrouter_agent(
         }));
     }
 
-    build_agent(client.agent(model_id), &openrouter_config)
+    Ok(build_agent(client.agent(model_id), &openrouter_config))
 }
 
 /// Create an Ollama agent with full configuration
@@ -118,12 +120,13 @@ pub fn create_ollama_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Agent<OllamaCompletionModel> {
+) -> Result<Agent<OllamaCompletionModel>> {
     let client = ollama::Client::builder()
+        .api_key(Nothing)
         .base_url(base_url.unwrap_or(ollama_provider::DEFAULT_BASE_URL))
-        .build();
+        .build()?;
 
-    build_agent(client.agent(model_id), config)
+    Ok(build_agent(client.agent(model_id), config))
 }
 
 /// Helper function to apply common configuration to any agent builder
@@ -170,17 +173,17 @@ pub fn create_provider_agent(
             let api_key = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
             Ok(ProviderAgent::OpenAI(create_openai_agent(
                 api_key, base_url, model_id, config,
-            )))
+            )?))
         }
         "openrouter" => {
             let api_key = api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
             Ok(ProviderAgent::OpenRouter(create_openrouter_agent(
                 api_key, base_url, model_id, config,
-            )))
+            )?))
         }
         "ollama" => Ok(ProviderAgent::Ollama(create_ollama_agent(
             base_url, model_id, config,
-        ))),
+        )?)),
         _ => Err(anyhow::anyhow!(
             "Unknown provider: {}. Use openai, openrouter, or ollama",
             provider_type
@@ -235,6 +238,7 @@ where
     let mut full_reasoning = String::new();
     let mut cancelled = false;
     let mut consecutive_errors = 0;
+    let mut is_reasoning = false;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
     println!("📥 [{}] Processing stream...", log_prefix);
@@ -251,6 +255,11 @@ where
         match result {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
                 consecutive_errors = 0;
+                // Detect transition from reasoning to text
+                if is_reasoning {
+                    is_reasoning = false;
+                    println!("💡 [{}] Reasoning ended", log_prefix);
+                }
                 let text_str = &text.text;
                 if !text_str.is_empty() {
                     full_content.push_str(text_str);
@@ -266,15 +275,14 @@ where
                 Reasoning { reasoning, .. },
             ))) => {
                 consecutive_errors = 0;
+                // Detect reasoning start
+                if !is_reasoning {
+                    is_reasoning = true;
+                    println!("💡 [{}] Reasoning started", log_prefix);
+                }
                 let reasoning_text = reasoning.join("");
                 if !reasoning_text.is_empty() {
                     full_reasoning.push_str(&reasoning_text);
-
-                    println!(
-                        "🧠 [{}] Received reasoning chunk: {} chars",
-                        log_prefix,
-                        reasoning_text.len()
-                    );
 
                     if !callback(reasoning_text, StreamChunkType::Reasoning) {
                         println!("🛑 [{}] Callback signaled cancellation", log_prefix);
@@ -326,6 +334,11 @@ where
                 );
             }
         }
+    }
+
+    // Handle case where reasoning was active when stream ended
+    if is_reasoning {
+        println!("💡 [{}] Reasoning ended", log_prefix);
     }
 
     if cancelled {

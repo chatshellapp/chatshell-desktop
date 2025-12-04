@@ -129,6 +129,8 @@ export function ChatView() {
   const streamingContent = conversationState?.streamingContent || ''
   // Streaming reasoning content from API (GPT-5, Gemini with thinking)
   const streamingReasoningContent = conversationState?.streamingReasoningContent || ''
+  // Whether reasoning has actually started (received first reasoning chunk)
+  const isReasoningActive = conversationState?.isReasoningActive || false
   const attachmentStatus = conversationState?.attachmentStatus || 'idle'
   const attachmentRefreshKey = conversationState?.attachmentRefreshKey || 0
   const isWaitingForAI = conversationState?.isWaitingForAI || false
@@ -675,10 +677,10 @@ export function ChatView() {
                   searchResultContexts.length > 0 || searchDecisionSteps.length > 0
                 const hasStreamingThinking = combinedThinkingContent !== null
 
-                // Show thinking placeholder while waiting for AI (before any content arrives)
-                // This provides visual feedback that reasoning models (GPT-5, o1, etc.) are thinking
-                // Note: OpenAI reasoning models don't stream thinking incrementally - it arrives all at once after completion
-                const showThinkingPlaceholder = isWaitingForAI && !hasPendingDecision
+                // Show thinking when reasoning has actually started (received first reasoning chunk)
+                // This provides visual feedback that reasoning models (GPT-5, o1, etc.) are actively thinking
+                // Note: We only show thinking when isReasoningActive is true, not during the initial waiting phase
+                const showThinkingPlaceholder = isReasoningActive && !hasPendingDecision
 
                 if (
                   hasAssistantResources ||

@@ -889,9 +889,11 @@ async fn handle_agent_streaming(
     // Track accumulated content for events
     let accumulated_content = Arc::new(RwLock::new(String::new()));
     let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
+    let reasoning_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let accumulated_content_for_callback = accumulated_content.clone();
     let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
+    let reasoning_started_for_callback = reasoning_started.clone();
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
@@ -923,6 +925,14 @@ async fn handle_agent_streaming(
                     let _ = app_for_stream.emit("chat-stream", payload);
                 }
                 StreamChunkType::Reasoning => {
+                    // Emit reasoning-started event on first reasoning chunk
+                    if !reasoning_started_for_callback.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                        let started_payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                        });
+                        let _ = app_for_stream.emit("reasoning-started", started_payload);
+                    }
+
                     // Accumulate reasoning content
                     if let Ok(mut reasoning) = accumulated_reasoning_for_callback.try_write() {
                         reasoning.push_str(&chunk);

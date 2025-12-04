@@ -22,6 +22,10 @@ interface GenerationStoppedEvent {
   conversation_id: string
 }
 
+interface ReasoningStartedEvent {
+  conversation_id: string
+}
+
 interface SearchDecisionStartedEvent {
   message_id: string
   conversation_id: string
@@ -135,6 +139,12 @@ export function useChatEvents(conversationId: string | null) {
     store.setIsStreaming(convId, false)
     store.setIsWaitingForAI(convId, false)
     store.setStreamingContent(convId, '')
+  }, [])
+
+  const handleReasoningStarted = useCallback((convId: string) => {
+    console.log('[useChatEvents] Reasoning started for conversation:', convId)
+    const store = useMessageStore.getState()
+    store.setIsReasoningActive(convId, true)
   }, [])
 
   const handleSearchDecisionStarted = useCallback((convId: string, messageId: string) => {
@@ -258,6 +268,15 @@ export function useChatEvents(conversationId: string | null) {
       }
     )
 
+    // Listen for reasoning started (AI begins thinking)
+    const unlistenReasoningStarted = listen<ReasoningStartedEvent>(
+      'reasoning-started',
+      (event) => {
+        console.log('[useChatEvents] Received reasoning-started event:', event.payload)
+        handleReasoningStarted(event.payload.conversation_id)
+      }
+    )
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
@@ -272,6 +291,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenSearchDecisionStarted.then((fn) => fn())
       unlistenConversationUpdated.then((fn) => fn())
       unlistenGenerationStopped.then((fn) => fn())
+      unlistenReasoningStarted.then((fn) => fn())
     }
   }, [
     conversationId,
@@ -286,5 +306,6 @@ export function useChatEvents(conversationId: string | null) {
     handleSearchDecisionStarted,
     handleConversationUpdated,
     handleGenerationStopped,
+    handleReasoningStarted,
   ])
 }
