@@ -20,7 +20,7 @@ pub enum StreamChunkType {
 }
 
 /// Convert MIME type string to rig's ImageMediaType
-fn mime_to_image_media_type(mime: &str) -> Option<ImageMediaType> {
+pub fn mime_to_image_media_type(mime: &str) -> Option<ImageMediaType> {
     match mime.to_lowercase().as_str() {
         "image/jpeg" | "image/jpg" => Some(ImageMediaType::JPEG),
         "image/png" => Some(ImageMediaType::PNG),
@@ -31,7 +31,7 @@ fn mime_to_image_media_type(mime: &str) -> Option<ImageMediaType> {
 }
 
 /// Convert MIME type string to rig's DocumentMediaType
-fn mime_to_document_media_type(mime: &str) -> Option<DocumentMediaType> {
+pub fn mime_to_document_media_type(mime: &str) -> Option<DocumentMediaType> {
     match mime.to_lowercase().as_str() {
         "text/plain" => Some(DocumentMediaType::TXT),
         "text/markdown" => Some(DocumentMediaType::MARKDOWN),
@@ -47,7 +47,7 @@ fn mime_to_document_media_type(mime: &str) -> Option<DocumentMediaType> {
 }
 
 /// Build UserContent from text, optional images, and optional files
-fn build_user_content(
+pub fn build_user_content(
     text: &str,
     images: &[ImageData],
     files: &[FileData],

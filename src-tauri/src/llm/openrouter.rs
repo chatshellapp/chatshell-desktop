@@ -3,10 +3,17 @@ use rig::client::CompletionClient;
 use rig::providers::openai;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::common::{StreamChunkType, chat_stream_common};
+use crate::llm::common::{chat_stream_common, StreamChunkType};
 use crate::llm::{ChatRequest, ChatResponse};
 
 const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+/// Create an OpenRouter client (uses OpenAI-compatible API)
+pub fn create_client(api_key: &str, base_url: Option<&str>) -> openai::Client<reqwest::Client> {
+    openai::Client::builder(api_key)
+        .base_url(base_url.unwrap_or(DEFAULT_BASE_URL))
+        .build()
+}
 
 pub struct OpenRouterRigProvider {
     api_key: String,

@@ -3,8 +3,17 @@ use rig::client::CompletionClient;
 use rig::providers::ollama;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::common::{StreamChunkType, chat_stream_common};
+use crate::llm::common::{chat_stream_common, StreamChunkType};
 use crate::llm::{ChatRequest, ChatResponse};
+
+const DEFAULT_BASE_URL: &str = "http://localhost:11434";
+
+/// Create an Ollama client with the given configuration
+pub fn create_client(base_url: Option<&str>) -> ollama::Client<reqwest::Client> {
+    ollama::Client::builder()
+        .base_url(base_url.unwrap_or(DEFAULT_BASE_URL))
+        .build()
+}
 
 pub struct OllamaRigProvider {
     base_url: String,
@@ -13,7 +22,7 @@ pub struct OllamaRigProvider {
 impl OllamaRigProvider {
     pub fn new(base_url: Option<String>) -> Self {
         Self {
-            base_url: base_url.unwrap_or_else(|| "http://localhost:11434".to_string()),
+            base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
         }
     }
 

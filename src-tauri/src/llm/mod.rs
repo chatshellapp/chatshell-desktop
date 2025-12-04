@@ -1,3 +1,4 @@
+pub mod agent_builder;
 pub mod common;
 pub mod models;
 pub mod ollama;

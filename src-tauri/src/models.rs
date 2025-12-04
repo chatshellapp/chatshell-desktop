@@ -47,6 +47,85 @@ pub struct CreateModelRequest {
     pub is_starred: Option<bool>,
 }
 
+// ==========================================================================
+// MODEL PARAMETERS - Reusable LLM generation configuration
+// ==========================================================================
+
+/// Model parameters for LLM configuration.
+/// These parameters control the behavior of the language model during generation.
+/// Can be used independently (for direct model calls) or embedded in an Assistant.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelParameters {
+    /// Controls randomness in output (0.0 = deterministic, 2.0 = very random)
+    pub temperature: Option<f64>,
+    /// Maximum number of tokens to generate
+    pub max_tokens: Option<i64>,
+    /// Nucleus sampling: only consider tokens with top_p cumulative probability
+    pub top_p: Option<f64>,
+    /// Penalize tokens based on their frequency in the text so far
+    pub frequency_penalty: Option<f64>,
+    /// Penalize tokens that have already appeared in the text
+    pub presence_penalty: Option<f64>,
+    /// Additional provider-specific parameters (JSON)
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl ModelParameters {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if any parameters are set (used to decide whether to use agent API)
+    pub fn has_custom_params(&self) -> bool {
+        self.temperature.is_some()
+            || self.max_tokens.is_some()
+            || self.top_p.is_some()
+            || self.frequency_penalty.is_some()
+            || self.presence_penalty.is_some()
+            || self.additional_params.is_some()
+    }
+
+    /// Builder method for temperature
+    pub fn with_temperature(mut self, temp: f64) -> Self {
+        self.temperature = Some(temp);
+        self
+    }
+
+    /// Builder method for max_tokens
+    pub fn with_max_tokens(mut self, tokens: i64) -> Self {
+        self.max_tokens = Some(tokens);
+        self
+    }
+
+    /// Builder method for top_p
+    pub fn with_top_p(mut self, top_p: f64) -> Self {
+        self.top_p = Some(top_p);
+        self
+    }
+
+    /// Builder method for frequency_penalty
+    pub fn with_frequency_penalty(mut self, penalty: f64) -> Self {
+        self.frequency_penalty = Some(penalty);
+        self
+    }
+
+    /// Builder method for presence_penalty
+    pub fn with_presence_penalty(mut self, penalty: f64) -> Self {
+        self.presence_penalty = Some(penalty);
+        self
+    }
+
+    /// Builder method for additional_params
+    pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+}
+
+// ==========================================================================
+// ASSISTANT - Model + Parameters + System Prompt packaged together
+// ==========================================================================
+
 // Assistant models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assistant {
@@ -57,6 +136,10 @@ pub struct Assistant {
     pub system_prompt: String,
     pub user_prompt: Option<String>,
     pub model_id: String, // Foreign key to models table
+
+    /// LLM generation parameters (flattened for JSON compatibility)
+    #[serde(flatten)]
+    pub model_params: ModelParameters,
 
     // Avatar fields
     pub avatar_type: String,
@@ -79,6 +162,10 @@ pub struct CreateAssistantRequest {
     pub system_prompt: String,
     pub user_prompt: Option<String>,
     pub model_id: String, // Foreign key to models table
+
+    /// LLM generation parameters (flattened for JSON compatibility)
+    #[serde(flatten)]
+    pub model_params: Option<ModelParameters>,
 
     pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,

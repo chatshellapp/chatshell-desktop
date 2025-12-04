@@ -81,6 +81,12 @@ impl Database {
                 system_prompt TEXT NOT NULL,
                 user_prompt TEXT,
                 model_id TEXT NOT NULL,
+                temperature REAL,
+                max_tokens INTEGER,
+                top_p REAL,
+                frequency_penalty REAL,
+                presence_penalty REAL,
+                additional_params TEXT,
                 avatar_type TEXT DEFAULT 'text',
                 avatar_bg TEXT,
                 avatar_text TEXT,
@@ -933,13 +939,22 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
+        // Extract model parameters
+        let model_params = req.model_params.unwrap_or_default();
+        let additional_params_json = model_params
+            .additional_params
+            .as_ref()
+            .map(|v| serde_json::to_string(v).ok())
+            .flatten();
+
         {
             let conn = self.lock_conn()?;
             conn.execute(
                 "INSERT INTO assistants (id, name, role, description, system_prompt, user_prompt, model_id, 
+                 temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
                  avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
                  group_name, is_starred, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
                 params![
                     id,
                     req.name,
@@ -948,6 +963,12 @@ impl Database {
                     req.system_prompt,
                     req.user_prompt,
                     req.model_id,
+                    model_params.temperature,
+                    model_params.max_tokens,
+                    model_params.top_p,
+                    model_params.frequency_penalty,
+                    model_params.presence_penalty,
+                    additional_params_json,
                     avatar_type,
                     req.avatar_bg,
                     req.avatar_text,
@@ -969,6 +990,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
+             temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
              group_name, is_starred, created_at, updated_at
              FROM assistants WHERE id = ?1",
@@ -976,6 +998,10 @@ impl Database {
 
         let assistant = stmt
             .query_row(params![id], |row| {
+                let additional_params_str: Option<String> = row.get(12)?;
+                let additional_params = additional_params_str
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
                 Ok(Assistant {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -984,15 +1010,23 @@ impl Database {
                     system_prompt: row.get(4)?,
                     user_prompt: row.get(5)?,
                     model_id: row.get(6)?,
-                    avatar_type: row.get(7)?,
-                    avatar_bg: row.get(8)?,
-                    avatar_text: row.get(9)?,
-                    avatar_image_path: row.get(10)?,
-                    avatar_image_url: row.get(11)?,
-                    group_name: row.get(12)?,
-                    is_starred: row.get::<_, i32>(13)? != 0,
-                    created_at: row.get(14)?,
-                    updated_at: row.get(15)?,
+                    model_params: ModelParameters {
+                        temperature: row.get(7)?,
+                        max_tokens: row.get(8)?,
+                        top_p: row.get(9)?,
+                        frequency_penalty: row.get(10)?,
+                        presence_penalty: row.get(11)?,
+                        additional_params,
+                    },
+                    avatar_type: row.get(13)?,
+                    avatar_bg: row.get(14)?,
+                    avatar_text: row.get(15)?,
+                    avatar_image_path: row.get(16)?,
+                    avatar_image_url: row.get(17)?,
+                    group_name: row.get(18)?,
+                    is_starred: row.get::<_, i32>(19)? != 0,
+                    created_at: row.get(20)?,
+                    updated_at: row.get(21)?,
                 })
             })
             .optional()?;
@@ -1004,6 +1038,7 @@ impl Database {
         let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
+             temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
              group_name, is_starred, created_at, updated_at
              FROM assistants ORDER BY created_at DESC",
@@ -1011,6 +1046,10 @@ impl Database {
 
         let assistants = stmt
             .query_map([], |row| {
+                let additional_params_str: Option<String> = row.get(12)?;
+                let additional_params = additional_params_str
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
                 Ok(Assistant {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -1019,15 +1058,23 @@ impl Database {
                     system_prompt: row.get(4)?,
                     user_prompt: row.get(5)?,
                     model_id: row.get(6)?,
-                    avatar_type: row.get(7)?,
-                    avatar_bg: row.get(8)?,
-                    avatar_text: row.get(9)?,
-                    avatar_image_path: row.get(10)?,
-                    avatar_image_url: row.get(11)?,
-                    group_name: row.get(12)?,
-                    is_starred: row.get::<_, i32>(13)? != 0,
-                    created_at: row.get(14)?,
-                    updated_at: row.get(15)?,
+                    model_params: ModelParameters {
+                        temperature: row.get(7)?,
+                        max_tokens: row.get(8)?,
+                        top_p: row.get(9)?,
+                        frequency_penalty: row.get(10)?,
+                        presence_penalty: row.get(11)?,
+                        additional_params,
+                    },
+                    avatar_type: row.get(13)?,
+                    avatar_bg: row.get(14)?,
+                    avatar_text: row.get(15)?,
+                    avatar_image_path: row.get(16)?,
+                    avatar_image_url: row.get(17)?,
+                    group_name: row.get(18)?,
+                    is_starred: row.get::<_, i32>(19)? != 0,
+                    created_at: row.get(20)?,
+                    updated_at: row.get(21)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1040,13 +1087,23 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
+        // Extract model parameters
+        let model_params = req.model_params.unwrap_or_default();
+        let additional_params_json = model_params
+            .additional_params
+            .as_ref()
+            .map(|v| serde_json::to_string(v).ok())
+            .flatten();
+
         {
             let conn = self.lock_conn()?;
             conn.execute(
                 "UPDATE assistants SET name = ?1, role = ?2, description = ?3, system_prompt = ?4, 
-                 user_prompt = ?5, model_id = ?6, avatar_type = ?7, avatar_bg = ?8, avatar_text = ?9, 
-                 avatar_image_path = ?10, avatar_image_url = ?11, group_name = ?12, 
-                 is_starred = ?13, updated_at = ?14 WHERE id = ?15",
+                 user_prompt = ?5, model_id = ?6, temperature = ?7, max_tokens = ?8, top_p = ?9,
+                 frequency_penalty = ?10, presence_penalty = ?11, additional_params = ?12,
+                 avatar_type = ?13, avatar_bg = ?14, avatar_text = ?15, 
+                 avatar_image_path = ?16, avatar_image_url = ?17, group_name = ?18, 
+                 is_starred = ?19, updated_at = ?20 WHERE id = ?21",
                 params![
                     req.name,
                     req.role,
@@ -1054,6 +1111,12 @@ impl Database {
                     req.system_prompt,
                     req.user_prompt,
                     req.model_id,
+                    model_params.temperature,
+                    model_params.max_tokens,
+                    model_params.top_p,
+                    model_params.frequency_penalty,
+                    model_params.presence_penalty,
+                    additional_params_json,
                     avatar_type,
                     req.avatar_bg,
                     req.avatar_text,
@@ -2650,6 +2713,7 @@ impl Database {
                 system_prompt: system_prompt.to_string(),
                 user_prompt: None,
                 model_id: model.id.clone(),
+                model_params: None, // Use default model parameters
                 avatar_type: Some("text".to_string()),
                 avatar_bg: Some(avatar_bg.to_string()),
                 avatar_text: Some(avatar_text.to_string()),

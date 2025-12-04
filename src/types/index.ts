@@ -41,6 +41,34 @@ export interface CreateModelRequest {
   is_starred?: boolean
 }
 
+// ==========================================================================
+// MODEL PARAMETERS - Reusable LLM generation configuration
+// ==========================================================================
+
+/**
+ * Model parameters for LLM configuration.
+ * Can be used independently (for direct model calls) or embedded in an Assistant.
+ * These parameters control the behavior of the language model during generation.
+ */
+export interface ModelParameters {
+  /** Controls randomness in output (0.0 = deterministic, 2.0 = very random) */
+  temperature?: number
+  /** Maximum number of tokens to generate */
+  max_tokens?: number
+  /** Nucleus sampling: only consider tokens with top_p cumulative probability */
+  top_p?: number
+  /** Penalize tokens based on their frequency in the text so far */
+  frequency_penalty?: number
+  /** Penalize tokens that have already appeared in the text */
+  presence_penalty?: number
+  /** Additional provider-specific parameters */
+  additional_params?: Record<string, unknown>
+}
+
+// ==========================================================================
+// ASSISTANT - Model + Parameters + System Prompt packaged together
+// ==========================================================================
+
 // Assistant types
 export interface Assistant {
   id: string
@@ -50,11 +78,22 @@ export interface Assistant {
   system_prompt: string
   user_prompt?: string
   model_id: string // Foreign key to models table
+
+  // Model parameters (flattened in JSON for backward compatibility)
+  temperature?: number
+  max_tokens?: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+  additional_params?: Record<string, unknown>
+
+  // Avatar
   avatar_type: string // "text" or "image"
   avatar_bg?: string
   avatar_text?: string
   avatar_image_path?: string
   avatar_image_url?: string
+
   group_name?: string
   is_starred: boolean
   created_at: string
@@ -68,11 +107,22 @@ export interface CreateAssistantRequest {
   system_prompt: string
   user_prompt?: string
   model_id: string // Foreign key to models table
+
+  // Model parameters (flattened in JSON for backward compatibility)
+  temperature?: number
+  max_tokens?: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+  additional_params?: Record<string, unknown>
+
+  // Avatar
   avatar_type?: string
   avatar_bg?: string
   avatar_text?: string
   avatar_image_path?: string
   avatar_image_url?: string
+
   group_name?: string
   is_starred?: boolean
 }

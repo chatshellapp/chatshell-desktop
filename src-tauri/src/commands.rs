@@ -1,10 +1,15 @@
 use crate::crypto;
 use crate::db::Database;
+use crate::llm::agent_builder::{
+    build_assistant_message, build_user_message, create_provider_agent, stream_chat_with_agent,
+    AgentConfig,
+};
 use crate::llm::{self, ChatMessage, StreamChunkType};
-use crate::models::*;
+use crate::models::{ModelParameters, *};
 use crate::prompts;
 use crate::web_fetch;
 use anyhow::Result;
+use rig::completion::Message as RigMessage;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{Emitter, State};
@@ -1133,6 +1138,320 @@ async fn handle_provider_streaming(
     });
 }
 
+/// Handle streaming using the new agent-based approach
+/// This provides built-in support for preamble, temperature, max_tokens, etc.
+async fn handle_agent_streaming(
+    provider_type: String,
+    model_id: String,
+    chat_messages: Vec<ChatMessage>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    system_prompt: Option<String>,
+    model_params: ModelParameters,
+    cancel_token: CancellationToken,
+    state_clone: AppState,
+    app: tauri::AppHandle,
+    conversation_id_clone: String,
+    content: String,
+    model_db_id: Option<String>,
+    assistant_db_id: Option<String>,
+) {
+    println!(
+        "✅ [agent_streaming] Using {} provider with agent API",
+        provider_type
+    );
+
+    // Build agent config from system prompt and model parameters
+    let config = AgentConfig {
+        system_prompt: system_prompt.clone(),
+        model_params,
+    };
+
+    // Create the agent
+    let agent = match create_provider_agent(
+        &provider_type,
+        &model_id,
+        api_key.as_deref(),
+        base_url.as_deref(),
+        &config,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("❌ [agent_streaming] Failed to create agent: {}", e);
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+
+    // Convert ChatMessages to rig's Message format for history
+    let mut chat_history: Vec<RigMessage> = Vec::new();
+    let mut current_prompt: Option<RigMessage> = None;
+
+    for (i, msg) in chat_messages.iter().enumerate() {
+        let is_last = i == chat_messages.len() - 1;
+        let message = match msg.role.as_str() {
+            "user" => build_user_message(&msg.content, &msg.images, &msg.files),
+            "assistant" => build_assistant_message(&msg.content),
+            "system" => {
+                // System messages are handled via preamble in agent config
+                // Skip them in history if we have a system_prompt in config
+                if system_prompt.is_some() {
+                    continue;
+                }
+                // Otherwise include as user message with system context
+                build_user_message(&format!("[System]: {}", msg.content), &[], &[])
+            }
+            _ => build_user_message(&msg.content, &msg.images, &msg.files),
+        };
+
+        if is_last && msg.role == "user" {
+            current_prompt = Some(message);
+        } else {
+            chat_history.push(message);
+        }
+    }
+
+    // Use the last user message as prompt, or create one from content
+    let prompt = current_prompt.unwrap_or_else(|| build_user_message(&content, &[], &[]));
+
+    // Track accumulated content for events
+    let accumulated_content = Arc::new(RwLock::new(String::new()));
+    let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
+
+    let accumulated_content_for_callback = accumulated_content.clone();
+    let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
+    let conversation_id_for_stream = conversation_id_clone.clone();
+    let app_for_stream = app.clone();
+    let cancel_token_for_callback = cancel_token.clone();
+
+    // Stream using the agent
+    let response = stream_chat_with_agent(
+        agent,
+        prompt,
+        chat_history,
+        cancel_token.clone(),
+        move |chunk: String, chunk_type: StreamChunkType| -> bool {
+            // Check if cancelled
+            if cancel_token_for_callback.is_cancelled() {
+                println!("🛑 [agent_streaming] Generation cancelled, stopping stream");
+                return false;
+            }
+
+            match chunk_type {
+                StreamChunkType::Text => {
+                    // Accumulate text content
+                    if let Ok(mut content) = accumulated_content_for_callback.try_write() {
+                        content.push_str(&chunk);
+                    }
+
+                    let payload = serde_json::json!({
+                        "conversation_id": conversation_id_for_stream,
+                        "content": chunk,
+                    });
+                    let _ = app_for_stream.emit("chat-stream", payload);
+                }
+                StreamChunkType::Reasoning => {
+                    // Accumulate reasoning content
+                    if let Ok(mut reasoning) = accumulated_reasoning_for_callback.try_write() {
+                        reasoning.push_str(&chunk);
+                    }
+
+                    let payload = serde_json::json!({
+                        "conversation_id": conversation_id_for_stream,
+                        "content": chunk,
+                    });
+                    let _ = app_for_stream.emit("chat-stream-reasoning", payload);
+                }
+            }
+
+            true // Continue streaming
+        },
+        &provider_type,
+    )
+    .await;
+
+    // Handle the response
+    let response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            // Check if this was a cancellation
+            if cancel_token.is_cancelled() {
+                println!("🛑 [agent_streaming] Generation was cancelled");
+
+                // Get accumulated content
+                let accumulated = accumulated_content.read().await.clone();
+                let accumulated_reasoning_content = accumulated_reasoning.read().await.clone();
+
+                if !accumulated.is_empty() {
+                    println!(
+                        "📝 [agent_streaming] Saving partial response ({} chars)",
+                        accumulated.len()
+                    );
+
+                    // Determine sender type and ID
+                    let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
+                        ("model".to_string(), Some(model_id))
+                    } else if let Some(assistant_id) = assistant_db_id.clone() {
+                        ("assistant".to_string(), Some(assistant_id))
+                    } else {
+                        ("assistant".to_string(), None)
+                    };
+
+                    // Save partial response
+                    match state_clone.db.create_message(CreateMessageRequest {
+                        conversation_id: Some(conversation_id_clone.clone()),
+                        sender_type: sender_type.clone(),
+                        sender_id: sender_id.clone(),
+                        content: accumulated.clone(),
+                        tokens: None,
+                    }) {
+                        Ok(msg) => {
+                            println!("✅ [agent_streaming] Partial message saved: {}", msg.id);
+
+                            // Save thinking content if any
+                            if !accumulated_reasoning_content.is_empty() {
+                                if let Ok(thinking_step) =
+                                    state_clone.db.create_thinking_step(CreateThinkingStepRequest {
+                                        content: accumulated_reasoning_content,
+                                        source: Some("llm".to_string()),
+                                    })
+                                {
+                                    let _ = state_clone.db.link_message_step(
+                                        &msg.id,
+                                        StepType::Thinking,
+                                        &thinking_step.id,
+                                        Some(0),
+                                    );
+                                }
+                            }
+
+                            let completion_payload = serde_json::json!({
+                                "conversation_id": conversation_id_clone,
+                                "message": msg,
+                                "cancelled": true,
+                            });
+                            let _ = app.emit("chat-complete", completion_payload);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to save partial message: {}", e);
+                        }
+                    }
+                }
+            } else {
+                eprintln!("❌ [agent_streaming] Stream error: {}", e);
+            }
+
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+
+    // Get the final content
+    let final_content = response.content.clone();
+    println!(
+        "✅ [agent_streaming] Response complete: {} chars",
+        final_content.len()
+    );
+
+    // Determine sender type and ID
+    let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
+        ("model".to_string(), Some(model_id))
+    } else if let Some(assistant_id) = assistant_db_id.clone() {
+        ("assistant".to_string(), Some(assistant_id))
+    } else {
+        ("assistant".to_string(), None)
+    };
+
+    // Save assistant message
+    let assistant_message = match state_clone.db.create_message(CreateMessageRequest {
+        conversation_id: Some(conversation_id_clone.clone()),
+        sender_type,
+        sender_id,
+        content: final_content.clone(),
+        tokens: response.tokens,
+    }) {
+        Ok(msg) => msg,
+        Err(e) => {
+            eprintln!("Failed to save assistant message: {}", e);
+            let mut tasks = state_clone.generation_tasks.write().await;
+            tasks.remove(&conversation_id_clone);
+            return;
+        }
+    };
+
+    // Save thinking content as a ThinkingStep if present
+    if let Some(thinking_content) = response.thinking_content {
+        if !thinking_content.is_empty() {
+            match state_clone
+                .db
+                .create_thinking_step(CreateThinkingStepRequest {
+                    content: thinking_content,
+                    source: Some("llm".to_string()),
+                }) {
+                Ok(thinking_step) => {
+                    if let Err(e) = state_clone.db.link_message_step(
+                        &assistant_message.id,
+                        StepType::Thinking,
+                        &thinking_step.id,
+                        Some(0),
+                    ) {
+                        eprintln!("Failed to link thinking step: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to save thinking step: {}", e);
+                }
+            }
+        }
+    }
+
+    println!(
+        "✅ [agent_streaming] Assistant message saved with id: {}",
+        assistant_message.id
+    );
+
+    // Notify frontend that streaming is complete
+    let completion_payload = serde_json::json!({
+        "conversation_id": conversation_id_clone,
+        "message": assistant_message,
+    });
+    let _ = app.emit("chat-complete", completion_payload);
+
+    // Remove task from tracking
+    {
+        let mut tasks = state_clone.generation_tasks.write().await;
+        tasks.remove(&conversation_id_clone);
+    }
+
+    // Auto-generate title for new conversations (async, doesn't block the response)
+    let state_for_title = state_clone.clone();
+    let app_for_title = app.clone();
+    let conversation_id_for_title = conversation_id_clone.clone();
+    let content_for_title = content.clone();
+    let final_content_for_title = final_content.clone();
+    let provider_for_title = provider_type.clone();
+    let model_for_title = model_id.clone();
+    let api_key_for_title = api_key.clone();
+    let base_url_for_title = base_url.clone();
+
+    tokio::spawn(async move {
+        auto_generate_title_if_needed(
+            &state_for_title,
+            &app_for_title,
+            &conversation_id_for_title,
+            &content_for_title,
+            &final_content_for_title,
+            &provider_for_title,
+            &model_for_title,
+            api_key_for_title,
+            base_url_for_title,
+        )
+        .await;
+    });
+}
+
 /// File attachment data from frontend
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct FileAttachmentInput {
@@ -2101,26 +2420,100 @@ pub async fn send_message(
             files: user_files,
         });
 
-        // Send chat request with streaming (unified handler for all providers)
+        // Fetch assistant configuration if available
+        let assistant_config = if let Some(ref assistant_id) = assistant_db_id {
+            match state_clone.db.get_assistant(assistant_id) {
+                Ok(Some(assistant)) => {
+                    println!(
+                        "📋 [background_task] Using assistant config: temp={:?}, max_tokens={:?}",
+                        assistant.model_params.temperature, assistant.model_params.max_tokens
+                    );
+                    Some(assistant)
+                }
+                Ok(None) => {
+                    println!("⚠️  [background_task] Assistant not found: {}", assistant_id);
+                    None
+                }
+                Err(e) => {
+                    eprintln!("⚠️  [background_task] Error fetching assistant: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Send chat request with streaming
+        // Use agent-based approach when we have assistant configuration with parameters
         println!(
             "📤 [background_task] Sending chat request to LLM (model: {})",
             model
         );
-        handle_provider_streaming(
-            provider,
-            model,
-            chat_messages,
-            api_key,
-            base_url,
-            cancel_token,
-            state_clone,
-            app,
-            conversation_id_clone,
-            content,
-            model_db_id,
-            assistant_db_id,
-        )
-        .await;
+
+        // Extract system prompt from chat messages for agent approach
+        let system_prompt_for_agent = chat_messages
+            .first()
+            .filter(|m| m.role == "system")
+            .map(|m| m.content.clone());
+
+        if let Some(ref assistant) = assistant_config {
+            // Use new agent-based streaming when assistant has custom parameters
+            if assistant.model_params.has_custom_params() {
+                println!("🤖 [background_task] Using agent-based streaming with custom parameters");
+                handle_agent_streaming(
+                    provider.clone(),
+                    model.clone(),
+                    chat_messages,
+                    api_key.clone(),
+                    base_url.clone(),
+                    system_prompt_for_agent,
+                    assistant.model_params.clone(),
+                    cancel_token,
+                    state_clone,
+                    app,
+                    conversation_id_clone,
+                    content,
+                    model_db_id,
+                    assistant_db_id,
+                )
+                .await;
+            } else {
+                // Use legacy streaming when no custom parameters
+                println!("📡 [background_task] Using legacy streaming (no custom parameters)");
+                handle_provider_streaming(
+                    provider,
+                    model,
+                    chat_messages,
+                    api_key,
+                    base_url,
+                    cancel_token,
+                    state_clone,
+                    app,
+                    conversation_id_clone,
+                    content,
+                    model_db_id,
+                    assistant_db_id,
+                )
+                .await;
+            }
+        } else {
+            // Use legacy streaming when no assistant configured
+            handle_provider_streaming(
+                provider,
+                model,
+                chat_messages,
+                api_key,
+                base_url,
+                cancel_token,
+                state_clone,
+                app,
+                conversation_id_clone,
+                content,
+                model_db_id,
+                assistant_db_id,
+            )
+            .await;
+        }
     });
 
     // Return user message immediately
