@@ -1028,7 +1028,7 @@ export function ThinkingPreview({
       {/* Expandable content */}
       {isExpanded && (
         <div className="border-t border-muted px-3 py-3 max-h-80 overflow-y-auto">
-          <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm text-foreground/80 leading-relaxed">
             {content ? (
               <MarkdownContent content={content} className="text-sm" />
             ) : isStreaming ? (
