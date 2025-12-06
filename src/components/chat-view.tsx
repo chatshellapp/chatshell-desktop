@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { AlertTriangle } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
@@ -115,6 +115,56 @@ export function ChatView() {
 
   // Track input area height for button positioning
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
+  const [manualInputHeight, setManualInputHeight] = useState<number | null>(null)
+  const [isResizing, setIsResizing] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // Store the initial height of the input area to use as minimum
+  const initialHeightRef = useRef<number>(0)
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    const handleDragMove = (e: MouseEvent) => {
+      if (!isResizing || !rootRef.current) return
+
+      const rootRect = rootRef.current.getBoundingClientRect()
+      const maxHeight = rootRect.height / 2
+      // Calculate new height based on distance from bottom
+      const newHeight = rootRect.bottom - e.clientY
+
+      // Clamp height
+      // Min height: initial height (to ensure controls are visible) or fallback to 140
+      const minHeight = initialHeightRef.current || 140
+      const clampedHeight = Math.min(Math.max(newHeight, minHeight), maxHeight)
+      
+      setManualInputHeight(clampedHeight)
+    }
+
+    const handleDragEnd = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleDragMove)
+      window.addEventListener('mouseup', handleDragEnd)
+      // Add a class to body to force cursor style globally while dragging
+      document.body.style.cursor = 'ns-resize'
+      document.body.style.userSelect = 'none'
+    } else {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove)
+      window.removeEventListener('mouseup', handleDragEnd)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing])
 
   // Track messages content container position for button centering
   const [buttonLeft, setButtonLeft] = useState<string | number>('50%')
@@ -315,7 +365,14 @@ export function ChatView() {
 
     // Initial measurement
     const updateHeight = () => {
-      setInputAreaHeight(inputArea.offsetHeight)
+      const height = inputArea.offsetHeight
+      setInputAreaHeight(height)
+      
+      // Capture initial height if not set and we're not in manual resize mode
+      // This serves as the minimum height constraint
+      if (initialHeightRef.current === 0 && height > 0 && manualInputHeight === null) {
+        initialHeightRef.current = height
+      }
     }
 
     updateHeight()
@@ -454,7 +511,7 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div ref={rootRef} className="flex flex-col flex-1 overflow-hidden">
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
@@ -807,8 +864,23 @@ export function ChatView() {
       </div>
 
       {/* Input Area */}
-      <div ref={inputAreaRef} className="shrink-0 bg-background border-t p-4 flex justify-center">
-        <ChatInput />
+      <div
+        ref={inputAreaRef}
+        className="shrink-0 bg-background border-t relative flex flex-col"
+        style={manualInputHeight ? { height: manualInputHeight } : undefined}
+      >
+        {/* Drag Handle */}
+        <div
+          className="absolute top-0 left-0 right-0 h-3 -mt-1.5 cursor-ns-resize z-50 flex items-center justify-center hover:bg-accent/10 transition-colors group"
+          onMouseDown={handleDragStart}
+          title="Drag to resize"
+        >
+          <div className="w-12 h-1 bg-muted-foreground/20 rounded-full backdrop-blur-sm group-hover:bg-muted-foreground/40 transition-colors" />
+        </div>
+
+        <div className="p-4 flex justify-center h-full overflow-y-auto">
+          <ChatInput />
+        </div>
       </div>
     </div>
   )
