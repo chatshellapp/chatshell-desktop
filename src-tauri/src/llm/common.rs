@@ -1,7 +1,8 @@
 use reqwest::header::{HeaderMap, HeaderValue};
 use rig::OneOrMany;
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType, UserContent,
+    Document, DocumentMediaType, DocumentSourceKind, Image, ImageDetail, ImageMediaType,
+    UserContent,
 };
 
 use crate::llm::{FileData, ImageData};
@@ -89,7 +90,7 @@ pub fn build_user_content(
         let image = Image {
             data: DocumentSourceKind::Base64(img.base64.clone()),
             media_type: mime_to_image_media_type(&img.media_type),
-            detail: None,
+            detail: Some(ImageDetail::Auto),
             additional_params: None,
         };
         contents.push(UserContent::Image(image));
