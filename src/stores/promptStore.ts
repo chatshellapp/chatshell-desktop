@@ -12,6 +12,8 @@ interface PromptState {
   ensureLoaded: () => Promise<void>
   loadPromptsByCategory: (category: string) => Promise<void>
   createPrompt: (req: CreatePromptRequest) => Promise<Prompt>
+  updatePrompt: (id: string, req: CreatePromptRequest) => Promise<Prompt>
+  deletePrompt: (id: string) => Promise<void>
   getPromptById: (id: string) => Prompt | undefined
 }
 
@@ -83,6 +85,50 @@ export const usePromptStore = create<PromptState>()(
           draft.isLoading = false
         })
         return prompt
+      } catch (error) {
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+        throw error
+      }
+    },
+
+    updatePrompt: async (id: string, req: CreatePromptRequest) => {
+      set((draft) => {
+        draft.isLoading = true
+        draft.error = null
+      })
+      try {
+        const prompt = await invoke<Prompt>('update_prompt', { id, req })
+        set((draft) => {
+          const index = draft.prompts.findIndex((p: Prompt) => p.id === id)
+          if (index >= 0) {
+            draft.prompts[index] = prompt
+          }
+          draft.isLoading = false
+        })
+        return prompt
+      } catch (error) {
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+        throw error
+      }
+    },
+
+    deletePrompt: async (id: string) => {
+      set((draft) => {
+        draft.isLoading = true
+        draft.error = null
+      })
+      try {
+        await invoke('delete_prompt', { id })
+        set((draft) => {
+          draft.prompts = draft.prompts.filter((p: Prompt) => p.id !== id)
+          draft.isLoading = false
+        })
       } catch (error) {
         set((draft) => {
           draft.error = String(error)

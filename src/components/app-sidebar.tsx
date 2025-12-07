@@ -30,10 +30,11 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { SIDEBAR_DATA } from '@/lib/sidebar-data'
 import type { Person, PersonGroup } from '@/components/people-list'
-import type { Prompt, PromptGroup } from '@/components/prompt-list'
+import type { Prompt as PromptListItem, PromptGroup } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Assistant as AssistantDB } from '@/types/assistant'
+import type { Prompt as PromptDB } from '@/types/prompt'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 import type { Artifact, ArtifactGroup } from '@/lib/sidebar-data'
 
@@ -51,6 +52,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
   const [promptDialogOpen, setPromptDialogOpen] = React.useState(false)
   const [editingAssistant, setEditingAssistant] = React.useState<AssistantDB | null>(null)
+  const [editingPrompt, setEditingPrompt] = React.useState<PromptDB | null>(null)
+  const [promptDialogMode, setPromptDialogMode] = React.useState<'create' | 'edit'>('create')
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
   const { setOpen } = useSidebar()
@@ -123,7 +126,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             selectedAssistantId={selectedAssistant?.id}
             selectedPersonId={selectedPersonId || undefined}
             onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
-            onModelSettings={() => {}}
+            onModelSettings={(model: ModelListItem) => handlers.handleModelDelete(model)}
             onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
             onVendorSettings={() => {}}
             onAssistantClick={(assistant: AssistantListItem) =>
@@ -139,6 +142,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             }}
             onAssistantStarToggle={(assistant: AssistantListItem) =>
               handlers.handleAssistantStarToggle(assistant)
+            }
+            onAssistantDelete={(assistant: AssistantListItem) =>
+              handlers.handleAssistantDelete(assistant)
             }
             onGroupSettings={() => {}}
             onPersonClick={(person: Person) => setSelectedPersonId(person.id)}
@@ -163,12 +169,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onTabChange={setActiveLibraryTab}
             promptGroups={promptGroups}
             selectedPromptId={selectedPromptId || undefined}
-            onPromptClick={(prompt: Prompt) => setSelectedPromptId(prompt.id)}
-            onPromptSettings={() => {}}
-            onPromptStarToggle={(prompt: Prompt) => {
+            onPromptClick={(prompt: PromptListItem) => setSelectedPromptId(prompt.id)}
+            onPromptSettings={(prompt: PromptListItem) => {
+              // Find the full prompt from the store
+              const fullPrompt = prompts.find((p) => p.id === prompt.id)
+              if (fullPrompt) {
+                setEditingPrompt(fullPrompt)
+                setPromptDialogMode('edit')
+                setPromptDialogOpen(true)
+              }
+            }}
+            onPromptStarToggle={(prompt: PromptListItem) => {
               // TODO: Implement star toggle in database
               console.log('Star toggle for prompt:', prompt.id)
             }}
+            onPromptDelete={(prompt: PromptListItem) => handlers.handlePromptDelete(prompt)}
             onPromptGroupSettings={() => {}}
             files={SIDEBAR_DATA.files}
             tools={SIDEBAR_DATA.tools}
@@ -276,7 +291,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 variant="outline"
                 size="sm"
                 className="w-full justify-center gap-2 h-9"
-                onClick={() => setPromptDialogOpen(true)}
+                onClick={() => {
+                  setEditingPrompt(null)
+                  setPromptDialogMode('create')
+                  setPromptDialogOpen(true)
+                }}
               >
                 <Plus className="size-4" />
                 Add Prompt
@@ -336,7 +355,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         mode={editingAssistant ? 'edit' : 'create'}
       />
 
-      <PromptDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} />
+      <PromptDialog
+        open={promptDialogOpen}
+        onOpenChange={(open) => {
+          setPromptDialogOpen(open)
+          if (!open) {
+            setEditingPrompt(null)
+            setPromptDialogMode('create')
+          }
+        }}
+        prompt={editingPrompt}
+        mode={promptDialogMode}
+      />
     </Sidebar>
   )
 }

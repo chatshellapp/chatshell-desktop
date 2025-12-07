@@ -23,3 +23,17 @@ pub async fn list_prompts_by_category(state: State<'_, AppState>, category: Stri
     state.db.list_prompts_by_category(&category).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn update_prompt(
+    state: State<'_, AppState>,
+    id: String,
+    req: CreatePromptRequest,
+) -> Result<Prompt, String> {
+    state.db.update_prompt(&id, req).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_prompt(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db.delete_prompt(&id).await.map_err(|e| e.to_string())
+}
+

@@ -71,6 +71,10 @@ interface PromptListProps {
    */
   onPromptStarToggle?: (prompt: Prompt) => void
   /**
+   * Click handler for prompt delete
+   */
+  onPromptDelete?: (prompt: Prompt) => void
+  /**
    * Click handler for group settings
    */
   onGroupSettings?: (group: PromptGroup) => void
@@ -86,6 +90,7 @@ export function PromptList({
   onPromptClick,
   onPromptSettings,
   onPromptStarToggle,
+  onPromptDelete,
   onGroupSettings,
   className,
 }: PromptListProps) {
@@ -130,6 +135,7 @@ export function PromptList({
           onPromptClick={onPromptClick}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
+          onPromptDelete={onPromptDelete}
           onGroupSettings={onGroupSettings}
           hideGroupMenu
           forceDefaultOpen
@@ -145,6 +151,7 @@ export function PromptList({
           onPromptClick={onPromptClick}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
+          onPromptDelete={onPromptDelete}
           onGroupSettings={onGroupSettings}
           forceDefaultOpen={!hasStarredPrompts && index === 0}
           ignoreGroupDefault={hasStarredPrompts}
@@ -160,6 +167,7 @@ interface PromptGroupComponentProps {
   onPromptClick?: (prompt: Prompt) => void
   onPromptSettings?: (prompt: Prompt) => void
   onPromptStarToggle?: (prompt: Prompt) => void
+  onPromptDelete?: (prompt: Prompt) => void
   onGroupSettings?: (group: PromptGroup) => void
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
@@ -172,6 +180,7 @@ function PromptGroupComponent({
   onPromptClick,
   onPromptSettings,
   onPromptStarToggle,
+  onPromptDelete,
   onGroupSettings,
   hideGroupMenu = false,
   forceDefaultOpen = false,
@@ -252,6 +261,7 @@ function PromptGroupComponent({
             onClick={() => onPromptClick?.(prompt)}
             onSettingsClick={() => onPromptSettings?.(prompt)}
             onStarClick={() => onPromptStarToggle?.(prompt)}
+            onDeleteClick={onPromptDelete ? () => onPromptDelete(prompt) : undefined}
           />
         ))}
       </CollapsibleContent>

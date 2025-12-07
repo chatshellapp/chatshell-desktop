@@ -6,9 +6,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DeletePromptDialog } from './prompt-list-item/delete-dialog'
 
 interface PromptListItemProps {
   /**
@@ -36,6 +38,14 @@ interface PromptListItemProps {
    */
   onStarClick?: (e: React.MouseEvent) => void
   /**
+   * Click handler for delete button
+   */
+  onDeleteClick?: (e: React.MouseEvent) => void
+  /**
+   * Click handler for copy content
+   */
+  onCopyContent?: (content: string) => void
+  /**
    * Optional className for customization
    */
   className?: string
@@ -52,10 +62,24 @@ export function PromptListItem({
   onClick,
   onSettingsClick,
   onStarClick,
+  onDeleteClick,
+  onCopyContent,
   className,
   isActive = false,
 }: PromptListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
+
+  const handleCopyContent = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      // You could add a toast notification here if you have a toast system
+      console.log('Prompt content copied to clipboard')
+      onCopyContent?.(content)
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error)
+    }
+  }
 
   return (
     <Item
@@ -132,11 +156,25 @@ export function PromptListItem({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
-                    // Copy to clipboard logic could go here
+                    handleCopyContent()
                   }}
                 >
                   Copy Content
                 </DropdownMenuItem>
+                {onDeleteClick && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowDeleteDialog(true)
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -147,6 +185,23 @@ export function PromptListItem({
           <span className="text-xs line-clamp-1">{content}</span>
         </ItemDescription>
       </ItemContent>
+
+      {/* Delete confirmation dialog */}
+      {onDeleteClick && (
+        <DeletePromptDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={(e?: React.MouseEvent) => {
+            if (e) {
+              onDeleteClick(e)
+            } else {
+              // Create a synthetic event for the callback
+              onDeleteClick({} as React.MouseEvent)
+            }
+          }}
+          promptName={name}
+        />
+      )}
     </Item>
   )
 }

@@ -115,5 +115,36 @@ impl Database {
 
         Ok(prompts)
     }
+
+    pub async fn update_prompt(&self, id: &str, req: CreatePromptRequest) -> Result<Prompt> {
+        let now = Utc::now().to_rfc3339();
+        let is_system = req.is_system.unwrap_or(false);
+
+        sqlx::query(
+            "UPDATE prompts SET name = ?, content = ?, description = ?, category = ?, is_system = ?, updated_at = ?
+             WHERE id = ?"
+        )
+        .bind(&req.name)
+        .bind(&req.content)
+        .bind(&req.description)
+        .bind(&req.category)
+        .bind(if is_system { 1 } else { 0 })
+        .bind(&now)
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_prompt(id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Prompt not found"))
+    }
+
+    pub async fn delete_prompt(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM prompts WHERE id = ?")
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(())
+    }
 }
 

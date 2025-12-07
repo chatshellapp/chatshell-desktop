@@ -3,8 +3,10 @@ import { invoke } from '@tauri-apps/api/core'
 import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
+import { usePromptStore } from '@/stores/promptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
+import type { Prompt as PromptListItem } from '@/components/prompt-list'
 
 export function useSidebarHandlers() {
   const conversations = useConversationStore((state) => state.conversations)
@@ -18,7 +20,11 @@ export function useSidebarHandlers() {
   const getModelById = useModelStore((state) => state.getModelById)
   const assistants = useAssistantStore((state) => state.assistants)
   const updateModel = useModelStore((state) => state.updateModel)
+  const deleteModel = useModelStore((state) => state.deleteModel)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
+  const deleteAssistant = useAssistantStore((state) => state.deleteAssistant)
+  const prompts = usePromptStore((state) => state.prompts)
+  const deletePrompt = usePromptStore((state) => state.deletePrompt)
 
   const handleModelClick = useCallback(
     async (model: ModelListItem) => {
@@ -135,6 +141,62 @@ export function useSidebarHandlers() {
     [assistants, updateAssistant]
   )
 
+  const handleModelDelete = useCallback(
+    async (model: ModelListItem) => {
+      const realModel = getModelById(model.id)
+      if (!realModel) {
+        console.error('Model not found:', model.id)
+        return
+      }
+
+      try {
+        await deleteModel(realModel.id)
+      } catch (error) {
+        console.error('Failed to delete model:', error)
+        alert(`Failed to delete model: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    },
+    [getModelById, deleteModel]
+  )
+
+  const handleAssistantDelete = useCallback(
+    async (assistant: AssistantListItem) => {
+      const realAssistant = assistants.find((a) => a.id === assistant.id)
+      if (!realAssistant) {
+        console.error('Assistant not found:', assistant.id)
+        return
+      }
+
+      try {
+        await deleteAssistant(realAssistant.id)
+      } catch (error) {
+        console.error('Failed to delete assistant:', error)
+        alert(
+          `Failed to delete assistant: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    },
+    [assistants, deleteAssistant]
+  )
+
+  const handlePromptDelete = useCallback(
+    async (prompt: PromptListItem) => {
+      const realPrompt = prompts.find((p) => p.id === prompt.id)
+      if (!realPrompt) {
+        console.error('Prompt not found:', prompt.id)
+        return
+      }
+
+      try {
+        await deletePrompt(realPrompt.id)
+      } catch (error) {
+        console.error('Failed to delete prompt:', error)
+        alert(`Failed to delete prompt: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    },
+    [prompts, deletePrompt]
+  )
+
   const handleConversationClick = useCallback(
     async (conversationId: string) => {
       try {
@@ -216,6 +278,9 @@ export function useSidebarHandlers() {
     handleAssistantClick,
     handleModelStarToggle,
     handleAssistantStarToggle,
+    handleModelDelete,
+    handleAssistantDelete,
+    handlePromptDelete,
     handleConversationClick,
     handleNewConversation,
     handleGenerateTitle,

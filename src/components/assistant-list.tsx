@@ -91,6 +91,10 @@ interface AssistantListProps {
    */
   onAssistantStarToggle?: (assistant: Assistant) => void
   /**
+   * Click handler for assistant delete
+   */
+  onAssistantDelete?: (assistant: Assistant) => void
+  /**
    * Click handler for group settings
    */
   onGroupSettings?: (group: AssistantGroup) => void
@@ -110,6 +114,7 @@ export function AssistantList({
   onAssistantClick,
   onAssistantSettings,
   onAssistantStarToggle,
+  onAssistantDelete,
   onGroupSettings,
   className,
   compact = false,
@@ -147,6 +152,7 @@ export function AssistantList({
           onAssistantClick={onAssistantClick}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
+          onAssistantDelete={onAssistantDelete}
           onGroupSettings={onGroupSettings}
           hideGroupMenu
           forceDefaultOpen
@@ -163,6 +169,7 @@ export function AssistantList({
           onAssistantClick={onAssistantClick}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
+          onAssistantDelete={onAssistantDelete}
           onGroupSettings={onGroupSettings}
           forceDefaultOpen={!hasStarredAssistants && index === 0}
           ignoreGroupDefault={hasStarredAssistants}
@@ -179,6 +186,7 @@ interface AssistantGroupComponentProps {
   onAssistantClick?: (assistant: Assistant) => void
   onAssistantSettings?: (assistant: Assistant) => void
   onAssistantStarToggle?: (assistant: Assistant) => void
+  onAssistantDelete?: (assistant: Assistant) => void
   onGroupSettings?: (group: AssistantGroup) => void
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
@@ -192,6 +200,7 @@ function AssistantGroupComponent({
   onAssistantClick,
   onAssistantSettings,
   onAssistantStarToggle,
+  onAssistantDelete,
   onGroupSettings,
   hideGroupMenu = false,
   forceDefaultOpen = false,
@@ -285,6 +294,7 @@ function AssistantGroupComponent({
             onClick={() => onAssistantClick?.(assistant)}
             onSettingsClick={() => onAssistantSettings?.(assistant)}
             onStarClick={() => onAssistantStarToggle?.(assistant)}
+            onDeleteClick={onAssistantDelete ? () => onAssistantDelete(assistant) : undefined}
             compact={compact}
           />
         ))}

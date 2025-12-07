@@ -8,9 +8,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical, Star, FileText, Database, Boxes } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DeleteAssistantDialog } from './assistant-list-item/delete-dialog'
 
 export interface AssistantCapabilities {
   /**
@@ -81,6 +83,10 @@ interface AssistantListItemProps {
    */
   onStarClick?: (e: React.MouseEvent) => void
   /**
+   * Click handler for delete button
+   */
+  onDeleteClick?: (e: React.MouseEvent) => void
+  /**
    * Optional className for customization
    */
   className?: string
@@ -106,11 +112,13 @@ export function AssistantListItem({
   onClick,
   onSettingsClick,
   onStarClick,
+  onDeleteClick,
   className,
   isActive = false,
   compact = false,
 }: AssistantListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
 
   // Count active capabilities to determine if we should show them
   const hasCapabilities = Object.values(capabilities).some(Boolean)
@@ -263,6 +271,20 @@ export function AssistantListItem({
                 >
                   Configuration
                 </DropdownMenuItem>
+                {onDeleteClick && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowDeleteDialog(true)
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -290,6 +312,23 @@ export function AssistantListItem({
           </div>
         )}
       </ItemContent>
+
+      {/* Delete confirmation dialog */}
+      {onDeleteClick && (
+        <DeleteAssistantDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={(e?: React.MouseEvent) => {
+            if (e) {
+              onDeleteClick(e)
+            } else {
+              // Create a synthetic event for the callback
+              onDeleteClick({} as React.MouseEvent)
+            }
+          }}
+          assistantName={name}
+        />
+      )}
     </Item>
   )
 }

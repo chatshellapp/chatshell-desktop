@@ -10,6 +10,7 @@ interface LibraryContentProps {
   onPromptClick: (prompt: Prompt) => void
   onPromptSettings: (prompt: Prompt) => void
   onPromptStarToggle: (prompt: Prompt) => void
+  onPromptDelete: (prompt: Prompt) => void
   onPromptGroupSettings: (group: PromptGroup) => void
   files: Array<{ id: string; name: string; type: string; size: string; lastModified: string }>
   tools: Array<{ id: string; name: string; description: string; status: string; lastSync: string }>
@@ -23,6 +24,7 @@ export function LibraryContent({
   onPromptClick,
   onPromptSettings,
   onPromptStarToggle,
+  onPromptDelete,
   onPromptGroupSettings,
   files,
   tools,
@@ -50,6 +52,7 @@ export function LibraryContent({
           onPromptClick={onPromptClick}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
+          onPromptDelete={onPromptDelete}
           onGroupSettings={onPromptGroupSettings}
         />
       </TabsContent>

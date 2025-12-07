@@ -93,6 +93,8 @@ pub fn run() {
             commands::get_prompt,
             commands::list_prompts,
             commands::list_prompts_by_category,
+            commands::update_prompt,
+            commands::delete_prompt,
             // User commands
             commands::create_user,
             commands::get_user,

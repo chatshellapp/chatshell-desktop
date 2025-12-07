@@ -207,7 +207,7 @@ export function ModelListItem({
                     onSettingsClick?.(e)
                   }}
                 >
-                  Configuration
+                  Remove
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

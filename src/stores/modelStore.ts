@@ -13,6 +13,7 @@ interface ModelState {
   loadProviders: () => Promise<void>
   loadAll: () => Promise<void>
   updateModel: (id: string, req: CreateModelRequest) => Promise<Model>
+  deleteModel: (id: string) => Promise<void>
   getModelById: (id: string) => Model | undefined
   getProviderById: (id: string) => Provider | undefined
 }
@@ -109,6 +110,29 @@ export const useModelStore = create<ModelState>()(
           draft.isLoading = false
         })
         return model
+      } catch (error) {
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+        throw error
+      }
+    },
+
+    deleteModel: async (id: string) => {
+      set((draft) => {
+        draft.isLoading = true
+        draft.error = null
+      })
+      try {
+        await invoke('soft_delete_model', { id })
+        set((draft) => {
+          const index = draft.models.findIndex((m: Model) => m.id === id)
+          if (index >= 0) {
+            draft.models[index].is_deleted = true
+          }
+          draft.isLoading = false
+        })
       } catch (error) {
         set((draft) => {
           draft.error = String(error)

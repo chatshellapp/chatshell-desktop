@@ -28,7 +28,7 @@ export function PromptDialog({
   prompt,
   mode = 'create',
 }: PromptDialogProps) {
-  const { createPrompt } = usePromptStore()
+  const { createPrompt, updatePrompt } = usePromptStore()
 
   // Form state
   const [name, setName] = useState('')
@@ -83,9 +83,8 @@ export function PromptDialog({
       }
 
       if (mode === 'edit' && prompt) {
-        // TODO: Implement update functionality when backend supports it
-        console.log('Update prompt:', prompt.id, req)
-        setError('Edit functionality coming soon')
+        await updatePrompt(prompt.id, req)
+        onOpenChange(false)
       } else {
         await createPrompt(req)
         onOpenChange(false)

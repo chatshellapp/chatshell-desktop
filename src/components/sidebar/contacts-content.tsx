@@ -20,6 +20,7 @@ interface ContactsContentProps {
   onAssistantClick: (assistant: Assistant) => void
   onAssistantSettings: (assistant: Assistant) => void
   onAssistantStarToggle: (assistant: Assistant) => void
+  onAssistantDelete: (assistant: Assistant) => void
   onGroupSettings: (group: AssistantGroup) => void
   onPersonClick: (person: Person) => void
   onPersonSettings: (person: Person) => void
@@ -43,6 +44,7 @@ export function ContactsContent({
   onAssistantClick,
   onAssistantSettings,
   onAssistantStarToggle,
+  onAssistantDelete,
   onGroupSettings,
   onPersonClick,
   onPersonSettings,
@@ -82,6 +84,7 @@ export function ContactsContent({
           onAssistantClick={onAssistantClick}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
+          onAssistantDelete={onAssistantDelete}
           onGroupSettings={onGroupSettings}
         />
       </TabsContent>
