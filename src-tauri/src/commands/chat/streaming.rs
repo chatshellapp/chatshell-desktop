@@ -229,6 +229,13 @@ pub(crate) async fn handle_agent_streaming(
                 }
             } else {
                 eprintln!("❌ [agent_streaming] Stream error: {}", e);
+                
+                // Emit error event to frontend so it can reset UI state
+                let error_payload = serde_json::json!({
+                    "conversation_id": conversation_id_clone,
+                    "error": e.to_string(),
+                });
+                let _ = app.emit("chat-error", error_payload);
             }
 
             let mut tasks = state_clone.generation_tasks.write().await;
