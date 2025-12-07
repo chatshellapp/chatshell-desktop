@@ -72,7 +72,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 gap-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
-        <DialogTitle className="sr-only">Add LLM Provider</DialogTitle>
+        <DialogTitle className="sr-only">Add Models</DialogTitle>
         <DialogDescription className="sr-only">
           Configure your LLM provider settings here.
         </DialogDescription>
