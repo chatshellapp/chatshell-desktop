@@ -148,7 +148,7 @@ export const useConversationStore = create<ConversationStore>()(
         await invoke('delete_conversation', { id })
 
         // Clean up message store state for this conversation
-        const { useMessageStore } = await import('./messageStore')
+        const { useMessageStore } = await import('./message')
         useMessageStore.getState().removeConversationState(id)
 
         set((draft) => {

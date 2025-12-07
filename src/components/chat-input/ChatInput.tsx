@@ -35,7 +35,7 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import { useConversationStore } from '@/stores/conversationStore'
-import { useMessageStore } from '@/stores/messageStore'
+import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import type { Model } from '@/types'
 

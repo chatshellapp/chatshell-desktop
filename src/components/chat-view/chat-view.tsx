@@ -7,7 +7,7 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import { useConversationStore } from '@/stores/conversationStore'
-import { useMessageStore } from '@/stores/messageStore'
+import { useMessageStore } from '@/stores/message'
 import { useChatEvents } from '@/hooks/useChatEvents'
 import { parseThinkingContent } from '@/lib/utils'
 import type { ContextEnrichment, ProcessStep } from '@/types'

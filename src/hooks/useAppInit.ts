@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationStore } from '@/stores/conversationStore'
-import { useMessageStore } from '@/stores/messageStore'
+import { useMessageStore } from '@/stores/message'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUserStore } from '@/stores/userStore'
 
