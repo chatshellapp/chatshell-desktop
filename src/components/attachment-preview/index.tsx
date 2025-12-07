@@ -55,24 +55,18 @@ export function AttachmentPreview({
     )
   }
 
-  // Handle user attachments (files, user links)
+  // Handle user attachments (files only; user URLs are stored as fetch_results)
   if (userAttachment) {
-    switch (userAttachment.type) {
-      case 'file':
-        return (
-          <FileAttachmentPreview
-            fileAttachment={userAttachment as FileAttachment}
-            allImages={allImages}
-            currentImageIndex={currentImageIndex}
-          />
-        )
-      case 'user_link':
-        // For now, treat user links as URLs to fetch
-        // TODO: Add UserLinkPreview component
-        return null
-      default:
-        return null
+    if (userAttachment.type === 'file') {
+      return (
+        <FileAttachmentPreview
+          fileAttachment={userAttachment as FileAttachment}
+          allImages={allImages}
+          currentImageIndex={currentImageIndex}
+        />
+      )
     }
+    return null
   }
 
   // Handle context enrichments (search results, fetch results)

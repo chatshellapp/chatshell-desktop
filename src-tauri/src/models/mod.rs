@@ -40,11 +40,8 @@ pub use conversation::{
 // Message
 pub use message::{CreateMessageRequest, Message};
 
-// Attachments (user-provided files and links)
-pub use attachment::{
-    CreateFileAttachmentRequest, CreateUserLinkRequest, FileAttachment, UserAttachment,
-    UserAttachmentType, UserLink,
-};
+// Attachments (user-provided files)
+pub use attachment::{CreateFileAttachmentRequest, FileAttachment, UserAttachment};
 
 // Context enrichments (system-fetched content)
 pub use context::{

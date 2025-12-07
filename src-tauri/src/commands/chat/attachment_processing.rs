@@ -2,7 +2,7 @@
 
 use super::super::AppState;
 use crate::llm::{FileData, ImageData};
-use crate::models::{CreateFileAttachmentRequest, UserAttachmentType};
+use crate::models::CreateFileAttachmentRequest;
 use tauri::Emitter;
 
 use super::types::{FileAttachmentInput, ImageAttachmentInput};
@@ -116,12 +116,7 @@ pub(crate) async fn store_file_attachments(
                     // Link file to message (user attachment)
                     if let Err(e) = state
                         .db
-                        .link_message_attachment(
-                            user_message_id,
-                            UserAttachmentType::File,
-                            &file_attachment.id,
-                            None,
-                        )
+                        .link_message_attachment(user_message_id, &file_attachment.id, None)
                         .await
                     {
                         eprintln!("Failed to link file to message: {}", e);
@@ -179,12 +174,7 @@ pub(crate) async fn store_file_attachments(
                 // Link file to message (user attachment)
                 if let Err(e) = state
                     .db
-                    .link_message_attachment(
-                        user_message_id,
-                        UserAttachmentType::File,
-                        &file_attachment.id,
-                        None,
-                    )
+                    .link_message_attachment(user_message_id, &file_attachment.id, None)
                     .await
                 {
                     eprintln!("Failed to link file to message: {}", e);
@@ -264,12 +254,7 @@ pub(crate) async fn store_image_attachments(
                     // Link file (image) to message (user attachment)
                     if let Err(e) = state
                         .db
-                        .link_message_attachment(
-                            user_message_id,
-                            UserAttachmentType::File,
-                            &file_attachment.id,
-                            None,
-                        )
+                        .link_message_attachment(user_message_id, &file_attachment.id, None)
                         .await
                     {
                         eprintln!("Failed to link image to message: {}", e);
@@ -324,12 +309,7 @@ pub(crate) async fn store_image_attachments(
                 // Link file (image) to message (user attachment)
                 if let Err(e) = state
                     .db
-                    .link_message_attachment(
-                        user_message_id,
-                        UserAttachmentType::File,
-                        &file_attachment.id,
-                        None,
-                    )
+                    .link_message_attachment(user_message_id, &file_attachment.id, None)
                     .await
                 {
                     eprintln!("Failed to link image to message: {}", e);

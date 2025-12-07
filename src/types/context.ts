@@ -20,10 +20,11 @@ export interface CreateSearchResultRequest {
 }
 
 // Fetch result - stores fetched web resource metadata (content in filesystem)
+// source_type="user_link" indicates a user-provided URL (no separate user_links table)
 export interface FetchResult {
   id: string
   source_type: string // "search" | "user_link"
-  source_id?: string // FK to search_results.id or user_links.id
+  source_id?: string // FK to search_results.id (only for source_type="search")
   url: string
   title?: string
   description?: string

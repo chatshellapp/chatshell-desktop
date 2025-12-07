@@ -108,10 +108,9 @@ pub fn run() {
             commands::create_message,
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
-            // User Attachments (files, user links)
+            // User Attachments (files)
             commands::get_message_attachments,
             commands::get_file_attachment,
-            commands::get_user_link,
             // Context Enrichments (search results, fetch results)
             commands::get_message_contexts,
             commands::get_search_result,

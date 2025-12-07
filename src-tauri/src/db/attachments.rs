@@ -4,10 +4,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
-use crate::models::{
-    CreateFileAttachmentRequest, CreateUserLinkRequest, FileAttachment, UserAttachment,
-    UserAttachmentType, UserLink,
-};
+use crate::models::{CreateFileAttachmentRequest, FileAttachment, UserAttachment};
 
 impl Database {
     // File Attachment operations
@@ -87,53 +84,10 @@ impl Database {
         Ok(())
     }
 
-    // User Link operations
-    pub async fn create_user_link(&self, req: CreateUserLinkRequest) -> Result<UserLink> {
-        let id = Uuid::now_v7().to_string();
-        let now = Utc::now().to_rfc3339();
-
-        sqlx::query(
-            "INSERT INTO user_links (id, url, title, created_at)
-             VALUES (?, ?, ?, ?)"
-        )
-        .bind(&id)
-        .bind(&req.url)
-        .bind(&req.title)
-        .bind(&now)
-        .execute(self.pool.as_ref())
-        .await?;
-
-        self.get_user_link(&id).await
-    }
-
-    pub async fn get_user_link(&self, id: &str) -> Result<UserLink> {
-        let row = sqlx::query("SELECT id, url, title, created_at FROM user_links WHERE id = ?")
-            .bind(id)
-            .fetch_optional(self.pool.as_ref())
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("User link not found"))?;
-
-        Ok(UserLink {
-            id: row.get("id"),
-            url: row.get("url"),
-            title: row.get("title"),
-            created_at: row.get("created_at"),
-        })
-    }
-
-    pub async fn delete_user_link(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM user_links WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
-        Ok(())
-    }
-
-    // Message Attachment Link operations
+    // Message Attachment Link operations (files only)
     pub async fn link_message_attachment(
         &self,
         message_id: &str,
-        attachment_type: UserAttachmentType,
         attachment_id: &str,
         display_order: Option<i32>,
     ) -> Result<()> {
@@ -144,11 +98,10 @@ impl Database {
         sqlx::query(
             "INSERT OR IGNORE INTO message_attachments
              (id, message_id, attachment_type, attachment_id, display_order, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, 'file', ?, ?, ?)"
         )
         .bind(&id)
         .bind(message_id)
-        .bind(attachment_type.to_string())
         .bind(attachment_id)
         .bind(order)
         .bind(&now)
@@ -160,7 +113,7 @@ impl Database {
 
     pub async fn get_message_attachments(&self, message_id: &str) -> Result<Vec<UserAttachment>> {
         let rows = sqlx::query(
-            "SELECT attachment_type, attachment_id, display_order
+            "SELECT attachment_id, display_order
              FROM message_attachments
              WHERE message_id = ?
              ORDER BY display_order, created_at"
@@ -171,41 +124,21 @@ impl Database {
 
         let mut attachments = Vec::new();
         for row in rows {
-            let attachment_type: String = row.get("attachment_type");
             let attachment_id: String = row.get("attachment_id");
 
-            let attachment = match attachment_type.as_str() {
-                "file" => self
-                    .get_file_attachment(&attachment_id)
-                    .await
-                    .map(UserAttachment::File)
-                    .ok(),
-                "user_link" => self
-                    .get_user_link(&attachment_id)
-                    .await
-                    .map(UserAttachment::UserLink)
-                    .ok(),
-                _ => None,
-            };
-            if let Some(a) = attachment {
-                attachments.push(a);
+            if let Ok(file) = self.get_file_attachment(&attachment_id).await {
+                attachments.push(UserAttachment::File(file));
             }
         }
 
         Ok(attachments)
     }
 
-    pub async fn unlink_message_attachment(
-        &self,
-        message_id: &str,
-        attachment_type: UserAttachmentType,
-        attachment_id: &str,
-    ) -> Result<()> {
+    pub async fn unlink_message_attachment(&self, message_id: &str, attachment_id: &str) -> Result<()> {
         sqlx::query(
-            "DELETE FROM message_attachments WHERE message_id = ? AND attachment_type = ? AND attachment_id = ?"
+            "DELETE FROM message_attachments WHERE message_id = ? AND attachment_id = ?"
         )
         .bind(message_id)
-        .bind(attachment_type.to_string())
         .bind(attachment_id)
         .execute(self.pool.as_ref())
         .await?;

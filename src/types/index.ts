@@ -39,16 +39,14 @@ export type {
 // Message types
 export type { Message, CreateMessageRequest } from './message'
 
-// Attachment types (user attachments)
+// Attachment types (user attachments - files only)
 export type {
   FileAttachment,
   CreateFileAttachmentRequest,
-  UserLink,
-  CreateUserLinkRequest,
   UserAttachmentType,
   UserAttachment,
 } from './attachment'
-export { isFileAttachment, isUserLink } from './attachment'
+export { isFileAttachment } from './attachment'
 
 // Context types (context enrichments)
 export type {
