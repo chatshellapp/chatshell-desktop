@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use super::Database;
-use crate::models::{CreateAssistantRequest, CreateModelRequest, CreateProviderRequest, CreatePromptRequest, CreateUserRequest};
+use crate::models::{CreateModelRequest, CreateProviderRequest, CreatePromptRequest, CreateUserRequest};
 
 impl Database {
     pub async fn seed_default_data(&self) -> Result<()> {
@@ -87,7 +87,7 @@ impl Database {
             }
         };
 
-        let created_models = if !ollama_models.is_empty() {
+        let _created_models = if !ollama_models.is_empty() {
             println!("🌱 [db] Creating models from local Ollama...");
             let mut models = Vec::new();
 
@@ -137,72 +137,8 @@ impl Database {
             vec![gemma_model, gpt_oss_model, deepseek_model]
         };
 
-        // Check if assistants already exist
-        let assistants = self.list_assistants().await?;
-        if !assistants.is_empty() {
-            println!("✅ [db] Assistants already exist, skipping seed");
-            return Ok(());
-        }
-
-        println!("🌱 [db] Seeding default assistants...");
-
-        let avatar_configs = vec![
-            (
-                "Code Assistant",
-                "Coding Expert",
-                "Help with programming tasks and technical questions",
-                "You are a helpful coding assistant. Help users with programming tasks, code review, debugging, and technical questions. Provide clear explanations and working code examples.",
-                "#3b82f6",
-                "💻",
-                "Development",
-                true,
-            ),
-            (
-                "General Assistant",
-                "General Helper",
-                "General purpose AI assistant",
-                "You are a helpful, harmless, and honest AI assistant. Provide clear and accurate information to help users with their questions. Think through problems step by step.",
-                "#10b981",
-                "🤖",
-                "General",
-                false,
-            ),
-            (
-                "Research Assistant",
-                "Research Specialist",
-                "Help with research and data analysis",
-                "You are a research assistant. Help users find information, analyze data, and summarize findings. Provide detailed analysis with reasoning.",
-                "#8b5cf6",
-                "🔍",
-                "Research",
-                false,
-            ),
-        ];
-
-        for (idx, (name, role, description, system_prompt, avatar_bg, avatar_text, group_name, is_starred)) in avatar_configs.into_iter().enumerate() {
-            let model_idx = idx % created_models.len();
-            let model = &created_models[model_idx];
-
-            let assistant_req = CreateAssistantRequest {
-                name: name.to_string(),
-                role: Some(role.to_string()),
-                description: Some(description.to_string()),
-                system_prompt: system_prompt.to_string(),
-                user_prompt: None,
-                model_id: model.id.clone(),
-                model_params: None,
-                avatar_type: Some("text".to_string()),
-                avatar_bg: Some(avatar_bg.to_string()),
-                avatar_text: Some(avatar_text.to_string()),
-                avatar_image_path: None,
-                avatar_image_url: None,
-                group_name: Some(group_name.to_string()),
-                is_starred: Some(is_starred),
-            };
-
-            let assistant = self.create_assistant(assistant_req).await?;
-            println!("✅ [db] Created assistant: {} (using model: {})", assistant.name, model.name);
-        }
+        // Skip automatic assistant creation - users can create their own
+        println!("✅ [db] Skipping assistant seed - users will create their own assistants");
 
         // Seed default prompts
         let existing_prompts = self.list_prompts().await?;
