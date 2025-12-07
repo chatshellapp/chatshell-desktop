@@ -23,7 +23,7 @@ import { useConversationParticipants } from '@/hooks/useConversationParticipants
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { SIDEBAR_DATA } from '@/lib/sidebar-data'
 import type { Person, PersonGroup } from '@/components/people-list'
 import type { Prompt, PromptGroup } from '@/components/prompt-list'

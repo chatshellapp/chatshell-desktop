@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { useMessageStore } from '@/stores/message'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import type {
   ChatStreamEvent,
   ChatStreamReasoningEvent,

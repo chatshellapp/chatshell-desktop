@@ -1,5 +1,5 @@
 import { MessageListItem } from '@/components/message-list-item'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { formatConversationTimestamp } from '@/lib/utils'
 import { buildConversationAvatars } from '@/lib/conversation-avatars'

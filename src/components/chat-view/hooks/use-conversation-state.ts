@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useChatEvents } from '@/hooks/useChatEvents'
 

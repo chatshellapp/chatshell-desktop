@@ -8,7 +8,7 @@ import {
 import { InputGroupButton } from '@/components/ui/input-group'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { ModelList, type ModelVendor, type Model as ModelListModel } from '@/components/model-list'

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { ParticipantSummary } from '@/types'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useUserStore } from '@/stores/userStore'
 
 export function useConversationParticipants() {

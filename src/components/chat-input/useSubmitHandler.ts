@@ -1,4 +1,4 @@
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import type { Attachment } from './types'

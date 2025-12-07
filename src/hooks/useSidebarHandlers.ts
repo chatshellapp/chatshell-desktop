@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { useConversationStore } from '@/stores/conversationStore'
+import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import type { Model as ModelListItem } from '@/components/model-list'
