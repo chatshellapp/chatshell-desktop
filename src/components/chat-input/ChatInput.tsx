@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { InputGroup, InputGroupTextarea } from '@/components/ui/input-group'
 import {
   ImageLightbox,

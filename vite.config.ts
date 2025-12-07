@@ -36,4 +36,9 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: ['d3-sankey']
+    }
+  }
 }));

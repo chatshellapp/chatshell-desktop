@@ -102,3 +102,6 @@ export type {
   AttachmentUpdateEvent,
   SearchDecisionCompleteEvent,
 } from './event'
+
+// URL status type (used in message store for tracking fetch status)
+export type UrlStatus = 'fetching' | 'fetched'

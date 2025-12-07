@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import {
   Dialog,
   DialogContent,
@@ -36,7 +35,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Loader2, ChevronDown, Search, User, Sparkles, Bot } from 'lucide-react'
-import type { Assistant, CreateAssistantRequest, Prompt } from '@/types'
+import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
