@@ -15,6 +15,7 @@ import {
 import { ProviderSettingsDialog } from '@/components/provider-settings-dialog'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { AssistantDialog } from '@/components/assistant-dialog'
+import { PromptDialog } from '@/components/prompt-dialog'
 import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
@@ -48,6 +49,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
+  const [promptDialogOpen, setPromptDialogOpen] = React.useState(false)
   const [editingAssistant, setEditingAssistant] = React.useState<AssistantDB | null>(null)
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
@@ -274,7 +276,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 variant="outline"
                 size="sm"
                 className="w-full justify-center gap-2 h-9"
-                onClick={() => {}}
+                onClick={() => setPromptDialogOpen(true)}
               >
                 <Plus className="size-4" />
                 Add Prompt
@@ -333,6 +335,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         assistant={editingAssistant}
         mode={editingAssistant ? 'edit' : 'create'}
       />
+
+      <PromptDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} />
     </Sidebar>
   )
 }
