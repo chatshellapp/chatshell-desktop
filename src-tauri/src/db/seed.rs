@@ -220,15 +220,9 @@ impl Database {
                 ),
                 // Developer
                 (
-                    "Ascii Artist",
+                    "ASCII Artist",
                     "I want you to act as an ascii artist. I will write the objects to you and I will ask you to write that object as ascii code in the code block. Write only ascii code. Do not explain about the object you wrote. I will say the objects in double quotes.",
                     Some("Create ASCII art representations of objects".to_string()),
-                    Some("Developer".to_string()),
-                ),
-                (
-                    "Morse Code Translator",
-                    "I want you to act as a Morse code translator. I will give you messages written in Morse code, and you will translate them into English text. Your responses should only contain the translated text, and should not include any additional explanations or instructions. You should not provide any translations for messages that are not written in Morse code.",
-                    Some("Translate Morse code messages to English text".to_string()),
                     Some("Developer".to_string()),
                 ),
                 (
