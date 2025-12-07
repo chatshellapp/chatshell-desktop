@@ -26,11 +26,13 @@ import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
 import { useConversationStore } from '@/stores/conversation'
 import { useAssistantStore } from '@/stores/assistantStore'
+import { usePromptStore } from '@/stores/promptStore'
 import { SIDEBAR_DATA } from '@/lib/sidebar-data'
 import type { Person, PersonGroup } from '@/components/people-list'
 import type { Prompt, PromptGroup } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
+import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 import type { Artifact, ArtifactGroup } from '@/lib/sidebar-data'
 
@@ -38,8 +40,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
   const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>('person-1')
   const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(SIDEBAR_DATA.peopleGroups)
-  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>('1')
-  const [promptGroups, setPromptGroups] = React.useState<PromptGroup[]>(SIDEBAR_DATA.promptGroups)
+  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
   const [selectedArtifactId, setSelectedArtifactId] = React.useState<string | null>(null)
   const [artifactGroups, setArtifactGroups] = React.useState<ArtifactGroup[]>(
     SIDEBAR_DATA.artifactGroups
@@ -47,7 +48,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
-  const [editingAssistant, setEditingAssistant] = React.useState<AssistantListItem | null>(null)
+  const [editingAssistant, setEditingAssistant] = React.useState<AssistantDB | null>(null)
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
   const { setOpen } = useSidebar()
@@ -57,8 +58,42 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const assistantGroups = useAssistantGroups()
 
   const assistants = useAssistantStore((state) => state.assistants)
+  const prompts = usePromptStore((state) => state.prompts)
+  const ensurePromptsLoaded = usePromptStore((state) => state.ensureLoaded)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+
+  // Ensure prompts are loaded (handles HMR store reset)
+  React.useEffect(() => {
+    ensurePromptsLoaded()
+  }, [ensurePromptsLoaded])
+
+  // Transform database prompts into prompt groups by category
+  const promptGroups = React.useMemo((): PromptGroup[] => {
+    const groupsMap = new Map<string, PromptGroup>()
+    
+    prompts.forEach((prompt) => {
+      const category = prompt.category || 'Uncategorized'
+      
+      if (!groupsMap.has(category)) {
+        groupsMap.set(category, {
+          id: category.toLowerCase().replace(/\s+/g, '-'),
+          name: category,
+          defaultOpen: true, // Set to true so groups are visible by default
+          prompts: [],
+        })
+      }
+      
+      groupsMap.get(category)!.prompts.push({
+        id: prompt.id,
+        name: prompt.name,
+        content: prompt.content,
+        isStarred: false, // TODO: Add isStarred to database schema if needed
+      })
+    })
+    
+    return Array.from(groupsMap.values())
+  }, [prompts])
 
   const handlers = useSidebarHandlers()
 
@@ -96,7 +131,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               // Find the full assistant from the store
               const fullAssistant = assistants.find((a) => a.id === assistant.id)
               if (fullAssistant) {
-                setEditingAssistant(fullAssistant as any)
+                setEditingAssistant(fullAssistant)
                 setAssistantDialogOpen(true)
               }
             }}
@@ -129,14 +164,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onPromptClick={(prompt: Prompt) => setSelectedPromptId(prompt.id)}
             onPromptSettings={() => {}}
             onPromptStarToggle={(prompt: Prompt) => {
-              setPromptGroups((prevGroups) =>
-                prevGroups.map((group) => ({
-                  ...group,
-                  prompts: group.prompts.map((p: Prompt) =>
-                    p.id === prompt.id ? { ...p, isStarred: !p.isStarred } : p
-                  ),
-                }))
-              )
+              // TODO: Implement star toggle in database
+              console.log('Star toggle for prompt:', prompt.id)
             }}
             onPromptGroupSettings={() => {}}
             files={SIDEBAR_DATA.files}

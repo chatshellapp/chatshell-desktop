@@ -88,6 +88,11 @@ pub fn run() {
             commands::list_assistants,
             commands::update_assistant,
             commands::delete_assistant,
+            // Prompt commands
+            commands::create_prompt,
+            commands::get_prompt,
+            commands::list_prompts,
+            commands::list_prompts_by_category,
             // User commands
             commands::create_user,
             commands::get_user,

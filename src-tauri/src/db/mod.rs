@@ -10,6 +10,7 @@ mod fetch_results;
 mod search_results;
 mod steps;
 mod settings;
+mod prompts;
 mod seed;
 mod schema;
 

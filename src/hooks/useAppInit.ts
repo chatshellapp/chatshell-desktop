@@ -5,6 +5,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUserStore } from '@/stores/userStore'
+import { usePromptStore } from '@/stores/promptStore'
 
 export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false)
@@ -24,6 +25,7 @@ export function useAppInit() {
         const userStore = useUserStore.getState()
         const modelStore = useModelStore.getState()
         const assistantStore = useAssistantStore.getState()
+        const promptStore = usePromptStore.getState()
         const conversationStore = useConversationStore.getState()
 
         // Load settings
@@ -41,6 +43,10 @@ export function useAppInit() {
         // Load assistants (optional - users can use models directly)
         console.log('Loading assistants...')
         await assistantStore.loadAssistants()
+
+        // Load prompts
+        console.log('Loading prompts...')
+        await promptStore.loadPrompts()
 
         // Load conversations
         console.log('Loading conversations...')

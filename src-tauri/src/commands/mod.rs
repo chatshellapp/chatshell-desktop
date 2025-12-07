@@ -11,6 +11,7 @@ mod resources;
 mod settings;
 mod crypto;
 mod model_fetch;
+mod prompts;
 pub mod chat;
 
 use crate::db::Database;
@@ -45,5 +46,6 @@ pub use resources::*;
 pub use settings::*;
 pub use crypto::*;
 pub use model_fetch::*;
+pub use prompts::*;
 pub use chat::*;
 

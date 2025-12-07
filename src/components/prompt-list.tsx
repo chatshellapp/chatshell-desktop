@@ -112,6 +112,14 @@ export function PromptList({
     defaultOpen: true,
   }
 
+  if (groups.length === 0) {
+    return (
+      <div className={cn('flex flex-col gap-1 p-4 text-sm text-muted-foreground', className)}>
+        No prompts available
+      </div>
+    )
+  }
+
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred prompts group first if there are any starred prompts */}
