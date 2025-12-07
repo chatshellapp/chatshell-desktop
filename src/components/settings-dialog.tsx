@@ -8,18 +8,18 @@ import {
   Eye,
   EyeOff,
   FileDown,
-  Globe,
+  // Globe,
   Heading,
-  Home,
-  Keyboard,
-  Link,
-  Lock,
-  Menu,
-  MessageCircle,
-  Paintbrush,
+  // Home,
+  // Keyboard,
+  // Link,
+  // Lock,
+  // Menu,
+  // MessageCircle,
+  // Paintbrush,
   Search,
-  Settings,
-  Video,
+  // Settings,
+  // Video,
 } from 'lucide-react'
 
 import {
@@ -61,17 +61,17 @@ const data = {
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
-    { name: 'Navigation', icon: Menu },
-    { name: 'Home', icon: Home },
-    { name: 'Appearance', icon: Paintbrush },
-    { name: 'Messages & media', icon: MessageCircle },
-    { name: 'Language & region', icon: Globe },
-    { name: 'Accessibility', icon: Keyboard },
-    { name: 'Mark as read', icon: Check },
-    { name: 'Audio & video', icon: Video },
-    { name: 'Connected accounts', icon: Link },
-    { name: 'Privacy & visibility', icon: Lock },
-    { name: 'Advanced', icon: Settings },
+    // { name: 'Navigation', icon: Menu },
+    // { name: 'Home', icon: Home },
+    // { name: 'Appearance', icon: Paintbrush },
+    // { name: 'Messages & media', icon: MessageCircle },
+    // { name: 'Language & region', icon: Globe },
+    // { name: 'Accessibility', icon: Keyboard },
+    // { name: 'Mark as read', icon: Check },
+    // { name: 'Audio & video', icon: Video },
+    // { name: 'Connected accounts', icon: Link },
+    // { name: 'Privacy & visibility', icon: Lock },
+    // { name: 'Advanced', icon: Settings },
   ],
 }
 
@@ -256,10 +256,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </p>
           </div>
 
-          {/* Local Method Selection */}
+          {/* Fetch Strategy Selection */}
           {webFetchMode === 'local' && (
             <div className="grid gap-2">
-              <Label>Local Method</Label>
+              <Label>Fetch Strategy</Label>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full max-w-md justify-between">
