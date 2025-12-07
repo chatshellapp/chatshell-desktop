@@ -13,6 +13,21 @@ export { useAttachments, type UseAttachmentsReturn } from './useAttachments'
 export { useKeyboardHandlers } from './useKeyboardHandlers'
 export { useSubmitHandler } from './useSubmitHandler'
 
+// Attachment sub-hooks (for granular usage)
+export {
+  useAttachmentState,
+  useFileSelect,
+  useImageSelect,
+  usePasteHandler,
+  useDragDrop,
+  type UseAttachmentStateReturn,
+  type UseFileSelectReturn,
+  type UseImageSelectReturn,
+  type UsePasteHandlerReturn,
+  type UseDragDropReturn,
+  type DragHandlers,
+} from './hooks'
+
 // Types and utilities
 export {
   type Attachment,
