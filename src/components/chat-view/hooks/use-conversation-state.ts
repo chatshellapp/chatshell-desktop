@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
-import { useChatEvents } from '@/hooks/useChatEvents'
+import { useChatEvents } from '@/hooks/chat-events'
 
 export function useConversationState() {
   const currentConversation = useConversationStore((state) => state.currentConversation)

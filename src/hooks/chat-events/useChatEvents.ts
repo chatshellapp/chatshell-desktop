@@ -1,7 +1,5 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { useMessageStore } from '@/stores/message'
-import { useConversationStore } from '@/stores/conversation'
 import type {
   ChatStreamEvent,
   ChatStreamReasoningEvent,
@@ -13,24 +11,18 @@ import type {
   AttachmentUpdateEvent,
   SearchDecisionCompleteEvent,
 } from '@/types'
-
-interface ConversationUpdatedEvent {
-  conversation_id: string
-  title: string
-}
-
-interface GenerationStoppedEvent {
-  conversation_id: string
-}
-
-interface ReasoningStartedEvent {
-  conversation_id: string
-}
-
-interface SearchDecisionStartedEvent {
-  message_id: string
-  conversation_id: string
-}
+import type {
+  ConversationUpdatedEvent,
+  GenerationStoppedEvent,
+  ReasoningStartedEvent,
+  SearchDecisionStartedEvent,
+} from './types'
+import {
+  useChatHandlers,
+  useAttachmentHandlers,
+  useSearchDecisionHandlers,
+  useConversationHandlers,
+} from './handlers'
 
 export function useChatEvents(conversationId: string | null) {
   const conversationIdRef = useRef(conversationId)
@@ -40,140 +32,25 @@ export function useChatEvents(conversationId: string | null) {
     conversationIdRef.current = conversationId
   }, [conversationId])
 
-  // Create stable callback references using useCallback
-  // These now take conversationId as parameter
-  const handleStreamChunk = useCallback((convId: string, chunk: string) => {
-    console.log('[useChatEvents] Appending chunk to conversation:', convId)
-    useMessageStore.getState().appendStreamingChunk(convId, chunk)
-  }, [])
+  // Get handlers from separated hooks
+  const {
+    handleStreamChunk,
+    handleStreamReasoningChunk,
+    handleChatComplete,
+    handleChatError,
+    handleReasoningStarted,
+  } = useChatHandlers()
 
-  const handleStreamReasoningChunk = useCallback((convId: string, chunk: string) => {
-    console.log('[useChatEvents] Appending reasoning chunk to conversation:', convId)
-    useMessageStore.getState().appendStreamingReasoningChunk(convId, chunk)
-  }, [])
+  const {
+    handleAttachmentProcessingStarted,
+    handleAttachmentProcessingComplete,
+    handleAttachmentProcessingError,
+    handleAttachmentUpdate,
+  } = useAttachmentHandlers()
 
-  const handleChatComplete = useCallback((convId: string, message: any) => {
-    console.log(
-      '[useChatEvents] handleChatComplete called for conversation:',
-      convId,
-      'message:',
-      message
-    )
-    const store = useMessageStore.getState()
-    const convState = store.getConversationState(convId)
-    console.log(
-      '[useChatEvents] Current messages count for conversation:',
-      convState.messages.length
-    )
-    store.addMessage(convId, message)
-    console.log(
-      '[useChatEvents] After addMessage, messages count:',
-      store.getConversationState(convId).messages.length
-    )
-    store.setIsStreaming(convId, false)
-    store.setStreamingContent(convId, '')
-  }, [])
+  const { handleSearchDecisionStarted, handleSearchDecisionComplete } = useSearchDecisionHandlers()
 
-  const handleAttachmentProcessingStarted = useCallback(
-    (convId: string, messageId: string, urls: string[]) => {
-      const store = useMessageStore.getState()
-      store.setAttachmentStatus(convId, 'processing')
-      store.setUrlStatuses(convId, messageId, urls)
-    },
-    []
-  )
-
-  const handleAttachmentProcessingComplete = useCallback((convId: string, messageId: string) => {
-    const store = useMessageStore.getState()
-    store.setAttachmentStatus(convId, 'complete')
-    store.clearUrlStatuses(convId, messageId)
-  }, [])
-
-  const handleAttachmentProcessingError = useCallback((convId: string, error: string) => {
-    useMessageStore.getState().setAttachmentStatus(convId, 'error')
-    console.error('Attachment processing error:', error)
-  }, [])
-
-  const handleAttachmentUpdate = useCallback(
-    (convId: string, messageId?: string, completedUrl?: string) => {
-      const store = useMessageStore.getState()
-      // Mark the completed URL as fetched
-      if (messageId && completedUrl) {
-        store.markUrlFetched(convId, messageId, completedUrl)
-      }
-      // Trigger a refresh by incrementing the refresh key
-      store.incrementAttachmentRefreshKey(convId)
-      // Clear pending search decision when actual decision arrives
-      if (messageId) {
-        store.setPendingSearchDecision(convId, messageId, false)
-      }
-    },
-    []
-  )
-
-  const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
-    console.log('[useChatEvents] Conversation title updated:', conversationId, title)
-    const conversationStore = useConversationStore.getState()
-
-    // Update the conversation in the list
-    const updatedConversations = conversationStore.conversations.map((conv) =>
-      conv.id === conversationId ? { ...conv, title } : conv
-    )
-
-    // Update the store
-    useConversationStore.setState({ conversations: updatedConversations })
-
-    // If it's the current conversation, update that too
-    if (conversationStore.currentConversation?.id === conversationId) {
-      useConversationStore.setState({
-        currentConversation: { ...conversationStore.currentConversation, title },
-      })
-    }
-  }, [])
-
-  const handleGenerationStopped = useCallback((convId: string) => {
-    console.log('[useChatEvents] Generation stopped for conversation:', convId)
-    // Reset streaming states when generation is stopped
-    // This is needed when stopping before any content arrives,
-    // as chat-complete event won't be emitted in that case
-    const store = useMessageStore.getState()
-    store.setIsStreaming(convId, false)
-    store.setIsWaitingForAI(convId, false)
-    store.setStreamingContent(convId, '')
-    // Clear all pending search decisions for this conversation
-    store.clearPendingSearchDecisions(convId)
-    // Reset reasoning state
-    store.setIsReasoningActive(convId, false)
-  }, [])
-
-  const handleReasoningStarted = useCallback((convId: string) => {
-    console.log('[useChatEvents] Reasoning started for conversation:', convId)
-    const store = useMessageStore.getState()
-    store.setIsReasoningActive(convId, true)
-  }, [])
-
-  const handleSearchDecisionStarted = useCallback((convId: string, messageId: string) => {
-    console.log('[useChatEvents] Search decision started for message:', messageId)
-    const store = useMessageStore.getState()
-    store.setPendingSearchDecision(convId, messageId, true)
-  }, [])
-
-  const handleSearchDecisionComplete = useCallback((convId: string, messageId: string) => {
-    console.log('[useChatEvents] Search decision complete for message:', messageId)
-    const store = useMessageStore.getState()
-    // Trigger a refresh by incrementing the attachment refresh key
-    // This will cause the UI to re-fetch resources and show the search decision
-    // NOTE: We don't clear pending search decision here. The pending state is resolved
-    // automatically when the resources are loaded and the search decision step exists.
-    // This ensures the UI shows the search decision step BEFORE showing thinking/content.
-    store.incrementAttachmentRefreshKey(convId)
-  }, [])
-
-  const handleChatError = useCallback((convId: string, error: string) => {
-    console.log('[useChatEvents] handleChatError called for conversation:', convId, 'error:', error)
-    const store = useMessageStore.getState()
-    store.setApiError(convId, error)
-  }, [])
+  const { handleConversationUpdated, handleGenerationStopped } = useConversationHandlers()
 
   useEffect(() => {
     if (!conversationId) return
@@ -336,3 +213,4 @@ export function useChatEvents(conversationId: string | null) {
     handleReasoningStarted,
   ])
 }
+
