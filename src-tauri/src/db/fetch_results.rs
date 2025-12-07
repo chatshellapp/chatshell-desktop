@@ -123,15 +123,18 @@ impl Database {
     }
 
     pub async fn get_fetch_results_by_message(&self, message_id: &str) -> Result<Vec<FetchResult>> {
-        let query = format!(
-            "SELECT f.{} FROM fetch_results f
+        // Use explicit table-qualified column names to avoid ambiguity with message_contexts
+        let query = 
+            "SELECT f.id, f.source_type, f.source_id, f.url, f.title, f.description, 
+                    f.storage_path, f.content_type, f.original_mime, f.status, f.error, 
+                    f.keywords, f.headings, f.original_size, f.processed_size, 
+                    f.favicon_url, f.content_hash, f.created_at, f.updated_at 
+             FROM fetch_results f
              INNER JOIN message_contexts mc ON mc.context_id = f.id AND mc.context_type = 'fetch_result'
              WHERE mc.message_id = ?
-             ORDER BY mc.display_order, mc.created_at",
-            FETCH_RESULT_COLUMNS.replace("id,", "id AS id,")
-        );
+             ORDER BY mc.display_order, mc.created_at";
 
-        let rows = sqlx::query(&query)
+        let rows = sqlx::query(query)
             .bind(message_id)
             .fetch_all(self.pool.as_ref())
             .await?;
