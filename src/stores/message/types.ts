@@ -1,4 +1,5 @@
 import type { Message, Conversation } from '@/types'
+import type { Draft } from 'immer'
 
 // Per-conversation state
 export interface ConversationState {
@@ -38,7 +39,8 @@ export const createDefaultConversationState = (): ConversationState => ({
   apiError: null,
 })
 
-export interface MessageStore {
+// Message store state (without actions)
+export interface MessageStoreState {
   // Record of conversationId -> state
   conversationStates: Record<string, ConversationState>
 
@@ -48,11 +50,26 @@ export interface MessageStore {
 
   // Callback for inter-store communication (avoids direct store imports)
   onNewConversationCreated?: (conversation: Conversation) => void
+}
 
+// Selector actions
+export interface MessageStoreSelectors {
   // Get state for specific conversation (creates if doesn't exist)
   getConversationState: (conversationId: string) => ConversationState
+}
 
-  // Actions with conversationId
+// Streaming-related actions
+export interface MessageStoreStreamingActions {
+  setStreamingContent: (conversationId: string, content: string) => void
+  setIsStreaming: (conversationId: string, isStreaming: boolean) => void
+  appendStreamingChunk: (conversationId: string, chunk: string) => void
+  appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
+  setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
+  setIsReasoningActive: (conversationId: string, isActive: boolean) => void
+}
+
+// Main actions (message CRUD, conversation management)
+export interface MessageStoreActions {
   loadMessages: (conversationId: string) => Promise<void>
   sendMessage: (
     content: string,
@@ -74,8 +91,6 @@ export interface MessageStore {
   stopGeneration: (conversationId: string) => Promise<void>
   clearMessages: (conversationId: string) => Promise<void>
   addMessage: (conversationId: string, message: Message) => void
-  setStreamingContent: (conversationId: string, content: string) => void
-  setIsStreaming: (conversationId: string, isStreaming: boolean) => void
   setAttachmentStatus: (
     conversationId: string,
     status: 'idle' | 'processing' | 'complete' | 'error'
@@ -84,10 +99,6 @@ export interface MessageStore {
   setUrlStatuses: (conversationId: string, messageId: string, urls: string[]) => void
   markUrlFetched: (conversationId: string, messageId: string, url: string) => void
   clearUrlStatuses: (conversationId: string, messageId: string) => void
-  appendStreamingChunk: (conversationId: string, chunk: string) => void
-  appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
-  setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
-  setIsReasoningActive: (conversationId: string, isActive: boolean) => void
   setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
   clearPendingSearchDecisions: (conversationId: string) => void
   setApiError: (conversationId: string, error: string | null) => void
@@ -96,6 +107,18 @@ export interface MessageStore {
   removeConversationState: (conversationId: string) => void
 }
 
+// Combined message store type
+export interface MessageStore
+  extends MessageStoreState,
+    MessageStoreSelectors,
+    MessageStoreStreamingActions,
+    MessageStoreActions {}
+
 // Maximum messages to keep in memory to prevent memory leaks
 export const MAX_MESSAGES_IN_MEMORY = 100
 
+// Helper types for action creators
+export type ImmerSet = (
+  nextStateOrUpdater: MessageStore | Partial<MessageStore> | ((state: Draft<MessageStore>) => void)
+) => void
+export type StoreGet = () => MessageStore
