@@ -68,8 +68,8 @@ export interface MessageStoreStreamingActions {
   setIsReasoningActive: (conversationId: string, isActive: boolean) => void
 }
 
-// Main actions (message CRUD, conversation management)
-export interface MessageStoreActions {
+// CRUD actions (message create, read, update, delete, lifecycle)
+export interface MessageStoreCrudActions {
   loadMessages: (conversationId: string) => Promise<void>
   sendMessage: (
     content: string,
@@ -96,16 +96,30 @@ export interface MessageStoreActions {
     status: 'idle' | 'processing' | 'complete' | 'error'
   ) => void
   incrementAttachmentRefreshKey: (conversationId: string) => void
-  setUrlStatuses: (conversationId: string, messageId: string, urls: string[]) => void
-  markUrlFetched: (conversationId: string, messageId: string, url: string) => void
-  clearUrlStatuses: (conversationId: string, messageId: string) => void
-  setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
-  clearPendingSearchDecisions: (conversationId: string) => void
   setApiError: (conversationId: string, error: string | null) => void
   clearApiError: (conversationId: string) => void
   cleanupConversation: (conversationId: string) => void
   removeConversationState: (conversationId: string) => void
 }
+
+// URL status actions
+export interface MessageStoreUrlActions {
+  setUrlStatuses: (conversationId: string, messageId: string, urls: string[]) => void
+  markUrlFetched: (conversationId: string, messageId: string, url: string) => void
+  clearUrlStatuses: (conversationId: string, messageId: string) => void
+}
+
+// Search decision actions
+export interface MessageStoreSearchActions {
+  setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => void
+  clearPendingSearchDecisions: (conversationId: string) => void
+}
+
+// Combined actions type (for backwards compatibility)
+export interface MessageStoreActions
+  extends MessageStoreCrudActions,
+    MessageStoreUrlActions,
+    MessageStoreSearchActions {}
 
 // Combined message store type
 export interface MessageStore

@@ -4,7 +4,9 @@ import type { MessageStore, ConversationState } from './types'
 import { createDefaultConversationState } from './types'
 import { createSelectors } from './selectors'
 import { createStreamingActions } from './streaming'
-import { createActions } from './actions'
+import { createCrudActions } from './crudActions'
+import { createUrlActions } from './urlActions'
+import { createSearchActions } from './searchActions'
 
 export type { MessageStore, ConversationState }
 export { createDefaultConversationState }
@@ -23,7 +25,13 @@ export const useMessageStore = create<MessageStore>()(
     // Merge in streaming actions
     ...createStreamingActions(set, get),
 
-    // Merge in main actions
-    ...createActions(set, get),
+    // Merge in CRUD actions
+    ...createCrudActions(set, get),
+
+    // Merge in URL actions
+    ...createUrlActions(set, get),
+
+    // Merge in search actions
+    ...createSearchActions(set, get),
   }))
 )

@@ -1,10 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, Conversation } from '@/types'
-import type { ImmerSet, StoreGet, MessageStoreActions } from './types'
+import type { ImmerSet, StoreGet, MessageStoreCrudActions } from './types'
 import { MAX_MESSAGES_IN_MEMORY } from './types'
 import { cleanupThrottleState } from './throttle'
 
-export const createActions = (set: ImmerSet, get: StoreGet): MessageStoreActions => ({
+export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCrudActions => ({
   loadMessages: async (conversationId: string) => {
     get().getConversationState(conversationId) // Ensure state exists
 
@@ -254,67 +254,6 @@ export const createActions = (set: ImmerSet, get: StoreGet): MessageStoreActions
       const convState = draft.conversationStates[conversationId]
       if (convState) {
         convState.attachmentRefreshKey += 1
-      }
-    })
-  },
-
-  setUrlStatuses: (conversationId: string, messageId: string, urls: string[]) => {
-    get().getConversationState(conversationId) // Ensure state exists
-    set((draft) => {
-      const convState = draft.conversationStates[conversationId]
-      if (convState) {
-        // Initialize all URLs with 'fetching' status
-        convState.urlStatuses[messageId] = urls.reduce(
-          (acc, url) => {
-            acc[url] = 'fetching'
-            return acc
-          },
-          {} as Record<string, 'fetching' | 'fetched'>
-        )
-      }
-    })
-  },
-
-  markUrlFetched: (conversationId: string, messageId: string, url: string) => {
-    get().getConversationState(conversationId)
-    set((draft) => {
-      const convState = draft.conversationStates[conversationId]
-      if (convState && convState.urlStatuses[messageId]) {
-        convState.urlStatuses[messageId][url] = 'fetched'
-      }
-    })
-  },
-
-  clearUrlStatuses: (conversationId: string, messageId: string) => {
-    get().getConversationState(conversationId) // Ensure state exists
-    set((draft) => {
-      const convState = draft.conversationStates[conversationId]
-      if (convState) {
-        delete convState.urlStatuses[messageId]
-      }
-    })
-  },
-
-  setPendingSearchDecision: (conversationId: string, messageId: string, pending: boolean) => {
-    get().getConversationState(conversationId) // Ensure state exists
-    set((draft) => {
-      const convState = draft.conversationStates[conversationId]
-      if (convState) {
-        if (pending) {
-          convState.pendingSearchDecisions[messageId] = true
-        } else {
-          delete convState.pendingSearchDecisions[messageId]
-        }
-      }
-    })
-  },
-
-  clearPendingSearchDecisions: (conversationId: string) => {
-    get().getConversationState(conversationId) // Ensure state exists
-    set((draft) => {
-      const convState = draft.conversationStates[conversationId]
-      if (convState) {
-        convState.pendingSearchDecisions = {}
       }
     })
   },
