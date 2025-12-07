@@ -13,6 +13,7 @@ import {
   Menu,
   MessageCircle,
   Paintbrush,
+  Search,
   Settings,
   Video,
 } from 'lucide-react'
@@ -46,10 +47,12 @@ import {
 } from '@/components/ui/sidebar'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import type { SearchProviderId } from '@/types'
 
 const data = {
   nav: [
     { name: 'Conversation Title', icon: Heading },
+    { name: 'Web Search', icon: Search },
     { name: 'Navigation', icon: Menu },
     { name: 'Home', icon: Home },
     { name: 'Appearance', icon: Paintbrush },
@@ -72,9 +75,13 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = React.useState('Conversation Title')
   const [summaryModelId, setSummaryModelId] = React.useState('')
+  const [searchProviderId, setSearchProviderId] = React.useState<SearchProviderId>('duckduckgo')
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
+  const searchProviders = useSettingsStore((state) => state.searchProviders)
+  const loadSearchProviders = useSettingsStore((state) => state.loadSearchProviders)
+  const setSearchProvider = useSettingsStore((state) => state.setSearchProvider)
   const models = useModelStore((state) => state.models)
   const loadModels = useModelStore((state) => state.loadModels)
   const getModelById = useModelStore((state) => state.getModelById)
@@ -83,13 +90,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   React.useEffect(() => {
     if (open) {
       loadModels()
+      loadSearchProviders()
       const loadSettings = async () => {
         const summaryModelValue = await getSetting('conversation_summary_model_id')
         if (summaryModelValue) setSummaryModelId(summaryModelValue)
+
+        const searchProviderValue = await getSetting('search_provider')
+        if (searchProviderValue) {
+          setSearchProviderId(searchProviderValue as SearchProviderId)
+        }
       }
       loadSettings()
     }
-  }, [open, loadModels, getSetting])
+  }, [open, loadModels, loadSearchProviders, getSetting])
 
   const handleSaveSummaryModel = async (modelId: string) => {
     setSummaryModelId(modelId)
@@ -100,7 +113,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
+  const handleSaveSearchProvider = async (providerId: SearchProviderId) => {
+    setSearchProviderId(providerId)
+    try {
+      await setSearchProvider(providerId)
+    } catch (error) {
+      console.error('Failed to save search provider setting:', error)
+    }
+  }
+
   const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
+  const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
   const renderContent = () => {
     if (activeSection === 'Conversation Title') {
@@ -133,6 +156,48 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               conversation model if not set.
             </p>
           </div>
+        </div>
+      )
+    }
+
+    if (activeSection === 'Web Search') {
+      return (
+        <div className="grid gap-6">
+          <div className="grid gap-2">
+            <Label htmlFor="search-provider">Search Engine</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span className="truncate">
+                    {selectedSearchProvider?.name || 'DuckDuckGo'}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                {searchProviders.map((provider) => (
+                  <DropdownMenuItem
+                    key={provider.id}
+                    onClick={() => handleSaveSearchProvider(provider.id as SearchProviderId)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {provider.id === searchProviderId && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                      <span className={provider.id === searchProviderId ? 'font-medium' : ''}>
+                        {provider.name}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Choose the search engine to use when web search is enabled. Different search engines
+              may provide different results for the same query.
+            </p>
+          </div>
+
         </div>
       )
     }

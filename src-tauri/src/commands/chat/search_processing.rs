@@ -2,12 +2,23 @@
 
 use super::super::AppState;
 use crate::models::{CreateSearchDecisionRequest, CreateSearchResultRequest};
+use crate::web_search::SearchProvider;
 use tauri::Emitter;
 
 /// Result of search processing
 pub(crate) struct SearchProcessingResult {
     pub urls: Vec<String>,
     pub search_result_id: Option<String>,
+}
+
+/// Get the configured search provider from settings
+async fn get_search_provider(state: &AppState) -> SearchProvider {
+    match state.db.get_setting("search_provider").await {
+        Ok(Some(provider_id)) => {
+            SearchProvider::from_id(&provider_id).unwrap_or_default()
+        }
+        _ => SearchProvider::default(),
+    }
 }
 
 /// Process search decision and execute search if needed
@@ -99,6 +110,11 @@ pub(crate) async fn process_search_decision(
         .unwrap_or_else(|| crate::web_search::extract_search_keywords(content));
     println!("🔍 [search] AI decided search is needed, query: {}", keywords);
 
+    // Get the configured search provider
+    let provider = get_search_provider(state).await;
+    let engine_id = provider.id().to_string();
+    println!("🔍 [search] Using search provider: {}", provider.display_name());
+
     // Create SearchResult IMMEDIATELY (before searching) so UI can show it
     let searched_at = chrono::Utc::now().to_rfc3339();
     let search_result_id = match state
@@ -106,7 +122,7 @@ pub(crate) async fn process_search_decision(
         .create_search_result(CreateSearchResultRequest {
             message_id: user_message_id.to_string(),
             query: keywords.clone(),
-            engine: "duckduckgo".to_string(),
+            engine: engine_id.clone(),
             total_results: None,
             display_order: Some(0),
             searched_at: searched_at.clone(),
@@ -130,7 +146,7 @@ pub(crate) async fn process_search_decision(
                         "type": "search_result",
                         "id": search_result.id,
                         "query": keywords,
-                        "engine": "duckduckgo",
+                        "engine": engine_id,
                         "total_results": null,
                         "searched_at": searched_at,
                     }
@@ -145,8 +161,8 @@ pub(crate) async fn process_search_decision(
         }
     };
 
-    // Now perform the actual search
-    match crate::web_search::search_duckduckgo(&keywords, 5).await {
+    // Now perform the actual search using the configured provider
+    match crate::web_search::search(provider, &keywords, 5).await {
         Ok(search_response) => {
             println!(
                 "✅ [search] Search completed, found {} results",
@@ -173,7 +189,7 @@ pub(crate) async fn process_search_decision(
                             "type": "search_result",
                             "id": sr_id,
                             "query": search_response.query,
-                            "engine": "duckduckgo",
+                            "engine": search_response.provider.id(),
                             "total_results": search_response.total_results,
                         }
                     }),

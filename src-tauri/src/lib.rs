@@ -149,6 +149,7 @@ pub fn run() {
             // Web search commands
             commands::chat::web_search::perform_web_search,
             commands::chat::web_search::extract_search_keywords,
+            commands::chat::web_search::get_search_providers,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

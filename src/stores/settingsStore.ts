@@ -1,11 +1,12 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
-import type { Setting, ModelInfo } from '@/types'
+import type { Setting, ModelInfo, SearchProvider, SearchProviderId } from '@/types'
 
 interface SettingsStore {
   settings: Record<string, string>
   models: { [provider: string]: ModelInfo[] }
+  searchProviders: SearchProvider[]
   isLoading: boolean
   error: string | null
 
@@ -13,12 +14,16 @@ interface SettingsStore {
   getSetting: (key: string) => Promise<string | null>
   saveSetting: (key: string, value: string) => Promise<void>
   fetchModels: (provider: string, apiKeyOrUrl?: string) => Promise<void>
+  loadSearchProviders: () => Promise<void>
+  getSearchProvider: () => Promise<SearchProviderId>
+  setSearchProvider: (providerId: SearchProviderId) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsStore>()(
-  immer((set) => ({
+  immer((set, get) => ({
     settings: {},
     models: {},
+    searchProviders: [],
     isLoading: false,
     error: null,
 
@@ -111,6 +116,26 @@ export const useSettingsStore = create<SettingsStore>()(
         console.error('Failed to fetch models:', error)
         throw error
       }
+    },
+
+    loadSearchProviders: async () => {
+      try {
+        const providers = await invoke<SearchProvider[]>('get_search_providers')
+        set((draft) => {
+          draft.searchProviders = providers
+        })
+      } catch (error) {
+        console.error('Failed to load search providers:', error)
+      }
+    },
+
+    getSearchProvider: async () => {
+      const value = await get().getSetting('search_provider')
+      return (value as SearchProviderId) || 'duckduckgo'
+    },
+
+    setSearchProvider: async (providerId: SearchProviderId) => {
+      await get().saveSetting('search_provider', providerId)
     },
   }))
 )

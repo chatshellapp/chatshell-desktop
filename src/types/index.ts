@@ -81,7 +81,7 @@ export type { MessageResources, Attachment } from './message-resources'
 export type { Prompt, CreatePromptRequest } from './prompt'
 
 // Setting types
-export type { Setting } from './setting'
+export type { Setting, SearchProvider, SearchProviderId } from './setting'
 
 // Event types
 export type {

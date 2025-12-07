@@ -218,7 +218,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
-        // Check if message already exists (Entity Adapter pattern from Cherry Studio)
+        // Check if message already exists
         const existingIndex = convState.messages.findIndex((m: Message) => m.id === message.id)
 
         if (existingIndex >= 0) {

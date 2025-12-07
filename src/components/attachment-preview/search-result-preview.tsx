@@ -11,6 +11,17 @@ import { invoke } from '@tauri-apps/api/core'
 import type { SearchResult, FetchResult, SearchDecision } from '@/types'
 import { SearchResultFetchItem, ProcessingUrlItem } from './fetch-result-preview'
 
+// Map search engine IDs to display names
+const SEARCH_ENGINE_NAMES: Record<string, string> = {
+  duckduckgo: 'DuckDuckGo',
+  yahoo: 'Yahoo',
+  baidu: 'Baidu',
+}
+
+function getSearchEngineName(engineId: string): string {
+  return SEARCH_ENGINE_NAMES[engineId.toLowerCase()] || engineId
+}
+
 // SearchResult preview component - expandable inline list
 export function SearchResultPreview({
   searchResult,
@@ -108,10 +119,16 @@ export function SearchResultPreview({
         />
 
         {isSearching ? (
-          <span className="flex-1 text-sm text-muted-foreground">Searching the web</span>
+          <span className="flex-1 text-sm text-muted-foreground">
+            Searching with {getSearchEngineName(searchResult.engine)}...
+          </span>
         ) : (
           <>
             <span className="flex-1 text-sm truncate">{searchResult.query}</span>
+
+            <span className="text-xs text-muted-foreground/70 flex-shrink-0">
+              {getSearchEngineName(searchResult.engine)}
+            </span>
 
             <span className="text-sm text-muted-foreground flex-shrink-0 flex items-center gap-1.5">
               {loading ? (
