@@ -38,7 +38,7 @@ export function ProviderSidebar({
                       onClick={() => onSelectProvider(provider)}
                       isActive={provider.id === selectedProvider.id}
                     >
-                      <provider.icon />
+                      <img src={provider.logo} alt={provider.name} className="size-4 rounded" />
                       <span>{provider.name}</span>
                       {hasExisting && (
                         <span className="ml-auto text-xs text-muted-foreground">●</span>

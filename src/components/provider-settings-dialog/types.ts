@@ -1,4 +1,3 @@
-import type { LucideIcon } from 'lucide-react'
 import type { Provider } from '@/types'
 
 export interface ProviderSettingsDialogProps {
@@ -36,7 +35,7 @@ export interface ModelInfo {
 export interface LLMProvider {
   id: string
   name: string
-  icon: LucideIcon
+  logo: string
   baseUrl: string
 }
 
