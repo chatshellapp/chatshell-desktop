@@ -5,9 +5,13 @@ export { ChatInput } from './ChatInput'
 export { ModelSelectorDropdown } from './ModelSelectorDropdown'
 export { AttachmentPreviewRow } from './AttachmentPreviewRow'
 export { WebPageDialog } from './WebPageDialog'
+export { DropZoneOverlay } from './DropZoneOverlay'
+export { InputToolbar } from './InputToolbar'
 
 // Hooks
 export { useAttachments, type UseAttachmentsReturn } from './useAttachments'
+export { useKeyboardHandlers } from './useKeyboardHandlers'
+export { useSubmitHandler } from './useSubmitHandler'
 
 // Types and utilities
 export {
@@ -22,4 +26,3 @@ export {
   SUPPORTED_IMAGE_EXTENSIONS,
   URL_REGEX,
 } from './types'
-
