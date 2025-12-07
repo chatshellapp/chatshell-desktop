@@ -14,6 +14,9 @@ import gemmaAvatar from '@/assets/avatars/models/gemma.png'
 import grokAvatar from '@/assets/avatars/models/grok.png'
 import deepseekAvatar from '@/assets/avatars/models/deepseek.png'
 import doubaoAvatar from '@/assets/avatars/models/doubao.png'
+import qwenAvatar from '@/assets/avatars/models/qwen.png'
+import glmAvatar from '@/assets/avatars/models/glm.png'
+import minimaxAvatar from '@/assets/avatars/models/minimax.png'
 // Import more model logos as needed...
 
 type LogoMap = Record<string, string>
@@ -44,7 +47,7 @@ export function getModelLogoById(modelId: string): string | undefined {
     llama: llamaAvatar,
 
     // Alibaba models
-    // '(qwen|qwq|qvq)': gptAvatar, // Replace with qwen logo
+    '(qwen|qwq|qvq)': qwenAvatar,
 
     // DeepSeek models
     deepseek: deepseekAvatar, // Replace with deepseek logo
@@ -56,7 +59,7 @@ export function getModelLogoById(modelId: string): string | undefined {
     // '(moonshot|kimi)': gptAvatar, // Replace with moonshot logo
 
     // Zhipu AI models
-    // '(glm|chatglm|cogview|zhipu)': gptAvatar, // Replace with chatglm logo
+    '(glm|chatglm|cogview|zhipu)': glmAvatar,
 
     // ByteDance models
     '(doubao|seedream|ep-202)': doubaoAvatar, // Replace with doubao logo
@@ -80,7 +83,7 @@ export function getModelLogoById(modelId: string): string | undefined {
     // 'step': gptAvatar, // Replace with step logo
 
     // MiniMax models
-    // '(minimax|abab)': gptAvatar, // Replace with minimax logo
+    '(minimax|abab)': minimaxAvatar,
 
     // Stability AI models
     // '(stable-|sdxl|sd3|sd2)': gptAvatar, // Replace with stability logo
