@@ -49,6 +49,17 @@ interface AssistantDialogProps {
   mode?: 'create' | 'edit'
 }
 
+const PRESET_COLORS = ['#00E5FF', '#FF4081', '#E040FB']
+const PRESET_EMOJIS = ['👩‍💼', '🧑‍💼', '👨‍💼', '🤵‍♀️', '🤵', '🤵‍♂️']
+
+const getRandomPresetColor = () => {
+  return PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]
+}
+
+const getRandomPresetEmoji = () => {
+  return PRESET_EMOJIS[Math.floor(Math.random() * PRESET_EMOJIS.length)]
+}
+
 export function AssistantDialog({
   open,
   onOpenChange,
@@ -179,8 +190,8 @@ export function AssistantDialog({
         setSystemPrompt('You are a helpful AI assistant.')
         setUserPrompt('')
         setSelectedModelId(models.length > 0 ? models[0].id : '')
-        setAvatarText('🧑‍💼')
-        setAvatarBg('#3b82f6')
+        setAvatarText(getRandomPresetEmoji())
+        setAvatarBg(getRandomPresetColor())
         setGroupName('')
         setIsStarred(false)
         setPromptMode('existing')
