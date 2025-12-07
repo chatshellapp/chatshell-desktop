@@ -148,6 +148,22 @@ export function useSidebarHandlers() {
 
   const handleNewConversation = useCallback(async () => {
     try {
+      // Check if the latest conversation is empty
+      if (conversations.length > 0) {
+        const latestConversation = conversations[0]
+        const messages = await invoke<unknown[]>('list_messages_by_conversation', {
+          conversationId: latestConversation.id,
+        })
+
+        if (messages.length === 0) {
+          // Latest conversation is empty, navigate to it using selectConversation
+          // This ensures proper loading and triggers useEffect for focus
+          await selectConversation(latestConversation.id)
+          return
+        }
+      }
+
+      // Create a new conversation
       const newConversation = await createConversation('New Conversation')
       setCurrentConversation(newConversation)
     } catch (error) {
@@ -156,7 +172,7 @@ export function useSidebarHandlers() {
         `Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`
       )
     }
-  }, [createConversation, setCurrentConversation])
+  }, [conversations, createConversation, selectConversation, setCurrentConversation])
 
   const handleGenerateTitle = useCallback(
     async (conversationId: string) => {
