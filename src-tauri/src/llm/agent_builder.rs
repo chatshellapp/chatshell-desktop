@@ -15,19 +15,24 @@ use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::common::{build_user_content, create_http_client, StreamChunkType};
+use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::{ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider};
 use crate::llm::ChatResponse;
 use crate::models::ModelParameters;
 use crate::thinking_parser;
 
 /// Configuration for building an agent.
-/// Combines system prompt with model parameters.
+/// Combines system prompt with model parameters and tool registry.
 #[derive(Debug, Clone, Default)]
 pub struct AgentConfig {
     /// System prompt (preamble) for the agent
     pub system_prompt: Option<String>,
     /// Model parameters (temperature, max_tokens, etc.)
     pub model_params: ModelParameters,
+    /// Optional tool registry for function calling
+    pub tool_registry: Option<ToolRegistry>,
+    /// Optional list of specific tool names to enable (if None, all tools are enabled)
+    pub enabled_tools: Option<Vec<String>>,
 }
 
 impl AgentConfig {
@@ -57,6 +62,21 @@ impl AgentConfig {
 
     pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
         self.model_params.additional_params = Some(params);
+        self
+    }
+
+    pub fn with_tool_registry(mut self, registry: ToolRegistry) -> Self {
+        self.tool_registry = Some(registry);
+        self
+    }
+
+    pub fn with_enabled_tools(mut self, tools: Vec<String>) -> Self {
+        self.enabled_tools = Some(tools);
+        self
+    }
+
+    pub fn with_default_tools(mut self) -> Self {
+        self.tool_registry = Some(ToolRegistry::with_defaults());
         self
     }
 }
@@ -161,6 +181,26 @@ fn build_agent<M: CompletionModel>(
     // Apply additional params
     if let Some(ref additional) = params.additional_params {
         builder = builder.additional_params(additional.clone());
+    }
+
+    // Apply tools if a tool registry is provided
+    // Note: Tool registration is prepared here but actual integration with rig
+    // requires provider-specific implementation. This is a placeholder for future
+    // enhancement when rig adds full tool support for all providers.
+    if let Some(ref registry) = config.tool_registry {
+        // Get the list of tools to register
+        let tools = if let Some(ref enabled) = config.enabled_tools {
+            registry.to_openai_functions_by_names(enabled)
+        } else {
+            registry.to_openai_functions()
+        };
+
+        // Log tool registration (actual registration depends on provider support)
+        if !tools.is_empty() {
+            println!("🔧 Tool registry prepared with {} tool(s)", tools.len());
+            // TODO: Apply tools when rig library supports it
+            // builder = builder.tools(tools);
+        }
     }
 
     builder.build()

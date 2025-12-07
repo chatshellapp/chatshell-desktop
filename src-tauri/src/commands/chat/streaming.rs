@@ -39,10 +39,10 @@ pub(crate) async fn handle_agent_streaming(
     );
 
     // Build agent config from system prompt and model parameters
-    let config = AgentConfig {
-        system_prompt: system_prompt.clone(),
-        model_params,
-    };
+    let mut config = AgentConfig::new().with_model_params(model_params);
+    if let Some(prompt) = system_prompt.clone() {
+        config = config.with_system_prompt(prompt);
+    }
 
     // Create the agent
     let agent = match create_provider_agent(

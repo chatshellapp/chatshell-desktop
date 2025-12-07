@@ -4,8 +4,14 @@ pub mod models;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
+pub mod tool_registry;
 
 pub use common::StreamChunkType;
+
+// Re-export tool registry types for public API
+// These are currently unused internally but are part of the public API
+#[allow(unused_imports)]
+pub use tool_registry::{ToolDefinition, ToolParameter, ToolRegistry};
 
 use agent_builder::{
     build_assistant_message, build_user_message, create_provider_agent, stream_chat_with_agent,
