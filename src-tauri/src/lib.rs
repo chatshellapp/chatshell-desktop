@@ -1,4 +1,4 @@
-mod commands;
+pub mod commands;
 mod crypto;
 pub mod db;
 mod llm;
@@ -99,7 +99,7 @@ pub fn run() {
             commands::list_conversations,
             commands::update_conversation,
             commands::delete_conversation,
-            commands::generate_conversation_title_manually,
+            commands::chat::title::generate_conversation_title_manually,
             commands::add_conversation_participant,
             commands::list_conversation_participants,
             commands::get_conversation_participant_summary,
@@ -148,8 +148,8 @@ pub fn run() {
             commands::send_message,
             commands::stop_generation,
             // Web search commands
-            commands::perform_web_search,
-            commands::extract_search_keywords,
+            commands::chat::web_search::perform_web_search,
+            commands::chat::web_search::extract_search_keywords,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
