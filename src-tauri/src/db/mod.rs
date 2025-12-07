@@ -6,6 +6,8 @@ mod conversations;
 mod messages;
 mod attachments;
 mod contexts;
+mod fetch_results;
+mod search_results;
 mod steps;
 mod settings;
 mod seed;
