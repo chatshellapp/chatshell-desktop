@@ -72,7 +72,7 @@ export function AssistantDialog({
   const [isStarred, setIsStarred] = useState(false)
 
   // Prompt mode state
-  const [promptMode, setPromptMode] = useState<'existing' | 'custom'>('custom')
+  const [promptMode, setPromptMode] = useState<'existing' | 'custom'>('existing')
   const [selectedPromptId, setSelectedPromptId] = useState('')
   const [promptSearchQuery, setPromptSearchQuery] = useState('')
 
@@ -183,7 +183,7 @@ export function AssistantDialog({
         setAvatarBg('#3b82f6')
         setGroupName('')
         setIsStarred(false)
-        setPromptMode('custom')
+        setPromptMode('existing')
         setSelectedPromptId('')
       }
       setError(null)
@@ -449,12 +449,9 @@ export function AssistantDialog({
               onChange={(e) => setSystemPrompt(e.target.value)}
               rows={promptMode === 'existing' ? 8 : 10}
               className="font-mono text-sm"
-              disabled={promptMode === 'existing'}
             />
             <p className="text-xs text-muted-foreground">
-              {promptMode === 'existing'
-                ? 'Preview of the selected prompt (read-only)'
-                : 'This defines the assistant\'s behavior and personality (sent as system message)'}
+              This defines the assistant's behavior and personality (sent as system message)
             </p>
           </div>
 
@@ -554,7 +551,7 @@ export function AssistantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 md:max-h-[700px] md:max-w-[800px] lg:max-w-[1000px]">
+      <DialogContent className="overflow-hidden p-0 gap-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
         <DialogTitle className="sr-only">
           {mode === 'edit' ? 'Edit Assistant' : 'Create New Assistant'}
         </DialogTitle>
@@ -587,7 +584,7 @@ export function AssistantDialog({
             </SidebarContent>
           </Sidebar>
 
-          <main className="flex h-[700px] flex-1 flex-col overflow-hidden">
+          <main className="flex h-[600px] flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
               <div className="flex items-center gap-2 px-4">
                 <Breadcrumb>
