@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::llm::common::create_http_client;
+use crate::llm::common::{create_http_client, format_model_display_name};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -84,12 +84,15 @@ pub async fn fetch_openai_models(api_key: String) -> Result<Vec<ModelInfo>> {
         .data
         .into_iter()
         .filter(|m| m.id.starts_with("gpt-"))
-        .map(|m| ModelInfo {
-            id: m.id.clone(),
-            name: m.id,
-            description: None,
-            context_length: None,
-            pricing: None,
+        .map(|m| {
+            let display_name = format_model_display_name(&m.id);
+            ModelInfo {
+                id: m.id.clone(),
+                name: display_name,
+                description: None,
+                context_length: None,
+                pricing: None,
+            }
         })
         .collect();
 
@@ -134,63 +137,6 @@ pub async fn fetch_openrouter_models(api_key: String) -> Result<Vec<ModelInfo>> 
     Ok(models)
 }
 
-/// Format Ollama model ID to a human-friendly display name
-/// Example: "gemma3:4b" -> "Gemma 3 4B"
-fn format_ollama_model_name(model_id: &str) -> String {
-    // Split by colon to separate model name and size
-    let parts: Vec<&str> = model_id.split(':').collect();
-    let base_name = parts[0];
-    let size = parts.get(1).map(|s| s.to_uppercase());
-
-    // Format the base name
-    let formatted_base = base_name
-        .split('-')
-        .map(|part| {
-            // Handle special cases for numbers
-            if part.chars().all(|c| c.is_ascii_digit()) {
-                part.to_string()
-            } else if part.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-                // Contains numbers mixed with letters (e.g., "gemma3" -> "Gemma 3")
-                let mut result = String::new();
-                let mut chars = part.chars().peekable();
-                let mut is_first = true;
-
-                while let Some(ch) = chars.next() {
-                    if ch.is_ascii_digit() {
-                        if !result.is_empty() && !result.ends_with(' ') {
-                            result.push(' ');
-                        }
-                        result.push(ch);
-                    } else {
-                        if is_first {
-                            result.push(ch.to_ascii_uppercase());
-                            is_first = false;
-                        } else {
-                            result.push(ch);
-                        }
-                    }
-                }
-                result
-            } else {
-                // Regular word - capitalize first letter
-                let mut chars = part.chars();
-                match chars.next() {
-                    None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                }
-            }
-        })
-        .collect::<Vec<String>>()
-        .join(" ");
-
-    // Combine with size if present
-    if let Some(size_str) = size {
-        format!("{} {}", formatted_base, size_str)
-    } else {
-        formatted_base
-    }
-}
-
 /// Fetch available models from Ollama
 pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
     let client = create_http_client();
@@ -213,7 +159,7 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
         .models
         .into_iter()
         .map(|m| {
-            let display_name = format_ollama_model_name(&m.name);
+            let display_name = format_model_display_name(&m.name);
             ModelInfo {
                 id: m.name.clone(),
                 name: display_name,
