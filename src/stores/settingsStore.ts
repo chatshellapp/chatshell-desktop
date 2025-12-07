@@ -1,7 +1,15 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
-import type { Setting, ModelInfo, SearchProvider, SearchProviderId } from '@/types'
+import type {
+  Setting,
+  ModelInfo,
+  SearchProvider,
+  SearchProviderId,
+  WebFetchMode,
+  WebFetchLocalMethod,
+  WebFetchApiProvider,
+} from '@/types'
 
 interface SettingsStore {
   settings: Record<string, string>
@@ -17,6 +25,16 @@ interface SettingsStore {
   loadSearchProviders: () => Promise<void>
   getSearchProvider: () => Promise<SearchProviderId>
   setSearchProvider: (providerId: SearchProviderId) => Promise<void>
+
+  // Web Fetch settings
+  getWebFetchMode: () => Promise<WebFetchMode>
+  setWebFetchMode: (mode: WebFetchMode) => Promise<void>
+  getWebFetchLocalMethod: () => Promise<WebFetchLocalMethod>
+  setWebFetchLocalMethod: (method: WebFetchLocalMethod) => Promise<void>
+  getWebFetchApiProvider: () => Promise<WebFetchApiProvider>
+  setWebFetchApiProvider: (provider: WebFetchApiProvider) => Promise<void>
+  getJinaApiKey: () => Promise<string | null>
+  setJinaApiKey: (key: string) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -136,6 +154,42 @@ export const useSettingsStore = create<SettingsStore>()(
 
     setSearchProvider: async (providerId: SearchProviderId) => {
       await get().saveSetting('search_provider', providerId)
+    },
+
+    // Web Fetch settings
+    getWebFetchMode: async () => {
+      const value = await get().getSetting('web_fetch_mode')
+      return (value as WebFetchMode) || 'local'
+    },
+
+    setWebFetchMode: async (mode: WebFetchMode) => {
+      await get().saveSetting('web_fetch_mode', mode)
+    },
+
+    getWebFetchLocalMethod: async () => {
+      const value = await get().getSetting('web_fetch_local_method')
+      return (value as WebFetchLocalMethod) || 'auto'
+    },
+
+    setWebFetchLocalMethod: async (method: WebFetchLocalMethod) => {
+      await get().saveSetting('web_fetch_local_method', method)
+    },
+
+    getWebFetchApiProvider: async () => {
+      const value = await get().getSetting('web_fetch_api_provider')
+      return (value as WebFetchApiProvider) || 'jina'
+    },
+
+    setWebFetchApiProvider: async (provider: WebFetchApiProvider) => {
+      await get().saveSetting('web_fetch_api_provider', provider)
+    },
+
+    getJinaApiKey: async () => {
+      return await get().getSetting('jina_api_key')
+    },
+
+    setJinaApiKey: async (key: string) => {
+      await get().saveSetting('jina_api_key', key)
     },
   }))
 )

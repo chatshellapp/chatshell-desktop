@@ -4,6 +4,9 @@ import * as React from 'react'
 import {
   Check,
   ChevronDown,
+  Eye,
+  EyeOff,
+  FileDown,
   Globe,
   Heading,
   Home,
@@ -34,6 +37,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Sidebar,
@@ -47,11 +51,12 @@ import {
 } from '@/components/ui/sidebar'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { SearchProviderId } from '@/types'
+import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod } from '@/types'
 
 const data = {
   nav: [
     { name: 'Conversation Title', icon: Heading },
+    { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
     { name: 'Navigation', icon: Menu },
     { name: 'Home', icon: Home },
@@ -77,6 +82,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [summaryModelId, setSummaryModelId] = React.useState('')
   const [searchProviderId, setSearchProviderId] = React.useState<SearchProviderId>('duckduckgo')
 
+  // Web Fetch state
+  const [webFetchMode, setWebFetchMode] = React.useState<WebFetchMode>('local')
+  const [webFetchLocalMethod, setWebFetchLocalMethod] = React.useState<WebFetchLocalMethod>('auto')
+  const [jinaApiKey, setJinaApiKey] = React.useState('')
+  const [showJinaApiKey, setShowJinaApiKey] = React.useState(false)
+
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
   const searchProviders = useSettingsStore((state) => state.searchProviders)
@@ -85,6 +96,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const models = useModelStore((state) => state.models)
   const loadModels = useModelStore((state) => state.loadModels)
   const getModelById = useModelStore((state) => state.getModelById)
+
+  // Web Fetch store methods
+  const getWebFetchMode = useSettingsStore((state) => state.getWebFetchMode)
+  const saveWebFetchMode = useSettingsStore((state) => state.setWebFetchMode)
+  const getWebFetchLocalMethod = useSettingsStore((state) => state.getWebFetchLocalMethod)
+  const saveWebFetchLocalMethod = useSettingsStore((state) => state.setWebFetchLocalMethod)
+  const getJinaApiKey = useSettingsStore((state) => state.getJinaApiKey)
+  const saveJinaApiKey = useSettingsStore((state) => state.setJinaApiKey)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
@@ -99,10 +118,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         if (searchProviderValue) {
           setSearchProviderId(searchProviderValue as SearchProviderId)
         }
+
+        // Load web fetch settings
+        const fetchMode = await getWebFetchMode()
+        setWebFetchMode(fetchMode)
+
+        const localMethod = await getWebFetchLocalMethod()
+        setWebFetchLocalMethod(localMethod)
+
+        const jinaKey = await getJinaApiKey()
+        if (jinaKey) setJinaApiKey(jinaKey)
       }
       loadSettings()
     }
-  }, [open, loadModels, loadSearchProviders, getSetting])
+  }, [open, loadModels, loadSearchProviders, getSetting, getWebFetchMode, getWebFetchLocalMethod, getJinaApiKey])
 
   const handleSaveSummaryModel = async (modelId: string) => {
     setSummaryModelId(modelId)
@@ -119,6 +148,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       await setSearchProvider(providerId)
     } catch (error) {
       console.error('Failed to save search provider setting:', error)
+    }
+  }
+
+  // Web Fetch handlers
+  const handleSaveWebFetchMode = async (mode: WebFetchMode) => {
+    setWebFetchMode(mode)
+    try {
+      await saveWebFetchMode(mode)
+    } catch (error) {
+      console.error('Failed to save web fetch mode:', error)
+    }
+  }
+
+  const handleSaveWebFetchLocalMethod = async (method: WebFetchLocalMethod) => {
+    setWebFetchLocalMethod(method)
+    try {
+      await saveWebFetchLocalMethod(method)
+    } catch (error) {
+      console.error('Failed to save web fetch local method:', error)
+    }
+  }
+
+  const handleSaveJinaApiKey = async () => {
+    try {
+      await saveJinaApiKey(jinaApiKey)
+    } catch (error) {
+      console.error('Failed to save Jina API key:', error)
     }
   }
 
@@ -156,6 +212,165 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               conversation model if not set.
             </p>
           </div>
+        </div>
+      )
+    }
+
+    if (activeSection === 'Web Fetch') {
+      return (
+        <div className="grid gap-6">
+          {/* Mode Selection */}
+          <div className="grid gap-2">
+            <Label>Fetch Mode</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span>{webFetchMode === 'local' ? 'Local' : 'API'}</span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                <DropdownMenuItem onClick={() => handleSaveWebFetchMode('local')}>
+                  <div className="flex items-center gap-2">
+                    {webFetchMode === 'local' && <Check className="h-4 w-4 text-primary" />}
+                    <span className={webFetchMode === 'local' ? 'font-medium' : ''}>Local</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSaveWebFetchMode('api')}>
+                  <div className="flex items-center gap-2">
+                    {webFetchMode === 'api' && <Check className="h-4 w-4 text-primary" />}
+                    <span className={webFetchMode === 'api' ? 'font-medium' : ''}>API</span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Choose whether to fetch web pages locally or via an API service.
+            </p>
+          </div>
+
+          {/* Local Method Selection */}
+          {webFetchMode === 'local' && (
+            <div className="grid gap-2">
+              <Label>Local Method</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full max-w-md justify-between">
+                    <span>
+                      {webFetchLocalMethod === 'auto' && 'Auto'}
+                      {webFetchLocalMethod === 'fetch' && 'Always use Fetch'}
+                      {webFetchLocalMethod === 'headless' && 'Always use Headless Chrome'}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[400px]">
+                  <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('auto')}>
+                    <div className="flex items-center gap-2">
+                      {webFetchLocalMethod === 'auto' && <Check className="h-4 w-4 text-primary" />}
+                      <div>
+                        <span className={webFetchLocalMethod === 'auto' ? 'font-medium' : ''}>
+                          Auto
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Try HTTP first, fallback to headless Chrome
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('fetch')}>
+                    <div className="flex items-center gap-2">
+                      {webFetchLocalMethod === 'fetch' && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                      <div>
+                        <span className={webFetchLocalMethod === 'fetch' ? 'font-medium' : ''}>
+                          Always use Fetch
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Faster but may fail on protected sites
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('headless')}>
+                    <div className="flex items-center gap-2">
+                      {webFetchLocalMethod === 'headless' && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                      <div>
+                        <span className={webFetchLocalMethod === 'headless' ? 'font-medium' : ''}>
+                          Always use Headless Chrome
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Slower but handles JavaScript-rendered content
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+
+          {/* API Provider Selection */}
+          {webFetchMode === 'api' && (
+            <>
+              <div className="grid gap-2">
+                <Label>API Provider</Label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full max-w-md justify-between">
+                      <span>Jina Reader</span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-[400px]">
+                    <DropdownMenuItem>
+                      <div className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-primary" />
+                        <div>
+                          <span className="font-medium">Jina Reader</span>
+                          <p className="text-xs text-muted-foreground">https://r.jina.ai/</p>
+                        </div>
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="jina-api-key">Jina API Key (Optional)</Label>
+                <div className="relative max-w-md">
+                  <Input
+                    id="jina-api-key"
+                    type={showJinaApiKey ? 'text' : 'password'}
+                    placeholder="Enter your Jina API key for higher rate limits"
+                    value={jinaApiKey}
+                    onChange={(e) => setJinaApiKey(e.target.value)}
+                    onBlur={handleSaveJinaApiKey}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    onClick={() => setShowJinaApiKey(!showJinaApiKey)}
+                  >
+                    {showJinaApiKey ? (
+                      <EyeOff className="size-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="size-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground max-w-md">
+                  Jina Reader works without an API key, but providing one gives higher rate limits.
+                </p>
+              </div>
+            </>
+          )}
         </div>
       )
     }

@@ -2,8 +2,39 @@
 
 use super::super::AppState;
 use crate::models::{ContextType, CreateFetchResultRequest};
-use crate::web_fetch::{self, FetchedWebResource};
+use crate::web_fetch::{self, FetchConfig, FetchMode, FetchedWebResource, LocalMethod};
 use tauri::Emitter;
+
+/// Load fetch configuration from settings
+async fn load_fetch_config(state: &AppState) -> FetchConfig {
+    let mode = match state.db.get_setting("web_fetch_mode").await {
+        Ok(Some(m)) if m == "api" => FetchMode::Api,
+        _ => FetchMode::Local,
+    };
+
+    let local_method = match state.db.get_setting("web_fetch_local_method").await {
+        Ok(Some(m)) => match m.as_str() {
+            "fetch" => LocalMethod::FetchOnly,
+            "headless" => LocalMethod::HeadlessOnly,
+            _ => LocalMethod::Auto,
+        },
+        _ => LocalMethod::Auto,
+    };
+
+    let jina_api_key = state
+        .db
+        .get_setting("jina_api_key")
+        .await
+        .ok()
+        .flatten()
+        .filter(|k| !k.is_empty());
+
+    FetchConfig {
+        mode,
+        local_method,
+        jina_api_key,
+    }
+}
 
 /// Result of URL processing
 pub(crate) struct UrlProcessingResult {
@@ -37,8 +68,15 @@ pub(crate) async fn fetch_and_store_urls(
         }),
     );
 
+    // Load fetch config from settings
+    let fetch_config = load_fetch_config(state).await;
+    println!(
+        "⚙️ [url_processing] Using fetch config: mode={:?}, local_method={:?}",
+        fetch_config.mode, fetch_config.local_method
+    );
+
     // Process URLs with streaming - results are sent one by one as they complete
-    let (mut rx, fetch_handle) = web_fetch::fetch_urls_with_channel(urls, None).await;
+    let (mut rx, fetch_handle) = web_fetch::fetch_urls_with_config(urls, None, fetch_config).await;
 
     let mut fetched_resources: Vec<FetchedWebResource> = Vec::new();
     let mut attachment_ids: Vec<String> = Vec::new();

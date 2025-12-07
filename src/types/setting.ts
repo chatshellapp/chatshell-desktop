@@ -13,3 +13,8 @@ export interface SearchProvider {
 
 // Known search provider IDs
 export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu'
+
+// Web Fetch types
+export type WebFetchMode = 'local' | 'api'
+export type WebFetchLocalMethod = 'auto' | 'fetch' | 'headless'
+export type WebFetchApiProvider = 'jina'
