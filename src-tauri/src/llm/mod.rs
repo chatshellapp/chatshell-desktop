@@ -1,4 +1,5 @@
 pub mod agent_builder;
+pub mod agent_streaming;
 pub mod common;
 pub mod models;
 pub mod ollama;
