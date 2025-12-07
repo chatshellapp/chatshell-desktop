@@ -106,7 +106,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
               </h3>
               <p className="text-sm text-muted-foreground">
                 {existingProvider
-                  ? `Update your ${selectedProvider.name} configuration`
+                  ? `Select your ${selectedProvider.name} models`
                   : `Configure your ${selectedProvider.name} API settings`}
               </p>
             </div>
@@ -144,7 +144,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
                 Saving...
               </>
             ) : existingProvider ? (
-              'Update Configuration'
+              'Save'
             ) : (
               'Save Configuration'
             )}

@@ -106,7 +106,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {existingProvider
-                      ? `Update your ${selectedProvider.name} configuration`
+                      ? `Select your ${selectedProvider.name} models`
                       : `Configure your ${selectedProvider.name} API settings`}
                   </p>
                 </div>
@@ -145,7 +145,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                     Saving...
                   </>
                 ) : existingProvider ? (
-                  'Update Configuration'
+                  'Save'
                 ) : (
                   'Save Configuration'
                 )}

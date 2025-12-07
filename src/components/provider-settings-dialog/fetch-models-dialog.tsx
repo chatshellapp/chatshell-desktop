@@ -166,7 +166,7 @@ export function FetchModelsDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            OK
           </Button>
         </DialogFooter>
       </DialogContent>
