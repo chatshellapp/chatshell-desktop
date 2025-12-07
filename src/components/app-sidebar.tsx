@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sidebar'
 import { ProviderSettingsDialog } from '@/components/provider-settings-dialog'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { AssistantDialog } from '@/components/assistant-dialog'
 import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
@@ -24,6 +25,7 @@ import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
 import { useConversationStore } from '@/stores/conversation'
+import { useAssistantStore } from '@/stores/assistantStore'
 import { SIDEBAR_DATA } from '@/lib/sidebar-data'
 import type { Person, PersonGroup } from '@/components/people-list'
 import type { Prompt, PromptGroup } from '@/components/prompt-list'
@@ -44,6 +46,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   )
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
+  const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
+  const [editingAssistant, setEditingAssistant] = React.useState<AssistantListItem | null>(null)
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
   const { setOpen } = useSidebar()
@@ -52,6 +56,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const vendorsList = useVendorsList()
   const assistantGroups = useAssistantGroups()
 
+  const assistants = useAssistantStore((state) => state.assistants)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
 
@@ -87,7 +92,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onAssistantClick={(assistant: AssistantListItem) =>
               handlers.handleAssistantClick(assistant)
             }
-            onAssistantSettings={() => {}}
+            onAssistantSettings={(assistant: AssistantListItem) => {
+              // Find the full assistant from the store
+              const fullAssistant = assistants.find((a) => a.id === assistant.id)
+              if (fullAssistant) {
+                setEditingAssistant(fullAssistant as any)
+                setAssistantDialogOpen(true)
+              }
+            }}
             onAssistantStarToggle={(assistant: AssistantListItem) =>
               handlers.handleAssistantStarToggle(assistant)
             }
@@ -188,7 +200,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onClick={() => setProviderDialogOpen(true)}
                 >
                   <Plus className="size-4" />
-                  Add LLM Provider
+                  Add Models
                 </Button>
               </div>
             )
@@ -199,7 +211,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   variant="outline"
                   size="sm"
                   className="w-full justify-center gap-2 h-9"
-                  onClick={() => {}}
+                  onClick={() => {
+                    setEditingAssistant(null)
+                    setAssistantDialogOpen(true)
+                  }}
                 >
                   <Plus className="size-4" />
                   Add Assistant
@@ -282,6 +297,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <ProviderSettingsDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
 
       <SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
+
+      <AssistantDialog
+        open={assistantDialogOpen}
+        onOpenChange={setAssistantDialogOpen}
+        assistant={editingAssistant}
+        mode={editingAssistant ? 'edit' : 'create'}
+      />
     </Sidebar>
   )
 }
