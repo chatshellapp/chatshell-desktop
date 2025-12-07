@@ -33,7 +33,7 @@ pub async fn create_provider(
     state: State<'_, AppState>,
     req: CreateProviderRequest,
 ) -> Result<Provider, String> {
-    state.db.create_provider(req).map_err(|e| e.to_string())
+    state.db.create_provider(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -41,12 +41,12 @@ pub async fn get_provider(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<Provider>, String> {
-    state.db.get_provider(&id).map_err(|e| e.to_string())
+    state.db.get_provider(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_providers(state: State<'_, AppState>) -> Result<Vec<Provider>, String> {
-    state.db.list_providers().map_err(|e| e.to_string())
+    state.db.list_providers().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -58,12 +58,13 @@ pub async fn update_provider(
     state
         .db
         .update_provider(&id, req)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_provider(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_provider(&id).map_err(|e| e.to_string())
+    state.db.delete_provider(&id).await.map_err(|e| e.to_string())
 }
 
 // Model commands
@@ -72,22 +73,22 @@ pub async fn create_model(
     state: State<'_, AppState>,
     req: CreateModelRequest,
 ) -> Result<Model, String> {
-    state.db.create_model(req).map_err(|e| e.to_string())
+    state.db.create_model(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_model(state: State<'_, AppState>, id: String) -> Result<Option<Model>, String> {
-    state.db.get_model(&id).map_err(|e| e.to_string())
+    state.db.get_model(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_models(state: State<'_, AppState>) -> Result<Vec<Model>, String> {
-    state.db.list_models().map_err(|e| e.to_string())
+    state.db.list_models().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_all_models(state: State<'_, AppState>) -> Result<Vec<Model>, String> {
-    state.db.list_all_models().map_err(|e| e.to_string())
+    state.db.list_all_models().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -96,17 +97,17 @@ pub async fn update_model(
     id: String,
     req: CreateModelRequest,
 ) -> Result<Model, String> {
-    state.db.update_model(&id, req).map_err(|e| e.to_string())
+    state.db.update_model(&id, req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_model(&id).map_err(|e| e.to_string())
+    state.db.delete_model(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn soft_delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.soft_delete_model(&id).map_err(|e| e.to_string())
+    state.db.soft_delete_model(&id).await.map_err(|e| e.to_string())
 }
 
 // Assistant commands
@@ -115,7 +116,7 @@ pub async fn create_assistant(
     state: State<'_, AppState>,
     req: CreateAssistantRequest,
 ) -> Result<Assistant, String> {
-    state.db.create_assistant(req).map_err(|e| e.to_string())
+    state.db.create_assistant(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -123,12 +124,12 @@ pub async fn get_assistant(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<Assistant>, String> {
-    state.db.get_assistant(&id).map_err(|e| e.to_string())
+    state.db.get_assistant(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_assistants(state: State<'_, AppState>) -> Result<Vec<Assistant>, String> {
-    state.db.list_assistants().map_err(|e| e.to_string())
+    state.db.list_assistants().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -140,12 +141,13 @@ pub async fn update_assistant(
     state
         .db
         .update_assistant(&id, req)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_assistant(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_assistant(&id).map_err(|e| e.to_string())
+    state.db.delete_assistant(&id).await.map_err(|e| e.to_string())
 }
 
 // User commands
@@ -154,22 +156,22 @@ pub async fn create_user(
     state: State<'_, AppState>,
     req: CreateUserRequest,
 ) -> Result<User, String> {
-    state.db.create_user(req).map_err(|e| e.to_string())
+    state.db.create_user(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_user(state: State<'_, AppState>, id: String) -> Result<Option<User>, String> {
-    state.db.get_user(&id).map_err(|e| e.to_string())
+    state.db.get_user(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_self_user(state: State<'_, AppState>) -> Result<Option<User>, String> {
-    state.db.get_self_user().map_err(|e| e.to_string())
+    state.db.get_self_user().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<User>, String> {
-    state.db.list_users().map_err(|e| e.to_string())
+    state.db.list_users().await.map_err(|e| e.to_string())
 }
 
 // Conversation commands
@@ -178,7 +180,7 @@ pub async fn create_conversation(
     state: State<'_, AppState>,
     req: CreateConversationRequest,
 ) -> Result<Conversation, String> {
-    state.db.create_conversation(req).map_err(|e| e.to_string())
+    state.db.create_conversation(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -186,12 +188,12 @@ pub async fn get_conversation(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<Conversation>, String> {
-    state.db.get_conversation(&id).map_err(|e| e.to_string())
+    state.db.get_conversation(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_conversations(state: State<'_, AppState>) -> Result<Vec<Conversation>, String> {
-    state.db.list_conversations().map_err(|e| e.to_string())
+    state.db.list_conversations().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -203,22 +205,24 @@ pub async fn update_conversation(
     state
         .db
         .update_conversation(&id, &title)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_conversation(&id).map_err(|e| e.to_string())
+    state.db.delete_conversation(&id).await.map_err(|e| e.to_string())
 }
 
 // Helper to get provider info from conversation participants
-fn get_conversation_provider_info(
+async fn get_conversation_provider_info(
     state: &AppState,
     conversation_id: &str,
 ) -> Result<(String, String, Option<String>, Option<String>), String> {
     let participants = state
         .db
         .list_conversation_participants(conversation_id)
+        .await
         .map_err(|e| e.to_string())?;
 
     let model_participant = participants
@@ -231,12 +235,14 @@ fn get_conversation_provider_info(
                 let model_info = state
                     .db
                     .get_model(participant_id)
+                    .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Model not found".to_string())?;
 
                 let provider_info = state
                     .db
                     .get_provider(&model_info.provider_id)
+                    .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Provider not found".to_string())?;
 
@@ -250,18 +256,21 @@ fn get_conversation_provider_info(
                 let assistant = state
                     .db
                     .get_assistant(participant_id)
+                    .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Assistant not found".to_string())?;
 
                 let model_info = state
                     .db
                     .get_model(&assistant.model_id)
+                    .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Assistant's model not found".to_string())?;
 
                 let provider_info = state
                     .db
                     .get_provider(&model_info.provider_id)
+                    .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Provider not found".to_string())?;
 
@@ -292,6 +301,7 @@ pub async fn generate_conversation_title_manually(
     let messages = state
         .db
         .list_messages_by_conversation(&conversation_id)
+        .await
         .map_err(|e| e.to_string())?;
 
     if messages.is_empty() {
@@ -316,7 +326,7 @@ pub async fn generate_conversation_title_manually(
     }
 
     // Get provider info from conversation participants
-    let (provider, model, api_key, base_url) = get_conversation_provider_info(&state, &conversation_id)?;
+    let (provider, model, api_key, base_url) = get_conversation_provider_info(&state, &conversation_id).await?;
 
     // Generate the title
     let title = generate_conversation_title(
@@ -345,6 +355,7 @@ pub async fn add_conversation_participant(
     state
         .db
         .add_conversation_participant(req)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -356,6 +367,7 @@ pub async fn list_conversation_participants(
     state
         .db
         .list_conversation_participants(&conversation_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -368,6 +380,7 @@ pub async fn get_conversation_participant_summary(
     state
         .db
         .get_conversation_participant_summary(&conversation_id, &current_user_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -379,6 +392,7 @@ pub async fn remove_conversation_participant(
     state
         .db
         .remove_conversation_participant(&id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -388,7 +402,7 @@ pub async fn create_message(
     state: State<'_, AppState>,
     req: CreateMessageRequest,
 ) -> Result<Message, String> {
-    state.db.create_message(req).map_err(|e| e.to_string())
+    state.db.create_message(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -399,6 +413,7 @@ pub async fn list_messages_by_conversation(
     state
         .db
         .list_messages_by_conversation(&conversation_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -410,6 +425,7 @@ pub async fn clear_messages_by_conversation(
     state
         .db
         .delete_messages_in_conversation(&conversation_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -425,6 +441,7 @@ pub async fn get_message_attachments(
     state
         .db
         .get_message_attachments(&message_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -433,12 +450,12 @@ pub async fn get_file_attachment(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FileAttachment, String> {
-    state.db.get_file_attachment(&id).map_err(|e| e.to_string())
+    state.db.get_file_attachment(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_user_link(state: State<'_, AppState>, id: String) -> Result<UserLink, String> {
-    state.db.get_user_link(&id).map_err(|e| e.to_string())
+    state.db.get_user_link(&id).await.map_err(|e| e.to_string())
 }
 
 // ==========================================================================
@@ -453,6 +470,7 @@ pub async fn get_message_contexts(
     state
         .db
         .get_message_contexts(&message_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -461,7 +479,7 @@ pub async fn get_search_result(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<SearchResult, String> {
-    state.db.get_search_result(&id).map_err(|e| e.to_string())
+    state.db.get_search_result(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -469,7 +487,7 @@ pub async fn get_fetch_result(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FetchResult, String> {
-    state.db.get_fetch_result(&id).map_err(|e| e.to_string())
+    state.db.get_fetch_result(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -481,6 +499,7 @@ pub async fn get_fetch_results_by_source(
     state
         .db
         .get_fetch_results_by_source(&source_type, &source_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -492,6 +511,7 @@ pub async fn get_fetch_results_by_message(
     state
         .db
         .get_fetch_results_by_message(&message_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -507,6 +527,7 @@ pub async fn get_message_steps(
     state
         .db
         .get_message_steps(&message_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -515,7 +536,7 @@ pub async fn get_thinking_step(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<ThinkingStep, String> {
-    state.db.get_thinking_step(&id).map_err(|e| e.to_string())
+    state.db.get_thinking_step(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -523,7 +544,7 @@ pub async fn get_search_decision(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<SearchDecision, String> {
-    state.db.get_search_decision(&id).map_err(|e| e.to_string())
+    state.db.get_search_decision(&id).await.map_err(|e| e.to_string())
 }
 
 // ==========================================================================
@@ -538,6 +559,7 @@ pub async fn get_message_resources(
     state
         .db
         .get_message_resources(&message_id)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -596,7 +618,7 @@ pub async fn get_setting(
     state: State<'_, AppState>,
     key: String,
 ) -> Result<Option<String>, String> {
-    state.db.get_setting(&key).map_err(|e| e.to_string())
+    state.db.get_setting(&key).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -608,12 +630,13 @@ pub async fn set_setting(
     state
         .db
         .set_setting(&key, &value)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_all_settings(state: State<'_, AppState>) -> Result<Vec<Setting>, String> {
-    state.db.get_all_settings().map_err(|e| e.to_string())
+    state.db.get_all_settings().await.map_err(|e| e.to_string())
 }
 
 // Crypto commands
@@ -671,6 +694,7 @@ async fn generate_conversation_title(
     let summary_model_id = state
         .db
         .get_setting("conversation_summary_model_id")
+        .await
         .ok()
         .flatten();
 
@@ -680,10 +704,10 @@ async fn generate_conversation_title(
         summary_model_id
     {
         // Get the custom model settings
-        match state.db.get_model(&model_id) {
+        match state.db.get_model(&model_id).await {
             Ok(Some(m)) => {
                 // Get provider info
-                match state.db.get_provider(&m.provider_id) {
+                match state.db.get_provider(&m.provider_id).await {
                     Ok(Some(p)) => {
                         println!(
                             "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
@@ -780,7 +804,7 @@ async fn auto_generate_title_if_needed(
     api_key: Option<String>,
     base_url: Option<String>,
 ) {
-    if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id) {
+    if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await {
         if conversation.title == "New Conversation" {
             println!("🏷️ [auto_title] Generating title for new conversation...");
             match generate_conversation_title(
@@ -796,7 +820,7 @@ async fn auto_generate_title_if_needed(
             .await
             {
                 Ok(title) => {
-                    match state.db.update_conversation(conversation_id, &title) {
+                    match state.db.update_conversation(conversation_id, &title).await {
                         Ok(_) => {
                             println!("✅ [auto_title] Conversation title updated to: {}", title);
                             // Notify frontend of title update
@@ -997,7 +1021,7 @@ async fn handle_agent_streaming(
                         sender_id: sender_id.clone(),
                         content: accumulated.clone(),
                         tokens: None,
-                    }) {
+                    }).await {
                         Ok(msg) => {
                             println!("✅ [agent_streaming] Partial message saved: {}", msg.id);
 
@@ -1007,14 +1031,14 @@ async fn handle_agent_streaming(
                                     state_clone.db.create_thinking_step(CreateThinkingStepRequest {
                                         content: accumulated_reasoning_content,
                                         source: Some("llm".to_string()),
-                                    })
+                                    }).await
                                 {
                                     let _ = state_clone.db.link_message_step(
                                         &msg.id,
                                         StepType::Thinking,
                                         &thinking_step.id,
                                         Some(0),
-                                    );
+                                    ).await;
                                 }
                             }
 
@@ -1072,7 +1096,7 @@ async fn handle_agent_streaming(
         sender_id,
         content: final_content.clone(),
         tokens: response.tokens,
-    }) {
+    }).await {
         Ok(msg) => msg,
         Err(e) => {
             eprintln!("Failed to save assistant message: {}", e);
@@ -1090,14 +1114,14 @@ async fn handle_agent_streaming(
                 .create_thinking_step(CreateThinkingStepRequest {
                     content: thinking_content,
                     source: Some("llm".to_string()),
-                }) {
+                }).await {
                 Ok(thinking_step) => {
                     if let Err(e) = state_clone.db.link_message_step(
                         &assistant_message.id,
                         StepType::Thinking,
                         &thinking_step.id,
                         Some(0),
-                    ) {
+                    ).await {
                         eprintln!("Failed to link thinking step: {}", e);
                     }
                 }
@@ -1219,6 +1243,7 @@ pub async fn send_message(
             content: content.clone(),
             tokens: None,
         })
+        .await
         .map_err(|e| {
             println!("❌ [send_message] Failed to create message: {}", e);
             e.to_string()
@@ -1234,6 +1259,7 @@ pub async fn send_message(
     let existing_participants = state
         .db
         .list_conversation_participants(&conversation_id)
+        .await
         .map_err(|e| e.to_string())?;
 
     // Check if we need to add participants
@@ -1275,7 +1301,7 @@ pub async fn send_message(
     // Add self user if not present
     if !has_user {
         println!("👤 [send_message] Adding self user as participant...");
-        match state.db.get_self_user() {
+        match state.db.get_self_user().await {
             Ok(Some(self_user)) => {
                 match state
                     .db
@@ -1284,7 +1310,7 @@ pub async fn send_message(
                         participant_type: "user".to_string(),
                         participant_id: Some(self_user.id.clone()),
                         display_name: Some(self_user.display_name.clone()),
-                    }) {
+                    }).await {
                     Ok(_) => println!("✅ [send_message] Added self user as participant"),
                     Err(e) => println!("⚠️  [send_message] Failed to add self user: {}", e),
                 }
@@ -1301,7 +1327,7 @@ pub async fn send_message(
                 "🤖 [send_message] Adding NEW assistant as participant (assistant_id: {})...",
                 assistant_id
             );
-            match state.db.get_assistant(assistant_id) {
+            match state.db.get_assistant(assistant_id).await {
                 Ok(Some(assistant)) => {
                     match state.db.add_conversation_participant(
                         CreateConversationParticipantRequest {
@@ -1310,7 +1336,7 @@ pub async fn send_message(
                             participant_id: Some(assistant.id.clone()),
                             display_name: Some(assistant.name.clone()),
                         },
-                    ) {
+                    ).await {
                         Ok(_) => println!(
                             "✅ [send_message] Added assistant '{}' as participant",
                             assistant.name
@@ -1331,7 +1357,7 @@ pub async fn send_message(
                 "🤖 [send_message] Adding NEW model as participant (model_id: {})...",
                 model_id
             );
-            match state.db.get_model(model_id) {
+            match state.db.get_model(model_id).await {
                 Ok(Some(model)) => {
                     match state.db.add_conversation_participant(
                         CreateConversationParticipantRequest {
@@ -1340,7 +1366,7 @@ pub async fn send_message(
                             participant_id: Some(model.id.clone()),
                             display_name: Some(model.name.clone()),
                         },
-                    ) {
+                    ).await {
                         Ok(_) => println!(
                             "✅ [send_message] Added model '{}' as participant",
                             model.name
@@ -1432,7 +1458,7 @@ pub async fn send_message(
                     search_needed: decision.search_needed,
                     search_query: decision.search_query.clone(),
                     search_result_id: None, // Will be updated if search is performed
-                }) {
+                }).await {
                 Ok(search_decision) => {
                     println!(
                         "📝 [background_task] Created search decision: {}",
@@ -1445,7 +1471,7 @@ pub async fn send_message(
                         StepType::SearchDecision,
                         &search_decision.id,
                         Some(0),
-                    ) {
+                    ).await {
                         eprintln!("Failed to link search decision to message: {}", e);
                     }
 
@@ -1485,7 +1511,7 @@ pub async fn send_message(
                         engine: "duckduckgo".to_string(),
                         total_results: None, // Will be updated after search completes
                         searched_at: searched_at.clone(),
-                    }) {
+                    }).await {
                     Ok(search_result) => {
                         println!(
                             "📝 [background_task] Created pending search result: {}",
@@ -1499,7 +1525,7 @@ pub async fn send_message(
                             ContextType::SearchResult,
                             &search_result.id,
                             Some(0), // First context item
-                        ) {
+                        ).await {
                             eprintln!("Failed to link search result to message: {}", e);
                         }
 
@@ -1538,7 +1564,7 @@ pub async fn send_message(
                             if let Err(e) = state_clone.db.update_search_result_total(
                                 sr_id,
                                 search_response.total_results as i64,
-                            ) {
+                            ).await {
                                 eprintln!("Failed to update search result total: {}", e);
                             }
 
@@ -1622,7 +1648,7 @@ pub async fn send_message(
             let content_hash = crate::storage::hash_content(&resource.content);
 
             // Check if we already have this content (deduplication)
-            if let Ok(Some(existing)) = state_clone.db.find_fetch_by_hash(&content_hash) {
+            if let Ok(Some(existing)) = state_clone.db.find_fetch_by_hash(&content_hash).await {
                 println!(
                     "♻️ [dedup] Reusing existing fetch content for {} (hash: {}...)",
                     resource.url,
@@ -1635,7 +1661,7 @@ pub async fn send_message(
                     ContextType::FetchResult,
                     &existing.id,
                     None,
-                ) {
+                ).await {
                     eprintln!("Failed to link existing fetch_result to message: {}", e);
                 }
 
@@ -1707,7 +1733,7 @@ pub async fn send_message(
                     processed_size: Some(content_size),
                     favicon_url: resource.metadata.favicon_url.clone(),
                     content_hash: Some(content_hash.clone()),
-                }) {
+                }).await {
                 Ok(fetch_result) => {
                     // Link fetch_result to message as context enrichment
                     if let Err(e) = state_clone.db.link_message_context(
@@ -1715,7 +1741,7 @@ pub async fn send_message(
                         ContextType::FetchResult,
                         &fetch_result.id,
                         None,
-                    ) {
+                    ).await {
                         eprintln!("Failed to link fetch_result to message: {}", e);
                     }
 
@@ -1827,7 +1853,7 @@ pub async fn send_message(
             let content_hash = crate::storage::hash_content(&file.content);
 
             // Check if we already have this content (deduplication)
-            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash) {
+            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash).await {
                 println!(
                     "♻️ [dedup] Reusing existing file content for {} (hash: {}...)",
                     file.name,
@@ -1843,7 +1869,7 @@ pub async fn send_message(
                         mime_type: file.media_type.clone(),
                         storage_path: existing.storage_path.clone(),
                         content_hash: content_hash.clone(),
-                    }) {
+                    }).await {
                     Ok(file_attachment) => {
                         // Link file to message (user attachment)
                         if let Err(e) = state_clone.db.link_message_attachment(
@@ -1851,7 +1877,7 @@ pub async fn send_message(
                             UserAttachmentType::File,
                             &file_attachment.id,
                             None,
-                        ) {
+                        ).await {
                             eprintln!("Failed to link file to message: {}", e);
                         } else {
                             println!(
@@ -1901,7 +1927,7 @@ pub async fn send_message(
                     mime_type: file.media_type.clone(),
                     storage_path: storage_path.clone(),
                     content_hash: content_hash.clone(),
-                }) {
+                }).await {
                 Ok(file_attachment) => {
                     // Link file to message (user attachment)
                     if let Err(e) = state_clone.db.link_message_attachment(
@@ -1909,7 +1935,7 @@ pub async fn send_message(
                         UserAttachmentType::File,
                         &file_attachment.id,
                         None,
-                    ) {
+                    ).await {
                         eprintln!("Failed to link file to message: {}", e);
                     } else {
                         println!(
@@ -1953,7 +1979,7 @@ pub async fn send_message(
             let content_hash = crate::storage::hash_bytes(&bytes);
 
             // Check if we already have this image (deduplication)
-            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash) {
+            if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash).await {
                 println!(
                     "♻️ [dedup] Reusing existing image content for {} (hash: {}...)",
                     file_name,
@@ -1969,7 +1995,7 @@ pub async fn send_message(
                         mime_type: img.media_type.clone(),
                         storage_path: existing.storage_path.clone(),
                         content_hash: content_hash.clone(),
-                    }) {
+                    }).await {
                     Ok(file_attachment) => {
                         // Link file (image) to message (user attachment)
                         if let Err(e) = state_clone.db.link_message_attachment(
@@ -1977,7 +2003,7 @@ pub async fn send_message(
                             UserAttachmentType::File,
                             &file_attachment.id,
                             None,
-                        ) {
+                        ).await {
                             eprintln!("Failed to link image to message: {}", e);
                         } else {
                             println!(
@@ -2026,7 +2052,7 @@ pub async fn send_message(
                     mime_type: img.media_type.clone(),
                     storage_path: storage_path.clone(),
                     content_hash: content_hash.clone(),
-                }) {
+                }).await {
                 Ok(file_attachment) => {
                     // Link file (image) to message (user attachment)
                     if let Err(e) = state_clone.db.link_message_attachment(
@@ -2034,7 +2060,7 @@ pub async fn send_message(
                         UserAttachmentType::File,
                         &file_attachment.id,
                         None,
-                    ) {
+                    ).await {
                         eprintln!("Failed to link image to message: {}", e);
                     } else {
                         println!(
@@ -2081,6 +2107,7 @@ pub async fn send_message(
             if let Ok(messages) = state_clone
                 .db
                 .list_messages_by_conversation(&conversation_id_clone)
+                .await
             {
                 for msg in messages.iter() {
                     // Skip the user message we just saved (it will be added with processed content below)
@@ -2123,7 +2150,7 @@ pub async fn send_message(
 
         // Fetch assistant configuration if available
         let assistant_config = if let Some(ref assistant_id) = assistant_db_id {
-            match state_clone.db.get_assistant(assistant_id) {
+            match state_clone.db.get_assistant(assistant_id).await {
                 Ok(Some(assistant)) => {
                     println!(
                         "📋 [background_task] Using assistant config: temp={:?}, max_tokens={:?}",

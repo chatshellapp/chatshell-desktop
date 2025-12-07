@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 // Provider models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Provider {
     pub id: String,
     pub name: String,          // Display name, e.g., "Ollama Local", "OpenAI"
@@ -25,7 +26,7 @@ pub struct CreateProviderRequest {
 }
 
 // Model (LLM) models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Model {
     pub id: String,
     pub name: String,        // Display name, e.g., "DeepSeek R1 14B"
@@ -178,7 +179,7 @@ pub struct CreateAssistantRequest {
 }
 
 // Knowledge Base models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct KnowledgeBase {
     pub id: String,
     pub name: String,
@@ -200,7 +201,7 @@ pub struct CreateKnowledgeBaseRequest {
 }
 
 // Tool models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Tool {
     pub id: String,
     pub name: String,
@@ -224,7 +225,7 @@ pub struct CreateToolRequest {
 }
 
 // User models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -256,7 +257,7 @@ pub struct CreateUserRequest {
 }
 
 // User relationship models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserRelationship {
     pub id: String,
     pub user_id: String,
@@ -274,7 +275,7 @@ pub struct CreateUserRelationshipRequest {
 }
 
 // Conversation models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Conversation {
     pub id: String,
     pub title: String,
@@ -290,7 +291,7 @@ pub struct CreateConversationRequest {
 }
 
 // Conversation participant models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ConversationParticipant {
     pub id: String,
     pub conversation_id: String,
@@ -314,7 +315,7 @@ pub struct CreateConversationParticipantRequest {
 }
 
 // Participant summary for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ParticipantSummary {
     pub participant_type: String,
     pub participant_id: Option<String>,
@@ -327,7 +328,7 @@ pub struct ParticipantSummary {
 }
 
 // Message models (thinking_content moved to thinking_steps table)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Message {
     pub id: String,
     pub conversation_id: Option<String>,
@@ -354,7 +355,7 @@ pub struct CreateMessageRequest {
 /// File attachment - stores metadata about a user-uploaded file
 /// Content is stored in filesystem at storage_path
 /// content_hash enables deduplication - same content shares storage
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FileAttachment {
     pub id: String,
     pub file_name: String,
@@ -375,7 +376,7 @@ pub struct CreateFileAttachmentRequest {
 }
 
 /// User link - stores URL explicitly shared by user (not from search)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserLink {
     pub id: String,
     pub url: String,
@@ -448,7 +449,7 @@ impl UserAttachment {
 
 /// Search result - stores metadata about a web search operation
 /// Content is not stored in filesystem, only metadata in database
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct SearchResult {
     pub id: String,
     pub query: String,
@@ -470,7 +471,7 @@ pub struct CreateSearchResultRequest {
 /// Content is stored in filesystem at storage_path
 /// source_type distinguishes between search-initiated and user-link fetches
 /// content_hash enables deduplication - same content shares storage
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FetchResult {
     pub id: String,
     pub source_type: String,       // "search" | "user_link"
@@ -571,7 +572,7 @@ impl ContextEnrichment {
 // ==========================================================================
 
 /// Thinking step - stores AI's reasoning/thinking process
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ThinkingStep {
     pub id: String,
     pub content: String,
@@ -586,7 +587,7 @@ pub struct CreateThinkingStepRequest {
 }
 
 /// Search decision - stores AI's reasoning about whether web search is needed
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct SearchDecision {
     pub id: String,
     pub reasoning: String,
@@ -605,7 +606,7 @@ pub struct CreateSearchDecisionRequest {
 }
 
 /// Tool call - stores tool/function invocations (for MCP support)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ToolCall {
     pub id: String,
     pub tool_name: String,
@@ -630,7 +631,7 @@ pub struct CreateToolCallRequest {
 }
 
 /// Code execution - stores code interpreter results
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct CodeExecution {
     pub id: String,
     pub language: String,
@@ -734,7 +735,7 @@ pub struct MessageResources {
 }
 
 // Prompt models
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Prompt {
     pub id: String,
     pub name: String,
@@ -756,7 +757,7 @@ pub struct CreatePromptRequest {
 }
 
 // Settings model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Setting {
     pub key: String,
     pub value: String,

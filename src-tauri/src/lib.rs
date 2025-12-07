@@ -39,13 +39,18 @@ pub fn run() {
             let db_path = app_data_dir.join("data.db");
             println!("📂 [db] Database path: {:?}", db_path);
 
-            let db_path_str = db_path.to_str().expect("FATAL: Invalid database path");
-            let db = Database::new(db_path_str).expect("FATAL: Failed to initialize database");
+            let db_path_str = db_path.to_str().expect("FATAL: Invalid database path").to_string();
+            
+            // Create tokio runtime for async database initialization
+            let rt = tokio::runtime::Runtime::new().expect("FATAL: Failed to create tokio runtime");
+            
+            let db = rt.block_on(async {
+                Database::new(&db_path_str).await.expect("FATAL: Failed to initialize database")
+            });
 
             println!("✅ [db] Database initialized successfully");
 
             // Seed database with default data (async operation)
-            let rt = tokio::runtime::Runtime::new().expect("FATAL: Failed to create tokio runtime");
             rt.block_on(async {
                 db.seed_default_data()
                     .await

@@ -5,9 +5,10 @@ use aes_gcm::{
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use rand::RngCore;
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
+
+use crate::db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedKeyPair {
@@ -50,22 +51,21 @@ static ENCRYPTION_KEY_CACHE: OnceLock<[u8; 32]> = OnceLock::new();
 
 /// Initialize the encryption key from database or generate a new one
 /// This should be called once during app startup
-pub fn init_encryption_key(conn: &rusqlite::Connection) -> Result<()> {
-    let key = get_or_create_encryption_key(conn)?;
+pub async fn init_encryption_key(db: &Database) -> Result<()> {
+    let key = get_or_create_encryption_key(db).await?;
     let _ = ENCRYPTION_KEY_CACHE.set(key);
     Ok(())
 }
 
 /// Get or create the encryption key from the database
-fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]> {
+async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
     // Try to read existing key from settings
-    let existing: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = ?1",
-            [ENCRYPTION_KEY_SETTING],
-            |row| row.get(0),
-        )
-        .optional()?;
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM settings WHERE key = ?"
+    )
+    .bind(ENCRYPTION_KEY_SETTING)
+    .fetch_optional(db.pool())
+    .await?;
 
     if let Some(key_b64) = existing {
         // Decode existing key
@@ -89,10 +89,14 @@ fn get_or_create_encryption_key(conn: &rusqlite::Connection) -> Result<[u8; 32]>
         let key_b64 = general_purpose::STANDARD.encode(&key);
         let now = chrono::Utc::now().to_rfc3339();
 
-        conn.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
-            rusqlite::params![ENCRYPTION_KEY_SETTING, key_b64, now],
-        )?;
+        sqlx::query(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)"
+        )
+        .bind(ENCRYPTION_KEY_SETTING)
+        .bind(&key_b64)
+        .bind(&now)
+        .execute(db.pool())
+        .await?;
 
         println!("🔐 [crypto] Generated and stored new encryption key in database");
         Ok(key)
@@ -157,9 +161,6 @@ pub fn decrypt(encrypted: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Note: Tests that use encrypt/decrypt need the encryption key to be initialized
-    // These tests are for the keypair functionality which doesn't depend on the DB key
 
     #[test]
     fn test_keypair_generation() {
