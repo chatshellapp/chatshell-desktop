@@ -94,6 +94,7 @@ pub enum ProviderAgent {
 }
 
 /// Create an OpenAI agent with full configuration
+/// Adds default reasoning: {"effort": "medium"} parameter for gpt-5 models (extended thinking support)
 pub fn create_openai_agent(
     api_key: &str,
     base_url: Option<&str>,
@@ -107,7 +108,15 @@ pub fn create_openai_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    // Add default reasoning param for gpt-5 models if user hasn't set additional_params
+    let mut openai_config = config.clone();
+    if openai_config.model_params.additional_params.is_none() && model_id.starts_with("gpt-5") {
+        openai_config.model_params.additional_params = Some(serde_json::json!({
+            "reasoning": { "effort": "medium" }
+        }));
+    }
+
+    Ok(build_agent(client.agent(model_id), &openai_config))
 }
 
 /// Create an OpenRouter agent with full configuration
