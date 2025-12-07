@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::Database;
 use crate::models::{
     CodeExecution, CreateCodeExecutionRequest, CreateSearchDecisionRequest,
-    CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep, SearchDecision, StepType,
+    CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep, SearchDecision,
     ThinkingStep, ToolCall,
 };
 
@@ -16,14 +16,17 @@ impl Database {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let source = req.source.unwrap_or_else(|| "llm".to_string());
+        let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO thinking_steps (id, content, source, created_at)
-             VALUES (?, ?, ?, ?)"
+            "INSERT INTO thinking_steps (id, message_id, content, source, display_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
+        .bind(&req.message_id)
         .bind(&req.content)
         .bind(&source)
+        .bind(display_order)
         .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
@@ -33,7 +36,7 @@ impl Database {
 
     pub async fn get_thinking_step(&self, id: &str) -> Result<ThinkingStep> {
         let row = sqlx::query(
-            "SELECT id, content, source, created_at FROM thinking_steps WHERE id = ?"
+            "SELECT id, message_id, content, source, display_order, created_at FROM thinking_steps WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -42,10 +45,31 @@ impl Database {
 
         Ok(ThinkingStep {
             id: row.get("id"),
+            message_id: row.get("message_id"),
             content: row.get("content"),
             source: row.get("source"),
+            display_order: row.get("display_order"),
             created_at: row.get("created_at"),
         })
+    }
+
+    pub async fn get_thinking_steps_by_message(&self, message_id: &str) -> Result<Vec<ThinkingStep>> {
+        let rows = sqlx::query(
+            "SELECT id, message_id, content, source, display_order, created_at 
+             FROM thinking_steps WHERE message_id = ? ORDER BY display_order, created_at"
+        )
+        .bind(message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| ThinkingStep {
+            id: row.get("id"),
+            message_id: row.get("message_id"),
+            content: row.get("content"),
+            source: row.get("source"),
+            display_order: row.get("display_order"),
+            created_at: row.get("created_at"),
+        }).collect())
     }
 
     pub async fn delete_thinking_step(&self, id: &str) -> Result<()> {
@@ -63,16 +87,19 @@ impl Database {
     ) -> Result<SearchDecision> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
+        let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO search_decisions (id, reasoning, search_needed, search_query, search_result_id, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO search_decisions (id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
+        .bind(&req.message_id)
         .bind(&req.reasoning)
         .bind(req.search_needed as i32)
         .bind(&req.search_query)
         .bind(&req.search_result_id)
+        .bind(display_order)
         .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
@@ -82,7 +109,7 @@ impl Database {
 
     pub async fn get_search_decision(&self, id: &str) -> Result<SearchDecision> {
         let row = sqlx::query(
-            "SELECT id, reasoning, search_needed, search_query, search_result_id, created_at
+            "SELECT id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at
              FROM search_decisions WHERE id = ?"
         )
         .bind(id)
@@ -94,12 +121,38 @@ impl Database {
 
         Ok(SearchDecision {
             id: row.get("id"),
+            message_id: row.get("message_id"),
             reasoning: row.get("reasoning"),
             search_needed: search_needed != 0,
             search_query: row.get("search_query"),
             search_result_id: row.get("search_result_id"),
+            display_order: row.get("display_order"),
             created_at: row.get("created_at"),
         })
+    }
+
+    pub async fn get_search_decisions_by_message(&self, message_id: &str) -> Result<Vec<SearchDecision>> {
+        let rows = sqlx::query(
+            "SELECT id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at
+             FROM search_decisions WHERE message_id = ? ORDER BY display_order, created_at"
+        )
+        .bind(message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| {
+            let search_needed: i32 = row.get("search_needed");
+            SearchDecision {
+                id: row.get("id"),
+                message_id: row.get("message_id"),
+                reasoning: row.get("reasoning"),
+                search_needed: search_needed != 0,
+                search_query: row.get("search_query"),
+                search_result_id: row.get("search_result_id"),
+                display_order: row.get("display_order"),
+                created_at: row.get("created_at"),
+            }
+        }).collect())
     }
 
     pub async fn delete_search_decision(&self, id: &str) -> Result<()> {
@@ -115,18 +168,21 @@ impl Database {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let status = req.status.unwrap_or_else(|| "pending".to_string());
+        let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO tool_calls (id, tool_name, tool_input, tool_output, status, error, duration_ms, created_at, completed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO tool_calls (id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
+        .bind(&req.message_id)
         .bind(&req.tool_name)
         .bind(&req.tool_input)
         .bind(&req.tool_output)
         .bind(&status)
         .bind(&req.error)
         .bind(req.duration_ms)
+        .bind(display_order)
         .bind(&now)
         .bind(&req.completed_at)
         .execute(self.pool.as_ref())
@@ -137,7 +193,7 @@ impl Database {
 
     pub async fn get_tool_call(&self, id: &str) -> Result<ToolCall> {
         let row = sqlx::query(
-            "SELECT id, tool_name, tool_input, tool_output, status, error, duration_ms, created_at, completed_at
+            "SELECT id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
              FROM tool_calls WHERE id = ?"
         )
         .bind(id)
@@ -147,15 +203,41 @@ impl Database {
 
         Ok(ToolCall {
             id: row.get("id"),
+            message_id: row.get("message_id"),
             tool_name: row.get("tool_name"),
             tool_input: row.get("tool_input"),
             tool_output: row.get("tool_output"),
             status: row.get("status"),
             error: row.get("error"),
             duration_ms: row.get("duration_ms"),
+            display_order: row.get("display_order"),
             created_at: row.get("created_at"),
             completed_at: row.get("completed_at"),
         })
+    }
+
+    pub async fn get_tool_calls_by_message(&self, message_id: &str) -> Result<Vec<ToolCall>> {
+        let rows = sqlx::query(
+            "SELECT id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
+             FROM tool_calls WHERE message_id = ? ORDER BY display_order, created_at"
+        )
+        .bind(message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| ToolCall {
+            id: row.get("id"),
+            message_id: row.get("message_id"),
+            tool_name: row.get("tool_name"),
+            tool_input: row.get("tool_input"),
+            tool_output: row.get("tool_output"),
+            status: row.get("status"),
+            error: row.get("error"),
+            duration_ms: row.get("duration_ms"),
+            display_order: row.get("display_order"),
+            created_at: row.get("created_at"),
+            completed_at: row.get("completed_at"),
+        }).collect())
     }
 
     pub async fn update_tool_call_status(
@@ -194,12 +276,14 @@ impl Database {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
         let status = req.status.unwrap_or_else(|| "pending".to_string());
+        let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO code_executions (id, language, code, output, exit_code, status, error, duration_ms, created_at, completed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO code_executions (id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
+        .bind(&req.message_id)
         .bind(&req.language)
         .bind(&req.code)
         .bind(&req.output)
@@ -207,6 +291,7 @@ impl Database {
         .bind(&status)
         .bind(&req.error)
         .bind(req.duration_ms)
+        .bind(display_order)
         .bind(&now)
         .bind(&req.completed_at)
         .execute(self.pool.as_ref())
@@ -217,7 +302,7 @@ impl Database {
 
     pub async fn get_code_execution(&self, id: &str) -> Result<CodeExecution> {
         let row = sqlx::query(
-            "SELECT id, language, code, output, exit_code, status, error, duration_ms, created_at, completed_at
+            "SELECT id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at
              FROM code_executions WHERE id = ?"
         )
         .bind(id)
@@ -227,6 +312,7 @@ impl Database {
 
         Ok(CodeExecution {
             id: row.get("id"),
+            message_id: row.get("message_id"),
             language: row.get("language"),
             code: row.get("code"),
             output: row.get("output"),
@@ -234,9 +320,35 @@ impl Database {
             status: row.get("status"),
             error: row.get("error"),
             duration_ms: row.get("duration_ms"),
+            display_order: row.get("display_order"),
             created_at: row.get("created_at"),
             completed_at: row.get("completed_at"),
         })
+    }
+
+    pub async fn get_code_executions_by_message(&self, message_id: &str) -> Result<Vec<CodeExecution>> {
+        let rows = sqlx::query(
+            "SELECT id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at
+             FROM code_executions WHERE message_id = ? ORDER BY display_order, created_at"
+        )
+        .bind(message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| CodeExecution {
+            id: row.get("id"),
+            message_id: row.get("message_id"),
+            language: row.get("language"),
+            code: row.get("code"),
+            output: row.get("output"),
+            exit_code: row.get("exit_code"),
+            status: row.get("status"),
+            error: row.get("error"),
+            duration_ms: row.get("duration_ms"),
+            display_order: row.get("display_order"),
+            created_at: row.get("created_at"),
+            completed_at: row.get("completed_at"),
+        }).collect())
     }
 
     pub async fn delete_code_execution(&self, id: &str) -> Result<()> {
@@ -247,97 +359,36 @@ impl Database {
         Ok(())
     }
 
-    // Message Step Link operations
-    pub async fn link_message_step(
-        &self,
-        message_id: &str,
-        step_type: StepType,
-        step_id: &str,
-        display_order: Option<i32>,
-    ) -> Result<()> {
-        let id = Uuid::now_v7().to_string();
-        let now = Utc::now().to_rfc3339();
-        let order = display_order.unwrap_or(0);
-
-        sqlx::query(
-            "INSERT OR IGNORE INTO message_steps
-             (id, message_id, step_type, step_id, display_order, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        .bind(&id)
-        .bind(message_id)
-        .bind(step_type.to_string())
-        .bind(step_id)
-        .bind(order)
-        .bind(&now)
-        .execute(self.pool.as_ref())
-        .await?;
-
-        Ok(())
-    }
-
+    // Get all process steps for a message (combined from all step tables)
     pub async fn get_message_steps(&self, message_id: &str) -> Result<Vec<ProcessStep>> {
-        let rows = sqlx::query(
-            "SELECT step_type, step_id, display_order
-             FROM message_steps
-             WHERE message_id = ?
-             ORDER BY display_order, created_at"
-        )
-        .bind(message_id)
-        .fetch_all(self.pool.as_ref())
-        .await?;
+        let mut steps: Vec<(i32, String, ProcessStep)> = Vec::new();
 
-        let mut steps = Vec::new();
-        for row in rows {
-            let step_type: String = row.get("step_type");
-            let step_id: String = row.get("step_id");
-
-            let step = match step_type.as_str() {
-                "thinking" => self
-                    .get_thinking_step(&step_id)
-                    .await
-                    .map(ProcessStep::Thinking)
-                    .ok(),
-                "search_decision" => self
-                    .get_search_decision(&step_id)
-                    .await
-                    .map(ProcessStep::SearchDecision)
-                    .ok(),
-                "tool_call" => self
-                    .get_tool_call(&step_id)
-                    .await
-                    .map(ProcessStep::ToolCall)
-                    .ok(),
-                "code_execution" => self
-                    .get_code_execution(&step_id)
-                    .await
-                    .map(ProcessStep::CodeExecution)
-                    .ok(),
-                _ => None,
-            };
-            if let Some(s) = step {
-                steps.push(s);
-            }
+        // Fetch thinking steps
+        for step in self.get_thinking_steps_by_message(message_id).await? {
+            steps.push((step.display_order, step.created_at.clone(), ProcessStep::Thinking(step)));
         }
 
-        Ok(steps)
-    }
+        // Fetch search decisions
+        for step in self.get_search_decisions_by_message(message_id).await? {
+            steps.push((step.display_order, step.created_at.clone(), ProcessStep::SearchDecision(step)));
+        }
 
-    pub async fn unlink_message_step(
-        &self,
-        message_id: &str,
-        step_type: StepType,
-        step_id: &str,
-    ) -> Result<()> {
-        sqlx::query(
-            "DELETE FROM message_steps WHERE message_id = ? AND step_type = ? AND step_id = ?"
-        )
-        .bind(message_id)
-        .bind(step_type.to_string())
-        .bind(step_id)
-        .execute(self.pool.as_ref())
-        .await?;
-        Ok(())
+        // Fetch tool calls
+        for step in self.get_tool_calls_by_message(message_id).await? {
+            steps.push((step.display_order, step.created_at.clone(), ProcessStep::ToolCall(step)));
+        }
+
+        // Fetch code executions
+        for step in self.get_code_executions_by_message(message_id).await? {
+            steps.push((step.display_order, step.created_at.clone(), ProcessStep::CodeExecution(step)));
+            }
+
+        // Sort by display_order, then by created_at
+        steps.sort_by(|a, b| {
+            a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1))
+        });
+
+        Ok(steps.into_iter().map(|(_, _, step)| step).collect())
     }
 
     // Get All Message Resources (combined)

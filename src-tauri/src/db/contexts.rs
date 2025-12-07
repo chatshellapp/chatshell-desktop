@@ -36,6 +36,18 @@ impl Database {
     }
 
     pub async fn get_message_contexts(&self, message_id: &str) -> Result<Vec<ContextEnrichment>> {
+        let mut contexts: Vec<(i32, String, ContextEnrichment)> = Vec::new();
+
+        // Get search results directly (via FK, not junction table)
+        for search_result in self.get_search_results_by_message(message_id).await? {
+            contexts.push((
+                search_result.display_order,
+                search_result.created_at.clone(),
+                ContextEnrichment::SearchResult(search_result),
+            ));
+        }
+
+        // Get fetch results via junction table
         let rows = sqlx::query(
             "SELECT context_type, context_id, display_order
              FROM message_contexts
@@ -46,30 +58,26 @@ impl Database {
         .fetch_all(self.pool.as_ref())
         .await?;
 
-        let mut contexts = Vec::new();
         for row in rows {
             let context_type: String = row.get("context_type");
             let context_id: String = row.get("context_id");
+            let display_order: i32 = row.get("display_order");
 
-            let context = match context_type.as_str() {
-                "search_result" => self
-                    .get_search_result(&context_id)
-                    .await
-                    .map(ContextEnrichment::SearchResult)
-                    .ok(),
-                "fetch_result" => self
-                    .get_fetch_result(&context_id)
-                    .await
-                    .map(ContextEnrichment::FetchResult)
-                    .ok(),
-                _ => None,
-            };
-            if let Some(c) = context {
-                contexts.push(c);
+            if context_type == "fetch_result" {
+                if let Ok(fetch_result) = self.get_fetch_result(&context_id).await {
+                    contexts.push((
+                        display_order,
+                        fetch_result.created_at.clone(),
+                        ContextEnrichment::FetchResult(fetch_result),
+                    ));
+                }
             }
         }
 
-        Ok(contexts)
+        // Sort by display_order, then by created_at
+        contexts.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+        Ok(contexts.into_iter().map(|(_, _, c)| c).collect())
     }
 
     pub async fn unlink_message_context(

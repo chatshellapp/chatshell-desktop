@@ -10,30 +10,34 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct SearchResult {
     pub id: String,
+    pub message_id: String,
     pub query: String,
     pub engine: String, // "google" | "bing" | "duckduckgo"
     pub total_results: Option<i64>,
+    pub display_order: i32,
     pub searched_at: String,
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSearchResultRequest {
+    pub message_id: String,
     pub query: String,
     pub engine: String,
     pub total_results: Option<i64>,
+    pub display_order: Option<i32>,
     pub searched_at: String,
 }
 
 /// Fetch result - stores metadata about a fetched web resource
 /// Content is stored in filesystem at storage_path
-/// source_type distinguishes between search-initiated and user-link fetches
+/// source_type distinguishes between search-initiated and user-provided URL fetches
 /// content_hash enables deduplication - same content shares storage
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FetchResult {
     pub id: String,
     pub source_type: String,       // "search" | "user_link"
-    pub source_id: Option<String>, // FK to search_results.id or user_links.id
+    pub source_id: Option<String>, // FK to search_results.id (only for source_type="search")
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,

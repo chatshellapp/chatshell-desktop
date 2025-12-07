@@ -9,58 +9,70 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ThinkingStep {
     pub id: String,
+    pub message_id: String,
     pub content: String,
     pub source: String, // "llm" | "extended_thinking"
+    pub display_order: i32,
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateThinkingStepRequest {
+    pub message_id: String,
     pub content: String,
     pub source: Option<String>,
+    pub display_order: Option<i32>,
 }
 
 /// Search decision - stores AI's reasoning about whether web search is needed
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct SearchDecision {
     pub id: String,
+    pub message_id: String,
     pub reasoning: String,
     pub search_needed: bool,
     pub search_query: Option<String>,
     pub search_result_id: Option<String>, // Link to resulting search if approved
+    pub display_order: i32,
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSearchDecisionRequest {
+    pub message_id: String,
     pub reasoning: String,
     pub search_needed: bool,
     pub search_query: Option<String>,
     pub search_result_id: Option<String>,
+    pub display_order: Option<i32>,
 }
 
 /// Tool call - stores tool/function invocations (for MCP support)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ToolCall {
     pub id: String,
+    pub message_id: String,
     pub tool_name: String,
     pub tool_input: Option<String>,  // JSON
     pub tool_output: Option<String>, // JSON
     pub status: String,              // "pending" | "running" | "success" | "error"
     pub error: Option<String>,
     pub duration_ms: Option<i64>,
+    pub display_order: i32,
     pub created_at: String,
     pub completed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateToolCallRequest {
+    pub message_id: String,
     pub tool_name: String,
     pub tool_input: Option<String>,
     pub tool_output: Option<String>,
     pub status: Option<String>,
     pub error: Option<String>,
     pub duration_ms: Option<i64>,
+    pub display_order: Option<i32>,
     pub completed_at: Option<String>,
 }
 
@@ -68,6 +80,7 @@ pub struct CreateToolCallRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct CodeExecution {
     pub id: String,
+    pub message_id: String,
     pub language: String,
     pub code: String,
     pub output: Option<String>,
@@ -75,12 +88,14 @@ pub struct CodeExecution {
     pub status: String, // "pending" | "running" | "success" | "error"
     pub error: Option<String>,
     pub duration_ms: Option<i64>,
+    pub display_order: i32,
     pub created_at: String,
     pub completed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCodeExecutionRequest {
+    pub message_id: String,
     pub language: String,
     pub code: String,
     pub output: Option<String>,
@@ -88,6 +103,7 @@ pub struct CreateCodeExecutionRequest {
     pub status: Option<String>,
     pub error: Option<String>,
     pub duration_ms: Option<i64>,
+    pub display_order: Option<i32>,
     pub completed_at: Option<String>,
 }
 

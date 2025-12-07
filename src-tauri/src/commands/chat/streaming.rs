@@ -6,7 +6,7 @@ use crate::llm::agent_builder::{
     AgentConfig,
 };
 use crate::llm::{ChatMessage, StreamChunkType};
-use crate::models::{CreateMessageRequest, CreateThinkingStepRequest, ModelParameters, StepType};
+use crate::models::{CreateMessageRequest, CreateThinkingStepRequest, ModelParameters};
 use rig::completion::Message as RigMessage;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -204,24 +204,15 @@ pub(crate) async fn handle_agent_streaming(
 
                             // Save thinking content if any
                             if !accumulated_reasoning_content.is_empty() {
-                                if let Ok(thinking_step) = state_clone
+                                let _ = state_clone
                                     .db
                                     .create_thinking_step(CreateThinkingStepRequest {
+                                        message_id: msg.id.clone(),
                                         content: accumulated_reasoning_content,
                                         source: Some("llm".to_string()),
+                                        display_order: Some(0),
                                     })
-                                    .await
-                                {
-                                    let _ = state_clone
-                                        .db
-                                        .link_message_step(
-                                            &msg.id,
-                                            StepType::Thinking,
-                                            &thinking_step.id,
-                                            Some(0),
-                                        )
                                         .await;
-                                }
                             }
 
                             let completion_payload = serde_json::json!({
@@ -298,24 +289,15 @@ pub(crate) async fn handle_agent_streaming(
             match state_clone
                 .db
                 .create_thinking_step(CreateThinkingStepRequest {
+                    message_id: assistant_message.id.clone(),
                     content: thinking_content,
                     source: Some("llm".to_string()),
+                    display_order: Some(0),
                 })
                 .await
             {
-                Ok(thinking_step) => {
-                    if let Err(e) = state_clone
-                        .db
-                        .link_message_step(
-                            &assistant_message.id,
-                            StepType::Thinking,
-                            &thinking_step.id,
-                            Some(0),
-                        )
-                        .await
-                    {
-                        eprintln!("Failed to link thinking step: {}", e);
-                    }
+                Ok(_thinking_step) => {
+                    // ThinkingStep is now directly linked via message_id FK
                 }
                 Err(e) => {
                     eprintln!("Failed to save thinking step: {}", e);

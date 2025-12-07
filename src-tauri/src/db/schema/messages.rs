@@ -50,24 +50,12 @@ pub async fn create_files_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    // User links table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS user_links (
-            id TEXT PRIMARY KEY,
-            url TEXT NOT NULL,
-            title TEXT,
-            created_at TEXT NOT NULL
-        )"
-    )
-    .execute(pool)
-    .await?;
-
-    // Message attachments junction table
+    // Message attachments junction table (for user-provided files)
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS message_attachments (
             id TEXT PRIMARY KEY,
             message_id TEXT NOT NULL,
-            attachment_type TEXT NOT NULL CHECK(attachment_type IN ('file', 'user_link')),
+            attachment_type TEXT NOT NULL CHECK(attachment_type IN ('file')),
             attachment_id TEXT NOT NULL,
             display_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
@@ -91,12 +79,21 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS search_results (
             id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
             query TEXT NOT NULL,
             engine TEXT NOT NULL,
             total_results INTEGER,
+            display_order INTEGER DEFAULT 0,
             searched_at TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
         )"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_search_results_message ON search_results(message_id)"
     )
     .execute(pool)
     .await?;
@@ -140,12 +137,12 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    // Message contexts junction table
+    // Message contexts junction table (only for fetch_results, search_results have direct FK)
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS message_contexts (
             id TEXT PRIMARY KEY,
             message_id TEXT NOT NULL,
-            context_type TEXT NOT NULL CHECK(context_type IN ('search_result', 'fetch_result')),
+            context_type TEXT NOT NULL CHECK(context_type IN ('fetch_result')),
             context_id TEXT NOT NULL,
             display_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,

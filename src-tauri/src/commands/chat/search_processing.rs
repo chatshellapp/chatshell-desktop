@@ -1,9 +1,7 @@
 //! Search decision and execution logic
 
 use super::super::AppState;
-use crate::models::{
-    ContextType, CreateSearchDecisionRequest, CreateSearchResultRequest, StepType,
-};
+use crate::models::{CreateSearchDecisionRequest, CreateSearchResultRequest};
 use tauri::Emitter;
 
 /// Result of search processing
@@ -57,29 +55,18 @@ pub(crate) async fn process_search_decision(
     match state
         .db
         .create_search_decision(CreateSearchDecisionRequest {
+            message_id: user_message_id.to_string(),
             reasoning: decision.reasoning.clone(),
             search_needed: decision.search_needed,
             search_query: decision.search_query.clone(),
             search_result_id: None,
+            display_order: Some(0),
         })
         .await
     {
         Ok(search_decision) => {
             println!("📝 [search] Created search decision: {}", search_decision.id);
-
-            // Link to user message as a process step
-            if let Err(e) = state
-                .db
-                .link_message_step(
-                    user_message_id,
-                    StepType::SearchDecision,
-                    &search_decision.id,
-                    Some(0),
-                )
-                .await
-            {
-                eprintln!("Failed to link search decision to message: {}", e);
-            }
+            // SearchDecision is now directly linked via message_id FK
 
             // Emit search decision complete for UI
             let _ = app.emit(
@@ -117,9 +104,11 @@ pub(crate) async fn process_search_decision(
     let search_result_id = match state
         .db
         .create_search_result(CreateSearchResultRequest {
+            message_id: user_message_id.to_string(),
             query: keywords.clone(),
             engine: "duckduckgo".to_string(),
             total_results: None,
+            display_order: Some(0),
             searched_at: searched_at.clone(),
         })
         .await
@@ -129,20 +118,7 @@ pub(crate) async fn process_search_decision(
                 "📝 [search] Created pending search result: {}",
                 search_result.id
             );
-
-            // Link search result to message as context enrichment
-            if let Err(e) = state
-                .db
-                .link_message_context(
-                    user_message_id,
-                    ContextType::SearchResult,
-                    &search_result.id,
-                    Some(0),
-                )
-                .await
-            {
-                eprintln!("Failed to link search result to message: {}", e);
-            }
+            // SearchResult is now directly linked via message_id FK
 
             // Emit attachment update so UI shows SearchPreview immediately
             let _ = app.emit(
