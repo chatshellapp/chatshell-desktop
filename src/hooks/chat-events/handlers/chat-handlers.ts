@@ -17,12 +17,7 @@ export function useChatHandlers() {
   }, [])
 
   const handleChatComplete = useCallback((convId: string, message: any) => {
-    logger.info(
-      '[useChatEvents] handleChatComplete called for conversation:',
-      convId,
-      'message:',
-      message
-    )
+    logger.info('[useChatEvents] handleChatComplete called', { conversation: convId, message })
     const store = useMessageStore.getState()
     const convState = store.getConversationState(convId)
     logger.info(
@@ -39,7 +34,7 @@ export function useChatHandlers() {
   }, [])
 
   const handleChatError = useCallback((convId: string, error: string) => {
-    logger.info('[useChatEvents] handleChatError called for conversation:', convId, 'error:', error)
+    logger.info('[useChatEvents] handleChatError called', { conversation: convId, error })
     const store = useMessageStore.getState()
     store.setApiError(convId, error)
   }, [])

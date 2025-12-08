@@ -54,11 +54,10 @@ export function useImageSelect(
           mimeType,
           size: estimatedSize,
         }
-        logger.info(
-          '[handleImageSelect] Created attachment:',
-          newAttachment.name,
-          newAttachment.size
-        )
+        logger.info('[handleImageSelect] Created attachment', {
+          name: newAttachment.name,
+          size: newAttachment.size,
+        })
         setAttachments((prev) => {
           logger.info('[handleImageSelect] Updating attachments, prev count:', prev.length)
           return [...prev, newAttachment]

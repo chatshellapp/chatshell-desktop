@@ -70,7 +70,7 @@ export function usePasteHandler(
             }
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
-            logger.error('Failed to read pasted file:', file.name, error)
+            logger.error(`Failed to read pasted file: ${file.name}`, error)
             toast.error(`Failed to read: ${file.name}`)
           }
         }
@@ -105,7 +105,7 @@ export function usePasteHandler(
             }
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
-            logger.error('Failed to read pasted image:', file.name, error)
+            logger.error(`Failed to read pasted image: ${file.name}`, error)
             toast.error(`Failed to read image: ${file.name || 'clipboard image'}`)
           }
         }

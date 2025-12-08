@@ -50,11 +50,10 @@ export function useFileSelect(
           mimeType: getMimeType(fileName),
           size: content.length,
         }
-        logger.info(
-          '[handleFileSelect] Created attachment:',
-          newAttachment.name,
-          newAttachment.size
-        )
+        logger.info('[handleFileSelect] Created attachment', {
+          name: newAttachment.name,
+          size: newAttachment.size,
+        })
         setAttachments((prev) => {
           logger.info('[handleFileSelect] Updating attachments, prev count:', prev.length)
           return [...prev, newAttachment]

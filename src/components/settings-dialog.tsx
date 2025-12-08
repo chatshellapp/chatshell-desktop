@@ -8,7 +8,6 @@ import {
   Eye,
   EyeOff,
   FileDown,
-  FileText,
   // Globe,
   Heading,
   // Home,

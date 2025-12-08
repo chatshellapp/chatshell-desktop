@@ -60,7 +60,7 @@ export const usePromptStore = create<PromptState>()(
       })
       try {
         const prompts = await invoke<Prompt[]>('list_prompts_by_category', { category })
-        logger.info('[promptStore] Loaded prompts for category:', category, prompts.length)
+        logger.info('[promptStore] Loaded prompts for category', { category, count: prompts.length })
         set((draft) => {
           draft.prompts = prompts
           draft.isLoading = false

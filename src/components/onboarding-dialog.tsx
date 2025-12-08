@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 import {
   Loader2,
   CheckCircle2,
-  AlertCircle,
   Sparkles,
   Bot,
   ArrowRight,

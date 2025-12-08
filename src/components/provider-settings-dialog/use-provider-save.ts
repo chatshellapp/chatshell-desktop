@@ -107,7 +107,7 @@ export function useProviderSave({
           is_starred: false,
         }
         await invoke('update_model', { id: model.id, req: modelReq })
-        logger.info('Updated model:', model.id, 'with new name:', model.displayName)
+        logger.info('Updated model', { id: model.id, newName: model.displayName })
       }
 
       // Create only new models
@@ -119,7 +119,7 @@ export function useProviderSave({
           is_starred: false,
         }
         await invoke('create_model', { req: modelReq })
-        logger.info('Created model:', model.displayName, 'with ID:', model.modelId)
+        logger.info('Created model', { name: model.displayName, id: model.modelId })
       }
 
       // Refresh the model store to show new models in sidebar

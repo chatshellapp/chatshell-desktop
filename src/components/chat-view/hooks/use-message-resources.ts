@@ -50,7 +50,7 @@ export function useMessageResources({
             resourceMap[msg.id] = resources
           }
         } catch (e) {
-          logger.error('Failed to fetch resources for message:', msg.id, e)
+          logger.error(`Failed to fetch resources for message: ${msg.id}`, e)
         }
       }
 

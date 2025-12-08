@@ -89,6 +89,7 @@ export type {
   WebFetchMode,
   WebFetchLocalMethod,
   WebFetchApiProvider,
+  LogLevel,
 } from './setting'
 
 // Event types

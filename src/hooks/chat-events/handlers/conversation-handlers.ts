@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
  */
 export function useConversationHandlers() {
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
-    logger.info('[useChatEvents] Conversation title updated:', conversationId, title)
+    logger.info('[useChatEvents] Conversation title updated', { conversationId, title })
     const conversationStore = useConversationStore.getState()
 
     // Update the conversation in the list

@@ -80,11 +80,10 @@ export function ChatInput({}: ChatInputProps) {
 
   // Debug: log attachments changes
   useEffect(() => {
-    logger.info(
-      '[ChatInput] Attachments updated:',
-      attachments.length,
-      attachments.map((a) => ({ type: a.type, name: a.name }))
-    )
+    logger.info('[ChatInput] Attachments updated', {
+      count: attachments.length,
+      attachments: attachments.map((a) => ({ type: a.type, name: a.name })),
+    })
   }, [attachments])
 
   // Handlers for attachment types

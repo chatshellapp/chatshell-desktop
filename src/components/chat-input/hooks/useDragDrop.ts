@@ -99,7 +99,7 @@ export function useDragDrop(
           }
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
-          logger.error('Failed to read file:', file.name, error)
+          logger.error(`Failed to read file: ${file.name}`, error)
           toast.error(`Failed to read: ${file.name}`)
         }
       }
@@ -123,7 +123,7 @@ export function useDragDrop(
           }
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
-          logger.error('Failed to read image:', file.name, error)
+          logger.error(`Failed to read image: ${file.name}`, error)
           toast.error(`Failed to read image: ${file.name}`)
         }
       }

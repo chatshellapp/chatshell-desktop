@@ -60,13 +60,11 @@ export function useChatEvents(conversationId: string | null) {
 
     // Listen for streaming chunks
     const unlistenStream = listen<ChatStreamEvent>('chat-stream', (event) => {
-      logger.info('[useChatEvents] Received chat-stream event:', event.payload)
-      logger.info(
-        '[useChatEvents] Event conversation_id:',
-        event.payload.conversation_id,
-        'Current:',
-        conversationIdRef.current
-      )
+      logger.info('[useChatEvents] Received chat-stream event', event.payload)
+      logger.info('[useChatEvents] Event conversation_id', {
+        eventConvId: event.payload.conversation_id,
+        current: conversationIdRef.current,
+      })
       // Process the event for the specific conversation (no need to check if it's current)
       handleStreamChunk(event.payload.conversation_id, event.payload.content)
     })
@@ -82,13 +80,11 @@ export function useChatEvents(conversationId: string | null) {
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
-      logger.info('[useChatEvents] Received chat-complete event:', event.payload)
-      logger.info(
-        '[useChatEvents] Event conversation_id:',
-        event.payload.conversation_id,
-        'Current:',
-        conversationIdRef.current
-      )
+      logger.info('[useChatEvents] Received chat-complete event', event.payload)
+      logger.info('[useChatEvents] Event conversation_id', {
+        eventConvId: event.payload.conversation_id,
+        current: conversationIdRef.current,
+      })
       // Process the event for the specific conversation (no need to check if it's current)
       handleChatComplete(event.payload.conversation_id, event.payload.message)
     })

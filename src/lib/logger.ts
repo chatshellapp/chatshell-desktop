@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 import { BaseDirectory, writeTextFile } from '@tauri-apps/plugin-fs'
-import { logger } from '@/lib/logger'
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
@@ -46,7 +45,7 @@ class Logger {
     try {
       await invoke('set_setting', { key: 'log_level_typescript', value: level })
     } catch (error) {
-      logger.error('Failed to save log level setting:', error)
+      console.error('Failed to save log level setting:', error)
     }
   }
 
@@ -75,7 +74,7 @@ class Logger {
       })
     } catch (error) {
       // Fallback to console if file writing fails
-      logger.error('Failed to write log to file:', error)
+      console.error('Failed to write log to file:', error)
     }
   }
 
@@ -93,7 +92,7 @@ class Logger {
 
     // Write to file asynchronously
     this.writeToFile(entry).catch((error) => {
-      logger.error('Failed to write log:', error)
+      console.error('Failed to write log:', error)
     })
 
     // Also log to console in development
