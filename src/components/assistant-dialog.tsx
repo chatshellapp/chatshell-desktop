@@ -34,7 +34,20 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Loader2, ChevronDown, Search, User, Sparkles, Bot } from 'lucide-react'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Loader2, ChevronDown, Search, User, Sparkles, Bot, Check, ChevronsUpDown } from 'lucide-react'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
 import { useModelStore } from '@/stores/modelStore'
@@ -81,7 +94,7 @@ export function AssistantDialog({
   mode = 'create',
 }: AssistantDialogProps) {
   const { models, loadModels, getProviderById } = useModelStore()
-  const { createAssistant, updateAssistant, lastCreatedModelId } = useAssistantStore()
+  const { assistants, createAssistant, updateAssistant, lastCreatedModelId } = useAssistantStore()
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
   const { selectedModel, selectedAssistant } = useConversationStore()
 
@@ -107,6 +120,8 @@ export function AssistantDialog({
   const [error, setError] = useState<string | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState('')
   const [activeSection, setActiveSection] = useState('Basic')
+  const [groupComboboxOpen, setGroupComboboxOpen] = useState(false)
+  const [groupInputValue, setGroupInputValue] = useState('')
 
   // Load models and prompts on mount
   useEffect(() => {
@@ -117,6 +132,24 @@ export function AssistantDialog({
       ensurePromptsLoaded()
     }
   }, [open, models.length, loadModels, ensurePromptsLoaded])
+
+  // Get unique group names from existing assistants
+  const existingGroups = useMemo(() => {
+    const groups = new Set<string>()
+    assistants.forEach((a) => {
+      if (a.group_name) {
+        groups.add(a.group_name)
+      }
+    })
+    return Array.from(groups).sort()
+  }, [assistants])
+
+  // Filter groups by input value
+  const filteredGroups = useMemo(() => {
+    if (!groupInputValue.trim()) return existingGroups
+    const query = groupInputValue.toLowerCase()
+    return existingGroups.filter((group) => group.toLowerCase().includes(query))
+  }, [existingGroups, groupInputValue])
 
   // Group models by provider
   const modelsByProvider = useMemo(() => {
@@ -186,6 +219,7 @@ export function AssistantDialog({
         setAvatarText(assistant.avatar_text || '')
         setAvatarBg(assistant.avatar_bg || '#3b82f6')
         setGroupName(assistant.group_name || '')
+        setGroupInputValue('')
         setIsStarred(assistant.is_starred)
         
         // Check if system prompt matches an existing prompt
@@ -234,6 +268,7 @@ export function AssistantDialog({
         setAvatarText(randomEmoji)
         setAvatarBg(getRandomPresetColor())
         setGroupName('')
+        setGroupInputValue('')
         setIsStarred(false)
         setPromptMode('existing')
         setSelectedPromptId('')
@@ -324,12 +359,75 @@ export function AssistantDialog({
 
             <div className="space-y-2">
               <Label htmlFor="group">Group</Label>
-              <Input
-                id="group"
-                placeholder="e.g., Development"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-              />
+              <Popover open={groupComboboxOpen} onOpenChange={setGroupComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={groupComboboxOpen}
+                    className="w-full justify-between"
+                  >
+                    <span className="truncate">
+                      {groupName || 'Select or create group...'}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search or type new group..."
+                      value={groupInputValue}
+                      onValueChange={setGroupInputValue}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        <div className="py-2 px-2">
+                          {groupInputValue.trim() ? (
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-start"
+                              onClick={() => {
+                                setGroupName(groupInputValue.trim())
+                                setGroupComboboxOpen(false)
+                                setGroupInputValue('')
+                              }}
+                            >
+                              Create "{groupInputValue.trim()}"
+                            </Button>
+                          ) : (
+                            <div className="text-sm text-muted-foreground text-center">
+                              Type to create a new group
+                            </div>
+                          )}
+                        </div>
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {filteredGroups.map((group) => (
+                          <CommandItem
+                            key={group}
+                            value={group}
+                            onSelect={() => {
+                              setGroupName(group)
+                              setGroupComboboxOpen(false)
+                              setGroupInputValue('')
+                            }}
+                          >
+                            {group}
+                            <Check
+                              className={
+                                groupName === group
+                                  ? 'ml-auto opacity-100'
+                                  : 'ml-auto opacity-0'
+                              }
+                            />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
