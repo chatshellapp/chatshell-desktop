@@ -40,6 +40,8 @@ import type { Model } from '@/types'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
+import femaleNames from '@/assets/data/names/female_names.json'
+import maleNames from '@/assets/data/names/male_names.json'
 
 interface AssistantDialogProps {
   open: boolean
@@ -49,14 +51,26 @@ interface AssistantDialogProps {
 }
 
 const PRESET_COLORS = ['#00E5FF', '#FF4081', '#E040FB']
-const PRESET_EMOJIS = ['👩‍💼', '🧑‍💼', '👨‍💼', '🤵‍♀️', '🤵', '🤵‍♂️']
+const FEMALE_EMOJIS = ['👩‍💼', '🤵‍♀️', '👩‍💻', '👩‍🎤']
+const MALE_EMOJIS = ['👨‍💼', '🤵‍♂️', '👨‍💻', '👨‍🎤']
 
 const getRandomPresetColor = () => {
   return PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]
 }
 
-const getRandomPresetEmoji = () => {
-  return PRESET_EMOJIS[Math.floor(Math.random() * PRESET_EMOJIS.length)]
+const getRandomNameAndEmoji = () => {
+  // Randomly decide gender
+  const isFemale = Math.random() < 0.5
+  
+  // Select random name based on gender
+  const names = isFemale ? femaleNames : maleNames
+  const randomName = names[Math.floor(Math.random() * names.length)]
+  
+  // Select random emoji based on gender
+  const emojis = isFemale ? FEMALE_EMOJIS : MALE_EMOJIS
+  const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)]
+  
+  return { name: randomName, emoji: randomEmoji }
 }
 
 export function AssistantDialog({
@@ -183,13 +197,14 @@ export function AssistantDialog({
         }
       } else {
         // Reset form for create mode
-        setName('')
+        const { name: randomName, emoji: randomEmoji } = getRandomNameAndEmoji()
+        setName(randomName)
         setRole('')
         setDescription('')
         setSystemPrompt('You are a helpful AI assistant.')
         setUserPrompt('')
         setSelectedModelId(models.length > 0 ? models[0].id : '')
-        setAvatarText(getRandomPresetEmoji())
+        setAvatarText(randomEmoji)
         setAvatarBg(getRandomPresetColor())
         setGroupName('')
         setIsStarred(false)
