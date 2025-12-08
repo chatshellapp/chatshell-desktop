@@ -19,6 +19,7 @@ import {
   // MessageCircle,
   // Paintbrush,
   Search,
+  Settings,
   // Settings,
   // Video,
 } from 'lucide-react'
@@ -63,7 +64,7 @@ const data = {
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
-    { name: 'Logging', icon: FileText },
+    { name: 'Advanced', icon: Settings },
     // { name: 'Navigation', icon: Menu },
     // { name: 'Home', icon: Home },
     // { name: 'Appearance', icon: Paintbrush },
@@ -470,7 +471,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       )
     }
 
-    if (activeSection === 'Logging') {
+    if (activeSection === 'Advanced') {
       const logLevels: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error']
       const logLevelDescriptions: Record<LogLevel, string> = {
         trace: 'Most verbose - all logs including detailed traces',
@@ -484,7 +485,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         <div className="grid gap-6">
           {/* Rust Log Level */}
           <div className="grid gap-2">
-            <Label>Backend (Rust) Log Level</Label>
+            <Label>Backend Log Level</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
@@ -521,7 +522,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
           {/* TypeScript Log Level */}
           <div className="grid gap-2">
-            <Label>Frontend (TypeScript) Log Level</Label>
+            <Label>Frontend Log Level</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
