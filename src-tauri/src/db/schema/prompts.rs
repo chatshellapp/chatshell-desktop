@@ -13,7 +13,7 @@ pub async fn create_prompts_table(pool: &SqlitePool) -> Result<()> {
             is_system INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -28,7 +28,7 @@ pub async fn create_prompts_table(pool: &SqlitePool) -> Result<()> {
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
             FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
             UNIQUE(message_id, prompt_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -43,7 +43,7 @@ pub async fn create_prompts_table(pool: &SqlitePool) -> Result<()> {
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
             FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
             UNIQUE(message_id, knowledge_base_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -58,11 +58,10 @@ pub async fn create_prompts_table(pool: &SqlitePool) -> Result<()> {
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
             FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE,
             UNIQUE(message_id, tool_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

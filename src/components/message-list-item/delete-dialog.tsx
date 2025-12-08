@@ -41,4 +41,3 @@ export function DeleteDialog({ open, onOpenChange, onConfirm }: DeleteDialogProp
     </AlertDialog>
   )
 }
-

@@ -17,11 +17,11 @@ impl Database {
             if !api_key.is_empty() {
                 match crate::crypto::encrypt(api_key) {
                     Ok(encrypted) => {
-                        println!("🔐 [db] API key encrypted and stored in database");
+                        tracing::info!("🔐 [db] API key encrypted and stored in database");
                         Some(encrypted)
                     }
                     Err(e) => {
-                        eprintln!("⚠️  [db] Failed to encrypt API key: {}", e);
+                        tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
                         None
                     }
                 }
@@ -68,18 +68,20 @@ impl Database {
                 let encrypted_api_key: Option<String> = row.get("api_key");
 
                 // Decrypt API key if present
-                let api_key = encrypted_api_key.and_then(|encrypted| {
-                    match crate::crypto::decrypt(&encrypted) {
-                        Ok(decrypted) => Some(decrypted),
-                        Err(e) => {
-                            eprintln!(
-                                "⚠️  [db] Failed to decrypt API key for provider {}: {}",
-                                provider_id, e
-                            );
-                            None
+                let api_key =
+                    encrypted_api_key.and_then(|encrypted| {
+                        match crate::crypto::decrypt(&encrypted) {
+                            Ok(decrypted) => Some(decrypted),
+                            Err(e) => {
+                                tracing::error!(
+                                    "⚠️  [db] Failed to decrypt API key for provider {}: {}",
+                                    provider_id,
+                                    e
+                                );
+                                None
+                            }
                         }
-                    }
-                });
+                    });
 
                 let is_enabled: i32 = row.get("is_enabled");
 
@@ -112,18 +114,18 @@ impl Database {
             let provider_id: String = row.get("id");
             let encrypted_api_key: Option<String> = row.get("api_key");
 
-            let api_key = encrypted_api_key.and_then(|encrypted| {
-                match crate::crypto::decrypt(&encrypted) {
+            let api_key =
+                encrypted_api_key.and_then(|encrypted| match crate::crypto::decrypt(&encrypted) {
                     Ok(decrypted) => Some(decrypted),
                     Err(e) => {
-                        eprintln!(
+                        tracing::error!(
                             "⚠️  [db] Failed to decrypt API key for provider {}: {}",
-                            provider_id, e
+                            provider_id,
+                            e
                         );
                         None
                     }
-                }
-            });
+                });
 
             let is_enabled: i32 = row.get("is_enabled");
 
@@ -153,7 +155,7 @@ impl Database {
                 match crate::crypto::encrypt(api_key) {
                     Ok(encrypted) => Some(encrypted),
                     Err(e) => {
-                        eprintln!("⚠️  [db] Failed to encrypt API key: {}", e);
+                        tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
                         None
                     }
                 }
@@ -162,7 +164,9 @@ impl Database {
             }
         } else {
             // No API key in request - keep existing (don't update api_key column)
-            return self.update_provider_without_api_key(id, &req, &now, is_enabled).await;
+            return self
+                .update_provider_without_api_key(id, &req, &now, is_enabled)
+                .await;
         };
 
         sqlx::query(
@@ -217,4 +221,3 @@ impl Database {
         Ok(())
     }
 }
-

@@ -12,13 +12,13 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
             display_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_thinking_steps_message ON thinking_steps(message_id)"
+        "CREATE INDEX IF NOT EXISTS idx_thinking_steps_message ON thinking_steps(message_id)",
     )
     .execute(pool)
     .await?;
@@ -36,13 +36,13 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
             FOREIGN KEY (search_result_id) REFERENCES search_results(id) ON DELETE SET NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_search_decisions_message ON search_decisions(message_id)"
+        "CREATE INDEX IF NOT EXISTS idx_search_decisions_message ON search_decisions(message_id)",
     )
     .execute(pool)
     .await?;
@@ -62,16 +62,14 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
             created_at TEXT NOT NULL,
             completed_at TEXT,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_tool_calls_message ON tool_calls(message_id)"
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tool_calls_message ON tool_calls(message_id)")
+        .execute(pool)
+        .await?;
 
     // Code executions table
     sqlx::query(
@@ -89,17 +87,16 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
             created_at TEXT NOT NULL,
             completed_at TEXT,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_code_executions_message ON code_executions(message_id)"
+        "CREATE INDEX IF NOT EXISTS idx_code_executions_message ON code_executions(message_id)",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

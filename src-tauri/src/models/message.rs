@@ -21,4 +21,3 @@ pub struct CreateMessageRequest {
     pub content: String,
     pub tokens: Option<i64>,
 }
-

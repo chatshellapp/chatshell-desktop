@@ -7,6 +7,7 @@ import { usePromptStore } from '@/stores/promptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
+import { logger } from '@/lib/logger'
 
 export function useSidebarHandlers() {
   const conversations = useConversationStore((state) => state.conversations)
@@ -30,7 +31,7 @@ export function useSidebarHandlers() {
     async (model: ModelListItem) => {
       const realModel = getModelById(model.id)
       if (!realModel) {
-        console.error('Model not found:', model.id)
+        logger.error('Model not found:', model.id)
         return
       }
 
@@ -55,7 +56,7 @@ export function useSidebarHandlers() {
         setSelectedModel(realModel)
         setCurrentConversation(targetConversation)
       } catch (error) {
-        console.error('Failed to handle model click:', error)
+        logger.error('Failed to handle model click:', error)
         alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
@@ -66,7 +67,7 @@ export function useSidebarHandlers() {
     async (assistant: AssistantListItem) => {
       const realAssistant = assistants.find((a) => a.id === assistant.id)
       if (!realAssistant) {
-        console.error('Assistant not found:', assistant.id)
+        logger.error('Assistant not found:', assistant.id)
         return
       }
 
@@ -91,7 +92,7 @@ export function useSidebarHandlers() {
         setSelectedAssistant(realAssistant)
         setCurrentConversation(targetConversation)
       } catch (error) {
-        console.error('Failed to handle assistant click:', error)
+        logger.error('Failed to handle assistant click:', error)
         alert(
           `Failed to select assistant: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -113,7 +114,7 @@ export function useSidebarHandlers() {
             is_starred: !realModel.is_starred,
           })
         } catch (error) {
-          console.error('Failed to toggle star:', error)
+          logger.error('Failed to toggle star:', error)
         }
       }
     },
@@ -134,7 +135,7 @@ export function useSidebarHandlers() {
             is_starred: !realAssistant.is_starred,
           })
         } catch (error) {
-          console.error('Failed to toggle star:', error)
+          logger.error('Failed to toggle star:', error)
         }
       }
     },
@@ -145,14 +146,14 @@ export function useSidebarHandlers() {
     async (model: ModelListItem) => {
       const realModel = getModelById(model.id)
       if (!realModel) {
-        console.error('Model not found:', model.id)
+        logger.error('Model not found:', model.id)
         return
       }
 
       try {
         await deleteModel(realModel.id)
       } catch (error) {
-        console.error('Failed to delete model:', error)
+        logger.error('Failed to delete model:', error)
         alert(`Failed to delete model: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
@@ -163,14 +164,14 @@ export function useSidebarHandlers() {
     async (assistant: AssistantListItem) => {
       const realAssistant = assistants.find((a) => a.id === assistant.id)
       if (!realAssistant) {
-        console.error('Assistant not found:', assistant.id)
+        logger.error('Assistant not found:', assistant.id)
         return
       }
 
       try {
         await deleteAssistant(realAssistant.id)
       } catch (error) {
-        console.error('Failed to delete assistant:', error)
+        logger.error('Failed to delete assistant:', error)
         alert(
           `Failed to delete assistant: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -183,14 +184,14 @@ export function useSidebarHandlers() {
     async (prompt: PromptListItem) => {
       const realPrompt = prompts.find((p) => p.id === prompt.id)
       if (!realPrompt) {
-        console.error('Prompt not found:', prompt.id)
+        logger.error('Prompt not found:', prompt.id)
         return
       }
 
       try {
         await deletePrompt(realPrompt.id)
       } catch (error) {
-        console.error('Failed to delete prompt:', error)
+        logger.error('Failed to delete prompt:', error)
         alert(`Failed to delete prompt: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
@@ -202,7 +203,7 @@ export function useSidebarHandlers() {
       try {
         await selectConversation(conversationId)
       } catch (error) {
-        console.error('Failed to select conversation:', error)
+        logger.error('Failed to select conversation:', error)
       }
     },
     [selectConversation]
@@ -229,7 +230,7 @@ export function useSidebarHandlers() {
       const newConversation = await createConversation('New Conversation')
       setCurrentConversation(newConversation)
     } catch (error) {
-      console.error('Failed to create new conversation:', error)
+      logger.error('Failed to create new conversation:', error)
       alert(
         `Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`
       )
@@ -244,7 +245,7 @@ export function useSidebarHandlers() {
         })
         await updateConversation(conversationId, newTitle)
       } catch (error) {
-        console.error('Failed to generate title:', error)
+        logger.error('Failed to generate title:', error)
         alert(`Failed to generate title: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
@@ -256,7 +257,7 @@ export function useSidebarHandlers() {
       try {
         await updateConversation(conversationId, newTitle)
       } catch (error) {
-        console.error('Failed to update title:', error)
+        logger.error('Failed to update title:', error)
       }
     },
     [updateConversation]
@@ -267,7 +268,7 @@ export function useSidebarHandlers() {
       try {
         await deleteConversation(conversationId)
       } catch (error) {
-        console.error('Failed to delete conversation:', error)
+        logger.error('Failed to delete conversation:', error)
       }
     },
     [deleteConversation]

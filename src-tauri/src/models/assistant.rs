@@ -51,4 +51,3 @@ pub struct CreateAssistantRequest {
     pub group_name: Option<String>,
     pub is_starred: Option<bool>,
 }
-

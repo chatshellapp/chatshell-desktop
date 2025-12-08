@@ -13,14 +13,14 @@ pub async fn create_messages_table(pool: &SqlitePool) -> Result<()> {
             tokens INTEGER,
             created_at TEXT NOT NULL,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created 
-         ON messages(conversation_id, created_at DESC)"
+         ON messages(conversation_id, created_at DESC)",
     )
     .execute(pool)
     .await?;
@@ -39,16 +39,14 @@ pub async fn create_files_table(pool: &SqlitePool) -> Result<()> {
             storage_path TEXT NOT NULL,
             content_hash TEXT,
             created_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files(content_hash)"
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files(content_hash)")
+        .execute(pool)
+        .await?;
 
     // Message attachments junction table (for user-provided files)
     sqlx::query(
@@ -60,7 +58,7 @@ pub async fn create_files_table(pool: &SqlitePool) -> Result<()> {
             display_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -87,13 +85,13 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
             searched_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_search_results_message ON search_results(message_id)"
+        "CREATE INDEX IF NOT EXISTS idx_search_results_message ON search_results(message_id)",
     )
     .execute(pool)
     .await?;
@@ -120,7 +118,7 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
             content_hash TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -132,7 +130,7 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_fetch_results_content_hash ON fetch_results(content_hash)"
+        "CREATE INDEX IF NOT EXISTS idx_fetch_results_content_hash ON fetch_results(content_hash)",
     )
     .execute(pool)
     .await?;
@@ -147,17 +145,16 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
             display_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_message_contexts_message ON message_contexts(message_id)"
+        "CREATE INDEX IF NOT EXISTS idx_message_contexts_message ON message_contexts(message_id)",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

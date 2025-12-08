@@ -7,4 +7,3 @@ pub struct Setting {
     pub value: String,
     pub updated_at: String,
 }
-

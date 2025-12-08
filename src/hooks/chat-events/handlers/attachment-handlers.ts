@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
+import { logger } from '@/lib/logger'
 
 /**
  * Handlers for attachment processing events
@@ -22,7 +23,7 @@ export function useAttachmentHandlers() {
 
   const handleAttachmentProcessingError = useCallback((convId: string, error: string) => {
     useMessageStore.getState().setAttachmentStatus(convId, 'error')
-    console.error('Attachment processing error:', error)
+    logger.error('Attachment processing error:', error)
   }, [])
 
   const handleAttachmentUpdate = useCallback(
@@ -49,4 +50,3 @@ export function useAttachmentHandlers() {
     handleAttachmentUpdate,
   }
 }
-

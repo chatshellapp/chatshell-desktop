@@ -80,4 +80,3 @@ export function isFetchResult(
 ): context is { type: 'fetch_result' } & FetchResult {
   return context.type === 'fetch_result'
 }
-

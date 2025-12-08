@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { Assistant, CreateAssistantRequest } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface AssistantStore {
   assistants: Assistant[]
@@ -43,7 +44,7 @@ export const useAssistantStore = create<AssistantStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to load assistants:', error)
+        logger.error('Failed to load assistants:', error)
       }
     },
 
@@ -131,7 +132,7 @@ export const useAssistantStore = create<AssistantStore>()(
         const assistant = await invoke<Assistant | null>('get_assistant', { id })
         return assistant
       } catch (error) {
-        console.error('Failed to get assistant:', error)
+        logger.error('Failed to get assistant:', error)
         return null
       }
     },

@@ -25,4 +25,3 @@ export const createSearchActions = (set: ImmerSet, get: StoreGet): MessageStoreS
     })
   },
 })
-

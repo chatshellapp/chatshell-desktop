@@ -14,6 +14,7 @@ import type { FileAttachment } from '@/types'
 import type { FilePreviewDialogProps, ImageAttachmentData } from './types'
 import { formatFileSize, isMarkdownFile } from './utils'
 import { ImageLightbox } from './image-lightbox'
+import { logger } from '@/lib/logger'
 
 // File preview dialog component - supports both storage paths and in-memory content
 // Exported for reuse in other components (e.g., chat-input)
@@ -41,7 +42,7 @@ export function FilePreviewDialog({
       invoke<string>('read_file_content', { storagePath })
         .then(setLoadedContent)
         .catch((err) => {
-          console.error('Failed to load file content:', err)
+          logger.error('Failed to load file content:', err)
           setLoadedContent(null)
         })
         .finally(() => setLoading(false))
@@ -181,4 +182,3 @@ export function FileAttachmentPreview({
     </>
   )
 }
-

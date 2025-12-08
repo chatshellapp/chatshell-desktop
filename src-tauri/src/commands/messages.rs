@@ -1,5 +1,5 @@
-use crate::models::{CreateMessageRequest, Message};
 use super::AppState;
+use crate::models::{CreateMessageRequest, Message};
 use tauri::State;
 
 #[tauri::command]
@@ -7,7 +7,11 @@ pub async fn create_message(
     state: State<'_, AppState>,
     req: CreateMessageRequest,
 ) -> Result<Message, String> {
-    state.db.create_message(req).await.map_err(|e| e.to_string())
+    state
+        .db
+        .create_message(req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,4 +37,3 @@ pub async fn clear_messages_by_conversation(
         .await
         .map_err(|e| e.to_string())
 }
-

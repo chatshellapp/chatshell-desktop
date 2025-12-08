@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Represents a tool parameter definition
@@ -219,16 +219,14 @@ impl ToolRegistry {
         ));
 
         // Web fetch tool
-        let web_fetch = ToolDefinition::new(
-            "web_fetch",
-            "Fetch and extract content from a web page",
-        )
-        .with_category("web")
-        .with_parameter(ToolParameter::required(
-            "url",
-            "string",
-            "The URL of the web page to fetch",
-        ));
+        let web_fetch =
+            ToolDefinition::new("web_fetch", "Fetch and extract content from a web page")
+                .with_category("web")
+                .with_parameter(ToolParameter::required(
+                    "url",
+                    "string",
+                    "The URL of the web page to fetch",
+                ));
 
         // File read tool
         let file_read = ToolDefinition::new(
@@ -243,21 +241,19 @@ impl ToolRegistry {
         ));
 
         // File write tool
-        let file_write = ToolDefinition::new(
-            "file_write",
-            "Write content to a file on the filesystem",
-        )
-        .with_category("file")
-        .with_parameter(ToolParameter::required(
-            "path",
-            "string",
-            "The path to the file to write",
-        ))
-        .with_parameter(ToolParameter::required(
-            "content",
-            "string",
-            "The content to write to the file",
-        ));
+        let file_write =
+            ToolDefinition::new("file_write", "Write content to a file on the filesystem")
+                .with_category("file")
+                .with_parameter(ToolParameter::required(
+                    "path",
+                    "string",
+                    "The path to the file to write",
+                ))
+                .with_parameter(ToolParameter::required(
+                    "content",
+                    "string",
+                    "The content to write to the file",
+                ));
 
         // Register all default tools (ignore errors since we're the only caller)
         let _ = self.register(web_search);
@@ -275,7 +271,11 @@ mod tests {
     fn test_tool_definition_creation() {
         let tool = ToolDefinition::new("test_tool", "A test tool")
             .with_category("test")
-            .with_parameter(ToolParameter::required("param1", "string", "Test parameter"));
+            .with_parameter(ToolParameter::required(
+                "param1",
+                "string",
+                "Test parameter",
+            ));
 
         assert_eq!(tool.name, "test_tool");
         assert_eq!(tool.description, "A test tool");
@@ -304,8 +304,9 @@ mod tests {
 
     #[test]
     fn test_openai_function_conversion() {
-        let tool = ToolDefinition::new("test_tool", "A test tool")
-            .with_parameter(ToolParameter::required("param1", "string", "Test parameter"));
+        let tool = ToolDefinition::new("test_tool", "A test tool").with_parameter(
+            ToolParameter::required("param1", "string", "Test parameter"),
+        );
 
         let function = tool.to_openai_function();
         assert_eq!(function["type"], "function");
@@ -327,4 +328,3 @@ mod tests {
         assert_eq!(web_tools[0].name, "web_tool");
     }
 }
-

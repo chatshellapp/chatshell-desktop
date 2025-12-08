@@ -37,6 +37,7 @@ import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 import type { Artifact, ArtifactGroup } from '@/lib/sidebar-data'
+import { logger } from '@/lib/logger'
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
@@ -76,10 +77,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Transform database prompts into prompt groups by category
   const promptGroups = React.useMemo((): PromptGroup[] => {
     const groupsMap = new Map<string, PromptGroup>()
-    
+
     prompts.forEach((prompt) => {
       const category = prompt.category || 'Uncategorized'
-      
+
       if (!groupsMap.has(category)) {
         groupsMap.set(category, {
           id: category.toLowerCase().replace(/\s+/g, '-'),
@@ -88,7 +89,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           prompts: [],
         })
       }
-      
+
       groupsMap.get(category)!.prompts.push({
         id: prompt.id,
         name: prompt.name,
@@ -96,7 +97,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         isStarred: false, // TODO: Add isStarred to database schema if needed
       })
     })
-    
+
     return Array.from(groupsMap.values())
   }, [prompts])
 
@@ -181,7 +182,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             }}
             onPromptStarToggle={(prompt: PromptListItem) => {
               // TODO: Implement star toggle in database
-              console.log('Star toggle for prompt:', prompt.id)
+              logger.info('Star toggle for prompt:', prompt.id)
             }}
             onPromptDelete={(prompt: PromptListItem) => handlers.handlePromptDelete(prompt)}
             onPromptGroupSettings={() => {}}

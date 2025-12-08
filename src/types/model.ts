@@ -56,4 +56,3 @@ export interface ModelPricing {
   prompt?: number
   completion?: number
 }
-

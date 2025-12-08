@@ -43,4 +43,3 @@ export interface CreateUserRelationshipRequest {
   related_user_id: string
   relationship_type: string
 }
-

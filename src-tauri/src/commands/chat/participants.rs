@@ -19,7 +19,7 @@ pub async fn ensure_participants(
     {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to list participants: {}", e);
+            tracing::error!("Failed to list participants: {}", e);
             return;
         }
     };
@@ -40,7 +40,7 @@ pub async fn ensure_participants(
         })
     });
 
-    println!(
+    tracing::info!(
         "📋 [send_message] Current participants: {} total",
         existing_participants.len()
     );
@@ -63,7 +63,7 @@ pub async fn ensure_participants(
 }
 
 async fn add_self_user_participant(state: &AppState, conversation_id: &str) {
-    println!("👤 [send_message] Adding self user as participant...");
+    tracing::info!("👤 [send_message] Adding self user as participant...");
     match state.db.get_self_user().await {
         Ok(Some(self_user)) => {
             match state
@@ -76,17 +76,17 @@ async fn add_self_user_participant(state: &AppState, conversation_id: &str) {
                 })
                 .await
             {
-                Ok(_) => println!("✅ [send_message] Added self user as participant"),
-                Err(e) => println!("⚠️  [send_message] Failed to add self user: {}", e),
+                Ok(_) => tracing::info!("✅ [send_message] Added self user as participant"),
+                Err(e) => tracing::warn!("⚠️  [send_message] Failed to add self user: {}", e),
             }
         }
-        Ok(None) => println!("⚠️  [send_message] No self user found"),
-        Err(e) => println!("⚠️  [send_message] Error getting self user: {}", e),
+        Ok(None) => tracing::warn!("⚠️  [send_message] No self user found"),
+        Err(e) => tracing::warn!("⚠️  [send_message] Error getting self user: {}", e),
     }
 }
 
 async fn add_assistant_participant(state: &AppState, conversation_id: &str, assistant_id: &str) {
-    println!(
+    tracing::info!(
         "🤖 [send_message] Adding assistant as participant (assistant_id: {})...",
         assistant_id
     );
@@ -102,20 +102,20 @@ async fn add_assistant_participant(state: &AppState, conversation_id: &str, assi
                 })
                 .await
             {
-                Ok(_) => println!(
+                Ok(_) => tracing::info!(
                     "✅ [send_message] Added assistant '{}' as participant",
                     assistant.name
                 ),
-                Err(e) => println!("⚠️  [send_message] Failed to add assistant: {}", e),
+                Err(e) => tracing::warn!("⚠️  [send_message] Failed to add assistant: {}", e),
             }
         }
-        Ok(None) => println!("⚠️  [send_message] Assistant not found: {}", assistant_id),
-        Err(e) => println!("⚠️  [send_message] Error getting assistant: {}", e),
+        Ok(None) => tracing::warn!("⚠️  [send_message] Assistant not found: {}", assistant_id),
+        Err(e) => tracing::warn!("⚠️  [send_message] Error getting assistant: {}", e),
     }
 }
 
 async fn add_model_participant(state: &AppState, conversation_id: &str, model_id: &str) {
-    println!(
+    tracing::info!(
         "🤖 [send_message] Adding model as participant (model_id: {})...",
         model_id
     );
@@ -131,15 +131,14 @@ async fn add_model_participant(state: &AppState, conversation_id: &str, model_id
                 })
                 .await
             {
-                Ok(_) => println!(
+                Ok(_) => tracing::info!(
                     "✅ [send_message] Added model '{}' as participant",
                     model.name
                 ),
-                Err(e) => println!("⚠️  [send_message] Failed to add model: {}", e),
+                Err(e) => tracing::warn!("⚠️  [send_message] Failed to add model: {}", e),
             }
         }
-        Ok(None) => println!("⚠️  [send_message] Model not found: {}", model_id),
-        Err(e) => println!("⚠️  [send_message] Error getting model: {}", e),
+        Ok(None) => tracing::warn!("⚠️  [send_message] Model not found: {}", model_id),
+        Err(e) => tracing::warn!("⚠️  [send_message] Error getting model: {}", e),
     }
 }
-

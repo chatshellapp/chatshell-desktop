@@ -9,7 +9,7 @@ use scraper::{Html, Selector};
 use std::time::Duration;
 use url::form_urlencoded;
 
-use crate::web_fetch::{create_new_browser, STEALTH_JS};
+use crate::web_fetch::{STEALTH_JS, create_new_browser};
 
 use super::types::{SearchProvider, SearchResultItem, WebSearchResponse};
 
@@ -42,7 +42,7 @@ pub async fn search_baidu(query: &str, max_results: usize) -> Result<WebSearchRe
 
 /// Synchronous Baidu search implementation
 fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResultItem>> {
-    println!("🔍 [web_search] Starting Baidu search for: {}", query);
+    tracing::info!("🔍 [web_search] Starting Baidu search for: {}", query);
 
     let browser = create_new_browser()?;
 
@@ -67,13 +67,13 @@ fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResult
     tab.evaluate(&*STEALTH_JS, false)
         .map_err(|e| anyhow::anyhow!("Failed to inject stealth JS: {}", e))?;
 
-    println!("🛡️ [web_search] Stealth mode enabled, navigating to Baidu...");
+    tracing::info!("🛡️ [web_search] Stealth mode enabled, navigating to Baidu...");
 
     // Build search URL
     let encoded_query: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
     let search_url = format!("https://www.baidu.com/s?wd={}", encoded_query);
 
-    println!("🌐 [web_search] Navigating to: {}", search_url);
+    tracing::info!("🌐 [web_search] Navigating to: {}", search_url);
 
     // Navigate to search URL
     tab.navigate_to(&search_url)
@@ -84,18 +84,18 @@ fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResult
         .map_err(|e| anyhow::anyhow!("Navigation timeout: {}", e))?;
 
     // Wait for results to load (Baidu may need a bit more time)
-    println!("⏳ [web_search] Waiting for search results to load...");
+    tracing::info!("⏳ [web_search] Waiting for search results to load...");
     std::thread::sleep(Duration::from_secs(4));
 
     let html = tab
         .get_content()
         .map_err(|e| anyhow::anyhow!("Failed to get page content: {}", e))?;
 
-    println!("📄 [web_search] Got {} bytes of HTML", html.len());
+    tracing::info!("📄 [web_search] Got {} bytes of HTML", html.len());
 
     // Parse search results
     let results = parse_baidu_results(&html, max_results);
-    println!("✅ [web_search] Found {} results", results.len());
+    tracing::info!("✅ [web_search] Found {} results", results.len());
 
     Ok(results)
 }
@@ -174,4 +174,3 @@ mod tests {
         assert!(results.is_empty());
     }
 }
-

@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { LLMProvider, ModelInfo } from './types'
+import { logger } from '@/lib/logger'
 
 export interface UseFetchModelsReturn {
   availableModels: ModelInfo[]
@@ -64,7 +65,7 @@ export function useFetchModels({
 
       setAvailableModels(fetchedModels)
     } catch (error) {
-      console.error('Error fetching models:', error)
+      logger.error('Error fetching models:', error)
       setFetchError(error instanceof Error ? error.message : 'Failed to fetch models')
     } finally {
       setIsLoading(false)
@@ -89,4 +90,3 @@ export function useFetchModels({
     handleOpenFetchModal,
   }
 }
-

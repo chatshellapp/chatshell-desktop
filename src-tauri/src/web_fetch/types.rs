@@ -30,12 +30,7 @@ pub struct FetchedWebResource {
 
 impl FetchedWebResource {
     /// Create an error response with default metadata
-    pub fn error(
-        url: &str,
-        mime_type: String,
-        error: String,
-        favicon_url: Option<String>,
-    ) -> Self {
+    pub fn error(url: &str, mime_type: String, error: String, favicon_url: Option<String>) -> Self {
         FetchedWebResource {
             url: url.to_string(),
             title: None,
@@ -117,4 +112,3 @@ lazy_static! {
         }
     "#.to_string();
 }
-

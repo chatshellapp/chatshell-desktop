@@ -1,8 +1,4 @@
-import type {
-  UserAttachment,
-  ContextEnrichment,
-  ProcessStep,
-} from '@/types'
+import type { UserAttachment, ContextEnrichment, ProcessStep } from '@/types'
 
 /** Image data for lightbox navigation - supports both storage paths and base64 data */
 export interface ImageAttachmentData {
@@ -47,4 +43,3 @@ export interface FilePreviewDialogProps {
   mimeType?: string
   size?: number
 }
-

@@ -8,4 +8,3 @@ export const createSelectors = (_set: unknown, get: StoreGet): ConversationStore
     return state.selectedModel
   },
 })
-

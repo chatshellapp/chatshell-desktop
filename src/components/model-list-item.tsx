@@ -116,10 +116,7 @@ export function ModelListItem({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className={cn(
-                  'size-6',
-                  isStarred && 'text-yellow-500 hover:text-yellow-600'
-                )}
+                className={cn('size-6', isStarred && 'text-yellow-500 hover:text-yellow-600')}
                 onClick={(e) => {
                   e.stopPropagation()
                   onStarClick?.(e)
@@ -174,10 +171,7 @@ export function ModelListItem({
             <Button
               variant="ghost"
               size="icon-sm"
-              className={cn(
-                'size-7',
-                isStarred && 'text-yellow-500 hover:text-yellow-600'
-              )}
+              className={cn('size-7', isStarred && 'text-yellow-500 hover:text-yellow-600')}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)

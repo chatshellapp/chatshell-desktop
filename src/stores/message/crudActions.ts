@@ -3,6 +3,7 @@ import type { Message, Conversation } from '@/types'
 import type { ImmerSet, StoreGet, MessageStoreCrudActions } from './types'
 import { MAX_MESSAGES_IN_MEMORY } from './types'
 import { cleanupThrottleState } from './throttle'
+import { logger } from '@/lib/logger'
 
 export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCrudActions => ({
   loadMessages: async (conversationId: string) => {
@@ -39,7 +40,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         }
         draft.error = String(error)
       })
-      console.error('Failed to load messages:', error)
+      logger.error('Failed to load messages:', error)
     }
   },
 
@@ -69,12 +70,12 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       // If no conversationId, create a new conversation first
       let targetId = conversationId
       if (!targetId) {
-        console.log('[messageStore] No conversation ID provided, creating new conversation...')
+        logger.info('[messageStore] No conversation ID provided, creating new conversation...')
         const newConversation = await invoke<Conversation>('create_conversation', {
           req: { title: 'New Conversation' },
         })
         targetId = newConversation.id
-        console.log('[messageStore] Created new conversation:', newConversation)
+        logger.info('[messageStore] Created new conversation:', newConversation)
 
         // Notify via callback (avoids direct store coupling)
         const callback = get().onNewConversationCreated
@@ -95,7 +96,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         }
       })
 
-      console.log('[messageStore] Invoking send_message command with params:', {
+      logger.info('[messageStore] Invoking send_message command with params:', {
         conversationId: targetId,
         contentLength: content.length,
         provider,
@@ -131,7 +132,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         searchEnabled,
       })
 
-      console.log('[messageStore] Received user message:', userMessage)
+      logger.info('[messageStore] Received user message:', userMessage)
 
       // Add user message to the conversation
       set((draft) => {
@@ -142,13 +143,13 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.isSending = false
       })
 
-      console.log('[messageStore] User message added to store, waiting for assistant response...')
+      logger.info('[messageStore] User message added to store, waiting for assistant response...')
 
       // The assistant message will be added via the chat-complete event
     } catch (error) {
-      console.error('[messageStore] Error in sendMessage:', error)
-      console.error('[messageStore] Error type:', typeof error)
-      console.error('[messageStore] Error details:', {
+      logger.error('[messageStore] Error in sendMessage:', error)
+      logger.error('[messageStore] Error type:', typeof error)
+      logger.error('[messageStore] Error details:', {
         error,
         errorString: String(error),
         errorKeys: error ? Object.keys(error) : 'null',
@@ -164,7 +165,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
   stopGeneration: async (conversationId: string) => {
     try {
-      console.log('[messageStore] Stopping generation for conversation:', conversationId)
+      logger.info('[messageStore] Stopping generation for conversation:', conversationId)
       await invoke('stop_generation', { conversationId })
 
       // Only reset sending flag
@@ -172,9 +173,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.isSending = false
       })
 
-      console.log('[messageStore] Generation stopped successfully')
+      logger.info('[messageStore] Generation stopped successfully')
     } catch (error) {
-      console.error('[messageStore] Failed to stop generation:', error)
+      logger.error('[messageStore] Failed to stop generation:', error)
     }
   },
 
@@ -212,7 +213,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   },
 
   addMessage: (conversationId: string, message: Message) => {
-    console.log('[messageStore] Adding message to conversation:', conversationId)
+    logger.info('[messageStore] Adding message to conversation:', conversationId)
     get().getConversationState(conversationId) // Ensure state exists
 
     set((draft) => {
@@ -223,7 +224,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
         if (existingIndex >= 0) {
           // Replace existing message (idempotent behavior)
-          console.log('[messageStore] Message exists, replacing:', message.id)
+          logger.info('[messageStore] Message exists, replacing:', message.id)
           convState.messages[existingIndex] = message
         } else {
           // Add new message
@@ -309,7 +310,6 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       delete draft.conversationStates[conversationId]
     })
 
-    console.log('[messageStore] Removed conversation state for:', conversationId)
+    logger.info('[messageStore] Removed conversation state for:', conversationId)
   },
 })
-

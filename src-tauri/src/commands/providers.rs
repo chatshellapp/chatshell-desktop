@@ -1,5 +1,5 @@
-use crate::models::{CreateProviderRequest, Provider};
 use super::AppState;
+use crate::models::{CreateProviderRequest, Provider};
 use tauri::State;
 
 #[tauri::command]
@@ -7,7 +7,11 @@ pub async fn create_provider(
     state: State<'_, AppState>,
     req: CreateProviderRequest,
 ) -> Result<Provider, String> {
-    state.db.create_provider(req).await.map_err(|e| e.to_string())
+    state
+        .db
+        .create_provider(req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -38,6 +42,9 @@ pub async fn update_provider(
 
 #[tauri::command]
 pub async fn delete_provider(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_provider(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .delete_provider(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
-

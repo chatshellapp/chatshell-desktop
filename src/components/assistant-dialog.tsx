@@ -1,10 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -42,12 +37,17 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { Loader2, ChevronDown, Search, User, Sparkles, Bot, Check, ChevronsUpDown } from 'lucide-react'
+  Loader2,
+  ChevronDown,
+  Search,
+  User,
+  Sparkles,
+  Bot,
+  Check,
+  ChevronsUpDown,
+} from 'lucide-react'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
 import { useModelStore } from '@/stores/modelStore'
@@ -55,6 +55,7 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useConversationStore } from '@/stores/conversation'
 import { getRandomPresetColor, getRandomNameAndEmoji } from '@/lib/assistant-utils'
+import { logger } from '@/lib/logger'
 
 interface AssistantDialogProps {
   open: boolean
@@ -161,8 +162,7 @@ export function AssistantDialog({
         ...provider,
         models: provider.models.filter(
           (model) =>
-            model.name.toLowerCase().includes(query) ||
-            model.model_id.toLowerCase().includes(query)
+            model.name.toLowerCase().includes(query) || model.model_id.toLowerCase().includes(query)
         ),
       }))
       .filter((provider) => provider.models.length > 0)
@@ -197,7 +197,7 @@ export function AssistantDialog({
         setGroupName(assistant.group_name || '')
         setGroupInputValue('')
         setIsStarred(assistant.is_starred)
-        
+
         // Check if system prompt matches an existing prompt
         const matchingPrompt = prompts.find((p) => p.content === assistant.system_prompt)
         if (matchingPrompt) {
@@ -215,7 +215,7 @@ export function AssistantDialog({
         setDescription('')
         setSystemPrompt('You are a helpful AI assistant.')
         setUserPrompt('')
-        
+
         // Select default model based on:
         // 1. Last created assistant's model
         // 2. Current conversation's selected model or assistant's model
@@ -223,15 +223,15 @@ export function AssistantDialog({
         let defaultModelId = ''
         if (models.length > 0) {
           // 1. Check if lastCreatedModelId exists and is valid
-          if (lastCreatedModelId && models.some(m => m.id === lastCreatedModelId)) {
+          if (lastCreatedModelId && models.some((m) => m.id === lastCreatedModelId)) {
             defaultModelId = lastCreatedModelId
           }
           // 2. If not, check conversation's selected model
-          else if (selectedModel && models.some(m => m.id === selectedModel.id)) {
+          else if (selectedModel && models.some((m) => m.id === selectedModel.id)) {
             defaultModelId = selectedModel.id
           }
           // 3. If not, check conversation's selected assistant's model
-          else if (selectedAssistant && models.some(m => m.id === selectedAssistant.model_id)) {
+          else if (selectedAssistant && models.some((m) => m.id === selectedAssistant.model_id)) {
             defaultModelId = selectedAssistant.model_id
           }
           // 4. Fall back to first model
@@ -240,7 +240,7 @@ export function AssistantDialog({
           }
         }
         setSelectedModelId(defaultModelId)
-        
+
         setAvatarText(randomEmoji)
         setAvatarBg(getRandomPresetColor())
         setGroupName('')
@@ -290,7 +290,7 @@ export function AssistantDialog({
 
       onOpenChange(false)
     } catch (err) {
-      console.error('Failed to save assistant:', err)
+      logger.error('Failed to save assistant:', err)
       setError(String(err))
     } finally {
       setIsSaving(false)
@@ -343,9 +343,7 @@ export function AssistantDialog({
                     aria-expanded={groupComboboxOpen}
                     className="w-full justify-between"
                   >
-                    <span className="truncate">
-                      {groupName || 'Select or create group...'}
-                    </span>
+                    <span className="truncate">{groupName || 'Select or create group...'}</span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -392,9 +390,7 @@ export function AssistantDialog({
                             {group}
                             <Check
                               className={
-                                groupName === group
-                                  ? 'ml-auto opacity-100'
-                                  : 'ml-auto opacity-0'
+                                groupName === group ? 'ml-auto opacity-100' : 'ml-auto opacity-0'
                               }
                             />
                           </CommandItem>
@@ -547,7 +543,9 @@ export function AssistantDialog({
                         >
                           <span className="font-medium">{prompt.name}</span>
                           {prompt.description && (
-                            <span className="text-xs text-muted-foreground">{prompt.description}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {prompt.description}
+                            </span>
                           )}
                         </DropdownMenuItem>
                       ))
@@ -761,4 +759,3 @@ export function AssistantDialog({
     </Dialog>
   )
 }
-

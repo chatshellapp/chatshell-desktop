@@ -19,4 +19,3 @@ export interface MessageResources {
 
 // @deprecated Use UserAttachment, ContextEnrichment, or ProcessStep instead
 export type Attachment = UserAttachment | ContextEnrichment | ProcessStep
-

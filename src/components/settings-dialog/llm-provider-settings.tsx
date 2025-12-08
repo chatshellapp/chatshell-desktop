@@ -170,4 +170,3 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     </div>
   )
 }
-

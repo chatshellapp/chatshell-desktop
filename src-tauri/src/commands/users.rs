@@ -1,5 +1,5 @@
-use crate::models::{CreateUserRequest, User};
 use super::AppState;
+use crate::models::{CreateUserRequest, User};
 use tauri::State;
 
 #[tauri::command]
@@ -24,4 +24,3 @@ pub async fn get_self_user(state: State<'_, AppState>) -> Result<Option<User>, S
 pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<User>, String> {
     state.db.list_users().await.map_err(|e| e.to_string())
 }
-

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { User } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface UserStore {
   selfUser: User | null
@@ -29,7 +30,7 @@ export const useUserStore = create<UserStore>()(
       })
       try {
         const selfUser = await invoke<User | null>('get_self_user')
-        console.log('[userStore] Loaded self user:', selfUser)
+        logger.info('[userStore] Loaded self user:', selfUser)
         set((draft) => {
           draft.selfUser = selfUser
           draft.isLoading = false
@@ -39,7 +40,7 @@ export const useUserStore = create<UserStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to load self user:', error)
+        logger.error('Failed to load self user:', error)
       }
     },
 
@@ -50,7 +51,7 @@ export const useUserStore = create<UserStore>()(
       })
       try {
         const users = await invoke<User[]>('list_users')
-        console.log('[userStore] Loaded users:', users)
+        logger.info('[userStore] Loaded users:', users)
         set((draft) => {
           draft.users = users
           draft.isLoading = false
@@ -60,7 +61,7 @@ export const useUserStore = create<UserStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to load users:', error)
+        logger.error('Failed to load users:', error)
       }
     },
 

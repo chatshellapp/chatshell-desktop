@@ -79,9 +79,7 @@ export function ChatView() {
   // Check if streaming message should be shown
   const showStreamingMessage =
     isWaitingForAI ||
-    (isStreaming &&
-      (streamingContent || streamingReasoningContent) &&
-      !isWaitingForAI)
+    (isStreaming && (streamingContent || streamingReasoningContent) && !isWaitingForAI)
 
   return (
     <div ref={rootRef} className="flex flex-col flex-1 overflow-hidden">

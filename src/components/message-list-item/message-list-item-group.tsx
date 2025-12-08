@@ -13,4 +13,3 @@ export function MessageListItemGroup({ children, className }: MessageListItemGro
     </div>
   )
 }
-

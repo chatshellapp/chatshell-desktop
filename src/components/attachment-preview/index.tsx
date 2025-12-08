@@ -7,7 +7,11 @@ export type { ImageAttachmentData, AttachmentPreviewProps, FilePreviewDialogProp
 
 // Re-export components
 export { FetchResultPreview } from './fetch-result-preview'
-export { SearchResultPreview, SearchDecisionPreview, PendingSearchDecisionPreview } from './search-result-preview'
+export {
+  SearchResultPreview,
+  SearchDecisionPreview,
+  PendingSearchDecisionPreview,
+} from './search-result-preview'
 export { FilePreviewDialog, FileAttachmentPreview } from './file-preview'
 export { ImageLightbox } from './image-lightbox'
 export { ThinkingPreview } from './thinking-preview'
@@ -19,7 +23,11 @@ export { getDomain, getFaviconUrl, formatFileSize, isMarkdownFile } from './util
 import type { AttachmentPreviewProps } from './types'
 import { getDomain } from './utils'
 import { FetchResultPreview } from './fetch-result-preview'
-import { SearchResultPreview, SearchDecisionPreview, PendingSearchDecisionPreview } from './search-result-preview'
+import {
+  SearchResultPreview,
+  SearchDecisionPreview,
+  PendingSearchDecisionPreview,
+} from './search-result-preview'
 import { FileAttachmentPreview } from './file-preview'
 
 export function AttachmentPreview({
@@ -108,4 +116,3 @@ export function AttachmentPreview({
 
   return null
 }
-

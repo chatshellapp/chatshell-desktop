@@ -15,7 +15,7 @@ pub async fn perform_web_search(
         .and_then(SearchProvider::from_id)
         .unwrap_or_default();
 
-    println!(
+    tracing::info!(
         "🔍 [perform_web_search] Searching for: {} (max {}, provider: {})",
         query,
         max,

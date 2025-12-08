@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
+  FileText,
   // Globe,
   Heading,
   // Home,
@@ -52,8 +53,9 @@ import {
 } from '@/components/ui/sidebar'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod } from '@/types'
+import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod, LogLevel } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
+import { logger } from '@/lib/logger'
 
 const data = {
   nav: [
@@ -61,6 +63,7 @@ const data = {
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
+    { name: 'Logging', icon: FileText },
     // { name: 'Navigation', icon: Menu },
     // { name: 'Home', icon: Home },
     // { name: 'Appearance', icon: Paintbrush },
@@ -91,6 +94,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [jinaApiKey, setJinaApiKey] = React.useState('')
   const [showJinaApiKey, setShowJinaApiKey] = React.useState(false)
 
+  // Logging state
+  const [logLevelRust, setLogLevelRustState] = React.useState<LogLevel>('info')
+  const [logLevelTypeScript, setLogLevelTypeScriptState] = React.useState<LogLevel>('info')
+
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
   const searchProviders = useSettingsStore((state) => state.searchProviders)
@@ -107,6 +114,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const saveWebFetchLocalMethod = useSettingsStore((state) => state.setWebFetchLocalMethod)
   const getJinaApiKey = useSettingsStore((state) => state.getJinaApiKey)
   const saveJinaApiKey = useSettingsStore((state) => state.setJinaApiKey)
+
+  // Logging store methods
+  const getLogLevelRust = useSettingsStore((state) => state.getLogLevelRust)
+  const saveLogLevelRust = useSettingsStore((state) => state.setLogLevelRust)
+  const getLogLevelTypeScript = useSettingsStore((state) => state.getLogLevelTypeScript)
+  const saveLogLevelTypeScript = useSettingsStore((state) => state.setLogLevelTypeScript)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
@@ -131,17 +144,34 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
         const jinaKey = await getJinaApiKey()
         if (jinaKey) setJinaApiKey(jinaKey)
+
+        // Load logging settings
+        const rustLogLevel = await getLogLevelRust()
+        setLogLevelRustState(rustLogLevel)
+
+        const tsLogLevel = await getLogLevelTypeScript()
+        setLogLevelTypeScriptState(tsLogLevel)
       }
       loadSettings()
     }
-  }, [open, loadModels, loadSearchProviders, getSetting, getWebFetchMode, getWebFetchLocalMethod, getJinaApiKey])
+  }, [
+    open,
+    loadModels,
+    loadSearchProviders,
+    getSetting,
+    getWebFetchMode,
+    getWebFetchLocalMethod,
+    getJinaApiKey,
+    getLogLevelRust,
+    getLogLevelTypeScript,
+  ])
 
   const handleSaveSummaryModel = async (modelId: string) => {
     setSummaryModelId(modelId)
     try {
       await saveSetting('conversation_summary_model_id', modelId)
     } catch (error) {
-      console.error('Failed to save summary model setting:', error)
+      logger.error('Failed to save summary model setting:', error)
     }
   }
 
@@ -150,7 +180,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       await setSearchProvider(providerId)
     } catch (error) {
-      console.error('Failed to save search provider setting:', error)
+      logger.error('Failed to save search provider setting:', error)
     }
   }
 
@@ -160,7 +190,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       await saveWebFetchMode(mode)
     } catch (error) {
-      console.error('Failed to save web fetch mode:', error)
+      logger.error('Failed to save web fetch mode:', error)
     }
   }
 
@@ -169,7 +199,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       await saveWebFetchLocalMethod(method)
     } catch (error) {
-      console.error('Failed to save web fetch local method:', error)
+      logger.error('Failed to save web fetch local method:', error)
     }
   }
 
@@ -177,7 +207,26 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       await saveJinaApiKey(jinaApiKey)
     } catch (error) {
-      console.error('Failed to save Jina API key:', error)
+      logger.error('Failed to save Jina API key:', error)
+    }
+  }
+
+  // Logging handlers
+  const handleSaveLogLevelRust = async (level: LogLevel) => {
+    setLogLevelRustState(level)
+    try {
+      await saveLogLevelRust(level)
+    } catch (error) {
+      logger.error('Failed to save Rust log level:', error)
+    }
+  }
+
+  const handleSaveLogLevelTypeScript = async (level: LogLevel) => {
+    setLogLevelTypeScriptState(level)
+    try {
+      await saveLogLevelTypeScript(level)
+    } catch (error) {
+      logger.error('Failed to save TypeScript log level:', error)
     }
   }
 
@@ -390,9 +439,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
-                  <span className="truncate">
-                    {selectedSearchProvider?.name || 'DuckDuckGo'}
-                  </span>
+                  <span className="truncate">{selectedSearchProvider?.name || 'DuckDuckGo'}</span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
@@ -419,7 +466,103 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               may provide different results for the same query.
             </p>
           </div>
+        </div>
+      )
+    }
 
+    if (activeSection === 'Logging') {
+      const logLevels: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error']
+      const logLevelDescriptions: Record<LogLevel, string> = {
+        trace: 'Most verbose - all logs including detailed traces',
+        debug: 'Debug information for troubleshooting',
+        info: 'General informational messages (recommended)',
+        warn: 'Warning messages only',
+        error: 'Error messages only',
+      }
+
+      return (
+        <div className="grid gap-6">
+          {/* Rust Log Level */}
+          <div className="grid gap-2">
+            <Label>Backend (Rust) Log Level</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span className="capitalize">{logLevelRust}</span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                {logLevels.map((level) => (
+                  <DropdownMenuItem key={level} onClick={() => handleSaveLogLevelRust(level)}>
+                    <div className="flex items-center gap-2">
+                      {level === logLevelRust && <Check className="h-4 w-4 text-primary" />}
+                      <div>
+                        <span
+                          className={
+                            level === logLevelRust ? 'font-medium capitalize' : 'capitalize'
+                          }
+                        >
+                          {level}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {logLevelDescriptions[level]}
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Controls the verbosity of backend logs written to disk.
+            </p>
+          </div>
+
+          {/* TypeScript Log Level */}
+          <div className="grid gap-2">
+            <Label>Frontend (TypeScript) Log Level</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span className="capitalize">{logLevelTypeScript}</span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                {logLevels.map((level) => (
+                  <DropdownMenuItem key={level} onClick={() => handleSaveLogLevelTypeScript(level)}>
+                    <div className="flex items-center gap-2">
+                      {level === logLevelTypeScript && <Check className="h-4 w-4 text-primary" />}
+                      <div>
+                        <span
+                          className={
+                            level === logLevelTypeScript ? 'font-medium capitalize' : 'capitalize'
+                          }
+                        >
+                          {level}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {logLevelDescriptions[level]}
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Controls the verbosity of frontend logs written to disk.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-sm text-muted-foreground max-w-md">
+              Log files are stored in the application data directory under the{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">logs/</code> folder. Both
+              frontend and backend logs are written to separate files and rotated daily.
+            </p>
+          </div>
         </div>
       )
     }
@@ -477,7 +620,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Breadcrumb>
               </div>
             </header>
-            <div className={`flex flex-1 flex-col overflow-hidden ${activeSection === 'LLM Provider' ? '' : 'gap-4 overflow-y-auto p-4 pt-0'}`}>
+            <div
+              className={`flex flex-1 flex-col overflow-hidden ${activeSection === 'LLM Provider' ? '' : 'gap-4 overflow-y-auto p-4 pt-0'}`}
+            >
               {renderContent()}
             </div>
           </main>

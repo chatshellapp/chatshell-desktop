@@ -17,6 +17,7 @@ import type {
   ReasoningStartedEvent,
   SearchDecisionStartedEvent,
 } from './types'
+import { logger } from '@/lib/logger'
 import {
   useChatHandlers,
   useAttachmentHandlers,
@@ -55,12 +56,12 @@ export function useChatEvents(conversationId: string | null) {
   useEffect(() => {
     if (!conversationId) return
 
-    console.log('[useChatEvents] Setting up event listeners for conversation:', conversationId)
+    logger.info('[useChatEvents] Setting up event listeners for conversation:', conversationId)
 
     // Listen for streaming chunks
     const unlistenStream = listen<ChatStreamEvent>('chat-stream', (event) => {
-      console.log('[useChatEvents] Received chat-stream event:', event.payload)
-      console.log(
+      logger.info('[useChatEvents] Received chat-stream event:', event.payload)
+      logger.info(
         '[useChatEvents] Event conversation_id:',
         event.payload.conversation_id,
         'Current:',
@@ -74,15 +75,15 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenStreamReasoning = listen<ChatStreamReasoningEvent>(
       'chat-stream-reasoning',
       (event) => {
-        console.log('[useChatEvents] Received chat-stream-reasoning event:', event.payload)
+        logger.info('[useChatEvents] Received chat-stream-reasoning event:', event.payload)
         handleStreamReasoningChunk(event.payload.conversation_id, event.payload.content)
       }
     )
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
-      console.log('[useChatEvents] Received chat-complete event:', event.payload)
-      console.log(
+      logger.info('[useChatEvents] Received chat-complete event:', event.payload)
+      logger.info(
         '[useChatEvents] Event conversation_id:',
         event.payload.conversation_id,
         'Current:',
@@ -94,7 +95,7 @@ export function useChatEvents(conversationId: string | null) {
 
     // Listen for chat errors (API failures)
     const unlistenChatError = listen<ChatErrorEvent>('chat-error', (event) => {
-      console.log('[useChatEvents] Received chat-error event:', event.payload)
+      logger.info('[useChatEvents] Received chat-error event:', event.payload)
       handleChatError(event.payload.conversation_id, event.payload.error)
     })
 
@@ -147,7 +148,7 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenSearchDecisionComplete = listen<SearchDecisionCompleteEvent>(
       'search-decision-complete',
       (event) => {
-        console.log('[useChatEvents] Received search-decision-complete event:', event.payload)
+        logger.info('[useChatEvents] Received search-decision-complete event:', event.payload)
         handleSearchDecisionComplete(event.payload.conversation_id, event.payload.message_id)
       }
     )
@@ -156,7 +157,7 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenConversationUpdated = listen<ConversationUpdatedEvent>(
       'conversation-updated',
       (event) => {
-        console.log('[useChatEvents] Received conversation-updated event:', event.payload)
+        logger.info('[useChatEvents] Received conversation-updated event:', event.payload)
         handleConversationUpdated(event.payload.conversation_id, event.payload.title)
       }
     )
@@ -165,23 +166,20 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenGenerationStopped = listen<GenerationStoppedEvent>(
       'generation-stopped',
       (event) => {
-        console.log('[useChatEvents] Received generation-stopped event:', event.payload)
+        logger.info('[useChatEvents] Received generation-stopped event:', event.payload)
         handleGenerationStopped(event.payload.conversation_id)
       }
     )
 
     // Listen for reasoning started (AI begins thinking)
-    const unlistenReasoningStarted = listen<ReasoningStartedEvent>(
-      'reasoning-started',
-      (event) => {
-        console.log('[useChatEvents] Received reasoning-started event:', event.payload)
-        handleReasoningStarted(event.payload.conversation_id)
-      }
-    )
+    const unlistenReasoningStarted = listen<ReasoningStartedEvent>('reasoning-started', (event) => {
+      logger.info('[useChatEvents] Received reasoning-started event:', event.payload)
+      handleReasoningStarted(event.payload.conversation_id)
+    })
 
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
-      console.log('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
+      logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
       unlistenStream.then((fn) => fn())
       unlistenStreamReasoning.then((fn) => fn())
       unlistenComplete.then((fn) => fn())
@@ -213,4 +211,3 @@ export function useChatEvents(conversationId: string | null) {
     handleReasoningStarted,
   ])
 }
-

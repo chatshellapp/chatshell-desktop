@@ -2,6 +2,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import type { Attachment } from './types'
+import { logger } from '@/lib/logger'
 
 interface UseSubmitHandlerOptions {
   input: string
@@ -39,7 +40,7 @@ export function useSubmitHandler({
   const isWaitingForAI = conversationState?.isWaitingForAI || false
 
   const handleSend = async () => {
-    console.log('handleSend called', {
+    logger.info('handleSend called', {
       input: input.trim(),
       hasCurrentConversation: !!currentConversation,
       selectedModel: selectedModel?.name,
@@ -47,7 +48,7 @@ export function useSubmitHandler({
     })
 
     if (!input.trim()) {
-      console.warn('Cannot send: empty input')
+      logger.warn('Cannot send: empty input')
       return
     }
 
@@ -66,7 +67,7 @@ export function useSubmitHandler({
       // Use assistant's model
       modelToUse = getModelById(selectedAssistant.model_id)
       if (!modelToUse) {
-        console.error('Model not found for assistant:', selectedAssistant.model_id)
+        logger.error('Model not found for assistant:', selectedAssistant.model_id)
         alert('Error: Model configuration not found for assistant')
         return
       }
@@ -81,7 +82,7 @@ export function useSubmitHandler({
     // Get provider info
     const provider = getProviderById(modelToUse.provider_id)
     if (!provider) {
-      console.error('Provider not found for model:', modelToUse.provider_id)
+      logger.error('Provider not found for model:', modelToUse.provider_id)
       alert('Error: Provider configuration not found')
       return
     }
@@ -104,7 +105,7 @@ export function useSubmitHandler({
       if (selectedAssistant) {
         systemPrompt = selectedAssistant.system_prompt
         userPrompt = selectedAssistant.user_prompt || undefined
-        console.log('Using assistant prompts:', {
+        logger.info('Using assistant prompts:', {
           hasSystemPrompt: !!systemPrompt,
           hasUserPrompt: !!userPrompt,
         })
@@ -126,7 +127,7 @@ export function useSubmitHandler({
         mimeType: img.mimeType || 'image/png',
       }))
 
-      console.log('Sending message:', {
+      logger.info('Sending message:', {
         content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
         conversationId: currentConversation?.id,
         provider: providerType,
@@ -168,26 +169,26 @@ export function useSubmitHandler({
       // Clear attachments after sending
       clearAttachments()
 
-      console.log('Message sent successfully')
+      logger.info('Message sent successfully')
     } catch (error) {
-      console.error('Failed to send message:', error)
+      logger.error('Failed to send message:', error)
       alert(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
   const handleStop = async () => {
     if (!currentConversation) {
-      console.warn('Cannot stop: no current conversation')
+      logger.warn('Cannot stop: no current conversation')
       return
     }
 
-    console.log('handleStop called for conversation:', currentConversation.id)
+    logger.info('handleStop called for conversation:', currentConversation.id)
 
     try {
       await stopGeneration(currentConversation.id)
-      console.log('Generation stopped successfully')
+      logger.info('Generation stopped successfully')
     } catch (error) {
-      console.error('Failed to stop generation:', error)
+      logger.error('Failed to stop generation:', error)
     }
   }
 
@@ -202,4 +203,3 @@ export function useSubmitHandler({
     currentConversation,
   }
 }
-

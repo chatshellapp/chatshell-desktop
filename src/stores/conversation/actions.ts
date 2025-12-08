@@ -8,6 +8,7 @@ import type {
   Model,
 } from '@/types'
 import type { ImmerSet, StoreGet, ConversationStoreActions } from './types'
+import { logger } from '@/lib/logger'
 
 export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreActions => ({
   loadConversations: async () => {
@@ -17,7 +18,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
     })
     try {
       const conversations = await invoke<Conversation[]>('list_conversations')
-      console.log('[conversationStore] Loaded conversations:', conversations)
+      logger.info('[conversationStore] Loaded conversations:', conversations)
       set((draft) => {
         draft.conversations = conversations
         draft.isLoading = false
@@ -27,7 +28,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
         draft.error = String(error)
         draft.isLoading = false
       })
-      console.error('Failed to load conversations:', error)
+      logger.error('Failed to load conversations:', error)
     }
   },
 
@@ -39,7 +40,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
     try {
       const req: CreateConversationRequest = { title }
       const conversation = await invoke<Conversation>('create_conversation', { req })
-      console.log('[conversationStore] Created conversation:', conversation)
+      logger.info('[conversationStore] Created conversation:', conversation)
 
       set((draft) => {
         draft.conversations.unshift(conversation)
@@ -117,7 +118,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       // The streaming state is now tracked per conversation ID
 
       const conversation = await invoke<Conversation | null>('get_conversation', { id })
-      console.log('[conversationStore] Selected conversation:', conversation)
+      logger.info('[conversationStore] Selected conversation:', conversation)
 
       if (conversation) {
         set((draft) => {
@@ -151,9 +152,9 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
             // Only select if model exists and is not soft-deleted
             if (model && !model.is_deleted) {
               get().setSelectedModel(model)
-              console.log('[conversationStore] Set selected model from conversation:', model.name)
+              logger.info('[conversationStore] Set selected model from conversation:', model.name)
             } else if (model?.is_deleted) {
-              console.log('[conversationStore] Model is soft-deleted, not selecting:', model.name)
+              logger.info('[conversationStore] Model is soft-deleted, not selecting:', model.name)
               set((draft) => {
                 draft.selectedModel = null
                 draft.selectedAssistant = null
@@ -170,7 +171,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
               )
             if (assistant) {
               get().setSelectedAssistant(assistant)
-              console.log(
+              logger.info(
                 '[conversationStore] Set selected assistant from conversation:',
                 assistant.name
               )
@@ -182,13 +183,13 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
           // Only use lastUsedModel if it's not soft-deleted
           if (state.lastUsedModel && !state.lastUsedModel.is_deleted) {
             get().setSelectedModel(state.lastUsedModel)
-            console.log(
+            logger.info(
               '[conversationStore] No participant found, using lastUsedModel:',
               state.lastUsedModel.name
             )
           } else if (state.lastUsedAssistant) {
             get().setSelectedAssistant(state.lastUsedAssistant)
-            console.log(
+            logger.info(
               '[conversationStore] No participant found, using lastUsedAssistant:',
               state.lastUsedAssistant.name
             )
@@ -198,7 +199,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
               draft.selectedModel = null
               draft.selectedAssistant = null
             })
-            console.log('[conversationStore] No model/assistant found, cleared selection')
+            logger.info('[conversationStore] No model/assistant found, cleared selection')
           }
         }
       } else {
@@ -208,7 +209,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
         })
       }
     } catch (error) {
-      console.error('Failed to select conversation:', error)
+      logger.error('Failed to select conversation:', error)
       set((draft) => {
         draft.error = String(error)
       })
@@ -229,12 +230,12 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
         'list_conversation_participants',
         { conversationId }
       )
-      console.log('[conversationStore] Loaded participants:', participants)
+      logger.info('[conversationStore] Loaded participants:', participants)
       set((draft) => {
         draft.currentParticipants = participants
       })
     } catch (error) {
-      console.error('Failed to load participants:', error)
+      logger.error('Failed to load participants:', error)
       set((draft) => {
         draft.error = String(error)
       })
@@ -257,13 +258,13 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       const participant = await invoke<ConversationParticipant>('add_conversation_participant', {
         req,
       })
-      console.log('[conversationStore] Added participant:', participant)
+      logger.info('[conversationStore] Added participant:', participant)
 
       set((draft) => {
         draft.currentParticipants.push(participant)
       })
     } catch (error) {
-      console.error('Failed to add participant:', error)
+      logger.error('Failed to add participant:', error)
       set((draft) => {
         draft.error = String(error)
       })
@@ -280,7 +281,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
         )
       })
     } catch (error) {
-      console.error('Failed to remove participant:', error)
+      logger.error('Failed to remove participant:', error)
       set((draft) => {
         draft.error = String(error)
       })
@@ -291,10 +292,10 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
   setSelectedModel: (model: Model | null) => {
     // Don't allow selecting soft-deleted models
     if (model?.is_deleted) {
-      console.log('[conversationStore] Refusing to select soft-deleted model:', model.name)
+      logger.info('[conversationStore] Refusing to select soft-deleted model:', model.name)
       return
     }
-    console.log('[conversationStore] Setting selected model:', model?.name)
+    logger.info('[conversationStore] Setting selected model:', model?.name)
     set((draft) => {
       draft.selectedModel = model
       draft.selectedAssistant = null
@@ -304,7 +305,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
   },
 
   setSelectedAssistant: (assistant: Assistant | null) => {
-    console.log('[conversationStore] Setting selected assistant:', assistant?.name)
+    logger.info('[conversationStore] Setting selected assistant:', assistant?.name)
     set((draft) => {
       draft.selectedAssistant = assistant
       draft.selectedModel = null
@@ -313,4 +314,3 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
     })
   },
 })
-

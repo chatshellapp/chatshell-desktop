@@ -2,6 +2,7 @@ pub mod commands;
 mod crypto;
 pub mod db;
 mod llm;
+mod logger;
 pub mod models;
 mod prompts;
 pub mod storage;
@@ -23,12 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            // Initialize storage directories
-            if let Err(e) = storage::init_storage_dirs(app.handle()) {
-                eprintln!("Warning: Failed to initialize storage directories: {}", e);
-            }
-
-            // Initialize database in app data directory
+            // Initialize app data directory
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -36,19 +32,38 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)
                 .expect("FATAL: Failed to create app data directory");
 
-            let db_path = app_data_dir.join("data.db");
-            println!("📂 [db] Database path: {:?}", db_path);
+            // Initialize logger first
+            let log_dir = app_data_dir.join("logs");
+            if let Err(e) = logger::init_logger(log_dir) {
+                tracing::error!("FATAL: Failed to initialize logger: {}", e);
+                std::process::exit(1);
+            }
 
-            let db_path_str = db_path.to_str().expect("FATAL: Invalid database path").to_string();
-            
+            tracing::info!("Application starting");
+
+            // Initialize storage directories
+            if let Err(e) = storage::init_storage_dirs(app.handle()) {
+                tracing::warn!("Failed to initialize storage directories: {}", e);
+            }
+
+            let db_path = app_data_dir.join("data.db");
+            tracing::info!("Database path: {:?}", db_path);
+
+            let db_path_str = db_path
+                .to_str()
+                .expect("FATAL: Invalid database path")
+                .to_string();
+
             // Create tokio runtime for async database initialization
             let rt = tokio::runtime::Runtime::new().expect("FATAL: Failed to create tokio runtime");
-            
+
             let db = rt.block_on(async {
-                Database::new(&db_path_str).await.expect("FATAL: Failed to initialize database")
+                Database::new(&db_path_str)
+                    .await
+                    .expect("FATAL: Failed to initialize database")
             });
 
-            println!("✅ [db] Database initialized successfully");
+            tracing::info!("Database initialized successfully");
 
             // Seed database with default data (async operation)
             rt.block_on(async {
@@ -57,7 +72,23 @@ pub fn run() {
                     .expect("FATAL: Failed to seed database");
             });
 
-            println!("✅ [db] Database seeded with default data");
+            tracing::info!("Database seeded with default data");
+
+            // Load log level from database
+            rt.block_on(async {
+                match logger::load_log_level_from_db(&db).await {
+                    Ok(level) => {
+                        if let Err(e) = logger::set_log_level(&level) {
+                            tracing::warn!("Failed to set log level from database: {}", e);
+                        } else {
+                            tracing::info!("Log level set to: {}", level);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load log level from database: {}", e);
+                    }
+                }
+            });
 
             let app_state = AppState {
                 db,
@@ -142,6 +173,7 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::get_all_settings,
+            commands::set_log_level,
             // Crypto commands
             commands::generate_keypair,
             commands::export_keypair,
@@ -160,7 +192,7 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
-            eprintln!("FATAL: Error while running tauri application: {}", e);
+            tracing::error!("FATAL: Error while running tauri application: {}", e);
             std::process::exit(1);
         });
 }

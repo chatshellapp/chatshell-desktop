@@ -158,7 +158,12 @@ export function InputToolbar({
 
       {/* Send/Stop button */}
       {isStreaming || isWaitingForAI ? (
-        <InputGroupButton variant="default" className="rounded-full" size="icon-xs" onClick={onStop}>
+        <InputGroupButton
+          variant="default"
+          className="rounded-full"
+          size="icon-xs"
+          onClick={onStop}
+        >
           <Square className="size-3 fill-current" />
           <span className="sr-only">Stop</span>
         </InputGroupButton>
@@ -177,4 +182,3 @@ export function InputToolbar({
     </InputGroupAddon>
   )
 }
-

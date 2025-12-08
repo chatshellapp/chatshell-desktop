@@ -19,6 +19,7 @@ import {
 } from '@/components/assistant-list'
 import { AssistantHoverCard } from '@/components/assistant-hover-card'
 import { getModelLogo } from '@/lib/model-logos'
+import { logger } from '@/lib/logger'
 
 interface ModelSelectorDropdownProps {
   isOpen: boolean
@@ -62,33 +63,33 @@ export function ModelSelectorDropdown({
   }
 
   const handleModelSelect = (modelId: string) => {
-    console.log('handleModelSelect called with modelId:', modelId)
+    logger.info('handleModelSelect called with modelId:', modelId)
     const model = getModelById(modelId)
     if (!model) {
-      console.error('Model not found:', modelId)
+      logger.error('Model not found:', modelId)
       return
     }
 
     setSelectedModel(model)
-    console.log('Selected model:', model.name)
+    logger.info('Selected model:', model.name)
     onOpenChange(false)
   }
 
   const handleAssistantSelect = (assistantId: string) => {
-    console.log('handleAssistantSelect called with assistantId:', assistantId)
+    logger.info('handleAssistantSelect called with assistantId:', assistantId)
     const assistant = assistants.find((a) => a.id === assistantId)
     if (!assistant) {
-      console.error('Assistant not found:', assistantId)
+      logger.error('Assistant not found:', assistantId)
       return
     }
 
     setSelectedAssistant(assistant)
-    console.log('Selected assistant:', assistant.name)
+    logger.info('Selected assistant:', assistant.name)
     onOpenChange(false)
   }
 
   const handleModelStarToggle = async (model: ModelListModel) => {
-    console.log('Toggle star for model:', model)
+    logger.info('Toggle star for model:', model)
     const realModel = models.find((m) => m.id === model.id)
     if (realModel) {
       try {
@@ -100,13 +101,13 @@ export function ModelSelectorDropdown({
           is_starred: !realModel.is_starred,
         })
       } catch (error) {
-        console.error('Failed to toggle star:', error)
+        logger.error('Failed to toggle star:', error)
       }
     }
   }
 
   const handleAssistantStarToggle = async (assistant: AssistantListAssistant) => {
-    console.log('Toggle star for assistant:', assistant)
+    logger.info('Toggle star for assistant:', assistant)
     const realAssistant = assistants.find((a) => a.id === assistant.id)
     if (realAssistant) {
       try {
@@ -119,7 +120,7 @@ export function ModelSelectorDropdown({
           is_starred: !realAssistant.is_starred,
         })
       } catch (error) {
-        console.error('Failed to toggle star:', error)
+        logger.error('Failed to toggle star:', error)
       }
     }
   }
@@ -194,9 +195,7 @@ export function ModelSelectorDropdown({
   }, [assistants, getModelById])
 
   // Get model info for the selected assistant
-  const selectedAssistantModel = selectedAssistant
-    ? getModelById(selectedAssistant.model_id)
-    : null
+  const selectedAssistantModel = selectedAssistant ? getModelById(selectedAssistant.model_id) : null
 
   // Render the trigger button content
   const renderTriggerContent = () => {
@@ -336,4 +335,3 @@ export function ModelSelectorDropdown({
     </DropdownMenu>
   )
 }
-

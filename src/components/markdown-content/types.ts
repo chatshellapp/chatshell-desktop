@@ -13,4 +13,3 @@ export interface CodeBlockProps {
 export interface MermaidBlockProps {
   code: string
 }
-

@@ -148,4 +148,3 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
     getMessageDisplayInfo,
   }
 }
-

@@ -59,4 +59,3 @@ export interface CreateAssistantRequest {
   group_name?: string
   is_starred?: boolean
 }
-

@@ -27,11 +27,10 @@ pub async fn create_assistants_table(pool: &SqlitePool) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (model_id) REFERENCES models(id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

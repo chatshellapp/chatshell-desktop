@@ -33,4 +33,3 @@ export { CodeBlock } from './code-block'
 export { MermaidBlock } from './mermaid-block'
 export { useMarkdownComponents } from './markdown-components'
 export type { MarkdownContentProps, CodeBlockProps, MermaidBlockProps } from './types'
-

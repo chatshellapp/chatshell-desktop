@@ -21,4 +21,3 @@ pub struct CreatePromptRequest {
     pub category: Option<String>,
     pub is_system: Option<bool>,
 }
-

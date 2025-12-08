@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import type { ImageAttachmentData } from './types'
+import { logger } from '@/lib/logger'
 
 // Fullscreen Image Lightbox component with keyboard navigation
 // Exported for reuse in other components (e.g., chat-input)
@@ -43,7 +44,7 @@ export function ImageLightbox({
           setImageSrc(convertFileSrc(fullPath))
         })
         .catch((err) => {
-          console.error('Failed to load image:', err)
+          logger.error('Failed to load image:', err)
           setImageSrc(null)
         })
         .finally(() => setLoading(false))
@@ -177,4 +178,3 @@ export function ImageLightbox({
     document.body
   )
 }
-

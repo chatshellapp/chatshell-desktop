@@ -51,4 +51,3 @@ mod tests {
         assert!(result.len() <= 150);
     }
 }
-

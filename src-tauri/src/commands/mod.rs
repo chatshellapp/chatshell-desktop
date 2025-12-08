@@ -1,18 +1,18 @@
-mod providers;
-mod models;
 mod assistants;
-mod users;
-mod conversations;
-mod messages;
 mod attachments;
+pub mod chat;
 mod contexts;
-mod steps;
+mod conversations;
+mod crypto;
+mod messages;
+mod model_fetch;
+mod models;
+mod prompts;
+mod providers;
 mod resources;
 mod settings;
-mod crypto;
-mod model_fetch;
-mod prompts;
-pub mod chat;
+mod steps;
+mod users;
 
 use crate::db::Database;
 use std::collections::HashMap;
@@ -33,19 +33,18 @@ pub struct AppState {
 }
 
 // Re-export all commands
-pub use providers::*;
-pub use models::*;
 pub use assistants::*;
-pub use users::*;
-pub use conversations::*;
-pub use messages::*;
 pub use attachments::*;
+pub use chat::*;
 pub use contexts::*;
-pub use steps::*;
+pub use conversations::*;
+pub use crypto::*;
+pub use messages::*;
+pub use model_fetch::*;
+pub use models::*;
+pub use prompts::*;
+pub use providers::*;
 pub use resources::*;
 pub use settings::*;
-pub use crypto::*;
-pub use model_fetch::*;
-pub use prompts::*;
-pub use chat::*;
-
+pub use steps::*;
+pub use users::*;

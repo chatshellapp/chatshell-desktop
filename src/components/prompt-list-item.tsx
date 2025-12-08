@@ -11,6 +11,7 @@ import {
 import { MoreVertical, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeletePromptDialog } from './prompt-list-item/delete-dialog'
+import { logger } from '@/lib/logger'
 
 interface PromptListItemProps {
   /**
@@ -74,10 +75,10 @@ export function PromptListItem({
     try {
       await navigator.clipboard.writeText(content)
       // You could add a toast notification here if you have a toast system
-      console.log('Prompt content copied to clipboard')
+      logger.info('Prompt content copied to clipboard')
       onCopyContent?.(content)
     } catch (error) {
-      console.error('Failed to copy to clipboard:', error)
+      logger.error('Failed to copy to clipboard:', error)
     }
   }
 
@@ -118,10 +119,7 @@ export function PromptListItem({
             <Button
               variant="ghost"
               size="icon-sm"
-              className={cn(
-                'size-7',
-                isStarred && 'text-yellow-500 hover:text-yellow-600'
-              )}
+              className={cn('size-7', isStarred && 'text-yellow-500 hover:text-yellow-600')}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)

@@ -1,30 +1,34 @@
 use anyhow::Result;
 
 use super::Database;
-use crate::models::{CreateModelRequest, CreateProviderRequest, CreatePromptRequest, CreateUserRequest};
+use crate::models::{
+    CreateModelRequest, CreatePromptRequest, CreateProviderRequest, CreateUserRequest,
+};
 
 impl Database {
     pub async fn seed_default_data(&self) -> Result<()> {
         // Ensure self user exists
         let _self_user = match self.get_self_user().await? {
             Some(user) => {
-                println!("✅ [db] Self user already exists: {}", user.display_name);
+                tracing::info!("✅ [db] Self user already exists: {}", user.display_name);
                 user
             }
             None => {
-                println!("🌱 [db] Creating default self user...");
-                let user = self.create_user(CreateUserRequest {
-                    username: "self".to_string(),
-                    display_name: "You".to_string(),
-                    email: None,
-                    avatar_type: Some("text".to_string()),
-                    avatar_bg: Some("#6366f1".to_string()),
-                    avatar_text: Some("👤".to_string()),
-                    avatar_image_path: None,
-                    avatar_image_url: None,
-                    is_self: Some(true),
-                }).await?;
-                println!("✅ [db] Created self user: {}", user.display_name);
+                tracing::info!("🌱 [db] Creating default self user...");
+                let user = self
+                    .create_user(CreateUserRequest {
+                        username: "self".to_string(),
+                        display_name: "You".to_string(),
+                        email: None,
+                        avatar_type: Some("text".to_string()),
+                        avatar_bg: Some("#6366f1".to_string()),
+                        avatar_text: Some("👤".to_string()),
+                        avatar_image_path: None,
+                        avatar_image_url: None,
+                        is_self: Some(true),
+                    })
+                    .await?;
+                tracing::info!("✅ [db] Created self user: {}", user.display_name);
                 user
             }
         };
@@ -37,35 +41,43 @@ impl Database {
             providers
                 .into_iter()
                 .find(|p| p.provider_type == "ollama")
-                .ok_or_else(|| anyhow::anyhow!("Ollama provider not found despite has_ollama check"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Ollama provider not found despite has_ollama check")
+                })?
         } else {
-            println!("🌱 [db] Seeding default Ollama provider...");
-            let provider = self.create_provider(CreateProviderRequest {
-                name: "Ollama".to_string(),
-                provider_type: "ollama".to_string(),
-                api_key: None,
-                base_url: Some("http://localhost:11434".to_string()),
-                description: Some("Local Ollama instance".to_string()),
-                is_enabled: Some(true),
-            }).await?;
-            println!("✅ [db] Created provider: {}", provider.name);
+            tracing::info!("🌱 [db] Seeding default Ollama provider...");
+            let provider = self
+                .create_provider(CreateProviderRequest {
+                    name: "Ollama".to_string(),
+                    provider_type: "ollama".to_string(),
+                    api_key: None,
+                    base_url: Some("http://localhost:11434".to_string()),
+                    description: Some("Local Ollama instance".to_string()),
+                    is_enabled: Some(true),
+                })
+                .await?;
+            tracing::info!("✅ [db] Created provider: {}", provider.name);
             provider
         };
 
         // Check if models already exist for this provider
         let existing_models = self.list_models().await?;
-        let provider_has_models = existing_models.iter().any(|m| m.provider_id == ollama_provider.id);
+        let provider_has_models = existing_models
+            .iter()
+            .any(|m| m.provider_id == ollama_provider.id);
 
         if provider_has_models {
-            println!("✅ [db] Models already exist for provider, skipping model seed");
+            tracing::info!("✅ [db] Models already exist for provider, skipping model seed");
             let assistants = self.list_assistants().await?;
             if assistants.is_empty() {
-                println!("⚠️  [db] No assistants found, but models exist. You may need to manually create assistants.");
+                tracing::warn!(
+                    "⚠️  [db] No assistants found, but models exist. You may need to manually create assistants."
+                );
             }
             return Ok(());
         }
 
-        println!("🌱 [db] Checking for local Ollama models...");
+        tracing::info!("🌱 [db] Checking for local Ollama models...");
 
         let base_url = ollama_provider
             .base_url
@@ -74,53 +86,60 @@ impl Database {
 
         let ollama_models = match crate::llm::models::fetch_ollama_models(base_url).await {
             Ok(models) if !models.is_empty() => {
-                println!("✅ [db] Found {} local Ollama models", models.len());
+                tracing::info!("✅ [db] Found {} local Ollama models", models.len());
                 models
             }
             Ok(_) => {
-                println!("⚠️  [db] No models found in local Ollama");
+                tracing::warn!("⚠️  [db] No models found in local Ollama");
                 vec![]
             }
             Err(e) => {
-                println!("⚠️  [db] Could not connect to local Ollama: {}", e);
+                tracing::warn!("⚠️  [db] Could not connect to local Ollama: {}", e);
                 vec![]
             }
         };
 
         if !ollama_models.is_empty() {
-            println!("🌱 [db] Creating models from local Ollama...");
+            tracing::info!("🌱 [db] Creating models from local Ollama...");
 
             for ollama_model in ollama_models.iter().take(10) {
-                let model = self.create_model(CreateModelRequest {
-                    name: ollama_model.name.clone(),
-                    provider_id: ollama_provider.id.clone(),
-                    model_id: ollama_model.id.clone(),
-                    description: ollama_model.description.clone(),
-                    is_starred: Some(false),
-                }).await?;
-                println!("✅ [db] Created model: {}", model.name);
+                let model = self
+                    .create_model(CreateModelRequest {
+                        name: ollama_model.name.clone(),
+                        provider_id: ollama_provider.id.clone(),
+                        model_id: ollama_model.id.clone(),
+                        description: ollama_model.description.clone(),
+                        is_starred: Some(false),
+                    })
+                    .await?;
+                tracing::info!("✅ [db] Created model: {}", model.name);
             }
         } else {
             // Don't create placeholder models - onboarding flow will guide user to configure providers
-            println!("⚠️  [db] Ollama not available, no models seeded. User will configure via onboarding.");
+            tracing::warn!(
+                "⚠️  [db] Ollama not available, no models seeded. User will configure via onboarding."
+            );
         }
 
         // Skip automatic assistant creation - users can create their own
-        println!("✅ [db] Skipping assistant seed - users will create their own assistants");
+        tracing::info!("✅ [db] Skipping assistant seed - users will create their own assistants");
 
         // Seed default prompts
         let existing_prompts = self.list_prompts().await?;
         if !existing_prompts.is_empty() {
-            println!("✅ [db] Prompts already exist, skipping prompt seed");
+            tracing::info!("✅ [db] Prompts already exist, skipping prompt seed");
         } else {
-            println!("🌱 [db] Seeding default prompts...");
+            tracing::info!("🌱 [db] Seeding default prompts...");
 
             let prompt_configs = vec![
                 // Well-being
                 (
                     "Philosopher",
                     "I want you to act as a philosopher. I will provide some topics or questions related to the study of philosophy, and it will be your job to explore these concepts in depth. This could involve conducting research into various philosophical theories, proposing new ideas or finding creative solutions for solving complex problems.",
-                    Some("Help explore philosophical concepts and develop ethical frameworks".to_string()),
+                    Some(
+                        "Help explore philosophical concepts and develop ethical frameworks"
+                            .to_string(),
+                    ),
                     Some("Well-being".to_string()),
                 ),
                 (
@@ -208,19 +227,24 @@ impl Database {
             ];
 
             for (name, content, description, category) in prompt_configs {
-                let prompt = self.create_prompt(CreatePromptRequest {
-                    name: name.to_string(),
-                    content: content.to_string(),
-                    description,
-                    category,
-                    is_system: Some(true),
-                }).await?;
-                println!("✅ [db] Created prompt: {} ({})", prompt.name, prompt.category.as_ref().unwrap_or(&"".to_string()));
+                let prompt = self
+                    .create_prompt(CreatePromptRequest {
+                        name: name.to_string(),
+                        content: content.to_string(),
+                        description,
+                        category,
+                        is_system: Some(true),
+                    })
+                    .await?;
+                tracing::info!(
+                    "✅ [db] Created prompt: {} ({})",
+                    prompt.name,
+                    prompt.category.as_ref().unwrap_or(&"".to_string())
+                );
             }
         }
 
-        println!("🎉 [db] Seeding complete!");
+        tracing::info!("🎉 [db] Seeding complete!");
         Ok(())
     }
 }
-

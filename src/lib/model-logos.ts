@@ -17,6 +17,7 @@ import doubaoAvatar from '@/assets/avatars/models/doubao.png'
 import qwenAvatar from '@/assets/avatars/models/qwen.png'
 import glmAvatar from '@/assets/avatars/models/glm.png'
 import minimaxAvatar from '@/assets/avatars/models/minimax.png'
+import { logger } from '@/lib/logger'
 // Import more model logos as needed...
 
 type LogoMap = Record<string, string>
@@ -113,7 +114,7 @@ export function getModelLogoById(modelId: string): string | undefined {
         return logo
       }
     } catch (error) {
-      console.warn(`Invalid regex pattern: ${pattern}`, error)
+      logger.warn(`Invalid regex pattern: ${pattern}`, error)
     }
   }
 

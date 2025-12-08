@@ -17,4 +17,3 @@ export interface CreateKnowledgeBaseRequest {
   url?: string
   metadata?: string
 }
-

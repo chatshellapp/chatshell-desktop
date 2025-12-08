@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import type { ParticipantSummary } from '@/types'
 import { useConversationStore } from '@/stores/conversation'
 import { useUserStore } from '@/stores/userStore'
+import { logger } from '@/lib/logger'
 
 export function useConversationParticipants() {
   const conversations = useConversationStore((state) => state.conversations)
@@ -35,7 +36,7 @@ export function useConversationParticipants() {
             )
             participantsMap.set(conversation.id, participants)
           } catch (error) {
-            console.error(`Failed to load participants for conversation ${conversation.id}:`, error)
+            logger.error(`Failed to load participants for conversation ${conversation.id}:`, error)
             participantsMap.set(conversation.id, [])
           }
         })
@@ -67,7 +68,7 @@ export function useConversationParticipants() {
           return newMap
         })
       } catch (error) {
-        console.error('Failed to refresh participants:', error)
+        logger.error('Failed to refresh participants:', error)
       }
     },
     [selfUser]

@@ -182,9 +182,7 @@ export function AssistantListItem({
               {/* Assistant name, with role as subtitle if exists */}
               <ItemTitle className="text-xs font-medium leading-tight">
                 {name}
-                {persona && (
-                  <span className="text-muted-foreground font-normal"> - {persona}</span>
-                )}
+                {persona && <span className="text-muted-foreground font-normal"> - {persona}</span>}
               </ItemTitle>
 
               {/* Floating action overlay */}
@@ -197,10 +195,7 @@ export function AssistantListItem({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={cn(
-                    'size-6',
-                    isStarred && 'text-yellow-500 hover:text-yellow-600'
-                  )}
+                  className={cn('size-6', isStarred && 'text-yellow-500 hover:text-yellow-600')}
                   onClick={(e) => {
                     e.stopPropagation()
                     onStarClick?.(e)
@@ -262,10 +257,7 @@ export function AssistantListItem({
             <Button
               variant="ghost"
               size="icon-sm"
-              className={cn(
-                'size-7',
-                isStarred && 'text-yellow-500 hover:text-yellow-600'
-              )}
+              className={cn('size-7', isStarred && 'text-yellow-500 hover:text-yellow-600')}
               onClick={(e) => {
                 e.stopPropagation()
                 onStarClick?.(e)

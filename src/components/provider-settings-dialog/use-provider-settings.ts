@@ -8,6 +8,7 @@ import { useModelList } from './use-model-list'
 import { useFetchModels } from './use-fetch-models'
 import { useModelFiltering } from './use-model-filtering'
 import { useProviderSave } from './use-provider-save'
+import { logger } from '@/lib/logger'
 
 /**
  * Main hook that composes all provider settings functionality
@@ -64,7 +65,7 @@ export function useProviderSettings(
 
   // Additional handler for model settings (placeholder)
   const handleModelSettings = React.useCallback((model: ModelItem) => {
-    console.log('Model settings:', model)
+    logger.info('Model settings:', model)
     // Add your model settings logic here
   }, [])
 

@@ -44,4 +44,3 @@ export interface ParticipantSummary {
   avatar_image_path?: string
   avatar_image_url?: string
 }
-

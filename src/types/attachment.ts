@@ -32,4 +32,3 @@ export function isFileAttachment(
 ): attachment is { type: 'file' } & FileAttachment {
   return attachment.type === 'file'
 }
-

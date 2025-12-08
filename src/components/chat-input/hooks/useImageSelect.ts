@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { type Attachment, getImageMimeType, SUPPORTED_IMAGE_EXTENSIONS } from '../types'
+import { logger } from '@/lib/logger'
 
 export interface UseImageSelectReturn {
   handleImageSelect: () => Promise<void>
@@ -12,7 +13,7 @@ export function useImageSelect(
 ): UseImageSelectReturn {
   const handleImageSelect = useCallback(async () => {
     try {
-      console.log('[handleImageSelect] Opening file dialog...')
+      logger.info('[handleImageSelect] Opening file dialog...')
       const selected = await open({
         multiple: true,
         filters: [
@@ -23,21 +24,21 @@ export function useImageSelect(
         ],
       })
 
-      console.log('[handleImageSelect] Dialog result:', selected)
+      logger.info('[handleImageSelect] Dialog result:', selected)
 
       if (!selected) {
-        console.log('[handleImageSelect] No file selected')
+        logger.info('[handleImageSelect] No file selected')
         return
       }
 
       const files = Array.isArray(selected) ? selected : [selected]
-      console.log('[handleImageSelect] Files to process:', files)
+      logger.info('[handleImageSelect] Files to process:', files)
 
       for (const filePath of files) {
-        console.log('[handleImageSelect] Reading file:', filePath)
+        logger.info('[handleImageSelect] Reading file:', filePath)
         // Use Rust command to read file as base64 (avoids plugin-fs scope issues)
         const base64 = await invoke<string>('read_file_as_base64', { path: filePath })
-        console.log('[handleImageSelect] Base64 length:', base64.length)
+        logger.info('[handleImageSelect] Base64 length:', base64.length)
 
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'image'
         const mimeType = getImageMimeType(fileName)
@@ -53,22 +54,21 @@ export function useImageSelect(
           mimeType,
           size: estimatedSize,
         }
-        console.log(
+        logger.info(
           '[handleImageSelect] Created attachment:',
           newAttachment.name,
           newAttachment.size
         )
         setAttachments((prev) => {
-          console.log('[handleImageSelect] Updating attachments, prev count:', prev.length)
+          logger.info('[handleImageSelect] Updating attachments, prev count:', prev.length)
           return [...prev, newAttachment]
         })
       }
-      console.log('[handleImageSelect] Done processing files')
+      logger.info('[handleImageSelect] Done processing files')
     } catch (error) {
-      console.error('[handleImageSelect] Failed to select image:', error)
+      logger.error('[handleImageSelect] Failed to select image:', error)
     }
   }, [setAttachments])
 
   return { handleImageSelect }
 }
-

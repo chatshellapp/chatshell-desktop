@@ -58,7 +58,7 @@ pub(crate) async fn fetch_and_store_urls(
         };
     }
 
-    println!("🔍 [url_processing] Processing {} URLs", urls.len());
+    tracing::info!("🔍 [url_processing] Processing {} URLs", urls.len());
     let _ = app.emit(
         "attachment-processing-started",
         serde_json::json!({
@@ -70,9 +70,10 @@ pub(crate) async fn fetch_and_store_urls(
 
     // Load fetch config from settings
     let fetch_config = load_fetch_config(state).await;
-    println!(
+    tracing::info!(
         "⚙️ [url_processing] Using fetch config: mode={:?}, local_method={:?}",
-        fetch_config.mode, fetch_config.local_method
+        fetch_config.mode,
+        fetch_config.local_method
     );
 
     // Process URLs with streaming - results are sent one by one as they complete
@@ -87,7 +88,7 @@ pub(crate) async fn fetch_and_store_urls(
 
         // Check if we already have this content (deduplication)
         if let Ok(Some(existing)) = state.db.find_fetch_by_hash(&content_hash).await {
-            println!(
+            tracing::info!(
                 "♻️ [dedup] Reusing existing fetch content for {} (hash: {}...)",
                 resource.url,
                 &content_hash[..16]
@@ -96,10 +97,15 @@ pub(crate) async fn fetch_and_store_urls(
             // Link existing fetch_result to this message
             if let Err(e) = state
                 .db
-                .link_message_context(user_message_id, ContextType::FetchResult, &existing.id, None)
+                .link_message_context(
+                    user_message_id,
+                    ContextType::FetchResult,
+                    &existing.id,
+                    None,
+                )
                 .await
             {
-                eprintln!("Failed to link existing fetch_result to message: {}", e);
+                tracing::error!("Failed to link existing fetch_result to message: {}", e);
             }
 
             // Emit attachment-update immediately so UI shows this result
@@ -124,9 +130,10 @@ pub(crate) async fn fetch_and_store_urls(
 
         // Save content to filesystem (hash-based path)
         if let Err(e) = crate::storage::write_content(app, &storage_path, &resource.content) {
-            eprintln!(
+            tracing::error!(
                 "Failed to save content to filesystem for {}: {}",
-                resource.url, e
+                resource.url,
+                e
             );
             fetched_resources.push(resource);
             continue;
@@ -142,7 +149,10 @@ pub(crate) async fn fetch_and_store_urls(
 
         // Determine source type
         let (source_type, source_id) = if search_result_id.is_some() {
-            ("search".to_string(), search_result_id.map(|s| s.to_string()))
+            (
+                "search".to_string(),
+                search_result_id.map(|s| s.to_string()),
+            )
         } else {
             ("user_link".to_string(), None)
         };
@@ -181,7 +191,7 @@ pub(crate) async fn fetch_and_store_urls(
                     )
                     .await
                 {
-                    eprintln!("Failed to link fetch_result to message: {}", e);
+                    tracing::error!("Failed to link fetch_result to message: {}", e);
                 }
 
                 // Emit attachment-update immediately so UI shows this result
@@ -198,7 +208,7 @@ pub(crate) async fn fetch_and_store_urls(
                 attachment_ids.push(fetch_result.id);
             }
             Err(e) => {
-                eprintln!("Failed to create fetch_result for {}: {}", resource.url, e);
+                tracing::error!("Failed to create fetch_result for {}: {}", resource.url, e);
                 // Clean up saved file on failure
                 let _ = crate::storage::delete_file(app, &storage_path);
             }
@@ -210,7 +220,7 @@ pub(crate) async fn fetch_and_store_urls(
     // Wait for all fetches to complete
     let _ = fetch_handle.await;
 
-    println!(
+    tracing::info!(
         "📄 [url_processing] Fetched {} web resources",
         fetched_resources.len()
     );
@@ -230,4 +240,3 @@ pub(crate) async fn fetch_and_store_urls(
         attachment_ids,
     }
 }
-

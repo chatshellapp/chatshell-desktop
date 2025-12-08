@@ -84,7 +84,7 @@ pub async fn generate_conversation_title_manually(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<String, String> {
-    println!(
+    tracing::info!(
         "🏷️ [manual_title] Generating title for conversation: {}",
         conversation_id
     );
@@ -135,7 +135,7 @@ pub async fn generate_conversation_title_manually(
     .await
     .map_err(|e| e.to_string())?;
 
-    println!("🏷️ [manual_title] Generated title: {}", title);
+    tracing::info!("🏷️ [manual_title] Generated title: {}", title);
     Ok(title)
 }
 
@@ -150,7 +150,7 @@ pub(crate) async fn generate_conversation_title(
     api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<String> {
-    println!("🏷️ [generate_title] Starting title generation...");
+    tracing::info!("🏷️ [generate_title] Starting title generation...");
 
     // Check if there's a custom summary model setting
     let summary_model_id = state
@@ -160,58 +160,62 @@ pub(crate) async fn generate_conversation_title(
         .ok()
         .flatten();
 
-    let (summary_provider, summary_model, summary_api_key, summary_base_url) =
-        if let Some(model_id) = summary_model_id {
-            // Get the custom model settings
-            match state.db.get_model(&model_id).await {
-                Ok(Some(m)) => {
-                    // Get provider info
-                    match state.db.get_provider(&m.provider_id).await {
-                        Ok(Some(p)) => {
-                            println!(
-                                "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
-                                m.model_id, p.provider_type
-                            );
-                            (
-                                p.provider_type.clone(),
-                                m.model_id.clone(),
-                                p.api_key.clone(),
-                                p.base_url.clone(),
-                            )
-                        }
-                        _ => {
-                            println!(
-                                "🏷️ [generate_title] Custom model provider not found, using current model"
-                            );
-                            (
-                                provider.to_string(),
-                                model.to_string(),
-                                api_key.clone(),
-                                base_url.clone(),
-                            )
-                        }
+    let (summary_provider, summary_model, summary_api_key, summary_base_url) = if let Some(
+        model_id,
+    ) =
+        summary_model_id
+    {
+        // Get the custom model settings
+        match state.db.get_model(&model_id).await {
+            Ok(Some(m)) => {
+                // Get provider info
+                match state.db.get_provider(&m.provider_id).await {
+                    Ok(Some(p)) => {
+                        tracing::info!(
+                            "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
+                            m.model_id,
+                            p.provider_type
+                        );
+                        (
+                            p.provider_type.clone(),
+                            m.model_id.clone(),
+                            p.api_key.clone(),
+                            p.base_url.clone(),
+                        )
+                    }
+                    _ => {
+                        tracing::info!(
+                            "🏷️ [generate_title] Custom model provider not found, using current model"
+                        );
+                        (
+                            provider.to_string(),
+                            model.to_string(),
+                            api_key.clone(),
+                            base_url.clone(),
+                        )
                     }
                 }
-                _ => {
-                    println!("🏷️ [generate_title] Custom model not found, using current model");
-                    (
-                        provider.to_string(),
-                        model.to_string(),
-                        api_key.clone(),
-                        base_url.clone(),
-                    )
-                }
             }
-        } else {
-            // Use the current conversation model by default
-            println!("🏷️ [generate_title] No custom summary model set, using current model");
-            (
-                provider.to_string(),
-                model.to_string(),
-                api_key.clone(),
-                base_url.clone(),
-            )
-        };
+            _ => {
+                tracing::info!("🏷️ [generate_title] Custom model not found, using current model");
+                (
+                    provider.to_string(),
+                    model.to_string(),
+                    api_key.clone(),
+                    base_url.clone(),
+                )
+            }
+        }
+    } else {
+        // Use the current conversation model by default
+        tracing::info!("🏷️ [generate_title] No custom summary model set, using current model");
+        (
+            provider.to_string(),
+            model.to_string(),
+            api_key.clone(),
+            base_url.clone(),
+        )
+    };
 
     // Generate title using unified provider handler
     let response = llm::call_provider(
@@ -226,7 +230,10 @@ pub(crate) async fn generate_conversation_title(
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: prompts::build_title_generation_user_prompt(user_message, assistant_message),
+                content: prompts::build_title_generation_user_prompt(
+                    user_message,
+                    assistant_message,
+                ),
                 images: vec![],
                 files: vec![],
             },
@@ -244,7 +251,7 @@ pub(crate) async fn generate_conversation_title(
         .trim()
         .to_string();
 
-    println!("🏷️ [generate_title] Generated title: {}", title);
+    tracing::info!("🏷️ [generate_title] Generated title: {}", title);
     Ok(title)
 }
 
@@ -262,7 +269,7 @@ pub(crate) async fn auto_generate_title_if_needed(
 ) {
     if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await {
         if conversation.title == "New Conversation" {
-            println!("🏷️ [auto_title] Generating title for new conversation...");
+            tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
             match generate_conversation_title(
                 state,
                 conversation_id,
@@ -278,7 +285,10 @@ pub(crate) async fn auto_generate_title_if_needed(
                 Ok(title) => {
                     match state.db.update_conversation(conversation_id, &title).await {
                         Ok(_) => {
-                            println!("✅ [auto_title] Conversation title updated to: {}", title);
+                            tracing::info!(
+                                "✅ [auto_title] Conversation title updated to: {}",
+                                title
+                            );
                             // Notify frontend of title update
                             let _ = app.emit(
                                 "conversation-updated",
@@ -288,15 +298,14 @@ pub(crate) async fn auto_generate_title_if_needed(
                                 }),
                             );
                         }
-                        Err(e) => eprintln!(
+                        Err(e) => tracing::error!(
                             "⚠️  [auto_title] Failed to update conversation title: {}",
                             e
                         ),
                     }
                 }
-                Err(e) => eprintln!("⚠️  [auto_title] Failed to generate title: {}", e),
+                Err(e) => tracing::warn!("⚠️  [auto_title] Failed to generate title: {}", e),
             }
         }
     }
 }
-

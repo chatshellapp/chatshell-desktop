@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, MessageResources } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface UseMessageResourcesOptions {
   messages: Message[]
@@ -49,7 +50,7 @@ export function useMessageResources({
             resourceMap[msg.id] = resources
           }
         } catch (e) {
-          console.error('Failed to fetch resources for message:', msg.id, e)
+          logger.error('Failed to fetch resources for message:', msg.id, e)
         }
       }
 
@@ -66,4 +67,3 @@ export function useMessageResources({
 
   return messageResources
 }
-

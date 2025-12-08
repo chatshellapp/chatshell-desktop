@@ -21,7 +21,7 @@ pub(crate) fn parse_image_attachments(
 
     if let Some(images) = images {
         if !images.is_empty() {
-            println!(
+            tracing::info!(
                 "🖼️  [attachment] Processing {} image attachments",
                 images.len()
             );
@@ -36,7 +36,7 @@ pub(crate) fn parse_image_attachments(
                                 media_type: media_type.to_string(),
                             },
                         });
-                        println!(
+                        tracing::info!(
                             "   - Parsed image: {} - {} ({} chars)",
                             img.name,
                             media_type,
@@ -57,7 +57,7 @@ pub(crate) fn parse_file_attachments(files: Option<Vec<FileAttachmentInput>>) ->
 
     if let Some(files) = files {
         if !files.is_empty() {
-            println!(
+            tracing::info!(
                 "📄 [attachment] Processing {} file attachments",
                 files.len()
             );
@@ -67,7 +67,7 @@ pub(crate) fn parse_file_attachments(files: Option<Vec<FileAttachmentInput>>) ->
                     content: file.content.clone(),
                     media_type: file.mime_type.clone(),
                 });
-                println!(
+                tracing::info!(
                     "   - File: {} ({} chars, {})",
                     file.name,
                     file.content.len(),
@@ -94,7 +94,7 @@ pub(crate) async fn store_file_attachments(
 
         // Check if we already have this content (deduplication)
         if let Ok(Some(existing)) = state.db.find_file_by_hash(&content_hash).await {
-            println!(
+            tracing::info!(
                 "♻️ [dedup] Reusing existing file content for {} (hash: {}...)",
                 file.name,
                 &content_hash[..16]
@@ -119,11 +119,12 @@ pub(crate) async fn store_file_attachments(
                         .link_message_attachment(user_message_id, &file_attachment.id, None)
                         .await
                     {
-                        eprintln!("Failed to link file to message: {}", e);
+                        tracing::error!("Failed to link file to message: {}", e);
                     } else {
-                        println!(
+                        tracing::info!(
                             "📎 [attachment] Saved file attachment (dedup): {} -> {}",
-                            file.name, file_attachment.id
+                            file.name,
+                            file_attachment.id
                         );
 
                         let _ = app.emit(
@@ -137,7 +138,7 @@ pub(crate) async fn store_file_attachments(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to create file record for {}: {}", file.name, e);
+                    tracing::error!("Failed to create file record for {}: {}", file.name, e);
                 }
             }
             continue;
@@ -154,7 +155,7 @@ pub(crate) async fn store_file_attachments(
 
         // Write file content to filesystem
         if let Err(e) = crate::storage::write_content(app, &storage_path, &file.content) {
-            eprintln!("Failed to save file {}: {}", file.name, e);
+            tracing::error!("Failed to save file {}: {}", file.name, e);
             continue;
         }
 
@@ -177,11 +178,12 @@ pub(crate) async fn store_file_attachments(
                     .link_message_attachment(user_message_id, &file_attachment.id, None)
                     .await
                 {
-                    eprintln!("Failed to link file to message: {}", e);
+                    tracing::error!("Failed to link file to message: {}", e);
                 } else {
-                    println!(
+                    tracing::info!(
                         "📎 [attachment] Saved file attachment: {} -> {}",
-                        file.name, file_attachment.id
+                        file.name,
+                        file_attachment.id
                     );
 
                     // Emit attachment-update so UI refreshes and shows the file
@@ -196,7 +198,7 @@ pub(crate) async fn store_file_attachments(
                 }
             }
             Err(e) => {
-                eprintln!("Failed to create file record for {}: {}", file.name, e);
+                tracing::error!("Failed to create file record for {}: {}", file.name, e);
                 let _ = crate::storage::delete_file(app, &storage_path);
             }
         }
@@ -216,23 +218,21 @@ pub(crate) async fn store_image_attachments(
         let img = &image.data;
 
         // Decode base64 to bytes first (needed for hashing)
-        let bytes = match base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            &img.base64,
-        ) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Failed to decode image {}: {}", file_name, e);
-                continue;
-            }
-        };
+        let bytes =
+            match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &img.base64) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!("Failed to decode image {}: {}", file_name, e);
+                    continue;
+                }
+            };
 
         // Hash image bytes for deduplication
         let content_hash = crate::storage::hash_bytes(&bytes);
 
         // Check if we already have this image (deduplication)
         if let Ok(Some(existing)) = state.db.find_file_by_hash(&content_hash).await {
-            println!(
+            tracing::info!(
                 "♻️ [dedup] Reusing existing image content for {} (hash: {}...)",
                 file_name,
                 &content_hash[..16]
@@ -257,11 +257,12 @@ pub(crate) async fn store_image_attachments(
                         .link_message_attachment(user_message_id, &file_attachment.id, None)
                         .await
                     {
-                        eprintln!("Failed to link image to message: {}", e);
+                        tracing::error!("Failed to link image to message: {}", e);
                     } else {
-                        println!(
+                        tracing::info!(
                             "🖼️ [attachment] Saved image attachment (dedup): {} -> {}",
-                            file_name, file_attachment.id
+                            file_name,
+                            file_attachment.id
                         );
 
                         let _ = app.emit(
@@ -275,7 +276,11 @@ pub(crate) async fn store_image_attachments(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to create file record for image {}: {}", file_name, e);
+                    tracing::error!(
+                        "Failed to create file record for image {}: {}",
+                        file_name,
+                        e
+                    );
                 }
             }
             continue;
@@ -289,7 +294,7 @@ pub(crate) async fn store_image_attachments(
 
         // Write image to filesystem
         if let Err(e) = crate::storage::write_binary(app, &storage_path, &bytes) {
-            eprintln!("Failed to save image {}: {}", file_name, e);
+            tracing::error!("Failed to save image {}: {}", file_name, e);
             continue;
         }
 
@@ -312,11 +317,12 @@ pub(crate) async fn store_image_attachments(
                     .link_message_attachment(user_message_id, &file_attachment.id, None)
                     .await
                 {
-                    eprintln!("Failed to link image to message: {}", e);
+                    tracing::error!("Failed to link image to message: {}", e);
                 } else {
-                    println!(
+                    tracing::info!(
                         "🖼️ [attachment] Saved image attachment: {} -> {}",
-                        file_name, file_attachment.id
+                        file_name,
+                        file_attachment.id
                     );
 
                     // Emit attachment-update so UI refreshes and shows the image
@@ -331,10 +337,13 @@ pub(crate) async fn store_image_attachments(
                 }
             }
             Err(e) => {
-                eprintln!("Failed to create file record for image {}: {}", file_name, e);
+                tracing::error!(
+                    "Failed to create file record for image {}: {}",
+                    file_name,
+                    e
+                );
                 let _ = crate::storage::delete_file(app, &storage_path);
             }
         }
     }
 }
-

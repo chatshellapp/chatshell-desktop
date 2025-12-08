@@ -110,4 +110,3 @@ export function isCodeExecution(
 ): step is { type: 'code_execution' } & CodeExecution {
   return step.type === 'code_execution'
 }
-

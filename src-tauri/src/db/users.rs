@@ -143,4 +143,3 @@ impl Database {
         Ok(users)
     }
 }
-

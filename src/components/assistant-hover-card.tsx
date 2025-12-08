@@ -1,8 +1,4 @@
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { AssistantAvatar } from '@/components/assistant-avatar'
 import { ModelAvatar } from '@/components/model-avatar'
 import { getModelLogoById } from '@/lib/model-logos'
@@ -99,9 +95,7 @@ export function AssistantHoverCard({
             <div className="font-medium text-sm truncate">{name}</div>
 
             {/* Line 2: Role */}
-            {role && (
-              <div className="text-xs text-muted-foreground truncate">{role}</div>
-            )}
+            {role && <div className="text-xs text-muted-foreground truncate">{role}</div>}
 
             {/* Line 3: Description (max 2 lines) */}
             {description && (
@@ -113,12 +107,7 @@ export function AssistantHoverCard({
             {/* Line 4: Model icon + Model name */}
             {(modelName || modelId) && (
               <div className="flex items-center gap-1.5 mt-1">
-                <ModelAvatar
-                  logo={modelLogo}
-                  modelId={modelId}
-                  name={modelName}
-                  size="xxs"
-                />
+                <ModelAvatar logo={modelLogo} modelId={modelId} name={modelName} size="xxs" />
                 <span className="text-xs text-muted-foreground truncate">
                   {modelName || modelId}
                 </span>
@@ -130,4 +119,3 @@ export function AssistantHoverCard({
     </HoverCard>
   )
 }
-

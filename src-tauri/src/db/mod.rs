@@ -1,18 +1,18 @@
-mod providers;
-mod models;
 mod assistants;
-mod users;
-mod conversations;
-mod messages;
 mod attachments;
 mod contexts;
+mod conversations;
 mod fetch_results;
-mod search_results;
-mod steps;
-mod settings;
+mod messages;
+mod models;
 mod prompts;
-mod seed;
+mod providers;
 mod schema;
+mod search_results;
+mod seed;
+mod settings;
+mod steps;
+mod users;
 
 use anyhow::Result;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
@@ -26,21 +26,21 @@ pub struct Database {
 impl Database {
     pub async fn new(db_path: &str) -> Result<Self> {
         let db_url = format!("sqlite:{}?mode=rwc", db_path);
-        
+
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect(&db_url)
             .await?;
-        
+
         let db = Database {
             pool: Arc::new(pool),
         };
-        
+
         schema::init_schema(&db.pool).await?;
-        
+
         // Initialize encryption key for API key storage
         crate::crypto::init_encryption_key(&db).await?;
-        
+
         Ok(db)
     }
 

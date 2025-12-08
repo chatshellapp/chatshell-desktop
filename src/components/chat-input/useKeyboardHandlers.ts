@@ -39,4 +39,3 @@ export function useKeyboardHandlers({ input, setInput, onSubmit }: UseKeyboardHa
 
   return { handleKeyDown }
 }
-

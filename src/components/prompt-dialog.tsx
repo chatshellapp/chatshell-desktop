@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Loader2 } from 'lucide-react'
 import type { Prompt, CreatePromptRequest } from '@/types'
 import { usePromptStore } from '@/stores/promptStore'
+import { logger } from '@/lib/logger'
 
 interface PromptDialogProps {
   open: boolean
@@ -22,12 +23,7 @@ interface PromptDialogProps {
   mode?: 'create' | 'edit'
 }
 
-export function PromptDialog({
-  open,
-  onOpenChange,
-  prompt,
-  mode = 'create',
-}: PromptDialogProps) {
+export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: PromptDialogProps) {
   const { createPrompt, updatePrompt } = usePromptStore()
 
   // Form state
@@ -90,7 +86,7 @@ export function PromptDialog({
         onOpenChange(false)
       }
     } catch (err) {
-      console.error('Failed to save prompt:', err)
+      logger.error('Failed to save prompt:', err)
       setError(String(err))
     } finally {
       setIsSaving(false)
@@ -115,9 +111,7 @@ export function PromptDialog({
 
         <div className="space-y-4 py-4">
           {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-              {error}
-            </div>
+            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
           )}
 
           <div className="space-y-2">
@@ -139,9 +133,7 @@ export function PromptDialog({
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              Organize prompts by category (optional)
-            </p>
+            <p className="text-xs text-muted-foreground">Organize prompts by category (optional)</p>
           </div>
 
           <div className="space-y-2">
@@ -191,4 +183,3 @@ export function PromptDialog({
     </Dialog>
   )
 }
-

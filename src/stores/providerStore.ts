@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { Provider, CreateProviderRequest } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface ProviderStore {
   providers: Provider[]
@@ -37,7 +38,7 @@ export const useProviderStore = create<ProviderStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to load providers:', error)
+        logger.error('Failed to load providers:', error)
       }
     },
 

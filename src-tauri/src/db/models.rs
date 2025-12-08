@@ -13,7 +13,7 @@ impl Database {
 
         // Check if a soft-deleted model with same model_id and provider_id exists
         let existing_id: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM models WHERE model_id = ? AND provider_id = ? AND is_deleted = 1"
+            "SELECT id FROM models WHERE model_id = ? AND provider_id = ? AND is_deleted = 1",
         )
         .bind(&req.model_id)
         .bind(&req.provider_id)
@@ -193,4 +193,3 @@ impl Database {
         Ok(())
     }
 }
-

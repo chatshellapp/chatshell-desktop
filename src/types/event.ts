@@ -56,4 +56,3 @@ export interface SearchDecisionCompleteEvent {
   message_id: string
   conversation_id: string
 }
-

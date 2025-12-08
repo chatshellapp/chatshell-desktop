@@ -19,4 +19,3 @@ export interface CreateToolRequest {
   description?: string
   is_enabled?: boolean
 }
-

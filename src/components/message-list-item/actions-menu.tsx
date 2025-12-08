@@ -15,12 +15,7 @@ interface ActionsMenuProps {
   onDelete?: () => void
 }
 
-export function ActionsMenu({
-  isVisible,
-  onGenerateTitle,
-  onRename,
-  onDelete,
-}: ActionsMenuProps) {
+export function ActionsMenu({ isVisible, onGenerateTitle, onRename, onDelete }: ActionsMenuProps) {
   const hasActions = onGenerateTitle || onRename || onDelete
 
   if (!hasActions) {
@@ -84,4 +79,3 @@ export function ActionsMenu({
     </div>
   )
 }
-

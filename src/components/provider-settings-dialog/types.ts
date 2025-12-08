@@ -80,4 +80,3 @@ export interface UseProviderSettingsReturn {
   filteredModels: ModelInfo[]
   groupedModels: Record<string, ModelInfo[]>
 }
-

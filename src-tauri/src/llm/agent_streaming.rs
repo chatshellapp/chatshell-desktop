@@ -11,8 +11,8 @@ use rig::message::Reasoning;
 use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::common::StreamChunkType;
 use crate::llm::ChatResponse;
+use crate::llm::common::StreamChunkType;
 use crate::thinking_parser;
 
 /// Generic implementation for streaming with any agent type
@@ -28,7 +28,7 @@ where
     M: CompletionModel + 'static,
     M::StreamingResponse: rig::completion::GetTokenUsage,
 {
-    println!("🤖 [{}] Agent created, starting stream chat", log_prefix);
+    tracing::info!("🤖 [{}] Agent created, starting stream chat", log_prefix);
 
     // Use stream_chat to get a streaming response with chat history
     // stream_chat returns a StreamingPromptRequest which implements IntoFuture
@@ -42,12 +42,12 @@ where
     let mut is_reasoning = false;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
-    println!("📥 [{}] Processing stream...", log_prefix);
+    tracing::info!("📥 [{}] Processing stream...", log_prefix);
 
     // Process stream with cancellation support
     while let Some(result) = stream.next().await {
         if cancel_token.is_cancelled() {
-            println!("🛑 [{}] Cancellation detected, stopping stream", log_prefix);
+            tracing::info!("🛑 [{}] Cancellation detected, stopping stream", log_prefix);
             cancelled = true;
             drop(stream);
             break;
@@ -59,14 +59,14 @@ where
                 // Detect transition from reasoning to text
                 if is_reasoning {
                     is_reasoning = false;
-                    println!("💡 [{}] Reasoning ended", log_prefix);
+                    tracing::info!("💡 [{}] Reasoning ended", log_prefix);
                 }
                 let text_str = &text.text;
                 if !text_str.is_empty() {
                     full_content.push_str(text_str);
 
                     if !callback(text_str.to_string(), StreamChunkType::Text) {
-                        println!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                        tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
                         cancelled = true;
                         break;
                     }
@@ -79,14 +79,14 @@ where
                 // Detect reasoning start
                 if !is_reasoning {
                     is_reasoning = true;
-                    println!("💡 [{}] Reasoning started", log_prefix);
+                    tracing::info!("💡 [{}] Reasoning started", log_prefix);
                 }
                 let reasoning_text = reasoning.join("");
                 if !reasoning_text.is_empty() {
                     full_reasoning.push_str(&reasoning_text);
 
                     if !callback(reasoning_text, StreamChunkType::Reasoning) {
-                        println!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                        tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
                         cancelled = true;
                         break;
                     }
@@ -106,20 +106,23 @@ where
                     || error_str.contains("stream");
 
                 if is_decode_error && !full_content.is_empty() {
-                    eprintln!(
+                    tracing::error!(
                         "⚠️ [{}] Stream decode error after receiving content, treating as stream end: {}",
-                        log_prefix, error_str
+                        log_prefix,
+                        error_str
                     );
                     break;
                 }
 
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                    eprintln!(
+                    tracing::error!(
                         "❌ [{}] Too many consecutive stream errors ({}): {}",
-                        log_prefix, consecutive_errors, error_str
+                        log_prefix,
+                        consecutive_errors,
+                        error_str
                     );
                     if !full_content.is_empty() {
-                        eprintln!(
+                        tracing::error!(
                             "⚠️ [{}] Returning partial content ({} chars) due to stream errors",
                             log_prefix,
                             full_content.len()
@@ -129,9 +132,12 @@ where
                     return Err(anyhow::anyhow!("Stream error: {}", error_str));
                 }
 
-                eprintln!(
+                tracing::error!(
                     "⚠️ [{}] Stream error ({}/{}), continuing: {}",
-                    log_prefix, consecutive_errors, MAX_CONSECUTIVE_ERRORS, error_str
+                    log_prefix,
+                    consecutive_errors,
+                    MAX_CONSECUTIVE_ERRORS,
+                    error_str
                 );
             }
         }
@@ -139,13 +145,13 @@ where
 
     // Handle case where reasoning was active when stream ended
     if is_reasoning {
-        println!("💡 [{}] Reasoning ended", log_prefix);
+        tracing::info!("💡 [{}] Reasoning ended", log_prefix);
     }
 
     if cancelled {
-        println!("⚠️ [{}] Stream was cancelled", log_prefix);
+        tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
     } else {
-        println!("✅ [{}] Stream completed successfully", log_prefix);
+        tracing::info!("✅ [{}] Stream completed successfully", log_prefix);
     }
 
     // Parse thinking content from XML tags in the text
@@ -158,7 +164,7 @@ where
         parsed.thinking_content
     };
 
-    println!(
+    tracing::info!(
         "📊 [{}] Parsed content: {} chars, API reasoning: {} chars, final thinking: {}",
         log_prefix,
         parsed.content.len(),
@@ -172,4 +178,3 @@ where
         tokens: None,
     })
 }
-

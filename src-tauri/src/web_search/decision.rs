@@ -19,7 +19,7 @@ pub async fn decide_search_needed(
     api_key: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<SearchDecisionResult> {
-    println!(
+    tracing::info!(
         "🤔 [search_decision] Asking AI if search is needed for: {}",
         user_input.chars().take(100).collect::<String>()
     );
@@ -47,7 +47,7 @@ pub async fn decide_search_needed(
     )
     .await?;
 
-    println!("📝 [search_decision] AI response: {}", response.content);
+    tracing::info!("📝 [search_decision] AI response: {}", response.content);
 
     // Parse JSON from response
     let json_str = extract_json_from_response(&response.content)?;
@@ -60,9 +60,10 @@ pub async fn decide_search_needed(
         search_query: parsed["search_query"].as_str().map(|s| s.to_string()),
     };
 
-    println!(
+    tracing::info!(
         "✅ [search_decision] Decision: search_needed={}, query={:?}",
-        result.search_needed, result.search_query
+        result.search_needed,
+        result.search_query
     );
 
     Ok(result)
@@ -103,4 +104,3 @@ fn extract_json_from_response(response: &str) -> Result<String> {
 
     Err(anyhow::anyhow!("No JSON found in response"))
 }
-

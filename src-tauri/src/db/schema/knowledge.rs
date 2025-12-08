@@ -13,7 +13,7 @@ pub async fn create_knowledge_bases_table(pool: &SqlitePool) -> Result<()> {
             metadata TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -28,7 +28,7 @@ pub async fn create_knowledge_bases_table(pool: &SqlitePool) -> Result<()> {
             FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
             FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
             UNIQUE(assistant_id, knowledge_base_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -49,7 +49,7 @@ pub async fn create_tools_table(pool: &SqlitePool) -> Result<()> {
             is_enabled INTEGER DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -64,11 +64,10 @@ pub async fn create_tools_table(pool: &SqlitePool) -> Result<()> {
             FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
             FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE,
             UNIQUE(assistant_id, tool_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

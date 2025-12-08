@@ -73,8 +73,7 @@ export function MessageItem({
   const urls = messageUrlStatuses ? Object.keys(messageUrlStatuses) : []
 
   const hasUserAttachments =
-    isUserMessage &&
-    (userAttachments.length > 0 || userFetchResults.length > 0 || urls.length > 0)
+    isUserMessage && (userAttachments.length > 0 || userFetchResults.length > 0 || urls.length > 0)
 
   // For assistant messages in history, get context and steps from previous user message
   let contextsToShow: ContextEnrichment[] = []
@@ -175,12 +174,9 @@ export function MessageItem({
               return userAttachments.map((attachment) => {
                 // Check if this is an image to determine index
                 const isImage =
-                  attachment.type === 'file' &&
-                  (attachment as any).mime_type?.startsWith('image/')
+                  attachment.type === 'file' && (attachment as any).mime_type?.startsWith('image/')
                 const imageIndex = isImage
-                  ? imageAttachments.findIndex(
-                      (img) => (img as any).id === (attachment as any).id
-                    )
+                  ? imageAttachments.findIndex((img) => (img as any).id === (attachment as any).id)
                   : undefined
 
                 return (
@@ -207,4 +203,3 @@ export function MessageItem({
     </div>
   )
 }
-

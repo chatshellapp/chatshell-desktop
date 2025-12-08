@@ -51,4 +51,3 @@ pub struct ParticipantSummary {
     pub avatar_image_path: Option<String>,
     pub avatar_image_url: Option<String>,
 }
-

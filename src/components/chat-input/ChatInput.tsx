@@ -13,6 +13,7 @@ import { AttachmentPreviewRow } from './AttachmentPreviewRow'
 import { WebPageDialog } from './WebPageDialog'
 import { DropZoneOverlay } from './DropZoneOverlay'
 import { InputToolbar } from './InputToolbar'
+import { logger } from '@/lib/logger'
 
 interface ChatInputProps {}
 
@@ -79,7 +80,7 @@ export function ChatInput({}: ChatInputProps) {
 
   // Debug: log attachments changes
   useEffect(() => {
-    console.log(
+    logger.info(
       '[ChatInput] Attachments updated:',
       attachments.length,
       attachments.map((a) => ({ type: a.type, name: a.name }))
@@ -88,7 +89,7 @@ export function ChatInput({}: ChatInputProps) {
 
   // Handlers for attachment types
   const handlePromptSelect = () => {
-    console.log('Prompt selected')
+    logger.info('Prompt selected')
   }
 
   const handleKnowledgeBaseSelect = () => {

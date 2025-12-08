@@ -188,4 +188,3 @@ export function useMarkdownComponents({ compact = false }: UseMarkdownComponents
     [compact]
   )
 }
-

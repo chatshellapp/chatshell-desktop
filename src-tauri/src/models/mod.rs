@@ -64,4 +64,3 @@ pub use prompt::{CreatePromptRequest, Prompt};
 
 // Setting
 pub use setting::Setting;
-

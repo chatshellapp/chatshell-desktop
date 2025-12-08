@@ -1,15 +1,15 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-mod providers;
 mod assistants;
-mod users;
 mod conversations;
-mod messages;
-mod steps;
 mod knowledge;
+mod messages;
 mod prompts;
+mod providers;
 mod settings;
+mod steps;
+mod users;
 
 pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     // Enable foreign keys
@@ -33,4 +33,3 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
 
     Ok(())
 }
-

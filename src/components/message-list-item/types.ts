@@ -53,4 +53,3 @@ export interface MessageListItemProps {
    */
   onDelete?: () => void
 }
-

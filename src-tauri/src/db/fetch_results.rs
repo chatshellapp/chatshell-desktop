@@ -44,7 +44,7 @@ impl Database {
         let source_type = req.source_type.unwrap_or_else(|| "search".to_string());
 
         sqlx::query(
-            "INSERT INTO fetch_results 
+            "INSERT INTO fetch_results
              (id, source_type, source_id, url, title, description, storage_path, content_type, original_mime,
               status, error, keywords, headings, original_size, processed_size, favicon_url, content_hash, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -124,11 +124,11 @@ impl Database {
 
     pub async fn get_fetch_results_by_message(&self, message_id: &str) -> Result<Vec<FetchResult>> {
         // Use explicit table-qualified column names to avoid ambiguity with message_contexts
-        let query = 
-            "SELECT f.id, f.source_type, f.source_id, f.url, f.title, f.description, 
-                    f.storage_path, f.content_type, f.original_mime, f.status, f.error, 
-                    f.keywords, f.headings, f.original_size, f.processed_size, 
-                    f.favicon_url, f.content_hash, f.created_at, f.updated_at 
+        let query =
+            "SELECT f.id, f.source_type, f.source_id, f.url, f.title, f.description,
+                    f.storage_path, f.content_type, f.original_mime, f.status, f.error,
+                    f.keywords, f.headings, f.original_size, f.processed_size,
+                    f.favicon_url, f.content_hash, f.created_at, f.updated_at
              FROM fetch_results f
              INNER JOIN message_contexts mc ON mc.context_id = f.id AND mc.context_type = 'fetch_result'
              WHERE mc.message_id = ?
@@ -167,4 +167,3 @@ impl Database {
         Ok(())
     }
 }
-

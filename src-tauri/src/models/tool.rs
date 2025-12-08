@@ -23,4 +23,3 @@ pub struct CreateToolRequest {
     pub description: Option<String>,
     pub is_enabled: Option<bool>,
 }
-

@@ -35,7 +35,7 @@ impl Database {
     pub async fn get_file_attachment(&self, id: &str) -> Result<FileAttachment> {
         let row = sqlx::query(
             "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
-             FROM files WHERE id = ?"
+             FROM files WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -56,7 +56,7 @@ impl Database {
     pub async fn find_file_by_hash(&self, content_hash: &str) -> Result<Option<FileAttachment>> {
         let row = sqlx::query(
             "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
-             FROM files WHERE content_hash = ? LIMIT 1"
+             FROM files WHERE content_hash = ? LIMIT 1",
         )
         .bind(content_hash)
         .fetch_optional(self.pool.as_ref())
@@ -98,7 +98,7 @@ impl Database {
         sqlx::query(
             "INSERT OR IGNORE INTO message_attachments
              (id, message_id, attachment_type, attachment_id, display_order, created_at)
-             VALUES (?, ?, 'file', ?, ?, ?)"
+             VALUES (?, ?, 'file', ?, ?, ?)",
         )
         .bind(&id)
         .bind(message_id)
@@ -116,7 +116,7 @@ impl Database {
             "SELECT attachment_id, display_order
              FROM message_attachments
              WHERE message_id = ?
-             ORDER BY display_order, created_at"
+             ORDER BY display_order, created_at",
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -134,15 +134,16 @@ impl Database {
         Ok(attachments)
     }
 
-    pub async fn unlink_message_attachment(&self, message_id: &str, attachment_id: &str) -> Result<()> {
-        sqlx::query(
-            "DELETE FROM message_attachments WHERE message_id = ? AND attachment_id = ?"
-        )
-        .bind(message_id)
-        .bind(attachment_id)
-        .execute(self.pool.as_ref())
-        .await?;
+    pub async fn unlink_message_attachment(
+        &self,
+        message_id: &str,
+        attachment_id: &str,
+    ) -> Result<()> {
+        sqlx::query("DELETE FROM message_attachments WHERE message_id = ? AND attachment_id = ?")
+            .bind(message_id)
+            .bind(attachment_id)
+            .execute(self.pool.as_ref())
+            .await?;
         Ok(())
     }
 }
-

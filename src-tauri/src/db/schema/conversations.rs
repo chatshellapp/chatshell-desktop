@@ -9,7 +9,7 @@ pub async fn create_conversations_table(pool: &SqlitePool) -> Result<()> {
             title TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -30,7 +30,7 @@ pub async fn create_conversations_table(pool: &SqlitePool) -> Result<()> {
             metadata TEXT,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
             UNIQUE(conversation_id, participant_type, participant_id)
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -38,18 +38,17 @@ pub async fn create_conversations_table(pool: &SqlitePool) -> Result<()> {
     // Indexes
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_conversation_participants_conversation 
-         ON conversation_participants(conversation_id)"
+         ON conversation_participants(conversation_id)",
     )
     .execute(pool)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_conversation_participants_status 
-         ON conversation_participants(conversation_id, status)"
+         ON conversation_participants(conversation_id, status)",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

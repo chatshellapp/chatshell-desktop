@@ -19,4 +19,3 @@ export interface CreateProviderRequest {
   description?: string
   is_enabled?: boolean
 }
-

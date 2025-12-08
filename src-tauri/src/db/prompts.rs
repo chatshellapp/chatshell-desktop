@@ -35,7 +35,7 @@ impl Database {
     pub async fn get_prompt(&self, id: &str) -> Result<Option<Prompt>> {
         let row = sqlx::query(
             "SELECT id, name, content, description, category, is_system, created_at, updated_at
-             FROM prompts WHERE id = ?"
+             FROM prompts WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -62,7 +62,7 @@ impl Database {
     pub async fn list_prompts(&self) -> Result<Vec<Prompt>> {
         let rows = sqlx::query(
             "SELECT id, name, content, description, category, is_system, created_at, updated_at
-             FROM prompts ORDER BY category, name"
+             FROM prompts ORDER BY category, name",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -90,7 +90,7 @@ impl Database {
     pub async fn list_prompts_by_category(&self, category: &str) -> Result<Vec<Prompt>> {
         let rows = sqlx::query(
             "SELECT id, name, content, description, category, is_system, created_at, updated_at
-             FROM prompts WHERE category = ? ORDER BY name"
+             FROM prompts WHERE category = ? ORDER BY name",
         )
         .bind(category)
         .fetch_all(self.pool.as_ref())
@@ -147,4 +147,3 @@ impl Database {
         Ok(())
     }
 }
-

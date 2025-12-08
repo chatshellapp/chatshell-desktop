@@ -1,5 +1,5 @@
-use crate::models::{ProcessStep, SearchDecision, ThinkingStep};
 use super::AppState;
+use crate::models::{ProcessStep, SearchDecision, ThinkingStep};
 use tauri::State;
 
 // ==========================================================================
@@ -23,7 +23,11 @@ pub async fn get_thinking_step(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<ThinkingStep, String> {
-    state.db.get_thinking_step(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_thinking_step(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -31,6 +35,9 @@ pub async fn get_search_decision(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<SearchDecision, String> {
-    state.db.get_search_decision(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_search_decision(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
-

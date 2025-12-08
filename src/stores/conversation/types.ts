@@ -1,9 +1,4 @@
-import type {
-  Conversation,
-  ConversationParticipant,
-  Model,
-  Assistant,
-} from '@/types'
+import type { Conversation, ConversationParticipant, Model, Assistant } from '@/types'
 import type { Draft } from 'immer'
 
 // Conversation store state (without actions)
@@ -64,7 +59,9 @@ export interface ConversationStore
 
 // Helper types for action creators
 export type ImmerSet = (
-  nextStateOrUpdater: ConversationStore | Partial<ConversationStore> | ((state: Draft<ConversationStore>) => void)
+  nextStateOrUpdater:
+    | ConversationStore
+    | Partial<ConversationStore>
+    | ((state: Draft<ConversationStore>) => void)
 ) => void
 export type StoreGet = () => ConversationStore
-

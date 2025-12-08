@@ -2,8 +2,8 @@
 //!
 //! Constructs the chat message array including system prompt, history, and current user message.
 
-use super::attachment_processing;
 use super::AppState;
+use super::attachment_processing;
 use crate::llm::{self, ChatMessage};
 use crate::prompts;
 
@@ -77,4 +77,3 @@ pub async fn build_chat_messages(
 
     chat_messages
 }
-

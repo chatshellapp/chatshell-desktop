@@ -103,4 +103,3 @@ export function useInputResize(): UseInputResizeReturn {
     handleDragStart,
   }
 }
-

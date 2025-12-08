@@ -8,4 +8,3 @@ export { MessageAvatar, MessageAvatarGroup } from './message-avatar'
 export { ActionsMenu } from './actions-menu'
 export { RenameDialog } from './rename-dialog'
 export { DeleteDialog } from './delete-dialog'
-

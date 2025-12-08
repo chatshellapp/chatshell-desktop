@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { FetchResult } from '@/types'
 import { getDomain, getFaviconUrl } from './utils'
+import { logger } from '@/lib/logger'
 
 // FetchResult preview component
 export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
@@ -33,7 +34,7 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
       invoke<string>('read_fetch_content', { storagePath: fetchResult.storage_path })
         .then(setContent)
         .catch((err) => {
-          console.error('Failed to load fetch content:', err)
+          logger.error('Failed to load fetch content:', err)
           setContent(null)
         })
         .finally(() => setLoadingContent(false))
@@ -197,7 +198,7 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
       invoke<string>('read_fetch_content', { storagePath: fetchResult.storage_path })
         .then(setContent)
         .catch((err) => {
-          console.error('Failed to load fetch content:', err)
+          logger.error('Failed to load fetch content:', err)
           setContent(null)
         })
         .finally(() => setLoadingContent(false))
@@ -309,4 +310,3 @@ export function ProcessingUrlItem({ url }: { url: string }) {
     </div>
   )
 }
-

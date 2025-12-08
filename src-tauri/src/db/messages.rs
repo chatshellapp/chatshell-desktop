@@ -8,7 +8,7 @@ use crate::models::{CreateMessageRequest, Message};
 
 impl Database {
     pub async fn create_message(&self, req: CreateMessageRequest) -> Result<Message> {
-        println!("🔒 [db] Creating message...");
+        tracing::info!("🔒 [db] Creating message...");
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -17,7 +17,7 @@ impl Database {
             .as_ref()
             .map(|s| s.as_str())
             .unwrap_or("unknown");
-        println!(
+        tracing::info!(
             "💾 [db] Executing INSERT for message (conversation_id: {})",
             target_id
         );
@@ -36,21 +36,21 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
 
-        println!("✅ [db] INSERT completed");
+        tracing::info!("✅ [db] INSERT completed");
 
-        println!("🔍 [db] Retrieving created message...");
+        tracing::info!("🔍 [db] Retrieving created message...");
         let result = self
             .get_message(&id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created message"));
-        println!("✅ [db] Message retrieved: {:?}", result.is_ok());
+        tracing::info!("✅ [db] Message retrieved: {:?}", result.is_ok());
         result
     }
 
     pub async fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let row = sqlx::query(
             "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
-             FROM messages WHERE id = ?"
+             FROM messages WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -70,10 +70,13 @@ impl Database {
         }
     }
 
-    pub async fn list_messages_by_conversation(&self, conversation_id: &str) -> Result<Vec<Message>> {
+    pub async fn list_messages_by_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<Message>> {
         let rows = sqlx::query(
             "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
-             FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+             FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
         )
         .bind(conversation_id)
         .fetch_all(self.pool.as_ref())
@@ -103,4 +106,3 @@ impl Database {
         Ok(())
     }
 }
-

@@ -7,11 +7,10 @@ pub async fn create_settings_table(pool: &SqlitePool) -> Result<()> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

@@ -39,14 +39,19 @@ pub struct FetchConfig {
 /// max_chars: None = no truncation, Some(n) = truncate to n characters
 /// Falls back to headless browser if direct HTTP fetch fails with non-200 status.
 pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
-    println!("📡 [fetcher] Starting fetch for: {}", url);
+    tracing::info!("📡 [fetcher] Starting fetch for: {}", url);
 
     // Validate URL first
     if Url::parse(url).is_err() {
-        return FetchedWebResource::error(url, String::new(), format!("Invalid URL: {}", url), None);
+        return FetchedWebResource::error(
+            url,
+            String::new(),
+            format!("Invalid URL: {}", url),
+            None,
+        );
     }
 
-    println!("📨 [fetcher] Sending HTTP request...");
+    tracing::info!("📨 [fetcher] Sending HTTP request...");
 
     let response = match HTTP_CLIENT
         .get(url)
@@ -58,7 +63,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         Ok(r) => r,
         Err(e) => {
             // Network error - try headless browser fallback
-            println!(
+            tracing::info!(
                 "⚠️ [fetcher] HTTP request failed: {}, trying headless browser...",
                 e
             );
@@ -66,11 +71,11 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         }
     };
 
-    println!("📥 [fetcher] Got response, status: {}", response.status());
+    tracing::info!("📥 [fetcher] Got response, status: {}", response.status());
 
     // If non-200 status, try headless browser fallback
     if !response.status().is_success() {
-        println!(
+        tracing::info!(
             "⚠️ [fetcher] HTTP error {}, trying headless browser fallback...",
             response.status()
         );
@@ -187,7 +192,7 @@ pub async fn fetch_web_resource_with_config(
 
 /// Fetch using HTTP only (no headless fallback)
 async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
-    println!("📡 [fetcher] Starting HTTP-only fetch for: {}", url);
+    tracing::info!("📡 [fetcher] Starting HTTP-only fetch for: {}", url);
 
     // Validate URL first
     if Url::parse(url).is_err() {
@@ -304,10 +309,7 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
 
 /// Fetch using headless Chrome only
 async fn fetch_with_headless_only(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
-    println!(
-        "📡 [fetcher] Starting headless Chrome fetch for: {}",
-        url
-    );
+    tracing::info!("📡 [fetcher] Starting headless Chrome fetch for: {}", url);
 
     // Validate URL first
     if Url::parse(url).is_err() {
@@ -327,7 +329,13 @@ async fn fetch_with_headless_only(url: &str, max_chars: Option<usize>) -> Fetche
     match html_result {
         Ok(Ok(html)) => {
             let favicon_url = extract_favicon_url(url, Some(&html));
-            process_html_with_readability(url, &html, "text/html".to_string(), max_chars, favicon_url)
+            process_html_with_readability(
+                url,
+                &html,
+                "text/html".to_string(),
+                max_chars,
+                favicon_url,
+            )
         }
         Ok(Err(e)) => FetchedWebResource::error(
             url,
@@ -360,7 +368,7 @@ pub async fn fetch_urls_with_config(
         return (rx, tokio::spawn(async {}));
     }
 
-    println!(
+    tracing::info!(
         "🌐 [fetcher] Processing {} URLs in parallel with config (streaming)",
         urls.len()
     );
@@ -374,11 +382,12 @@ pub async fn fetch_urls_with_config(
                 let url = url.clone();
                 let cfg = config.clone();
                 async move {
-                    println!("🔗 [fetcher] Fetching with config: {}", url);
+                    tracing::info!("🔗 [fetcher] Fetching with config: {}", url);
                     let result = fetch_web_resource_with_config(&url, max_chars, &cfg).await;
-                    println!(
+                    tracing::info!(
                         "✅ [fetcher] Completed: {} (error: {:?})",
-                        url, result.extraction_error
+                        url,
+                        result.extraction_error
                     );
                     result
                 }
@@ -391,7 +400,7 @@ pub async fn fetch_urls_with_config(
             }
         }
 
-        println!("📦 [fetcher] All URLs processed with config (streaming)");
+        tracing::info!("📦 [fetcher] All URLs processed with config (streaming)");
     });
 
     (rx, handle)
@@ -414,7 +423,7 @@ pub async fn fetch_urls_with_channel(
         return (rx, tokio::spawn(async {}));
     }
 
-    println!(
+    tracing::info!(
         "🌐 [fetcher] Processing {} URLs in parallel (streaming)",
         urls.len()
     );
@@ -427,11 +436,12 @@ pub async fn fetch_urls_with_channel(
             .map(|url| {
                 let url = url.clone();
                 async move {
-                    println!("🔗 [fetcher] Fetching: {}", url);
+                    tracing::info!("🔗 [fetcher] Fetching: {}", url);
                     let result = fetch_web_resource(&url, max_chars).await;
-                    println!(
+                    tracing::info!(
                         "✅ [fetcher] Completed: {} (error: {:?})",
-                        url, result.extraction_error
+                        url,
+                        result.extraction_error
                     );
                     result
                 }
@@ -444,7 +454,7 @@ pub async fn fetch_urls_with_channel(
             }
         }
 
-        println!("📦 [fetcher] All URLs processed (streaming)");
+        tracing::info!("📦 [fetcher] All URLs processed (streaming)");
     });
 
     (rx, handle)
@@ -482,4 +492,3 @@ pub fn build_llm_content_with_attachments(
 
     content
 }
-

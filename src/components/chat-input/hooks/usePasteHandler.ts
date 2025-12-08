@@ -1,12 +1,7 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
-import {
-  type Attachment,
-  getMimeType,
-  getImageMimeType,
-  getFileType,
-  URL_REGEX,
-} from '../types'
+import { logger } from '@/lib/logger'
+import { type Attachment, getMimeType, getImageMimeType, getFileType, URL_REGEX } from '../types'
 
 export interface UsePasteHandlerReturn {
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<void>
@@ -75,7 +70,7 @@ export function usePasteHandler(
             }
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
-            console.error('Failed to read pasted file:', file.name, error)
+            logger.error('Failed to read pasted file:', file.name, error)
             toast.error(`Failed to read: ${file.name}`)
           }
         }
@@ -110,7 +105,7 @@ export function usePasteHandler(
             }
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
-            console.error('Failed to read pasted image:', file.name, error)
+            logger.error('Failed to read pasted image:', file.name, error)
             toast.error(`Failed to read image: ${file.name || 'clipboard image'}`)
           }
         }
@@ -148,4 +143,3 @@ export function usePasteHandler(
 
   return { handlePaste }
 }
-

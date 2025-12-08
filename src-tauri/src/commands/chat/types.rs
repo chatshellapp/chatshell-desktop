@@ -17,4 +17,3 @@ pub struct ImageAttachmentInput {
     #[serde(rename = "mimeType")]
     pub mime_type: String,
 }
-

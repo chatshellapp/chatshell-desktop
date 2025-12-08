@@ -1,37 +1,35 @@
 import { useCallback, type RefObject } from 'react'
+import { logger } from '@/lib/logger'
 
 interface UseMessageHandlersOptions {
   messagesEndRef: RefObject<HTMLDivElement | null>
   setIsAtBottom: (value: boolean) => void
 }
 
-export function useMessageHandlers({
-  messagesEndRef,
-  setIsAtBottom,
-}: UseMessageHandlersOptions) {
+export function useMessageHandlers({ messagesEndRef, setIsAtBottom }: UseMessageHandlersOptions) {
   // Handler functions (placeholders for future implementation)
   const handleCopy = useCallback(() => {
-    console.log('Message copied')
+    logger.info('Message copied')
   }, [])
 
   const handleResend = useCallback(() => {
-    console.log('Resend message')
+    logger.info('Resend message')
   }, [])
 
   const handleTranslate = useCallback(() => {
-    console.log('Translate message')
+    logger.info('Translate message')
   }, [])
 
   const handleExportAll = useCallback(() => {
-    console.log('Export all messages')
+    logger.info('Export all messages')
   }, [])
 
   const handleExportConversation = useCallback(() => {
-    console.log('Export current conversation')
+    logger.info('Export current conversation')
   }, [])
 
   const handleExportMessage = useCallback(() => {
-    console.log('Export current message')
+    logger.info('Export current message')
   }, [])
 
   const handleScrollToBottom = useCallback(() => {
@@ -49,4 +47,3 @@ export function useMessageHandlers({
     handleScrollToBottom,
   }
 }
-

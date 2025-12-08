@@ -13,7 +13,7 @@ pub async fn create_providers_table(pool: &SqlitePool) -> Result<()> {
             is_enabled INTEGER DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
+        )",
     )
     .execute(pool)
     .await?;
@@ -34,11 +34,10 @@ pub async fn create_models_table(pool: &SqlitePool) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
-        )"
+        )",
     )
     .execute(pool)
     .await?;
 
     Ok(())
 }
-

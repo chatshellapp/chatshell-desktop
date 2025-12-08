@@ -43,4 +43,3 @@ export function isMarkdownFile(fileName: string, mimeType?: string): boolean {
     mimeType === 'text/x-markdown'
   )
 }
-

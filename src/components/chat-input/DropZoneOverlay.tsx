@@ -17,4 +17,3 @@ export function DropZoneOverlay({ isVisible }: DropZoneOverlayProps) {
     </div>
   )
 }
-

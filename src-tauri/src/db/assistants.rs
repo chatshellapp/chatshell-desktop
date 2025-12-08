@@ -63,7 +63,7 @@ impl Database {
              temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
              group_name, is_starred, created_at, updated_at
-             FROM assistants WHERE id = ?"
+             FROM assistants WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -72,8 +72,8 @@ impl Database {
         match row {
             Some(row) => {
                 let additional_params_str: Option<String> = row.get("additional_params");
-                let additional_params = additional_params_str
-                    .and_then(|s| serde_json::from_str(&s).ok());
+                let additional_params =
+                    additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
 
                 let is_starred: i32 = row.get("is_starred");
 
@@ -114,7 +114,7 @@ impl Database {
              temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
              avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
              group_name, is_starred, created_at, updated_at
-             FROM assistants ORDER BY created_at DESC"
+             FROM assistants ORDER BY created_at DESC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -123,8 +123,8 @@ impl Database {
             .iter()
             .map(|row| {
                 let additional_params_str: Option<String> = row.get("additional_params");
-                let additional_params = additional_params_str
-                    .and_then(|s| serde_json::from_str(&s).ok());
+                let additional_params =
+                    additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
 
                 let is_starred: i32 = row.get("is_starred");
 
@@ -160,7 +160,11 @@ impl Database {
         Ok(assistants)
     }
 
-    pub async fn update_assistant(&self, id: &str, req: CreateAssistantRequest) -> Result<Assistant> {
+    pub async fn update_assistant(
+        &self,
+        id: &str,
+        req: CreateAssistantRequest,
+    ) -> Result<Assistant> {
         let now = Utc::now().to_rfc3339();
         let is_starred = req.is_starred.unwrap_or(false);
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
@@ -178,7 +182,7 @@ impl Database {
              frequency_penalty = ?, presence_penalty = ?, additional_params = ?,
              avatar_type = ?, avatar_bg = ?, avatar_text = ?, 
              avatar_image_path = ?, avatar_image_url = ?, group_name = ?, 
-             is_starred = ?, updated_at = ? WHERE id = ?"
+             is_starred = ?, updated_at = ? WHERE id = ?",
         )
         .bind(&req.name)
         .bind(&req.role)
@@ -217,4 +221,3 @@ impl Database {
         Ok(())
     }
 }
-

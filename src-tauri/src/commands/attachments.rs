@@ -1,5 +1,5 @@
-use crate::models::{FileAttachment, UserAttachment};
 use super::AppState;
+use crate::models::{FileAttachment, UserAttachment};
 use tauri::State;
 
 // ==========================================================================
@@ -23,6 +23,9 @@ pub async fn get_file_attachment(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FileAttachment, String> {
-    state.db.get_file_attachment(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_file_attachment(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
-

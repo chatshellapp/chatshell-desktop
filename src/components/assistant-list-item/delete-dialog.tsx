@@ -28,8 +28,8 @@ export function DeleteAssistantDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Assistant</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete {assistantName ? `"${assistantName}"` : 'this assistant'}?
-            This action cannot be undone.
+            Are you sure you want to delete{' '}
+            {assistantName ? `"${assistantName}"` : 'this assistant'}? This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -48,4 +48,3 @@ export function DeleteAssistantDialog({
     </AlertDialog>
   )
 }
-

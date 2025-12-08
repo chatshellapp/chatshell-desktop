@@ -18,14 +18,12 @@ impl Database {
     pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
 
-        sqlx::query(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)"
-        )
-        .bind(key)
-        .bind(value)
-        .bind(&now)
-        .execute(self.pool.as_ref())
-        .await?;
+        sqlx::query("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)")
+            .bind(key)
+            .bind(value)
+            .bind(&now)
+            .execute(self.pool.as_ref())
+            .await?;
 
         Ok(())
     }
@@ -47,4 +45,3 @@ impl Database {
         Ok(settings)
     }
 }
-

@@ -17,12 +17,7 @@ interface RenameDialogProps {
   onRename: (newTitle: string) => void
 }
 
-export function RenameDialog({
-  open,
-  onOpenChange,
-  currentTitle,
-  onRename,
-}: RenameDialogProps) {
+export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: RenameDialogProps) {
   const [value, setValue] = React.useState(currentTitle)
 
   // Sync value when dialog opens
@@ -68,4 +63,3 @@ export function RenameDialog({
     </Dialog>
   )
 }
-

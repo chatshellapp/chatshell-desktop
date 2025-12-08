@@ -21,4 +21,3 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .await
         .map_err(|e| e.to_string())
 }
-

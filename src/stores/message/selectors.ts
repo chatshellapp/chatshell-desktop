@@ -17,4 +17,3 @@ export const createSelectors = (set: ImmerSet, get: StoreGet): MessageStoreSelec
     return convState
   },
 })
-

@@ -11,4 +11,3 @@ pub struct MessageResources {
     pub contexts: Vec<ContextEnrichment>,
     pub steps: Vec<ProcessStep>,
 }
-

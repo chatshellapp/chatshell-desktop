@@ -60,12 +60,10 @@ pub async fn init_encryption_key(db: &Database) -> Result<()> {
 /// Get or create the encryption key from the database
 async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
     // Try to read existing key from settings
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM settings WHERE key = ?"
-    )
-    .bind(ENCRYPTION_KEY_SETTING)
-    .fetch_optional(db.pool())
-    .await?;
+    let existing: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = ?")
+        .bind(ENCRYPTION_KEY_SETTING)
+        .fetch_optional(db.pool())
+        .await?;
 
     if let Some(key_b64) = existing {
         // Decode existing key
@@ -79,7 +77,7 @@ async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
 
         let mut key = [0u8; 32];
         key.copy_from_slice(&key_bytes);
-        println!("🔐 [crypto] Loaded encryption key from database");
+        tracing::info!("🔐 [crypto] Loaded encryption key from database");
         Ok(key)
     } else {
         // Generate new key
@@ -89,16 +87,14 @@ async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
         let key_b64 = general_purpose::STANDARD.encode(&key);
         let now = chrono::Utc::now().to_rfc3339();
 
-        sqlx::query(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)"
-        )
-        .bind(ENCRYPTION_KEY_SETTING)
-        .bind(&key_b64)
-        .bind(&now)
-        .execute(db.pool())
-        .await?;
+        sqlx::query("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)")
+            .bind(ENCRYPTION_KEY_SETTING)
+            .bind(&key_b64)
+            .bind(&now)
+            .execute(db.pool())
+            .await?;
 
-        println!("🔐 [crypto] Generated and stored new encryption key in database");
+        tracing::info!("🔐 [crypto] Generated and stored new encryption key in database");
         Ok(key)
     }
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
+import { logger } from '@/lib/logger'
 import type {
   Setting,
   ModelInfo,
@@ -9,6 +10,7 @@ import type {
   WebFetchMode,
   WebFetchLocalMethod,
   WebFetchApiProvider,
+  LogLevel,
 } from '@/types'
 
 interface SettingsStore {
@@ -35,6 +37,12 @@ interface SettingsStore {
   setWebFetchApiProvider: (provider: WebFetchApiProvider) => Promise<void>
   getJinaApiKey: () => Promise<string | null>
   setJinaApiKey: (key: string) => Promise<void>
+
+  // Logging settings
+  getLogLevelRust: () => Promise<LogLevel>
+  setLogLevelRust: (level: LogLevel) => Promise<void>
+  getLogLevelTypeScript: () => Promise<LogLevel>
+  setLogLevelTypeScript: (level: LogLevel) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -65,7 +73,7 @@ export const useSettingsStore = create<SettingsStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to load settings:', error)
+        logger.error('Failed to load settings:', error)
       }
     },
 
@@ -74,7 +82,7 @@ export const useSettingsStore = create<SettingsStore>()(
         const value = await invoke<string | null>('get_setting', { key })
         return value
       } catch (error) {
-        console.error('Failed to get setting:', error)
+        logger.error('Failed to get setting:', error)
         return null
       }
     },
@@ -131,7 +139,7 @@ export const useSettingsStore = create<SettingsStore>()(
           draft.error = String(error)
           draft.isLoading = false
         })
-        console.error('Failed to fetch models:', error)
+        logger.error('Failed to fetch models:', error)
         throw error
       }
     },
@@ -143,7 +151,7 @@ export const useSettingsStore = create<SettingsStore>()(
           draft.searchProviders = providers
         })
       } catch (error) {
-        console.error('Failed to load search providers:', error)
+        logger.error('Failed to load search providers:', error)
       }
     },
 
@@ -190,6 +198,28 @@ export const useSettingsStore = create<SettingsStore>()(
 
     setJinaApiKey: async (key: string) => {
       await get().saveSetting('jina_api_key', key)
+    },
+
+    // Logging settings
+    getLogLevelRust: async () => {
+      const value = await get().getSetting('log_level_rust')
+      return (value as LogLevel) || 'info'
+    },
+
+    setLogLevelRust: async (level: LogLevel) => {
+      await invoke('set_log_level', { level })
+    },
+
+    getLogLevelTypeScript: async () => {
+      const value = await get().getSetting('log_level_typescript')
+      return (value as LogLevel) || 'info'
+    },
+
+    setLogLevelTypeScript: async (level: LogLevel) => {
+      await get().saveSetting('log_level_typescript', level)
+      // Also update the logger
+      const { logger } = await import('@/lib/logger')
+      await logger.setLevel(level)
     },
   }))
 )

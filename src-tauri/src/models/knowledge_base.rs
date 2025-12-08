@@ -21,4 +21,3 @@ pub struct CreateKnowledgeBaseRequest {
     pub url: Option<String>,
     pub metadata: Option<String>,
 }
-

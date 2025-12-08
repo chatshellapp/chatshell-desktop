@@ -18,7 +18,7 @@ pub fn create_http_client() -> reqwest::Client {
     let mut headers = HeaderMap::new();
     headers.insert("HTTP-Referer", HeaderValue::from_static(APP_REFERER));
     headers.insert("X-Title", HeaderValue::from_static(APP_TITLE));
-    
+
     reqwest::Client::builder()
         .default_headers(headers)
         .build()

@@ -1,13 +1,13 @@
 use chrono::Utc;
 
 use super::extractors::extract_favicon_url;
-use super::types::{FetchedWebResource, WebFetchMetadata, HTTP_CLIENT};
+use super::types::{FetchedWebResource, HTTP_CLIENT, WebFetchMetadata};
 
 const JINA_READER_BASE_URL: &str = "https://r.jina.ai/";
 
 /// Fetch webpage content using Jina Reader API
 pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebResource {
-    println!("📡 [jina] Fetching via Jina Reader: {}", url);
+    tracing::info!("📡 [jina] Fetching via Jina Reader: {}", url);
 
     let jina_url = format!("{}{}", JINA_READER_BASE_URL, url);
 
@@ -23,7 +23,7 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
     match request.send().await {
         Ok(response) => {
             if !response.status().is_success() {
-                println!(
+                tracing::info!(
                     "❌ [jina] Jina Reader returned status: {}",
                     response.status()
                 );
@@ -37,7 +37,7 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
 
             match response.text().await {
                 Ok(content) => {
-                    println!(
+                    tracing::info!(
                         "✅ [jina] Successfully fetched {} bytes from Jina",
                         content.len()
                     );
@@ -64,7 +64,7 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
                     }
                 }
                 Err(e) => {
-                    println!("❌ [jina] Failed to read Jina response: {}", e);
+                    tracing::info!("❌ [jina] Failed to read Jina response: {}", e);
                     FetchedWebResource::error(
                         url,
                         String::new(),
@@ -75,7 +75,7 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
             }
         }
         Err(e) => {
-            println!("❌ [jina] Jina Reader request failed: {}", e);
+            tracing::info!("❌ [jina] Jina Reader request failed: {}", e);
             FetchedWebResource::error(
                 url,
                 String::new(),
@@ -125,4 +125,3 @@ mod tests {
         assert_eq!(extract_title_from_markdown(content), None);
     }
 }
-

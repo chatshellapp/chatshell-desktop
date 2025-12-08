@@ -17,4 +17,3 @@ export interface SearchDecisionStartedEvent {
   message_id: string
   conversation_id: string
 }
-

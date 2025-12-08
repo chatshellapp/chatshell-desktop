@@ -59,4 +59,3 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
     </>
   )
 }
-

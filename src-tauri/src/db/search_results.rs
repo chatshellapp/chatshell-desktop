@@ -55,7 +55,10 @@ impl Database {
         })
     }
 
-    pub async fn get_search_results_by_message(&self, message_id: &str) -> Result<Vec<SearchResult>> {
+    pub async fn get_search_results_by_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Vec<SearchResult>> {
         let rows = sqlx::query(
             "SELECT id, message_id, query, engine, total_results, display_order, searched_at, created_at
              FROM search_results WHERE message_id = ? ORDER BY display_order, created_at",
@@ -64,16 +67,19 @@ impl Database {
         .fetch_all(self.pool.as_ref())
         .await?;
 
-        Ok(rows.iter().map(|row| SearchResult {
-            id: row.get("id"),
-            message_id: row.get("message_id"),
-            query: row.get("query"),
-            engine: row.get("engine"),
-            total_results: row.get("total_results"),
-            display_order: row.get("display_order"),
-            searched_at: row.get("searched_at"),
-            created_at: row.get("created_at"),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|row| SearchResult {
+                id: row.get("id"),
+                message_id: row.get("message_id"),
+                query: row.get("query"),
+                engine: row.get("engine"),
+                total_results: row.get("total_results"),
+                display_order: row.get("display_order"),
+                searched_at: row.get("searched_at"),
+                created_at: row.get("created_at"),
+            })
+            .collect())
     }
 
     pub async fn update_search_result_total(
@@ -98,4 +104,3 @@ impl Database {
         Ok(())
     }
 }
-

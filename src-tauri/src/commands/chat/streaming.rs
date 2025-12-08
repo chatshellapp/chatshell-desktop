@@ -2,8 +2,8 @@
 
 use super::super::AppState;
 use crate::llm::agent_builder::{
-    build_assistant_message, build_user_message, create_provider_agent, stream_chat_with_agent,
-    AgentConfig,
+    AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
+    stream_chat_with_agent,
 };
 use crate::llm::{ChatMessage, StreamChunkType};
 use crate::models::{CreateMessageRequest, CreateThinkingStepRequest, ModelParameters};
@@ -33,7 +33,7 @@ pub(crate) async fn handle_agent_streaming(
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
 ) {
-    println!(
+    tracing::info!(
         "✅ [agent_streaming] Using {} provider with agent API",
         provider_type
     );
@@ -54,7 +54,7 @@ pub(crate) async fn handle_agent_streaming(
     ) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("❌ [agent_streaming] Failed to create agent: {}", e);
+            tracing::error!("❌ [agent_streaming] Failed to create agent: {}", e);
             let mut tasks = state_clone.generation_tasks.write().await;
             tasks.remove(&conversation_id_clone);
             return;
@@ -113,7 +113,7 @@ pub(crate) async fn handle_agent_streaming(
         move |chunk: String, chunk_type: StreamChunkType| -> bool {
             // Check if cancelled
             if cancel_token_for_callback.is_cancelled() {
-                println!("🛑 [agent_streaming] Generation cancelled, stopping stream");
+                tracing::info!("🛑 [agent_streaming] Generation cancelled, stopping stream");
                 return false;
             }
 
@@ -166,14 +166,14 @@ pub(crate) async fn handle_agent_streaming(
         Err(e) => {
             // Check if this was a cancellation
             if cancel_token.is_cancelled() {
-                println!("🛑 [agent_streaming] Generation was cancelled");
+                tracing::info!("🛑 [agent_streaming] Generation was cancelled");
 
                 // Get accumulated content
                 let accumulated = accumulated_content.read().await.clone();
                 let accumulated_reasoning_content = accumulated_reasoning.read().await.clone();
 
                 if !accumulated.trim().is_empty() {
-                    println!(
+                    tracing::info!(
                         "📝 [agent_streaming] Saving partial response ({} chars)",
                         accumulated.len()
                     );
@@ -200,7 +200,10 @@ pub(crate) async fn handle_agent_streaming(
                         .await
                     {
                         Ok(msg) => {
-                            println!("✅ [agent_streaming] Partial message saved: {}", msg.id);
+                            tracing::info!(
+                                "✅ [agent_streaming] Partial message saved: {}",
+                                msg.id
+                            );
 
                             // Save thinking content if any
                             if !accumulated_reasoning_content.is_empty() {
@@ -212,7 +215,7 @@ pub(crate) async fn handle_agent_streaming(
                                         source: Some("llm".to_string()),
                                         display_order: Some(0),
                                     })
-                                        .await;
+                                    .await;
                             }
 
                             let completion_payload = serde_json::json!({
@@ -223,13 +226,13 @@ pub(crate) async fn handle_agent_streaming(
                             let _ = app.emit("chat-complete", completion_payload);
                         }
                         Err(e) => {
-                            eprintln!("Failed to save partial message: {}", e);
+                            tracing::error!("Failed to save partial message: {}", e);
                         }
                     }
                 }
             } else {
-                eprintln!("❌ [agent_streaming] Stream error: {}", e);
-                
+                tracing::error!("❌ [agent_streaming] Stream error: {}", e);
+
                 // Emit error event to frontend so it can reset UI state
                 let error_payload = serde_json::json!({
                     "conversation_id": conversation_id_clone,
@@ -246,7 +249,7 @@ pub(crate) async fn handle_agent_streaming(
 
     // Get the final content
     let final_content = response.content.clone();
-    println!(
+    tracing::info!(
         "✅ [agent_streaming] Response complete: {} chars",
         final_content.len()
     );
@@ -254,7 +257,7 @@ pub(crate) async fn handle_agent_streaming(
     // Don't save empty responses - they cause API errors on subsequent requests
     // ("all messages must have non-empty content")
     if final_content.trim().is_empty() {
-        println!("⚠️ [agent_streaming] Skipping save of empty response");
+        tracing::info!("⚠️ [agent_streaming] Skipping save of empty response");
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
         return;
@@ -283,7 +286,7 @@ pub(crate) async fn handle_agent_streaming(
     {
         Ok(msg) => msg,
         Err(e) => {
-            eprintln!("Failed to save assistant message: {}", e);
+            tracing::error!("Failed to save assistant message: {}", e);
             let mut tasks = state_clone.generation_tasks.write().await;
             tasks.remove(&conversation_id_clone);
             return;
@@ -307,13 +310,13 @@ pub(crate) async fn handle_agent_streaming(
                     // ThinkingStep is now directly linked via message_id FK
                 }
                 Err(e) => {
-                    eprintln!("Failed to save thinking step: {}", e);
+                    tracing::error!("Failed to save thinking step: {}", e);
                 }
             }
         }
     }
 
-    println!(
+    tracing::info!(
         "✅ [agent_streaming] Assistant message saved with id: {}",
         assistant_message.id
     );
@@ -357,4 +360,3 @@ pub(crate) async fn handle_agent_streaming(
         .await;
     });
 }
-

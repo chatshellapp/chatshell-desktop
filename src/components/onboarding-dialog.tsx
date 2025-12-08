@@ -1,12 +1,15 @@
 import { useEffect, useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, AlertCircle, Sparkles, Bot, ArrowRight, BotIcon } from 'lucide-react'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  Bot,
+  ArrowRight,
+  BotIcon,
+} from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useModelStore } from '@/stores/modelStore'
@@ -16,16 +19,11 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { ProviderSettingsDialog } from '@/components/provider-settings-dialog'
 import { generateRandomAvatarData } from '@/lib/assistant-utils'
 import type { CreateAssistantRequest } from '@/types'
+import { logger } from '@/lib/logger'
 
 export function OnboardingDialog() {
-  const {
-    step,
-    isDialogOpen,
-    ollamaModels,
-    checkOllama,
-    setStep,
-    setDialogOpen,
-  } = useOnboardingStore()
+  const { step, isDialogOpen, ollamaModels, checkOllama, setStep, setDialogOpen } =
+    useOnboardingStore()
 
   const { models, providers, loadAll: loadModelsAndProviders } = useModelStore()
   const { assistants, createAssistant } = useAssistantStore()
@@ -164,7 +162,7 @@ export function OnboardingDialog() {
       setStep('complete')
       setDialogOpen(false)
     } catch (err) {
-      console.error('Failed to create assistants:', err)
+      logger.error('Failed to create assistants:', err)
       toast.error('Failed to create assistants', {
         description: String(err),
       })
@@ -193,8 +191,8 @@ export function OnboardingDialog() {
             <div className="text-center space-y-2">
               <h3 className="text-xl font-semibold">Ollama is ready</h3>
               <p className="text-muted-foreground max-w-md">
-              Found {ollamaModels.length} local model{ollamaModels.length !== 1 ? 's' : ''}. 
-              Your AI runs on your machine - fast and private.
+                Found {ollamaModels.length} local model{ollamaModels.length !== 1 ? 's' : ''}. Your
+                AI runs on your machine - fast and private.
               </p>
             </div>
             <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -290,4 +288,3 @@ export function OnboardingDialog() {
     </>
   )
 }
-

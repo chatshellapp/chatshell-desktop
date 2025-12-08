@@ -53,7 +53,7 @@ pub fn extract_favicon_url(url: &str, html_content: Option<&str>) -> Option<Stri
     if let Some(html) = html_content {
         let document = Html::parse_document(html);
         if let Some(favicon) = extract_favicon_from_html(&document, &parsed_url) {
-            println!("✅ [favicon] Found icon in HTML for {}: {}", url, favicon);
+            tracing::info!("✅ [favicon] Found icon in HTML for {}: {}", url, favicon);
             return Some(favicon);
         }
     }
@@ -253,4 +253,3 @@ mod tests {
         assert!(result.contains(r#"<img src="https://b.com/2.jpg" alt="second">"#));
     }
 }
-

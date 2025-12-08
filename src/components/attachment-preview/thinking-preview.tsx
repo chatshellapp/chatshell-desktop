@@ -56,4 +56,3 @@ export function ThinkingPreview({
     </div>
   )
 }
-

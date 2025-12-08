@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { Prompt, CreatePromptRequest } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface PromptState {
   prompts: Prompt[]
@@ -30,13 +31,13 @@ export const usePromptStore = create<PromptState>()(
       })
       try {
         const prompts = await invoke<Prompt[]>('list_prompts')
-        console.log('[promptStore] Loaded prompts:', prompts.length)
+        logger.info('[promptStore] Loaded prompts:', prompts.length)
         set((draft) => {
           draft.prompts = prompts
           draft.isLoading = false
         })
       } catch (error) {
-        console.error('[promptStore] Failed to load prompts:', error)
+        logger.error('[promptStore] Failed to load prompts:', error)
         set((draft) => {
           draft.error = String(error)
           draft.isLoading = false
@@ -59,13 +60,13 @@ export const usePromptStore = create<PromptState>()(
       })
       try {
         const prompts = await invoke<Prompt[]>('list_prompts_by_category', { category })
-        console.log('[promptStore] Loaded prompts for category:', category, prompts.length)
+        logger.info('[promptStore] Loaded prompts for category:', category, prompts.length)
         set((draft) => {
           draft.prompts = prompts
           draft.isLoading = false
         })
       } catch (error) {
-        console.error('[promptStore] Failed to load prompts by category:', error)
+        logger.error('[promptStore] Failed to load prompts by category:', error)
         set((draft) => {
           draft.error = String(error)
           draft.isLoading = false

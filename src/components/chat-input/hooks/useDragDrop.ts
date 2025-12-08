@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
+import { logger } from '@/lib/logger'
 
 export interface DragHandlers {
   onDragEnter: (e: React.DragEvent) => void
@@ -98,7 +99,7 @@ export function useDragDrop(
           }
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
-          console.error('Failed to read file:', file.name, error)
+          logger.error('Failed to read file:', file.name, error)
           toast.error(`Failed to read: ${file.name}`)
         }
       }
@@ -108,10 +109,7 @@ export function useDragDrop(
         try {
           const arrayBuffer = await file.arrayBuffer()
           const base64 = btoa(
-            new Uint8Array(arrayBuffer).reduce(
-              (data, byte) => data + String.fromCharCode(byte),
-              ''
-            )
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
           )
           const mimeType = getImageMimeType(file.name)
 
@@ -125,7 +123,7 @@ export function useDragDrop(
           }
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
-          console.error('Failed to read image:', file.name, error)
+          logger.error('Failed to read image:', file.name, error)
           toast.error(`Failed to read image: ${file.name}`)
         }
       }
@@ -143,4 +141,3 @@ export function useDragDrop(
     },
   }
 }
-

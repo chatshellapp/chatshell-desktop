@@ -1,5 +1,5 @@
-use crate::models::{ContextEnrichment, FetchResult, SearchResult};
 use super::AppState;
+use crate::models::{ContextEnrichment, FetchResult, SearchResult};
 use tauri::State;
 
 // ==========================================================================
@@ -23,7 +23,11 @@ pub async fn get_search_result(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<SearchResult, String> {
-    state.db.get_search_result(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_search_result(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -31,7 +35,11 @@ pub async fn get_fetch_result(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FetchResult, String> {
-    state.db.get_fetch_result(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_fetch_result(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -58,4 +66,3 @@ pub async fn get_fetch_results_by_message(
         .await
         .map_err(|e| e.to_string())
 }
-

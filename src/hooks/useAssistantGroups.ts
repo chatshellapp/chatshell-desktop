@@ -24,7 +24,11 @@ export function useAssistantGroups(): AssistantGroup[] {
             id: a.id,
             name: a.name,
             modelName: assistantModel?.name,
-            persona: a.role || a.description || (a.system_prompt?.substring(0, 50) + '...') || 'Custom Assistant',
+            persona:
+              a.role ||
+              a.description ||
+              a.system_prompt?.substring(0, 50) + '...' ||
+              'Custom Assistant',
             avatarBg: a.avatar_bg || '#3b82f6',
             avatarText: a.avatar_text || a.name.charAt(0),
             capabilities: {

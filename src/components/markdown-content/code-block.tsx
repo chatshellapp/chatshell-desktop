@@ -52,4 +52,3 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
     </div>
   )
 }
-

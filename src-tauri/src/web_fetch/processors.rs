@@ -42,7 +42,7 @@ pub fn process_html_with_readability(
 
     let (title, content_html) = match extract(&mut cursor, &parsed_url) {
         Ok(product) => {
-            println!(
+            tracing::info!(
                 "📖 [readability] Extracted article: {} ({} chars)",
                 product.title,
                 product.content.len()
@@ -50,7 +50,7 @@ pub fn process_html_with_readability(
             (Some(product.title), product.content)
         }
         Err(e) => {
-            println!("⚠️ [readability] Extraction failed: {}, using fallback", e);
+            tracing::warn!("⚠️ [readability] Extraction failed: {}, using fallback", e);
             // Fallback: use the entire body
             let title = Selector::parse("title")
                 .ok()
@@ -214,4 +214,3 @@ pub fn process_xml_content(
         },
     }
 }
-

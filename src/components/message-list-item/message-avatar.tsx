@@ -31,9 +31,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
     if (isPlaceholder) {
       return (
         <Avatar className={cn('size-4 ring-1 ring-background bg-muted', offsetClass)}>
-          <AvatarFallback className="text-[10px] bg-muted opacity-0">
-            {displayText}
-          </AvatarFallback>
+          <AvatarFallback className="text-[10px] bg-muted opacity-0">{displayText}</AvatarFallback>
         </Avatar>
       )
     }
@@ -67,9 +65,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
   return (
     <Avatar className={cn('size-4 ring-1 ring-background', offsetClass)}>
       <AvatarImage src={avatar.imageUrl} alt={`Avatar ${index + 1}`} />
-      <AvatarFallback className="text-[10px]">
-        {avatar.fallback || fallbackChar}
-      </AvatarFallback>
+      <AvatarFallback className="text-[10px]">{avatar.fallback || fallbackChar}</AvatarFallback>
     </Avatar>
   )
 }
@@ -93,12 +89,9 @@ export function MessageAvatarGroup({ avatars, summary, maxVisible = 3 }: AvatarG
       ))}
       {avatars.length > maxVisible && (
         <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
-          <AvatarFallback className="text-[10px]">
-            +{avatars.length - maxVisible}
-          </AvatarFallback>
+          <AvatarFallback className="text-[10px]">+{avatars.length - maxVisible}</AvatarFallback>
         </Avatar>
       )}
     </div>
   )
 }
-

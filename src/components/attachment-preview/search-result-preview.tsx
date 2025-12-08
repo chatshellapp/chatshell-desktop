@@ -10,6 +10,7 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import type { SearchResult, FetchResult, SearchDecision } from '@/types'
 import { SearchResultFetchItem, ProcessingUrlItem } from './fetch-result-preview'
+import { logger } from '@/lib/logger'
 
 // Map search engine IDs to display names
 const SEARCH_ENGINE_NAMES: Record<string, string> = {
@@ -84,7 +85,7 @@ export function SearchResultPreview({
           setTimeout(() => setRetryCount((c) => c + 1), 1000)
         }
       } catch (err) {
-        console.error('Failed to load fetch results:', err)
+        logger.error('Failed to load fetch results:', err)
         setFetchResults([])
       } finally {
         setLoading(false)
@@ -92,14 +93,7 @@ export function SearchResultPreview({
     }
 
     loadResults()
-  }, [
-    messageId,
-    searchResult.total_results,
-    retryCount,
-    isProcessing,
-    isSearching,
-    fetchedCount,
-  ])
+  }, [messageId, searchResult.total_results, retryCount, isProcessing, isSearching, fetchedCount])
 
   const urlCount = urlStatuses ? Object.keys(urlStatuses).length : 0
   const resultCount = urlCount || fetchResults.length || searchResult.total_results || 0
@@ -215,18 +209,14 @@ export function SearchDecisionPreview({ decision }: { decision: SearchDecision }
         <div className="border-t border-muted px-3 py-3 space-y-3">
           {/* Reasoning */}
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">
-              Reasoning
-            </p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Reasoning</p>
             <p className="text-sm text-foreground/80 leading-relaxed">{decision.reasoning}</p>
           </div>
 
           {/* Search query if search was needed */}
           {decision.search_needed && decision.search_query && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                Search Query
-              </p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Search Query</p>
               <p className="text-sm text-foreground/80 leading-relaxed">{decision.search_query}</p>
             </div>
           )}
@@ -249,4 +239,3 @@ export function PendingSearchDecisionPreview() {
     </div>
   )
 }
-

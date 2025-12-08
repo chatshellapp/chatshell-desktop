@@ -17,4 +17,3 @@ export interface CreatePromptRequest {
   category?: string
   is_system?: boolean
 }
-

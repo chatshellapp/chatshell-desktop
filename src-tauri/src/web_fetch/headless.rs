@@ -8,7 +8,7 @@ use crate::web_fetch::extractors::extract_favicon_url;
 
 /// Create a new headless browser instance
 pub fn create_new_browser() -> Result<Browser> {
-    println!("🌐 [headless] Creating new browser instance...");
+    tracing::info!("🌐 [headless] Creating new browser instance...");
 
     let launch_options = LaunchOptions::default_builder()
         .headless(true)
@@ -20,14 +20,14 @@ pub fn create_new_browser() -> Result<Browser> {
     let browser = Browser::new(launch_options)
         .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
 
-    println!("✅ [headless] Browser instance created");
+    tracing::info!("✅ [headless] Browser instance created");
     Ok(browser)
 }
 
 /// Fetch webpage content using headless Chrome browser
 /// This is used as a fallback when direct HTTP fetch fails (e.g., 403 errors from bot protection)
 pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
-    println!("🔄 [headless] Fetching with headless browser: {}", url);
+    tracing::info!("🔄 [headless] Fetching with headless browser: {}", url);
 
     let browser = create_new_browser()?;
 
@@ -52,7 +52,7 @@ pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
     tab.evaluate(&*STEALTH_JS, false)
         .map_err(|e| anyhow::anyhow!("Failed to inject stealth JS: {}", e))?;
 
-    println!("🛡️ [headless] Stealth mode enabled, navigating to target...");
+    tracing::info!("🛡️ [headless] Stealth mode enabled, navigating to target...");
 
     // Navigate to the actual URL
     tab.navigate_to(url)
@@ -63,7 +63,7 @@ pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
         .map_err(|e| anyhow::anyhow!("Navigation timeout: {}", e))?;
 
     // Wait for Cloudflare challenge to complete (usually takes 5-10 seconds)
-    println!("⏳ [headless] Waiting for page to load (Cloudflare check)...");
+    tracing::info!("⏳ [headless] Waiting for page to load (Cloudflare check)...");
     std::thread::sleep(Duration::from_secs(8));
 
     // Check if we're still on the challenge page
@@ -81,7 +81,7 @@ pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
     ];
     let mut retries = 0;
     while retries < 3 && challenge_indicators.iter().any(|ind| html.contains(ind)) {
-        println!(
+        tracing::info!(
             "⏳ [headless] Still on challenge page, waiting more... (retry {})",
             retries + 1
         );
@@ -99,14 +99,17 @@ pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
         ));
     }
 
-    println!("✅ [headless] Successfully fetched {} bytes", html.len());
+    tracing::info!("✅ [headless] Successfully fetched {} bytes", html.len());
 
     Ok(html)
 }
 
 /// Async wrapper for headless browser fallback
 /// Runs the blocking headless browser operation in a separate thread
-pub async fn fetch_with_headless_fallback(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
+pub async fn fetch_with_headless_fallback(
+    url: &str,
+    max_chars: Option<usize>,
+) -> FetchedWebResource {
     let url_owned = url.to_string();
 
     // Run headless browser in blocking thread to avoid blocking async runtime
@@ -145,4 +148,3 @@ pub async fn fetch_with_headless_fallback(url: &str, max_chars: Option<usize>) -
         }
     }
 }
-

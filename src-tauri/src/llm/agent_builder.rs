@@ -4,19 +4,21 @@
 //! (preamble, temperature, max_tokens, etc.) regardless of the underlying provider.
 
 use anyhow::Result;
+use rig::OneOrMany;
 use rig::agent::Agent;
 use rig::client::{CompletionClient, Nothing};
 use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
 use rig::providers::{ollama, openai, openrouter};
-use rig::OneOrMany;
 use tokio_util::sync::CancellationToken;
 
-use crate::llm::agent_streaming;
-use crate::llm::common::{build_user_content, create_http_client, StreamChunkType};
-use crate::llm::tool_registry::ToolRegistry;
-use crate::llm::{ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider};
 use crate::llm::ChatResponse;
+use crate::llm::agent_streaming;
+use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
+use crate::llm::tool_registry::ToolRegistry;
+use crate::llm::{
+    ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider,
+};
 use crate::models::ModelParameters;
 
 /// Configuration for building an agent.
@@ -204,7 +206,7 @@ fn build_agent<M: CompletionModel>(
 
         // Log tool registration (actual registration depends on provider support)
         if !tools.is_empty() {
-            println!("🔧 Tool registry prepared with {} tool(s)", tools.len());
+            tracing::info!("🔧 Tool registry prepared with {} tool(s)", tools.len());
             // TODO: Apply tools when rig library supports it
             // builder = builder.tools(tools);
         }
@@ -256,13 +258,37 @@ pub async fn stream_chat_with_agent(
 ) -> Result<ChatResponse> {
     match agent {
         ProviderAgent::OpenAI(agent) => {
-            agent_streaming::stream_agent(agent, prompt, chat_history, cancel_token, callback, log_prefix).await
+            agent_streaming::stream_agent(
+                agent,
+                prompt,
+                chat_history,
+                cancel_token,
+                callback,
+                log_prefix,
+            )
+            .await
         }
         ProviderAgent::OpenRouter(agent) => {
-            agent_streaming::stream_agent(agent, prompt, chat_history, cancel_token, callback, log_prefix).await
+            agent_streaming::stream_agent(
+                agent,
+                prompt,
+                chat_history,
+                cancel_token,
+                callback,
+                log_prefix,
+            )
+            .await
         }
         ProviderAgent::Ollama(agent) => {
-            agent_streaming::stream_agent(agent, prompt, chat_history, cancel_token, callback, log_prefix).await
+            agent_streaming::stream_agent(
+                agent,
+                prompt,
+                chat_history,
+                cancel_token,
+                callback,
+                log_prefix,
+            )
+            .await
         }
     }
 }

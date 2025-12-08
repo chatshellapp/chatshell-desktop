@@ -1,5 +1,5 @@
-use crate::models::{CreateModelRequest, Model};
 use super::AppState;
+use crate::models::{CreateModelRequest, Model};
 use tauri::State;
 
 #[tauri::command]
@@ -31,7 +31,11 @@ pub async fn update_model(
     id: String,
     req: CreateModelRequest,
 ) -> Result<Model, String> {
-    state.db.update_model(&id, req).await.map_err(|e| e.to_string())
+    state
+        .db
+        .update_model(&id, req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -41,6 +45,9 @@ pub async fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), 
 
 #[tauri::command]
 pub async fn soft_delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.soft_delete_model(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .soft_delete_model(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
-

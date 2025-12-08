@@ -48,4 +48,3 @@ pub struct CreateUserRelationshipRequest {
     pub related_user_id: String,
     pub relationship_type: String,
 }
-

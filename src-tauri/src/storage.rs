@@ -46,9 +46,9 @@ pub fn init_storage_dirs(app_handle: &tauri::AppHandle) -> Result<()> {
     fs::create_dir_all(&fetch_dir)?;
     fs::create_dir_all(&files_dir)?;
 
-    println!("📁 [storage] Initialized attachment directories:");
-    println!("   - Fetch: {:?}", fetch_dir);
-    println!("   - Files: {:?}", files_dir);
+    tracing::info!("📁 [storage] Initialized attachment directories:");
+    tracing::info!("   - Fetch: {:?}", fetch_dir);
+    tracing::info!("   - Files: {:?}", files_dir);
 
     Ok(())
 }
@@ -107,7 +107,7 @@ pub fn write_content(
     }
 
     fs::write(&full_path, content)?;
-    println!(
+    tracing::info!(
         "💾 [storage] Wrote {} bytes to {:?}",
         content.len(),
         full_path
@@ -130,7 +130,7 @@ pub fn write_binary(
     }
 
     fs::write(&full_path, content)?;
-    println!(
+    tracing::info!(
         "💾 [storage] Wrote {} bytes (binary) to {:?}",
         content.len(),
         full_path
@@ -158,7 +158,7 @@ pub fn delete_file(app_handle: &tauri::AppHandle, storage_path: &str) -> Result<
     let full_path = get_full_path(app_handle, storage_path)?;
     if full_path.exists() {
         fs::remove_file(&full_path)?;
-        println!("🗑️ [storage] Deleted {:?}", full_path);
+        tracing::info!("🗑️ [storage] Deleted {:?}", full_path);
     }
     Ok(())
 }

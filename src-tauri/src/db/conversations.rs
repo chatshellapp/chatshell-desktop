@@ -11,13 +11,16 @@ use crate::models::{
 
 impl Database {
     // Conversation CRUD operations
-    pub async fn create_conversation(&self, req: CreateConversationRequest) -> Result<Conversation> {
+    pub async fn create_conversation(
+        &self,
+        req: CreateConversationRequest,
+    ) -> Result<Conversation> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
             "INSERT INTO conversations (id, title, created_at, updated_at)
-             VALUES (?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(&req.title)
@@ -44,7 +47,7 @@ impl Database {
                  ORDER BY m.created_at DESC 
                  LIMIT 1) as last_message
              FROM conversations c 
-             WHERE c.id = ?"
+             WHERE c.id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -75,7 +78,7 @@ impl Database {
                  ORDER BY m.created_at DESC 
                  LIMIT 1) as last_message
              FROM conversations c 
-             ORDER BY c.updated_at DESC"
+             ORDER BY c.updated_at DESC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -151,7 +154,7 @@ impl Database {
         let row = sqlx::query(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
-             FROM conversation_participants WHERE id = ?"
+             FROM conversation_participants WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -182,7 +185,7 @@ impl Database {
         let rows = sqlx::query(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
-             FROM conversation_participants WHERE conversation_id = ? ORDER BY joined_at"
+             FROM conversation_participants WHERE conversation_id = ? ORDER BY joined_at",
         )
         .bind(conversation_id)
         .fetch_all(self.pool.as_ref())
@@ -284,4 +287,3 @@ impl Database {
         Ok(())
     }
 }
-

@@ -14,9 +14,7 @@ pub(crate) struct SearchProcessingResult {
 /// Get the configured search provider from settings
 async fn get_search_provider(state: &AppState) -> SearchProvider {
     match state.db.get_setting("search_provider").await {
-        Ok(Some(provider_id)) => {
-            SearchProvider::from_id(&provider_id).unwrap_or_default()
-        }
+        Ok(Some(provider_id)) => SearchProvider::from_id(&provider_id).unwrap_or_default(),
         _ => SearchProvider::default(),
     }
 }
@@ -34,7 +32,7 @@ pub(crate) async fn process_search_decision(
     conversation_id: &str,
     fallback_urls: Vec<String>,
 ) -> SearchProcessingResult {
-    println!("🔍 [search] Web search enabled, checking if search is needed...");
+    tracing::info!("🔍 [search] Web search enabled, checking if search is needed...");
 
     // Emit event to show "deciding" state immediately
     let _ = app.emit(
@@ -46,21 +44,20 @@ pub(crate) async fn process_search_decision(
     );
 
     // Use AI to decide if search is truly needed
-    let decision = match crate::web_search::decide_search_needed(
-        content, provider, model, api_key, base_url,
-    )
-    .await
-    {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("⚠️ [search] Search decision failed, skipping search: {}", e);
-            crate::web_search::SearchDecisionResult {
-                reasoning: format!("Decision failed: {}", e),
-                search_needed: false,
-                search_query: None,
+    let decision =
+        match crate::web_search::decide_search_needed(content, provider, model, api_key, base_url)
+            .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("⚠️ [search] Search decision failed, skipping search: {}", e);
+                crate::web_search::SearchDecisionResult {
+                    reasoning: format!("Decision failed: {}", e),
+                    search_needed: false,
+                    search_query: None,
+                }
             }
-        }
-    };
+        };
 
     // Store the search decision in database (as a process step)
     match state
@@ -76,7 +73,10 @@ pub(crate) async fn process_search_decision(
         .await
     {
         Ok(search_decision) => {
-            println!("📝 [search] Created search decision: {}", search_decision.id);
+            tracing::info!(
+                "📝 [search] Created search decision: {}",
+                search_decision.id
+            );
             // SearchDecision is now directly linked via message_id FK
 
             // Emit search decision complete for UI
@@ -89,12 +89,12 @@ pub(crate) async fn process_search_decision(
             );
         }
         Err(e) => {
-            eprintln!("❌ [search] Failed to create search decision: {}", e);
+            tracing::error!("❌ [search] Failed to create search decision: {}", e);
         }
     }
 
     if !decision.search_needed {
-        println!(
+        tracing::info!(
             "ℹ️ [search] AI decided search is NOT needed: {}",
             decision.reasoning
         );
@@ -108,12 +108,18 @@ pub(crate) async fn process_search_decision(
     let keywords = decision
         .search_query
         .unwrap_or_else(|| crate::web_search::extract_search_keywords(content));
-    println!("🔍 [search] AI decided search is needed, query: {}", keywords);
+    tracing::info!(
+        "🔍 [search] AI decided search is needed, query: {}",
+        keywords
+    );
 
     // Get the configured search provider
     let provider = get_search_provider(state).await;
     let engine_id = provider.id().to_string();
-    println!("🔍 [search] Using search provider: {}", provider.display_name());
+    tracing::info!(
+        "🔍 [search] Using search provider: {}",
+        provider.display_name()
+    );
 
     // Create SearchResult IMMEDIATELY (before searching) so UI can show it
     let searched_at = chrono::Utc::now().to_rfc3339();
@@ -130,7 +136,7 @@ pub(crate) async fn process_search_decision(
         .await
     {
         Ok(search_result) => {
-            println!(
+            tracing::info!(
                 "📝 [search] Created pending search result: {}",
                 search_result.id
             );
@@ -156,7 +162,7 @@ pub(crate) async fn process_search_decision(
             Some(search_result.id)
         }
         Err(e) => {
-            eprintln!("Failed to create search result: {}", e);
+            tracing::error!("Failed to create search result: {}", e);
             None
         }
     };
@@ -164,7 +170,7 @@ pub(crate) async fn process_search_decision(
     // Now perform the actual search using the configured provider
     match crate::web_search::search(provider, &keywords, 5).await {
         Ok(search_response) => {
-            println!(
+            tracing::info!(
                 "✅ [search] Search completed, found {} results",
                 search_response.results.len()
             );
@@ -176,7 +182,7 @@ pub(crate) async fn process_search_decision(
                     .update_search_result_total(sr_id, search_response.total_results as i64)
                     .await
                 {
-                    eprintln!("Failed to update search result total: {}", e);
+                    tracing::error!("Failed to update search result total: {}", e);
                 }
 
                 // Emit attachment-update so frontend shows result count immediately
@@ -219,7 +225,7 @@ pub(crate) async fn process_search_decision(
             }
         }
         Err(e) => {
-            eprintln!("❌ [search] Search failed: {}", e);
+            tracing::error!("❌ [search] Search failed: {}", e);
             SearchProcessingResult {
                 urls: fallback_urls,
                 search_result_id,
@@ -227,4 +233,3 @@ pub(crate) async fn process_search_decision(
         }
     }
 }
-

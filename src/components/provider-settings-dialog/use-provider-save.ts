@@ -2,6 +2,7 @@ import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
+import { logger } from '@/lib/logger'
 
 export interface UseProviderSaveReturn {
   isSaving: boolean
@@ -51,7 +52,7 @@ export function useProviderSave({
       modifiedModels.length === 0 &&
       !existingProvider
     ) {
-      console.warn('No changes to save')
+      logger.warn('No changes to save')
       onOpenChange(false)
       return
     }
@@ -73,7 +74,7 @@ export function useProviderSave({
               is_enabled: existingProvider.is_enabled,
             },
           })
-          console.log('Updated provider:', existingProvider.name)
+          logger.info('Updated provider:', existingProvider.name)
         }
         providerId = existingProvider.id
       } else {
@@ -87,14 +88,14 @@ export function useProviderSave({
         }
 
         const provider = await invoke<Provider>('create_provider', { req: providerReq })
-        console.log('Created provider:', provider)
+        logger.info('Created provider:', provider)
         providerId = provider.id
       }
 
       // Soft delete removed models
       for (const modelId of modelsToDelete) {
         await invoke('soft_delete_model', { id: modelId })
-        console.log('Soft deleted model:', modelId)
+        logger.info('Soft deleted model:', modelId)
       }
 
       // Update existing models with changed names
@@ -106,7 +107,7 @@ export function useProviderSave({
           is_starred: false,
         }
         await invoke('update_model', { id: model.id, req: modelReq })
-        console.log('Updated model:', model.id, 'with new name:', model.displayName)
+        logger.info('Updated model:', model.id, 'with new name:', model.displayName)
       }
 
       // Create only new models
@@ -118,7 +119,7 @@ export function useProviderSave({
           is_starred: false,
         }
         await invoke('create_model', { req: modelReq })
-        console.log('Created model:', model.displayName, 'with ID:', model.modelId)
+        logger.info('Created model:', model.displayName, 'with ID:', model.modelId)
       }
 
       // Refresh the model store to show new models in sidebar
@@ -126,7 +127,7 @@ export function useProviderSave({
 
       onOpenChange(false)
     } catch (error) {
-      console.error('Failed to save provider:', error)
+      logger.error('Failed to save provider:', error)
       // TODO: Show error toast
     } finally {
       setIsSaving(false)
@@ -148,4 +149,3 @@ export function useProviderSave({
     handleSave,
   }
 }
-

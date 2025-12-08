@@ -37,4 +37,3 @@ export function useAttachmentState(): UseAttachmentStateReturn {
     clearAttachments,
   }
 }
-

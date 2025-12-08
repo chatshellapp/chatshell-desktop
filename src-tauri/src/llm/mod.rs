@@ -15,8 +15,8 @@ pub use common::StreamChunkType;
 pub use tool_registry::{ToolDefinition, ToolParameter, ToolRegistry};
 
 use agent_builder::{
-    build_assistant_message, build_user_message, create_provider_agent, stream_chat_with_agent,
-    AgentConfig,
+    AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
+    stream_chat_with_agent,
 };
 use anyhow::Result;
 use rig::completion::Message as RigMessage;
@@ -87,7 +87,13 @@ pub async fn call_provider(
     };
 
     // Create the agent
-    let agent = create_provider_agent(provider, &model, api_key.as_deref(), base_url.as_deref(), &config)?;
+    let agent = create_provider_agent(
+        provider,
+        &model,
+        api_key.as_deref(),
+        base_url.as_deref(),
+        &config,
+    )?;
 
     // Convert ChatMessages to rig Message format
     let mut chat_history: Vec<RigMessage> = Vec::new();
@@ -116,12 +122,21 @@ pub async fn call_provider(
     }
 
     // Use the last user message as prompt
-    let prompt = current_prompt.ok_or_else(|| anyhow::anyhow!("No user message found in request"))?;
+    let prompt =
+        current_prompt.ok_or_else(|| anyhow::anyhow!("No user message found in request"))?;
 
     // Create a no-op cancel token (not really cancellable for non-streaming)
     let cancel_token = CancellationToken::new();
 
     // Use stream_chat_with_agent with a no-op callback
     // This collects the full response
-    stream_chat_with_agent(agent, prompt, chat_history, cancel_token, |_, _| true, provider).await
+    stream_chat_with_agent(
+        agent,
+        prompt,
+        chat_history,
+        cancel_token,
+        |_, _| true,
+        provider,
+    )
+    .await
 }

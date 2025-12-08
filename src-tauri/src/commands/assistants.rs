@@ -1,5 +1,5 @@
-use crate::models::{Assistant, CreateAssistantRequest};
 use super::AppState;
+use crate::models::{Assistant, CreateAssistantRequest};
 use tauri::State;
 
 #[tauri::command]
@@ -7,7 +7,11 @@ pub async fn create_assistant(
     state: State<'_, AppState>,
     req: CreateAssistantRequest,
 ) -> Result<Assistant, String> {
-    state.db.create_assistant(req).await.map_err(|e| e.to_string())
+    state
+        .db
+        .create_assistant(req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -38,6 +42,9 @@ pub async fn update_assistant(
 
 #[tauri::command]
 pub async fn delete_assistant(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.db.delete_assistant(&id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .delete_assistant(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
-

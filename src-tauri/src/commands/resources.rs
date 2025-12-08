@@ -1,5 +1,5 @@
-use crate::models::MessageResources;
 use super::AppState;
+use crate::models::MessageResources;
 use tauri::State;
 
 // ==========================================================================
@@ -66,4 +66,3 @@ pub fn get_attachment_url(app: tauri::AppHandle, storage_path: String) -> Result
         crate::storage::get_full_path(&app, &storage_path).map_err(|e| e.to_string())?;
     Ok(full_path.to_string_lossy().to_string())
 }
-

@@ -4,6 +4,7 @@ import mermaid from 'mermaid'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeTextFile } from '@tauri-apps/plugin-fs'
 import type { MermaidBlockProps } from './types'
+import { logger } from '@/lib/logger'
 
 // Initialize mermaid with default config - runs once on module load
 let mermaidInitialized = false
@@ -125,7 +126,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
         await writeTextFile(filePath, svg)
       }
     } catch (err) {
-      console.error('Failed to save diagram:', err)
+      logger.error('Failed to save diagram:', err)
     }
   }, [svg])
 
@@ -226,4 +227,3 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
     </div>
   )
 }
-

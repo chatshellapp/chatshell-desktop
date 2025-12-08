@@ -108,7 +108,7 @@ pub async fn stop_generation(
     app: tauri::AppHandle,
     conversation_id: String,
 ) -> Result<bool, String> {
-    println!(
+    tracing::info!(
         "🛑 [stop_generation] Stopping generation for conversation: {}",
         conversation_id
     );
@@ -117,7 +117,7 @@ pub async fn stop_generation(
 
     if let Some(cancel_token) = tasks.get(&conversation_id) {
         cancel_token.cancel();
-        println!("✅ [stop_generation] Cancellation token triggered");
+        tracing::info!("✅ [stop_generation] Cancellation token triggered");
 
         let _ = app.emit(
             "generation-stopped",
@@ -128,7 +128,7 @@ pub async fn stop_generation(
 
         Ok(true)
     } else {
-        println!("⚠️ [stop_generation] No active task found for conversation");
+        tracing::warn!("⚠️ [stop_generation] No active task found for conversation");
         Ok(false)
     }
 }
@@ -152,20 +152,20 @@ fn log_send_message_params(
     files: &Option<Vec<FileAttachmentInput>>,
     search_enabled: &Option<bool>,
 ) {
-    println!("🚀 [send_message] Command received!");
-    println!("   conversation_id: {}", conversation_id);
-    println!("   content: {}", content);
-    println!("   provider: {}", provider);
-    println!("   model: {}", model);
-    println!("   base_url: {:?}", base_url);
-    println!("   has_system_prompt: {}", system_prompt.is_some());
-    println!("   has_user_prompt: {}", user_prompt.is_some());
-    println!("   model_db_id: {:?}", model_db_id);
-    println!("   assistant_db_id: {:?}", assistant_db_id);
-    println!("   urls_to_fetch: {:?}", urls_to_fetch);
-    println!("   images count: {:?}", images.as_ref().map(|v| v.len()));
-    println!("   files count: {:?}", files.as_ref().map(|v| v.len()));
-    println!("   search_enabled: {:?}", search_enabled);
+    tracing::info!("🚀 [send_message] Command received!");
+    tracing::info!("   conversation_id: {}", conversation_id);
+    tracing::info!("   content: {}", content);
+    tracing::info!("   provider: {}", provider);
+    tracing::info!("   model: {}", model);
+    tracing::info!("   base_url: {:?}", base_url);
+    tracing::info!("   has_system_prompt: {}", system_prompt.is_some());
+    tracing::info!("   has_user_prompt: {}", user_prompt.is_some());
+    tracing::info!("   model_db_id: {:?}", model_db_id);
+    tracing::info!("   assistant_db_id: {:?}", assistant_db_id);
+    tracing::info!("   urls_to_fetch: {:?}", urls_to_fetch);
+    tracing::info!("   images count: {:?}", images.as_ref().map(|v| v.len()));
+    tracing::info!("   files count: {:?}", files.as_ref().map(|v| v.len()));
+    tracing::info!("   search_enabled: {:?}", search_enabled);
 }
 
 async fn save_user_message(
@@ -173,7 +173,7 @@ async fn save_user_message(
     conversation_id: &str,
     content: &str,
 ) -> Result<Message, String> {
-    println!("📝 [send_message] Creating user message in database...");
+    tracing::info!("📝 [send_message] Creating user message in database...");
     let user_message = state
         .db
         .create_message(CreateMessageRequest {
@@ -185,11 +185,11 @@ async fn save_user_message(
         })
         .await
         .map_err(|e| {
-            println!("❌ [send_message] Failed to create message: {}", e);
+            tracing::info!("❌ [send_message] Failed to create message: {}", e);
             e.to_string()
         })?;
 
-    println!(
+    tracing::info!(
         "✅ [send_message] User message created with id: {}",
         user_message.id
     );
@@ -218,7 +218,7 @@ fn spawn_background_task(
     user_message_id: String,
     cancel_token: CancellationToken,
 ) {
-    println!("🔄 [send_message] Spawning background task...");
+    tracing::info!("🔄 [send_message] Spawning background task...");
 
     tokio::spawn(async move {
         process_llm_request(
@@ -268,7 +268,7 @@ async fn process_llm_request(
     user_message_id: String,
     cancel_token: CancellationToken,
 ) {
-    println!("🎯 [background_task] Started processing LLM request");
+    tracing::info!("🎯 [background_task] Started processing LLM request");
 
     // Step 1: Process search if enabled
     let search_result = if search_enabled {
@@ -358,11 +358,11 @@ async fn process_llm_request(
         .map(|m| m.content.clone());
 
     // Step 8: Stream LLM response
-    println!(
+    tracing::info!(
         "📤 [background_task] Sending chat request to LLM (model: {})",
         model
     );
-    println!("🤖 [background_task] Using agent-based streaming");
+    tracing::info!("🤖 [background_task] Using agent-based streaming");
 
     streaming::handle_agent_streaming(
         provider,
@@ -390,18 +390,22 @@ async fn get_assistant_config(
     if let Some(assistant_id) = assistant_db_id {
         match state.db.get_assistant(assistant_id).await {
             Ok(Some(assistant)) => {
-                println!(
+                tracing::info!(
                     "📋 [background_task] Using assistant config: temp={:?}, max_tokens={:?}",
-                    assistant.model_params.temperature, assistant.model_params.max_tokens
+                    assistant.model_params.temperature,
+                    assistant.model_params.max_tokens
                 );
                 Some(assistant)
             }
             Ok(None) => {
-                println!("⚠️  [background_task] Assistant not found: {}", assistant_id);
+                tracing::warn!(
+                    "⚠️  [background_task] Assistant not found: {}",
+                    assistant_id
+                );
                 None
             }
             Err(e) => {
-                eprintln!("⚠️  [background_task] Error fetching assistant: {}", e);
+                tracing::warn!("⚠️  [background_task] Error fetching assistant: {}", e);
                 None
             }
         }

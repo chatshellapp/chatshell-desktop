@@ -18,3 +18,6 @@ export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu'
 export type WebFetchMode = 'local' | 'api'
 export type WebFetchLocalMethod = 'auto' | 'fetch' | 'headless'
 export type WebFetchApiProvider = 'jina'
+
+// Logging types
+export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'

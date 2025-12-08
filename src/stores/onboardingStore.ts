@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { ModelInfo } from '@/types'
+import { logger } from '@/lib/logger'
 
 export type OnboardingStep =
   | 'checking'
@@ -51,7 +52,7 @@ export const useOnboardingStore = create<OnboardingStore>()(
 
         return models.length > 0
       } catch (error) {
-        console.log('[onboarding] Ollama not available:', error)
+        logger.info('[onboarding] Ollama not available:', error)
         set((draft) => {
           draft.ollamaModels = []
           draft.isCheckingOllama = false
@@ -88,4 +89,3 @@ export const useOnboardingStore = create<OnboardingStore>()(
     },
   }))
 )
-

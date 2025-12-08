@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import type { Model, Provider, CreateModelRequest } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface ModelState {
   models: Model[]
@@ -33,13 +34,13 @@ export const useModelStore = create<ModelState>()(
       try {
         // Use list_all_models to include soft-deleted models for display purposes
         const models = await invoke<Model[]>('list_all_models')
-        console.log('[modelStore] Loaded models:', models)
+        logger.info('[modelStore] Loaded models:', models)
         set((draft) => {
           draft.models = models
           draft.isLoading = false
         })
       } catch (error) {
-        console.error('[modelStore] Failed to load models:', error)
+        logger.error('[modelStore] Failed to load models:', error)
         set((draft) => {
           draft.error = String(error)
           draft.isLoading = false
@@ -54,13 +55,13 @@ export const useModelStore = create<ModelState>()(
       })
       try {
         const providers = await invoke<Provider[]>('list_providers')
-        console.log('[modelStore] Loaded providers:', providers)
+        logger.info('[modelStore] Loaded providers:', providers)
         set((draft) => {
           draft.providers = providers
           draft.isLoading = false
         })
       } catch (error) {
-        console.error('[modelStore] Failed to load providers:', error)
+        logger.error('[modelStore] Failed to load providers:', error)
         set((draft) => {
           draft.error = String(error)
           draft.isLoading = false
@@ -79,15 +80,15 @@ export const useModelStore = create<ModelState>()(
           invoke<Model[]>('list_all_models'),
           invoke<Provider[]>('list_providers'),
         ])
-        console.log('[modelStore] Loaded models:', models)
-        console.log('[modelStore] Loaded providers:', providers)
+        logger.info('[modelStore] Loaded models:', models)
+        logger.info('[modelStore] Loaded providers:', providers)
         set((draft) => {
           draft.models = models
           draft.providers = providers
           draft.isLoading = false
         })
       } catch (error) {
-        console.error('[modelStore] Failed to load models and providers:', error)
+        logger.error('[modelStore] Failed to load models and providers:', error)
         set((draft) => {
           draft.error = String(error)
           draft.isLoading = false

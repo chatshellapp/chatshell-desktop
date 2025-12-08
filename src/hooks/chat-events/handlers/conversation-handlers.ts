@@ -1,13 +1,14 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
 import { useConversationStore } from '@/stores/conversation'
+import { logger } from '@/lib/logger'
 
 /**
  * Handlers for conversation update and generation events
  */
 export function useConversationHandlers() {
   const handleConversationUpdated = useCallback((conversationId: string, title: string) => {
-    console.log('[useChatEvents] Conversation title updated:', conversationId, title)
+    logger.info('[useChatEvents] Conversation title updated:', conversationId, title)
     const conversationStore = useConversationStore.getState()
 
     // Update the conversation in the list
@@ -27,7 +28,7 @@ export function useConversationHandlers() {
   }, [])
 
   const handleGenerationStopped = useCallback((convId: string) => {
-    console.log('[useChatEvents] Generation stopped for conversation:', convId)
+    logger.info('[useChatEvents] Generation stopped for conversation:', convId)
     // Reset streaming states when generation is stopped
     // This is needed when stopping before any content arrives,
     // as chat-complete event won't be emitted in that case
@@ -46,4 +47,3 @@ export function useConversationHandlers() {
     handleGenerationStopped,
   }
 }
-
