@@ -40,6 +40,7 @@ import type { Model } from '@/types'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useConversationStore } from '@/stores/conversation'
 import femaleNames from '@/assets/data/names/female_names.json'
 import maleNames from '@/assets/data/names/male_names.json'
 
@@ -80,8 +81,9 @@ export function AssistantDialog({
   mode = 'create',
 }: AssistantDialogProps) {
   const { models, loadModels, getProviderById } = useModelStore()
-  const { createAssistant, updateAssistant } = useAssistantStore()
+  const { createAssistant, updateAssistant, lastCreatedModelId } = useAssistantStore()
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
+  const { selectedModel, selectedAssistant } = useConversationStore()
 
   // Form state
   const [name, setName] = useState('')
@@ -203,7 +205,32 @@ export function AssistantDialog({
         setDescription('')
         setSystemPrompt('You are a helpful AI assistant.')
         setUserPrompt('')
-        setSelectedModelId(models.length > 0 ? models[0].id : '')
+        
+        // Select default model based on:
+        // 1. Last created assistant's model
+        // 2. Current conversation's selected model or assistant's model
+        // 3. First available model
+        let defaultModelId = ''
+        if (models.length > 0) {
+          // 1. Check if lastCreatedModelId exists and is valid
+          if (lastCreatedModelId && models.some(m => m.id === lastCreatedModelId)) {
+            defaultModelId = lastCreatedModelId
+          }
+          // 2. If not, check conversation's selected model
+          else if (selectedModel && models.some(m => m.id === selectedModel.id)) {
+            defaultModelId = selectedModel.id
+          }
+          // 3. If not, check conversation's selected assistant's model
+          else if (selectedAssistant && models.some(m => m.id === selectedAssistant.model_id)) {
+            defaultModelId = selectedAssistant.model_id
+          }
+          // 4. Fall back to first model
+          else {
+            defaultModelId = models[0].id
+          }
+        }
+        setSelectedModelId(defaultModelId)
+        
         setAvatarText(randomEmoji)
         setAvatarBg(getRandomPresetColor())
         setGroupName('')
@@ -213,7 +240,7 @@ export function AssistantDialog({
       }
       setError(null)
     }
-  }, [open, mode, assistant, models, prompts])
+  }, [open, mode, assistant, models, prompts, lastCreatedModelId, selectedModel, selectedAssistant])
 
   const handleSave = async () => {
     if (!name.trim()) {

@@ -6,6 +6,7 @@ import type { Assistant, CreateAssistantRequest } from '@/types'
 interface AssistantStore {
   assistants: Assistant[]
   currentAssistant: Assistant | null
+  lastCreatedModelId: string | null
   isLoading: boolean
   error: string | null
 
@@ -22,6 +23,7 @@ export const useAssistantStore = create<AssistantStore>()(
   immer((set, get) => ({
     assistants: [],
     currentAssistant: null,
+    lastCreatedModelId: null,
     isLoading: false,
     error: null,
 
@@ -54,6 +56,7 @@ export const useAssistantStore = create<AssistantStore>()(
         const assistant = await invoke<Assistant>('create_assistant', { req })
         set((draft) => {
           draft.assistants.push(assistant)
+          draft.lastCreatedModelId = assistant.model_id
           draft.isLoading = false
         })
         return assistant
