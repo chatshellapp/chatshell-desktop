@@ -14,6 +14,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Toaster } from '@/components/ui/sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppInit } from '@/hooks/useAppInit'
+import { OnboardingDialog } from '@/components/onboarding-dialog'
 
 export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
@@ -92,6 +93,7 @@ export function ChatPage() {
         </SidebarInset>
       </SidebarProvider>
       <Toaster position="top-center" />
+      <OnboardingDialog />
     </>
   )
 }

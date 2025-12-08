@@ -6,6 +6,7 @@ import { useMessageStore } from '@/stores/message'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUserStore } from '@/stores/userStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useOnboardingStore } from '@/stores/onboardingStore'
 
 export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false)
@@ -51,6 +52,16 @@ export function useAppInit() {
         // Load conversations
         console.log('Loading conversations...')
         await conversationStore.loadConversations()
+
+        // Check if onboarding is needed
+        const onboardingComplete = await settingsStore.getSetting('onboarding_complete')
+        const hasAssistants = assistantStore.assistants.length > 0
+
+        if (onboardingComplete !== 'true' && !hasAssistants) {
+          console.log('[useAppInit] Triggering onboarding flow...')
+          const onboardingStore = useOnboardingStore.getState()
+          onboardingStore.setDialogOpen(true)
+        }
 
         console.log('App initialization complete')
       } catch (err) {

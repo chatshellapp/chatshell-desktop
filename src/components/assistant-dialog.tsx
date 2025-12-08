@@ -54,37 +54,13 @@ import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useConversationStore } from '@/stores/conversation'
-import femaleNames from '@/assets/data/names/female_names.json'
-import maleNames from '@/assets/data/names/male_names.json'
+import { getRandomPresetColor, getRandomNameAndEmoji } from '@/lib/assistant-utils'
 
 interface AssistantDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   assistant?: Assistant | null
   mode?: 'create' | 'edit'
-}
-
-const PRESET_COLORS = ['#00E5FF', '#FF4081', '#E040FB']
-const FEMALE_EMOJIS = ['👩‍💼', '🤵‍♀️', '👩‍💻', '👩‍🎤']
-const MALE_EMOJIS = ['👨‍💼', '🤵‍♂️', '👨‍💻', '👨‍🎤']
-
-const getRandomPresetColor = () => {
-  return PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]
-}
-
-const getRandomNameAndEmoji = () => {
-  // Randomly decide gender
-  const isFemale = Math.random() < 0.5
-  
-  // Select random name based on gender
-  const names = isFemale ? femaleNames : maleNames
-  const randomName = names[Math.floor(Math.random() * names.length)]
-  
-  // Select random emoji based on gender
-  const emojis = isFemale ? FEMALE_EMOJIS : MALE_EMOJIS
-  const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)]
-  
-  return { name: randomName, emoji: randomEmoji }
 }
 
 export function AssistantDialog({

@@ -87,9 +87,8 @@ impl Database {
             }
         };
 
-        let _created_models = if !ollama_models.is_empty() {
+        if !ollama_models.is_empty() {
             println!("🌱 [db] Creating models from local Ollama...");
-            let mut models = Vec::new();
 
             for ollama_model in ollama_models.iter().take(10) {
                 let model = self.create_model(CreateModelRequest {
@@ -100,42 +99,11 @@ impl Database {
                     is_starred: Some(false),
                 }).await?;
                 println!("✅ [db] Created model: {}", model.name);
-                models.push(model);
             }
-
-            models
         } else {
-            println!("🌱 [db] Seeding with default models (Ollama not available)...");
-
-            let gemma_model = self.create_model(CreateModelRequest {
-                name: "Gemma 3 12B".to_string(),
-                provider_id: ollama_provider.id.clone(),
-                model_id: "gemma3:12b".to_string(),
-                description: Some("Gemma 3 12B - Google's efficient instruction-following model".to_string()),
-                is_starred: Some(false),
-            }).await?;
-            println!("✅ [db] Created model: {}", gemma_model.name);
-
-            let gpt_oss_model = self.create_model(CreateModelRequest {
-                name: "GPT-OSS 20B".to_string(),
-                provider_id: ollama_provider.id.clone(),
-                model_id: "gpt-oss:20b".to_string(),
-                description: Some("GPT-OSS 20B - Open source GPT-style model for general tasks".to_string()),
-                is_starred: Some(false),
-            }).await?;
-            println!("✅ [db] Created model: {}", gpt_oss_model.name);
-
-            let deepseek_model = self.create_model(CreateModelRequest {
-                name: "DeepSeek R1 14B".to_string(),
-                provider_id: ollama_provider.id.clone(),
-                model_id: "deepseek-r1:14b".to_string(),
-                description: Some("DeepSeek R1 14B - Advanced reasoning model with thinking process".to_string()),
-                is_starred: Some(true),
-            }).await?;
-            println!("✅ [db] Created model: {}", deepseek_model.name);
-
-            vec![gemma_model, gpt_oss_model, deepseek_model]
-        };
+            // Don't create placeholder models - onboarding flow will guide user to configure providers
+            println!("⚠️  [db] Ollama not available, no models seeded. User will configure via onboarding.");
+        }
 
         // Skip automatic assistant creation - users can create their own
         println!("✅ [db] Skipping assistant seed - users will create their own assistants");
