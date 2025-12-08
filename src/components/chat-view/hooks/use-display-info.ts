@@ -27,20 +27,21 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
   // Get display info for currently selected model/assistant (used for streaming messages)
   const getDisplayInfo = useCallback((): DisplayInfo => {
     if (selectedAssistant) {
-      const model = getModelById(selectedAssistant.model_id)
-      const modelName = model ? model.name : 'Unknown Model'
+      const displayName = selectedAssistant.role
+        ? `${selectedAssistant.name} · ${selectedAssistant.role}`
+        : selectedAssistant.name
 
       // Return assistant info
       if (selectedAssistant.avatar_type === 'image') {
         return {
-          displayName: `${selectedAssistant.name} · ${modelName}`,
+          displayName,
           senderType: 'assistant',
           assistantLogo: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path,
         }
       } else {
         // Text/emoji avatar
         return {
-          displayName: `${selectedAssistant.name} · ${modelName}`,
+          displayName,
           senderType: 'assistant',
           avatarBg: selectedAssistant.avatar_bg || undefined,
           avatarText: selectedAssistant.avatar_text || undefined,
@@ -82,20 +83,21 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
         // Assistant chat
         const assistant = getAssistantById(message.sender_id)
         if (assistant) {
-          const assistantModel = getModelById(assistant.model_id)
-          const modelName = assistantModel ? assistantModel.name : 'Unknown Model'
+          const displayName = assistant.role
+            ? `${assistant.name} · ${assistant.role}`
+            : assistant.name
 
           // Return assistant info
           if (assistant.avatar_type === 'image') {
             return {
-              displayName: `${assistant.name} · ${modelName}`,
+              displayName,
               senderType: 'assistant',
               assistantLogo: assistant.avatar_image_url || assistant.avatar_image_path,
             }
           } else {
             // Text/emoji avatar
             return {
-              displayName: `${assistant.name} · ${modelName}`,
+              displayName,
               senderType: 'assistant',
               avatarBg: assistant.avatar_bg || undefined,
               avatarText: assistant.avatar_text || undefined,

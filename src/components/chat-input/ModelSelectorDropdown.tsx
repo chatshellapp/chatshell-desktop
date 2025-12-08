@@ -49,8 +49,9 @@ export function ModelSelectorDropdown({
   // Get display text for current selection
   const getSelectionDisplay = () => {
     if (selectedAssistant) {
-      const model = getModelById(selectedAssistant.model_id)
-      return model ? `${selectedAssistant.name} - ${model.name}` : selectedAssistant.name
+      return selectedAssistant.role
+        ? `${selectedAssistant.name} - ${selectedAssistant.role}`
+        : selectedAssistant.name
     } else if (selectedModel) {
       const provider = getProviderById(selectedModel.provider_id)
       return provider ? `${selectedModel.name} - ${provider.name}` : selectedModel.name
@@ -167,13 +168,11 @@ export function ModelSelectorDropdown({
         groupMap.set(groupName, [])
       }
 
-      const model = getModelById(assistant.model_id)
-
       groupMap.get(groupName)!.push({
         id: assistant.id,
         name: assistant.name,
         persona: assistant.role,
-        modelName: model?.name,
+        modelName: assistant.role,
         logo: assistant.avatar_image_url,
         avatarBg: assistant.avatar_bg,
         avatarText: assistant.avatar_text,
@@ -186,7 +185,7 @@ export function ModelSelectorDropdown({
       name: groupName,
       assistants,
     }))
-  }, [assistants, getModelById])
+  }, [assistants])
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={onOpenChange}>
