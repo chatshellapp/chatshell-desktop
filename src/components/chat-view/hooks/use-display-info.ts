@@ -12,6 +12,12 @@ export interface DisplayInfo {
   assistantLogo?: string
   avatarBg?: string
   avatarText?: string
+  // Extended info for hover card
+  assistantName?: string
+  assistantRole?: string
+  assistantDescription?: string
+  assistantModelName?: string
+  assistantModelId?: string
 }
 
 interface UseDisplayInfoOptions {
@@ -31,12 +37,20 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
         ? `${selectedAssistant.name} · ${selectedAssistant.role}`
         : selectedAssistant.name
 
+      // Get model info for hover card
+      const model = getModelById(selectedAssistant.model_id)
+
       // Return assistant info
       if (selectedAssistant.avatar_type === 'image') {
         return {
           displayName,
           senderType: 'assistant',
           assistantLogo: selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path,
+          assistantName: selectedAssistant.name,
+          assistantRole: selectedAssistant.role,
+          assistantDescription: selectedAssistant.description,
+          assistantModelName: model?.name,
+          assistantModelId: model?.model_id,
         }
       } else {
         // Text/emoji avatar
@@ -45,6 +59,11 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
           senderType: 'assistant',
           avatarBg: selectedAssistant.avatar_bg || undefined,
           avatarText: selectedAssistant.avatar_text || undefined,
+          assistantName: selectedAssistant.name,
+          assistantRole: selectedAssistant.role,
+          assistantDescription: selectedAssistant.description,
+          assistantModelName: model?.name,
+          assistantModelId: model?.model_id,
         }
       }
     } else if (selectedModel) {
@@ -87,12 +106,20 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
             ? `${assistant.name} · ${assistant.role}`
             : assistant.name
 
+          // Get model info for hover card
+          const model = getModelById(assistant.model_id)
+
           // Return assistant info
           if (assistant.avatar_type === 'image') {
             return {
               displayName,
               senderType: 'assistant',
               assistantLogo: assistant.avatar_image_url || assistant.avatar_image_path,
+              assistantName: assistant.name,
+              assistantRole: assistant.role,
+              assistantDescription: assistant.description,
+              assistantModelName: model?.name,
+              assistantModelId: model?.model_id,
             }
           } else {
             // Text/emoji avatar
@@ -101,6 +128,11 @@ export function useDisplayInfo({ selectedModel, selectedAssistant }: UseDisplayI
               senderType: 'assistant',
               avatarBg: assistant.avatar_bg || undefined,
               avatarText: assistant.avatar_text || undefined,
+              assistantName: assistant.name,
+              assistantRole: assistant.role,
+              assistantDescription: assistant.description,
+              assistantModelName: model?.name,
+              assistantModelId: model?.model_id,
             }
           }
         }

@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Item, ItemContent, ItemTitle, ItemHeader } from '@/components/ui/item'
 import { AssistantAvatar } from '@/components/assistant-avatar'
+import { AssistantHoverCard } from '@/components/assistant-hover-card'
 import { ModelAvatar } from '@/components/model-avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -59,9 +60,17 @@ interface AssistantListItemProps {
    */
   persona?: string
   /**
+   * Description of the assistant (for hover card)
+   */
+  description?: string
+  /**
    * Model name to display alongside assistant name
    */
   modelName?: string
+  /**
+   * Model ID for logo lookup (for hover card)
+   */
+  modelId?: string
   /**
    * Assistant capabilities
    */
@@ -106,7 +115,9 @@ export function AssistantListItem({
   avatarText,
   name,
   persona,
+  description,
   modelName,
+  modelId,
   capabilities = {},
   isStarred = false,
   onClick,
@@ -125,68 +136,83 @@ export function AssistantListItem({
 
   if (compact) {
     return (
-      <Item
-        className={cn(
-          'cursor-pointer hover:bg-accent/50 transition-colors',
-          isActive && 'bg-accent',
-          className
-        )}
-        onClick={onClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        tabIndex={0}
-        role="button"
-        size="sm"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClick?.()
-          }
-        }}
+      <AssistantHoverCard
+        name={name}
+        role={persona}
+        description={description}
+        modelName={modelName}
+        modelId={modelId}
+        logo={logo}
+        avatarBg={avatarBg}
+        avatarText={avatarText}
+        side="right"
+        align="center"
       >
-        {/* Assistant logo - smaller in compact mode */}
-        <AssistantAvatar
-          logo={logo}
-          avatarBg={avatarBg}
-          avatarText={avatarText}
-          name={name}
-          size="xs"
-        />
+        <Item
+          className={cn(
+            'cursor-pointer hover:bg-accent/50 transition-colors',
+            isActive && 'bg-accent',
+            className
+          )}
+          onClick={onClick}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          tabIndex={0}
+          role="button"
+          size="sm"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onClick?.()
+            }
+          }}
+        >
+          {/* Assistant logo - smaller in compact mode */}
+          <AssistantAvatar
+            logo={logo}
+            avatarBg={avatarBg}
+            avatarText={avatarText}
+            name={name}
+            size="xs"
+          />
 
-        {/* Assistant info */}
-        <ItemContent>
-          <ItemHeader className="relative">
-            {/* Assistant name and model name on same line */}
-            <ItemTitle className="text-xs font-medium leading-tight">
-              {name}
-              {modelName && ` - ${modelName}`}
-            </ItemTitle>
-
-            {/* Floating action overlay */}
-            <div
-              className={cn(
-                'absolute right-0 top-1/2 -translate-y-1/2 flex items-center transition-opacity bg-accent rounded-md',
-                !isHovered && 'opacity-0 pointer-events-none'
-              )}
-            >
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn(
-                  'size-6',
-                  isStarred && 'text-yellow-500 hover:text-yellow-600'
+          {/* Assistant info */}
+          <ItemContent>
+            <ItemHeader className="relative">
+              {/* Assistant name, with role as subtitle if exists */}
+              <ItemTitle className="text-xs font-medium leading-tight">
+                {name}
+                {persona && (
+                  <span className="text-muted-foreground font-normal"> - {persona}</span>
                 )}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onStarClick?.(e)
-                }}
+              </ItemTitle>
+
+              {/* Floating action overlay */}
+              <div
+                className={cn(
+                  'absolute right-0 top-1/2 -translate-y-1/2 flex items-center transition-opacity bg-accent rounded-md',
+                  !isHovered && 'opacity-0 pointer-events-none'
+                )}
               >
-                <Star className={cn('size-3.5', isStarred && 'fill-current')} />
-              </Button>
-            </div>
-          </ItemHeader>
-        </ItemContent>
-      </Item>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    'size-6',
+                    isStarred && 'text-yellow-500 hover:text-yellow-600'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onStarClick?.(e)
+                  }}
+                >
+                  <Star className={cn('size-3.5', isStarred && 'fill-current')} />
+                </Button>
+              </div>
+            </ItemHeader>
+          </ItemContent>
+        </Item>
+      </AssistantHoverCard>
     )
   }
 

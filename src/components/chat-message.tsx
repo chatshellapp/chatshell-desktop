@@ -11,6 +11,7 @@ import { useState, memo, useCallback } from 'react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { ModelAvatar } from '@/components/model-avatar'
 import { AssistantAvatar } from '@/components/assistant-avatar'
+import { AssistantHoverCard } from '@/components/assistant-hover-card'
 import { MarkdownContent } from '@/components/markdown-content'
 
 interface ChatMessageProps {
@@ -41,6 +42,26 @@ interface ChatMessageProps {
    * For assistant senders with text avatars: text/emoji to display
    */
   avatarText?: string
+  /**
+   * Assistant name for hover card
+   */
+  assistantName?: string
+  /**
+   * Assistant role for hover card
+   */
+  assistantRole?: string
+  /**
+   * Assistant description for hover card
+   */
+  assistantDescription?: string
+  /**
+   * Assistant's model name for hover card
+   */
+  assistantModelName?: string
+  /**
+   * Assistant's model ID for hover card
+   */
+  assistantModelId?: string
   userMessageAlign?: 'left' | 'right'
   userMessageShowBackground?: boolean
   isLoading?: boolean
@@ -67,6 +88,11 @@ export const ChatMessage = memo(function ChatMessage({
   assistantLogo,
   avatarBg,
   avatarText,
+  assistantName,
+  assistantRole,
+  assistantDescription,
+  assistantModelName,
+  assistantModelId,
   userMessageAlign = 'right',
   userMessageShowBackground = true,
   isLoading = false,
@@ -84,8 +110,8 @@ export const ChatMessage = memo(function ChatMessage({
   // Render the appropriate avatar based on sender type
   const renderAvatar = () => {
     if (senderType === 'assistant') {
-      // For assistants: use AssistantAvatar with custom styling
-      return (
+      // For assistants: use AssistantAvatar wrapped in HoverCard
+      const avatar = (
         <AssistantAvatar
           logo={assistantLogo}
           avatarBg={avatarBg}
@@ -94,6 +120,28 @@ export const ChatMessage = memo(function ChatMessage({
           size="xs"
         />
       )
+
+      // Wrap with hover card if we have assistant info
+      if (assistantName) {
+        return (
+          <AssistantHoverCard
+            name={assistantName}
+            role={assistantRole}
+            description={assistantDescription}
+            modelName={assistantModelName}
+            modelId={assistantModelId}
+            logo={assistantLogo}
+            avatarBg={avatarBg}
+            avatarText={avatarText}
+            side="right"
+            align="start"
+          >
+            <div className="cursor-pointer">{avatar}</div>
+          </AssistantHoverCard>
+        )
+      }
+
+      return avatar
     }
     // For models: use ModelAvatar
     // Extract model name from displayName (remove provider part like "Qwen3 - Ollama" -> "Qwen3")

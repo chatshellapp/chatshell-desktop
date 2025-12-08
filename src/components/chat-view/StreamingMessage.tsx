@@ -165,6 +165,11 @@ export function StreamingMessage({
       assistantLogo={info.assistantLogo}
       avatarBg={info.avatarBg}
       avatarText={info.avatarText}
+      assistantName={info.assistantName}
+      assistantRole={info.assistantRole}
+      assistantDescription={info.assistantDescription}
+      assistantModelName={info.assistantModelName}
+      assistantModelId={info.assistantModelId}
       userMessageAlign={CHAT_CONFIG.userMessageAlign}
       userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
       isLoading={isWaitingForAI || !searchDecisionResolved}

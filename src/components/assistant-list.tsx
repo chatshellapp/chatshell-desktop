@@ -25,9 +25,17 @@ export interface Assistant {
    */
   persona?: string
   /**
+   * Description of the assistant
+   */
+  description?: string
+  /**
    * Model name to display
    */
   modelName?: string
+  /**
+   * Model ID for logo lookup
+   */
+  modelId?: string
   /**
    * URL or path to the assistant logo image
    */
@@ -287,7 +295,9 @@ function AssistantGroupComponent({
             avatarText={assistant.avatarText}
             name={assistant.name}
             persona={assistant.persona}
+            description={assistant.description}
             modelName={assistant.modelName}
+            modelId={assistant.modelId}
             capabilities={assistant.capabilities}
             isStarred={assistant.isStarred}
             isActive={selectedAssistantId === assistant.id}

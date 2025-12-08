@@ -17,6 +17,7 @@ import {
   type AssistantGroup,
   type Assistant as AssistantListAssistant,
 } from '@/components/assistant-list'
+import { AssistantHoverCard } from '@/components/assistant-hover-card'
 import { getModelLogo } from '@/lib/model-logos'
 
 interface ModelSelectorDropdownProps {
@@ -168,11 +169,16 @@ export function ModelSelectorDropdown({
         groupMap.set(groupName, [])
       }
 
+      // Get model info for the assistant
+      const model = getModelById(assistant.model_id)
+
       groupMap.get(groupName)!.push({
         id: assistant.id,
         name: assistant.name,
         persona: assistant.role,
-        modelName: assistant.role,
+        description: assistant.description,
+        modelName: model?.name,
+        modelId: model?.model_id,
         logo: assistant.avatar_image_url,
         avatarBg: assistant.avatar_bg,
         avatarText: assistant.avatar_text,
@@ -185,70 +191,99 @@ export function ModelSelectorDropdown({
       name: groupName,
       assistants,
     }))
-  }, [assistants])
+  }, [assistants, getModelById])
+
+  // Get model info for the selected assistant
+  const selectedAssistantModel = selectedAssistant
+    ? getModelById(selectedAssistant.model_id)
+    : null
+
+  // Render the trigger button content
+  const renderTriggerContent = () => {
+    if (selectedAssistant) {
+      // For assistants, show their avatar (custom image or text/emoji with background)
+      const hasCustomImage =
+        selectedAssistant.avatar_type === 'image' &&
+        (selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path)
+      const avatarBg = selectedAssistant.avatar_bg || '#3b82f6'
+      const isHexColor = avatarBg.startsWith('#')
+      const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
+      const avatarClassName = !isHexColor ? avatarBg : undefined
+
+      return (
+        <>
+          <Avatar
+            key={`assistant-${selectedAssistant.id}`}
+            className={cn('h-4 w-4', avatarClassName)}
+            style={avatarStyle}
+          >
+            {hasCustomImage && (
+              <AvatarImage
+                src={selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path}
+                alt={selectedAssistant.name}
+              />
+            )}
+            <AvatarFallback
+              className={cn('text-white text-[8px]', avatarClassName)}
+              style={avatarStyle}
+            >
+              {selectedAssistant.avatar_text || selectedAssistant.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-xs">{getSelectionDisplay()}</span>
+        </>
+      )
+    } else if (selectedModel) {
+      // For models, show model logo with first character fallback
+      const modelLogo = getModelLogo(selectedModel)
+
+      return (
+        <>
+          <Avatar key={`model-${selectedModel.id}`} className="size-4">
+            {modelLogo && <AvatarImage src={modelLogo} alt={selectedModel.name} />}
+            <AvatarFallback className="text-[10px]">
+              {selectedModel.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-xs">{getSelectionDisplay()}</span>
+        </>
+      )
+    } else {
+      return <span className="text-xs">{getSelectionDisplay()}</span>
+    }
+  }
+
+  // Build the trigger button, optionally wrapped with hover card for assistants
+  const triggerButton = (
+    <InputGroupButton variant="ghost" className="gap-2">
+      {renderTriggerContent()}
+    </InputGroupButton>
+  )
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <InputGroupButton variant="ghost" className="gap-2">
-          {(() => {
-            if (selectedAssistant) {
-              // For assistants, show their avatar (custom image or text/emoji with background)
-              const hasCustomImage =
-                selectedAssistant.avatar_type === 'image' &&
-                (selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path)
-              const avatarBg = selectedAssistant.avatar_bg || '#3b82f6'
-              const isHexColor = avatarBg.startsWith('#')
-              const avatarStyle = isHexColor ? { backgroundColor: avatarBg } : undefined
-              const avatarClassName = !isHexColor ? avatarBg : undefined
-
-              return (
-                <>
-                  <Avatar
-                    key={`assistant-${selectedAssistant.id}`}
-                    className={cn('h-4 w-4', avatarClassName)}
-                    style={avatarStyle}
-                  >
-                    {hasCustomImage && (
-                      <AvatarImage
-                        src={
-                          selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path
-                        }
-                        alt={selectedAssistant.name}
-                      />
-                    )}
-                    <AvatarFallback
-                      className={cn('text-white text-[8px]', avatarClassName)}
-                      style={avatarStyle}
-                    >
-                      {selectedAssistant.avatar_text ||
-                        selectedAssistant.name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs">{getSelectionDisplay()}</span>
-                </>
-              )
-            } else if (selectedModel) {
-              // For models, show model logo with first character fallback
-              const modelLogo = getModelLogo(selectedModel)
-
-              return (
-                <>
-                  <Avatar key={`model-${selectedModel.id}`} className="size-4">
-                    {modelLogo && <AvatarImage src={modelLogo} alt={selectedModel.name} />}
-                    <AvatarFallback className="text-[10px]">
-                      {selectedModel.name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs">{getSelectionDisplay()}</span>
-                </>
-              )
-            } else {
-              return <span className="text-xs">{getSelectionDisplay()}</span>
-            }
-          })()}
-        </InputGroupButton>
-      </DropdownMenuTrigger>
+      {selectedAssistant && !isOpen ? (
+        <AssistantHoverCard
+          name={selectedAssistant.name}
+          role={selectedAssistant.role}
+          description={selectedAssistant.description}
+          modelName={selectedAssistantModel?.name}
+          modelId={selectedAssistantModel?.model_id}
+          logo={
+            selectedAssistant.avatar_type === 'image'
+              ? selectedAssistant.avatar_image_url || selectedAssistant.avatar_image_path
+              : undefined
+          }
+          avatarBg={selectedAssistant.avatar_bg}
+          avatarText={selectedAssistant.avatar_text}
+          side="top"
+          align="start"
+        >
+          <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
+        </AssistantHoverCard>
+      ) : (
+        <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
+      )}
       <DropdownMenuContent
         side="top"
         align="start"
