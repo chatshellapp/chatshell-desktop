@@ -349,7 +349,15 @@ async fn process_llm_request(
 
     let model_params = assistant_config
         .as_ref()
-        .map(|a| a.model_params.clone())
+        .and_then(|a| a.preset.as_ref())
+        .map(|preset| crate::models::ModelParameters {
+            temperature: preset.temperature,
+            max_tokens: preset.max_tokens,
+            top_p: preset.top_p,
+            frequency_penalty: preset.frequency_penalty,
+            presence_penalty: preset.presence_penalty,
+            additional_params: preset.additional_params.clone(),
+        })
         .unwrap_or_default();
 
     let system_prompt_for_agent = chat_messages
@@ -390,10 +398,12 @@ async fn get_assistant_config(
     if let Some(assistant_id) = assistant_db_id {
         match state.db.get_assistant(assistant_id).await {
             Ok(Some(assistant)) => {
+                let temp = assistant.preset.as_ref().and_then(|p| p.temperature);
+                let max_tokens = assistant.preset.as_ref().and_then(|p| p.max_tokens);
                 tracing::info!(
                     "📋 [background_task] Using assistant config: temp={:?}, max_tokens={:?}",
-                    assistant.model_params.temperature,
-                    assistant.model_params.max_tokens
+                    temp,
+                    max_tokens
                 );
                 Some(assistant)
             }

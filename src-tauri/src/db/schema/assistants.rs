@@ -11,12 +11,7 @@ pub async fn create_assistants_table(pool: &SqlitePool) -> Result<()> {
             system_prompt TEXT NOT NULL,
             user_prompt TEXT,
             model_id TEXT NOT NULL,
-            temperature REAL,
-            max_tokens INTEGER,
-            top_p REAL,
-            frequency_penalty REAL,
-            presence_penalty REAL,
-            additional_params TEXT,
+            model_parameter_preset_id TEXT,
             avatar_type TEXT DEFAULT 'text',
             avatar_bg TEXT,
             avatar_text TEXT,
@@ -26,7 +21,8 @@ pub async fn create_assistants_table(pool: &SqlitePool) -> Result<()> {
             is_starred INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            FOREIGN KEY (model_id) REFERENCES models(id)
+            FOREIGN KEY (model_id) REFERENCES models(id),
+            FOREIGN KEY (model_parameter_preset_id) REFERENCES model_parameter_presets(id)
         )",
     )
     .execute(pool)

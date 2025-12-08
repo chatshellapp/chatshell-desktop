@@ -4,6 +4,13 @@ export type { Provider, CreateProviderRequest } from './provider'
 // Model types
 export type { Model, CreateModelRequest, ModelParameters, ModelInfo, ModelPricing } from './model'
 
+// Model Parameter Preset types
+export type {
+  ModelParameterPreset,
+  CreateModelParameterPresetRequest,
+  UpdateModelParameterPresetRequest,
+} from './model-parameter-preset'
+
 // Assistant types
 export type { Assistant, CreateAssistantRequest } from './assistant'
 

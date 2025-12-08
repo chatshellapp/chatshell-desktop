@@ -5,6 +5,7 @@ mod assistants;
 mod conversations;
 mod knowledge;
 mod messages;
+mod model_parameter_presets;
 mod prompts;
 mod providers;
 mod settings;
@@ -19,6 +20,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
 
     providers::create_providers_table(pool).await?;
     providers::create_models_table(pool).await?;
+    model_parameter_presets::create_model_parameter_presets_table(pool).await?;
     assistants::create_assistants_table(pool).await?;
     users::create_users_table(pool).await?;
     conversations::create_conversations_table(pool).await?;

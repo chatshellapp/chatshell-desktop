@@ -4,7 +4,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
-use crate::models::{Assistant, CreateAssistantRequest, ModelParameters};
+use crate::models::{Assistant, CreateAssistantRequest, ModelParameterPreset};
 
 impl Database {
     pub async fn create_assistant(&self, req: CreateAssistantRequest) -> Result<Assistant> {
@@ -13,19 +13,20 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
-        // Extract model parameters
-        let model_params = req.model_params.unwrap_or_default();
-        let additional_params_json = model_params
-            .additional_params
-            .as_ref()
-            .and_then(|v| serde_json::to_string(v).ok());
+        // If no preset ID provided, use the default preset
+        let preset_id = if let Some(preset_id) = req.model_parameter_preset_id {
+            Some(preset_id)
+        } else {
+            self.get_default_model_parameter_preset()
+                .await?
+                .map(|p| p.id)
+        };
 
         sqlx::query(
             "INSERT INTO assistants (id, name, role, description, system_prompt, user_prompt, model_id, 
-             temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
-             avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
-             group_name, is_starred, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             model_parameter_preset_id, avatar_type, avatar_bg, avatar_text, avatar_image_path, 
+             avatar_image_url, group_name, is_starred, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&req.name)
@@ -34,12 +35,7 @@ impl Database {
         .bind(&req.system_prompt)
         .bind(&req.user_prompt)
         .bind(&req.model_id)
-        .bind(model_params.temperature)
-        .bind(model_params.max_tokens)
-        .bind(model_params.top_p)
-        .bind(model_params.frequency_penalty)
-        .bind(model_params.presence_penalty)
-        .bind(&additional_params_json)
+        .bind(&preset_id)
         .bind(&avatar_type)
         .bind(&req.avatar_bg)
         .bind(&req.avatar_text)
@@ -59,11 +55,17 @@ impl Database {
 
     pub async fn get_assistant(&self, id: &str) -> Result<Option<Assistant>> {
         let row = sqlx::query(
-            "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
-             temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
-             avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
-             group_name, is_starred, created_at, updated_at
-             FROM assistants WHERE id = ?",
+            "SELECT a.id, a.name, a.role, a.description, a.system_prompt, a.user_prompt, a.model_id, 
+             a.model_parameter_preset_id, a.avatar_type, a.avatar_bg, a.avatar_text, 
+             a.avatar_image_path, a.avatar_image_url, a.group_name, a.is_starred, 
+             a.created_at, a.updated_at,
+             p.id as preset_id, p.name as preset_name, p.description as preset_description,
+             p.temperature, p.max_tokens, p.top_p, p.frequency_penalty, p.presence_penalty,
+             p.additional_params, p.is_system as preset_is_system, p.is_default as preset_is_default,
+             p.created_at as preset_created_at, p.updated_at as preset_updated_at
+             FROM assistants a
+             LEFT JOIN model_parameter_presets p ON a.model_parameter_preset_id = p.id
+             WHERE a.id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -71,11 +73,32 @@ impl Database {
 
         match row {
             Some(row) => {
-                let additional_params_str: Option<String> = row.get("additional_params");
-                let additional_params =
-                    additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
-
                 let is_starred: i32 = row.get("is_starred");
+                let preset_id: Option<String> = row.get("preset_id");
+
+                let preset = if preset_id.is_some() {
+                    let additional_params_str: Option<String> = row.get("additional_params");
+                    let additional_params =
+                        additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
+
+                    Some(ModelParameterPreset {
+                        id: row.get("preset_id"),
+                        name: row.get("preset_name"),
+                        description: row.get("preset_description"),
+                        temperature: row.get("temperature"),
+                        max_tokens: row.get("max_tokens"),
+                        top_p: row.get("top_p"),
+                        frequency_penalty: row.get("frequency_penalty"),
+                        presence_penalty: row.get("presence_penalty"),
+                        additional_params,
+                        is_system: row.get::<i32, _>("preset_is_system") != 0,
+                        is_default: row.get::<i32, _>("preset_is_default") != 0,
+                        created_at: row.get("preset_created_at"),
+                        updated_at: row.get("preset_updated_at"),
+                    })
+                } else {
+                    None
+                };
 
                 Ok(Some(Assistant {
                     id: row.get("id"),
@@ -85,14 +108,8 @@ impl Database {
                     system_prompt: row.get("system_prompt"),
                     user_prompt: row.get("user_prompt"),
                     model_id: row.get("model_id"),
-                    model_params: ModelParameters {
-                        temperature: row.get("temperature"),
-                        max_tokens: row.get("max_tokens"),
-                        top_p: row.get("top_p"),
-                        frequency_penalty: row.get("frequency_penalty"),
-                        presence_penalty: row.get("presence_penalty"),
-                        additional_params,
-                    },
+                    model_parameter_preset_id: row.get("model_parameter_preset_id"),
+                    preset,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -110,11 +127,17 @@ impl Database {
 
     pub async fn list_assistants(&self) -> Result<Vec<Assistant>> {
         let rows = sqlx::query(
-            "SELECT id, name, role, description, system_prompt, user_prompt, model_id, 
-             temperature, max_tokens, top_p, frequency_penalty, presence_penalty, additional_params,
-             avatar_type, avatar_bg, avatar_text, avatar_image_path, avatar_image_url, 
-             group_name, is_starred, created_at, updated_at
-             FROM assistants ORDER BY created_at DESC",
+            "SELECT a.id, a.name, a.role, a.description, a.system_prompt, a.user_prompt, a.model_id, 
+             a.model_parameter_preset_id, a.avatar_type, a.avatar_bg, a.avatar_text, 
+             a.avatar_image_path, a.avatar_image_url, a.group_name, a.is_starred, 
+             a.created_at, a.updated_at,
+             p.id as preset_id, p.name as preset_name, p.description as preset_description,
+             p.temperature, p.max_tokens, p.top_p, p.frequency_penalty, p.presence_penalty,
+             p.additional_params, p.is_system as preset_is_system, p.is_default as preset_is_default,
+             p.created_at as preset_created_at, p.updated_at as preset_updated_at
+             FROM assistants a
+             LEFT JOIN model_parameter_presets p ON a.model_parameter_preset_id = p.id
+             ORDER BY a.created_at DESC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -122,11 +145,32 @@ impl Database {
         let assistants = rows
             .iter()
             .map(|row| {
-                let additional_params_str: Option<String> = row.get("additional_params");
-                let additional_params =
-                    additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
-
                 let is_starred: i32 = row.get("is_starred");
+                let preset_id: Option<String> = row.get("preset_id");
+
+                let preset = if preset_id.is_some() {
+                    let additional_params_str: Option<String> = row.get("additional_params");
+                    let additional_params =
+                        additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
+
+                    Some(ModelParameterPreset {
+                        id: row.get("preset_id"),
+                        name: row.get("preset_name"),
+                        description: row.get("preset_description"),
+                        temperature: row.get("temperature"),
+                        max_tokens: row.get("max_tokens"),
+                        top_p: row.get("top_p"),
+                        frequency_penalty: row.get("frequency_penalty"),
+                        presence_penalty: row.get("presence_penalty"),
+                        additional_params,
+                        is_system: row.get::<i32, _>("preset_is_system") != 0,
+                        is_default: row.get::<i32, _>("preset_is_default") != 0,
+                        created_at: row.get("preset_created_at"),
+                        updated_at: row.get("preset_updated_at"),
+                    })
+                } else {
+                    None
+                };
 
                 Assistant {
                     id: row.get("id"),
@@ -136,14 +180,8 @@ impl Database {
                     system_prompt: row.get("system_prompt"),
                     user_prompt: row.get("user_prompt"),
                     model_id: row.get("model_id"),
-                    model_params: ModelParameters {
-                        temperature: row.get("temperature"),
-                        max_tokens: row.get("max_tokens"),
-                        top_p: row.get("top_p"),
-                        frequency_penalty: row.get("frequency_penalty"),
-                        presence_penalty: row.get("presence_penalty"),
-                        additional_params,
-                    },
+                    model_parameter_preset_id: row.get("model_parameter_preset_id"),
+                    preset,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -169,17 +207,9 @@ impl Database {
         let is_starred = req.is_starred.unwrap_or(false);
         let avatar_type = req.avatar_type.unwrap_or_else(|| "text".to_string());
 
-        // Extract model parameters
-        let model_params = req.model_params.unwrap_or_default();
-        let additional_params_json = model_params
-            .additional_params
-            .as_ref()
-            .and_then(|v| serde_json::to_string(v).ok());
-
         sqlx::query(
             "UPDATE assistants SET name = ?, role = ?, description = ?, system_prompt = ?, 
-             user_prompt = ?, model_id = ?, temperature = ?, max_tokens = ?, top_p = ?,
-             frequency_penalty = ?, presence_penalty = ?, additional_params = ?,
+             user_prompt = ?, model_id = ?, model_parameter_preset_id = ?,
              avatar_type = ?, avatar_bg = ?, avatar_text = ?, 
              avatar_image_path = ?, avatar_image_url = ?, group_name = ?, 
              is_starred = ?, updated_at = ? WHERE id = ?",
@@ -190,12 +220,7 @@ impl Database {
         .bind(&req.system_prompt)
         .bind(&req.user_prompt)
         .bind(&req.model_id)
-        .bind(model_params.temperature)
-        .bind(model_params.max_tokens)
-        .bind(model_params.top_p)
-        .bind(model_params.frequency_penalty)
-        .bind(model_params.presence_penalty)
-        .bind(&additional_params_json)
+        .bind(&req.model_parameter_preset_id)
         .bind(&avatar_type)
         .bind(&req.avatar_bg)
         .bind(&req.avatar_text)

@@ -4,6 +4,7 @@ mod contexts;
 mod conversations;
 mod fetch_results;
 mod messages;
+mod model_parameter_presets;
 mod models;
 mod prompts;
 mod providers;
@@ -40,6 +41,9 @@ impl Database {
 
         // Initialize encryption key for API key storage
         crate::crypto::init_encryption_key(&db).await?;
+
+        // Ensure default parameter presets exist
+        db.ensure_default_presets().await?;
 
         Ok(db)
     }

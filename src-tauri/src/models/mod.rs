@@ -6,6 +6,7 @@ mod knowledge_base;
 mod message;
 mod message_resources;
 mod model;
+mod model_parameter_preset;
 mod process_step;
 mod prompt;
 mod provider;
@@ -18,6 +19,11 @@ pub use provider::{CreateProviderRequest, Provider};
 
 // Model and parameters
 pub use model::{CreateModelRequest, Model, ModelParameters};
+
+// Model Parameter Preset
+pub use model_parameter_preset::{
+    CreateModelParameterPresetRequest, ModelParameterPreset, UpdateModelParameterPresetRequest,
+};
 
 // Assistant
 pub use assistant::{Assistant, CreateAssistantRequest};

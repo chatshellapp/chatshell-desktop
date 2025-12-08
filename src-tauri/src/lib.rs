@@ -113,6 +113,13 @@ pub fn run() {
             commands::update_model,
             commands::delete_model,
             commands::soft_delete_model,
+            // Model Parameter Preset commands
+            commands::list_model_parameter_presets,
+            commands::get_model_parameter_preset,
+            commands::get_default_model_parameter_preset,
+            commands::create_model_parameter_preset,
+            commands::update_model_parameter_preset,
+            commands::delete_model_parameter_preset,
             // Assistant commands
             commands::create_assistant,
             commands::get_assistant,

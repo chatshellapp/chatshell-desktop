@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::ModelParameters;
+use super::ModelParameterPreset;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assistant {
@@ -12,9 +12,12 @@ pub struct Assistant {
     pub user_prompt: Option<String>,
     pub model_id: String, // Foreign key to models table
 
-    /// LLM generation parameters (flattened for JSON compatibility)
-    #[serde(flatten)]
-    pub model_params: ModelParameters,
+    /// Reference to parameter preset
+    pub model_parameter_preset_id: Option<String>,
+    
+    /// The full preset data (populated via JOIN, not stored directly)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset: Option<ModelParameterPreset>,
 
     // Avatar fields
     pub avatar_type: String,
@@ -38,9 +41,8 @@ pub struct CreateAssistantRequest {
     pub user_prompt: Option<String>,
     pub model_id: String, // Foreign key to models table
 
-    /// LLM generation parameters (flattened for JSON compatibility)
-    #[serde(flatten)]
-    pub model_params: Option<ModelParameters>,
+    /// Reference to parameter preset (optional - will use default if not specified)
+    pub model_parameter_preset_id: Option<String>,
 
     pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,

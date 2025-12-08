@@ -1,5 +1,7 @@
+import type { ModelParameterPreset } from './model-parameter-preset'
+
 // ==========================================================================
-// ASSISTANT - Model + Parameters + System Prompt packaged together
+// ASSISTANT - Model + System Prompt + Parameter Preset packaged together
 // ==========================================================================
 
 // Assistant types
@@ -12,13 +14,11 @@ export interface Assistant {
   user_prompt?: string
   model_id: string // Foreign key to models table
 
-  // Model parameters (flattened in JSON for backward compatibility)
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-  additional_params?: Record<string, unknown>
+  // Reference to parameter preset
+  model_parameter_preset_id?: string
+
+  // The full preset data (populated via JOIN)
+  preset?: ModelParameterPreset
 
   // Avatar
   avatar_type: string // "text" or "image"
@@ -41,13 +41,8 @@ export interface CreateAssistantRequest {
   user_prompt?: string
   model_id: string // Foreign key to models table
 
-  // Model parameters (flattened in JSON for backward compatibility)
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-  additional_params?: Record<string, unknown>
+  // Reference to parameter preset (optional - will use default if not specified)
+  model_parameter_preset_id?: string
 
   // Avatar
   avatar_type?: string
