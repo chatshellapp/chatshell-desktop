@@ -55,6 +55,11 @@ pub(crate) async fn handle_agent_streaming(
         Ok(a) => a,
         Err(e) => {
             tracing::error!("❌ [agent_streaming] Failed to create agent: {}", e);
+            let error_payload = serde_json::json!({
+                "conversation_id": conversation_id_clone,
+                "error": format!("Failed to create agent: {}", e),
+            });
+            let _ = app.emit("chat-error", error_payload);
             let mut tasks = state_clone.generation_tasks.write().await;
             tasks.remove(&conversation_id_clone);
             return;
@@ -227,6 +232,11 @@ pub(crate) async fn handle_agent_streaming(
                         }
                         Err(e) => {
                             tracing::error!("Failed to save partial message: {}", e);
+                            let error_payload = serde_json::json!({
+                                "conversation_id": conversation_id_clone,
+                                "error": format!("Failed to save partial message: {}", e),
+                            });
+                            let _ = app.emit("chat-error", error_payload);
                         }
                     }
                 }
@@ -258,6 +268,11 @@ pub(crate) async fn handle_agent_streaming(
     // ("all messages must have non-empty content")
     if final_content.trim().is_empty() {
         tracing::info!("⚠️ [agent_streaming] Skipping save of empty response");
+        let error_payload = serde_json::json!({
+            "conversation_id": conversation_id_clone,
+            "error": "Model returned empty response",
+        });
+        let _ = app.emit("chat-error", error_payload);
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
         return;
@@ -287,6 +302,11 @@ pub(crate) async fn handle_agent_streaming(
         Ok(msg) => msg,
         Err(e) => {
             tracing::error!("Failed to save assistant message: {}", e);
+            let error_payload = serde_json::json!({
+                "conversation_id": conversation_id_clone,
+                "error": format!("Failed to save message: {}", e),
+            });
+            let _ = app.emit("chat-error", error_payload);
             let mut tasks = state_clone.generation_tasks.write().await;
             tasks.remove(&conversation_id_clone);
             return;
