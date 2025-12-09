@@ -19,7 +19,7 @@ use tauri::{Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 // Re-export types
-pub use types::{FileAttachmentInput, ImageAttachmentInput};
+pub use types::{FileAttachmentInput, ImageAttachmentInput, ParameterOverrides};
 
 /// Send a message and start LLM generation
 ///
@@ -44,6 +44,9 @@ pub async fn send_message(
     images: Option<Vec<ImageAttachmentInput>>,
     files: Option<Vec<FileAttachmentInput>>,
     search_enabled: Option<bool>,
+    parameter_overrides: Option<types::ParameterOverrides>,
+    context_message_count: Option<i64>,
+    use_provider_defaults: Option<bool>,
 ) -> Result<Message, String> {
     log_send_message_params(
         &conversation_id,
@@ -59,6 +62,9 @@ pub async fn send_message(
         &images,
         &files,
         &search_enabled,
+        &parameter_overrides,
+        &context_message_count,
+        &use_provider_defaults,
     );
 
     // Save user message to database
@@ -96,6 +102,9 @@ pub async fn send_message(
         search_enabled.unwrap_or(false),
         user_message.id.clone(),
         cancel_token,
+        parameter_overrides,
+        context_message_count,
+        use_provider_defaults.unwrap_or(false),
     );
 
     Ok(user_message)
@@ -151,6 +160,9 @@ fn log_send_message_params(
     images: &Option<Vec<ImageAttachmentInput>>,
     files: &Option<Vec<FileAttachmentInput>>,
     search_enabled: &Option<bool>,
+    parameter_overrides: &Option<types::ParameterOverrides>,
+    context_message_count: &Option<i64>,
+    use_provider_defaults: &Option<bool>,
 ) {
     tracing::info!("🚀 [send_message] Command received!");
     tracing::info!("   conversation_id: {}", conversation_id);
@@ -166,6 +178,9 @@ fn log_send_message_params(
     tracing::info!("   images count: {:?}", images.as_ref().map(|v| v.len()));
     tracing::info!("   files count: {:?}", files.as_ref().map(|v| v.len()));
     tracing::info!("   search_enabled: {:?}", search_enabled);
+    tracing::info!("   parameter_overrides: {:?}", parameter_overrides);
+    tracing::info!("   context_message_count: {:?}", context_message_count);
+    tracing::info!("   use_provider_defaults: {:?}", use_provider_defaults);
 }
 
 async fn save_user_message(
@@ -217,6 +232,9 @@ fn spawn_background_task(
     search_enabled: bool,
     user_message_id: String,
     cancel_token: CancellationToken,
+    parameter_overrides: Option<types::ParameterOverrides>,
+    context_message_count: Option<i64>,
+    use_provider_defaults: bool,
 ) {
     tracing::info!("🔄 [send_message] Spawning background task...");
 
@@ -241,6 +259,9 @@ fn spawn_background_task(
             search_enabled,
             user_message_id,
             cancel_token,
+            parameter_overrides,
+            context_message_count,
+            use_provider_defaults,
         )
         .await;
     });
@@ -267,6 +288,9 @@ async fn process_llm_request(
     search_enabled: bool,
     user_message_id: String,
     cancel_token: CancellationToken,
+    parameter_overrides: Option<types::ParameterOverrides>,
+    context_message_count: Option<i64>,
+    use_provider_defaults: bool,
 ) {
     tracing::info!("🎯 [background_task] Started processing LLM request");
 
@@ -330,7 +354,7 @@ async fn process_llm_request(
     )
     .await;
 
-    // Step 6: Build chat messages
+    // Step 6: Build chat messages with context limit
     let chat_messages = message_builder::build_chat_messages(
         &state,
         &conversation_id,
@@ -341,24 +365,67 @@ async fn process_llm_request(
         include_history.unwrap_or(true),
         &user_images,
         &user_files,
+        context_message_count,
     )
     .await;
 
-    // Step 7: Get assistant config and model params
+    // Step 7: Get assistant config and build model params
     let assistant_config = get_assistant_config(&state, &assistant_db_id).await;
 
-    let model_params = assistant_config
-        .as_ref()
-        .and_then(|a| a.preset.as_ref())
-        .map(|preset| crate::models::ModelParameters {
-            temperature: preset.temperature,
-            max_tokens: preset.max_tokens,
-            top_p: preset.top_p,
-            frequency_penalty: preset.frequency_penalty,
-            presence_penalty: preset.presence_penalty,
-            additional_params: preset.additional_params.clone(),
-        })
-        .unwrap_or_default();
+    // Determine model params based on settings:
+    // - use_provider_defaults: true -> use empty params (provider defaults)
+    // - parameter_overrides: set -> use custom overrides
+    // - otherwise -> use assistant preset (if available)
+    let model_params = if use_provider_defaults {
+        tracing::info!("📋 [background_task] Using provider defaults (no parameters sent)");
+        crate::models::ModelParameters::default()
+    } else if let Some(overrides) = parameter_overrides {
+        // Custom parameter overrides
+        let mut params = crate::models::ModelParameters::default();
+        if overrides.temperature.is_some() {
+            params.temperature = overrides.temperature;
+        }
+        if overrides.max_tokens.is_some() {
+            params.max_tokens = overrides.max_tokens;
+        }
+        if overrides.top_p.is_some() {
+            params.top_p = overrides.top_p;
+        }
+        if overrides.frequency_penalty.is_some() {
+            params.frequency_penalty = overrides.frequency_penalty;
+        }
+        if overrides.presence_penalty.is_some() {
+            params.presence_penalty = overrides.presence_penalty;
+        }
+        tracing::info!(
+            "📋 [background_task] Applied custom parameter overrides: temp={:?}, max_tokens={:?}, top_p={:?}",
+            params.temperature,
+            params.max_tokens,
+            params.top_p
+        );
+        params
+    } else {
+        // Use assistant preset params (if any)
+        assistant_config
+            .as_ref()
+            .and_then(|a| a.preset.as_ref())
+            .map(|preset| {
+                tracing::info!(
+                    "📋 [background_task] Using assistant preset: temp={:?}, max_tokens={:?}",
+                    preset.temperature,
+                    preset.max_tokens
+                );
+                crate::models::ModelParameters {
+                    temperature: preset.temperature,
+                    max_tokens: preset.max_tokens,
+                    top_p: preset.top_p,
+                    frequency_penalty: preset.frequency_penalty,
+                    presence_penalty: preset.presence_penalty,
+                    additional_params: preset.additional_params.clone(),
+                }
+            })
+            .unwrap_or_default()
+    };
 
     let system_prompt_for_agent = chat_messages
         .first()

@@ -11,6 +11,8 @@ import {
   Settings2,
   Search,
   Package,
+  SlidersHorizontal,
+  MessageSquare,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -53,6 +55,12 @@ interface InputToolbarProps {
   selectedAssistant: Assistant | null
   onSend: () => void
   onStop: () => void
+  // Model parameters
+  onModelParametersClick: () => void
+  modelParametersLabel: string
+  // Context count
+  onContextCountClick: () => void
+  contextCountLabel: string
 }
 
 export function InputToolbar({
@@ -78,6 +86,10 @@ export function InputToolbar({
   selectedAssistant,
   onSend,
   onStop,
+  onModelParametersClick,
+  modelParametersLabel,
+  onContextCountClick,
+  contextCountLabel,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -111,7 +123,7 @@ export function InputToolbar({
             <Settings2 />
           </InputGroupButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem] min-w-[180px]">
+        <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem] min-w-[200px]">
           <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Search className="size-4" />
@@ -125,6 +137,21 @@ export function InputToolbar({
               <span>Artifacts</span>
             </div>
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onModelParametersClick} className="gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="size-4" />
+              <span>Parameters</span>
+            </div>
+            <span className="text-xs text-muted-foreground">{modelParametersLabel}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onContextCountClick} className="gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="size-4" />
+              <span>Context</span>
+            </div>
+            <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onPromptSelect} className="gap-2">

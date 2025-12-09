@@ -8,6 +8,12 @@ use crate::llm::{self, ChatMessage};
 use crate::prompts;
 
 /// Build chat messages for LLM request
+///
+/// # Arguments
+/// * `context_message_count` - Optional limit on number of history messages to include.
+///   - `None` or negative value: include all history
+///   - `Some(n)` where n > 0: include only the last n messages
+#[allow(clippy::too_many_arguments)]
 pub async fn build_chat_messages(
     state: &AppState,
     conversation_id: &str,
@@ -18,6 +24,7 @@ pub async fn build_chat_messages(
     include_history: bool,
     user_images: &[attachment_processing::ParsedImage],
     user_files: &[llm::FileData],
+    context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
     // Build system prompt
     let system_prompt_content = system_prompt
@@ -38,11 +45,32 @@ pub async fn build_chat_messages(
             .list_messages_by_conversation(conversation_id)
             .await
         {
-            for msg in messages.iter() {
-                // Skip the user message we just saved
-                if msg.id == user_message_id {
-                    continue;
+            // Filter out the current user message first
+            let history_messages: Vec<_> = messages
+                .iter()
+                .filter(|msg| msg.id != user_message_id)
+                .collect();
+
+            // Apply context message count limit if specified
+            let messages_to_include = match context_message_count {
+                Some(count) if count > 0 => {
+                    let count = count as usize;
+                    if history_messages.len() > count {
+                        // Take only the last N messages
+                        tracing::info!(
+                            "📊 [message_builder] Limiting context to {} messages (had {})",
+                            count,
+                            history_messages.len()
+                        );
+                        &history_messages[history_messages.len() - count..]
+                    } else {
+                        &history_messages[..]
+                    }
                 }
+                _ => &history_messages[..], // None or negative: include all
+            };
+
+            for msg in messages_to_include.iter() {
                 let chat_role = match msg.sender_type.as_str() {
                     "user" => "user",
                     "model" | "assistant" => "assistant",

@@ -107,3 +107,14 @@ export type {
 
 // URL status type (used in message store for tracking fetch status)
 export type UrlStatus = 'fetching' | 'fetched'
+
+// Conversation settings types
+export type {
+  ModelParameterOverrides,
+  ConversationSettings,
+} from './conversation-settings'
+export {
+  createDefaultConversationSettings,
+  PARAMETER_LIMITS,
+  CONTEXT_COUNT_OPTIONS,
+} from './conversation-settings'

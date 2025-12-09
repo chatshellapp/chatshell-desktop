@@ -1,6 +1,7 @@
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
+import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import type { Attachment } from './types'
 import { logger } from '@/lib/logger'
 
@@ -26,6 +27,9 @@ export function useSubmitHandler({
 
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
+
+  // Get conversation settings
+  const getSettings = useConversationSettingsStore((state) => state.getSettings)
 
   // Get conversation-specific state
   const conversationState = useMessageStore((state) =>
@@ -148,6 +152,28 @@ export function useSubmitHandler({
       // Extract webpage URLs from attachments
       const webpageUrls = attachments.filter((att) => att.type === 'webpage').map((att) => att.name)
 
+      // Get conversation settings for parameter overrides and context count
+      const conversationId = currentConversation?.id
+      const settings = conversationId ? getSettings(conversationId) : null
+
+      // Determine what parameters to send:
+      // - useProviderDefaults: true → send flag to skip all parameters
+      // - useCustomParameters: true → send custom overrides
+      // - selectedPresetId: set → let backend use assistant preset (no overrides sent)
+      const useProviderDefaults = settings?.useProviderDefaults ?? false
+      const parameterOverrides =
+        settings?.useCustomParameters && settings.parameterOverrides
+          ? settings.parameterOverrides
+          : undefined
+      const contextMessageCount = settings?.contextMessageCount ?? undefined
+
+      logger.info('Using conversation settings:', {
+        useProviderDefaults: settings?.useProviderDefaults,
+        useCustomParameters: settings?.useCustomParameters,
+        hasParameterOverrides: !!parameterOverrides,
+        contextMessageCount,
+      })
+
       await sendMessage(
         content, // Send original content, files are sent separately
         currentConversation?.id ?? null,
@@ -163,7 +189,10 @@ export function useSubmitHandler({
         webpageUrls.length > 0 ? webpageUrls : undefined, // urlsToFetch
         images.length > 0 ? images : undefined, // images
         files.length > 0 ? files : undefined, // files
-        webSearchEnabled // searchEnabled
+        webSearchEnabled, // searchEnabled
+        parameterOverrides, // parameterOverrides
+        contextMessageCount, // contextMessageCount
+        useProviderDefaults // useProviderDefaults - skip all parameters when true
       )
 
       // Clear attachments after sending

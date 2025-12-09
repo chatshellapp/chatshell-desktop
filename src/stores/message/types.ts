@@ -68,6 +68,15 @@ export interface MessageStoreStreamingActions {
   setIsReasoningActive: (conversationId: string, isActive: boolean) => void
 }
 
+// Parameter overrides for conversation-level settings
+export interface SendMessageParameterOverrides {
+  temperature?: number
+  max_tokens?: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+}
+
 // CRUD actions (message create, read, update, delete, lifecycle)
 export interface MessageStoreCrudActions {
   loadMessages: (conversationId: string) => Promise<void>
@@ -86,7 +95,10 @@ export interface MessageStoreCrudActions {
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
     files?: { name: string; content: string; mimeType: string }[],
-    searchEnabled?: boolean
+    searchEnabled?: boolean,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean
   ) => Promise<void>
   stopGeneration: (conversationId: string) => Promise<void>
   clearMessages: (conversationId: string) => Promise<void>

@@ -17,3 +17,13 @@ pub struct ImageAttachmentInput {
     #[serde(rename = "mimeType")]
     pub mime_type: String,
 }
+
+/// Parameter overrides from conversation settings
+#[derive(Debug, Clone, Deserialize)]
+pub struct ParameterOverrides {
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i64>,
+    pub top_p: Option<f64>,
+    pub frequency_penalty: Option<f64>,
+    pub presence_penalty: Option<f64>,
+}

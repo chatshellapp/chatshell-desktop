@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, Conversation } from '@/types'
-import type { ImmerSet, StoreGet, MessageStoreCrudActions } from './types'
+import type { ImmerSet, StoreGet, MessageStoreCrudActions, SendMessageParameterOverrides } from './types'
 import { MAX_MESSAGES_IN_MEMORY } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'
@@ -59,7 +59,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
     files?: { name: string; content: string; mimeType: string }[],
-    searchEnabled?: boolean
+    searchEnabled?: boolean,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean
   ) => {
     set((draft) => {
       draft.isSending = true
@@ -111,6 +114,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         hasImages: !!images?.length,
         hasFiles: !!files?.length,
         searchEnabled,
+        hasParameterOverrides: !!parameterOverrides,
+        contextMessageCount,
+        useProviderDefaults,
       })
 
       // This will return the user message immediately
@@ -130,6 +136,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         images,
         files,
         searchEnabled,
+        parameterOverrides,
+        contextMessageCount,
+        useProviderDefaults,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
