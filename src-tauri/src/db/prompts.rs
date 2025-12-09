@@ -156,13 +156,11 @@ impl Database {
     pub async fn toggle_prompt_star(&self, id: &str) -> Result<Prompt> {
         let now = Utc::now().to_rfc3339();
 
-        sqlx::query(
-            "UPDATE prompts SET is_starred = NOT is_starred, updated_at = ? WHERE id = ?"
-        )
-        .bind(&now)
-        .bind(id)
-        .execute(self.pool.as_ref())
-        .await?;
+        sqlx::query("UPDATE prompts SET is_starred = NOT is_starred, updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await?;
 
         self.get_prompt(id)
             .await?

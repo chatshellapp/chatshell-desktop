@@ -14,7 +14,7 @@ pub struct Assistant {
 
     /// Reference to parameter preset
     pub model_parameter_preset_id: Option<String>,
-    
+
     /// The full preset data (populated via JOIN, not stored directly)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset: Option<ModelParameterPreset>,

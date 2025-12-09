@@ -54,7 +54,10 @@ impl Database {
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created preset"))
     }
 
-    pub async fn get_model_parameter_preset(&self, id: &str) -> Result<Option<ModelParameterPreset>> {
+    pub async fn get_model_parameter_preset(
+        &self,
+        id: &str,
+    ) -> Result<Option<ModelParameterPreset>> {
         let row = sqlx::query("SELECT * FROM model_parameter_presets WHERE id = ?")
             .bind(id)
             .fetch_optional(self.pool.as_ref())
@@ -367,4 +370,3 @@ impl Database {
         Ok(())
     }
 }
-

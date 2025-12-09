@@ -51,4 +51,3 @@ pub struct UpdateModelParameterPresetRequest {
     pub additional_params: Option<serde_json::Value>,
     pub is_default: Option<bool>,
 }
-

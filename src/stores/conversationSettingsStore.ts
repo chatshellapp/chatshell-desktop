@@ -17,10 +17,7 @@ interface ConversationSettingsActions {
   setUseProviderDefaults: (conversationId: string, useDefaults: boolean) => void
 
   // Update parameter overrides
-  setParameterOverrides: (
-    conversationId: string,
-    overrides: ModelParameterOverrides
-  ) => void
+  setParameterOverrides: (conversationId: string, overrides: ModelParameterOverrides) => void
 
   // Toggle between custom and preset parameters
   setUseCustomParameters: (conversationId: string, useCustom: boolean) => void
@@ -73,10 +70,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         })
       },
 
-      setParameterOverrides: (
-        conversationId: string,
-        overrides: ModelParameterOverrides
-      ) => {
+      setParameterOverrides: (conversationId: string, overrides: ModelParameterOverrides) => {
         set((draft) => {
           if (!draft.settings[conversationId]) {
             draft.settings[conversationId] = createDefaultConversationSettings()
@@ -141,4 +135,3 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
     }
   )
 )
-

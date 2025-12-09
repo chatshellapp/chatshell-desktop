@@ -1,13 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import {
-  Loader2,
-  CheckCircle2,
-  Sparkles,
-  Bot,
-  ArrowRight,
-  BotIcon,
-} from 'lucide-react'
+import { Loader2, CheckCircle2, Sparkles, Bot, ArrowRight, BotIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useOnboardingStore } from '@/stores/onboardingStore'

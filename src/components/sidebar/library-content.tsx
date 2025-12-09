@@ -1,13 +1,7 @@
 import { Sparkles, BookOpen, Plug } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PromptList, type Prompt, type PromptGroup } from '@/components/prompt-list'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 interface LibraryContentProps {
   activeTab: string
@@ -66,9 +60,7 @@ export function LibraryContent({
               <BookOpen />
             </EmptyMedia>
             <EmptyTitle>No Knowledge Yet</EmptyTitle>
-            <EmptyDescription>
-              You haven&apos;t added any knowledge base yet.
-            </EmptyDescription>
+            <EmptyDescription>You haven&apos;t added any knowledge base yet.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TabsContent>
@@ -79,9 +71,7 @@ export function LibraryContent({
               <Plug />
             </EmptyMedia>
             <EmptyTitle>No Tools Yet</EmptyTitle>
-            <EmptyDescription>
-              You haven&apos;t configured any tools yet.
-            </EmptyDescription>
+            <EmptyDescription>You haven&apos;t configured any tools yet.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TabsContent>

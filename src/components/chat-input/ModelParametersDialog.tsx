@@ -106,9 +106,9 @@ export function ModelParametersDialog({
         const result = await invoke<ModelParameterPreset[]>('list_model_parameter_presets')
         // Sort presets: Creative, Balanced, Precise, then others
         const presetOrder: Record<string, number> = {
-          'Creative': 0,
-          'Balanced': 1,
-          'Precise': 2,
+          Creative: 0,
+          Balanced: 1,
+          Precise: 2,
         }
         const sorted = [...result].sort((a, b) => {
           const orderA = presetOrder[a.name] ?? 99
@@ -182,9 +182,7 @@ export function ModelParametersDialog({
                 onClick={handleDefaultSelect}
                 className={cn(
                   'flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent',
-                  useProviderDefaults
-                    ? 'border-primary bg-accent'
-                    : 'border-border'
+                  useProviderDefaults ? 'border-primary bg-accent' : 'border-border'
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -214,13 +212,9 @@ export function ModelParametersDialog({
                     <span className="text-xs text-muted-foreground">{preset.description}</span>
                   )}
                   <div className="flex gap-3 text-xs text-muted-foreground mt-1">
-                    {preset.temperature !== undefined && (
-                      <span>Temp: {preset.temperature}</span>
-                    )}
+                    {preset.temperature !== undefined && <span>Temp: {preset.temperature}</span>}
                     {preset.top_p !== undefined && <span>Top P: {preset.top_p}</span>}
-                    {preset.max_tokens !== undefined && (
-                      <span>Max: {preset.max_tokens}</span>
-                    )}
+                    {preset.max_tokens !== undefined && <span>Max: {preset.max_tokens}</span>}
                   </div>
                 </button>
               ))}

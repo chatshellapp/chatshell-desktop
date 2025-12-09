@@ -13,7 +13,7 @@ export function useAssistantGroups(): AssistantGroup[] {
 
     // Group assistants by group_name
     const groupMap = new Map<string, typeof assistants>()
-    
+
     assistants.forEach((assistant) => {
       const groupName = assistant.group_name || 'Ungrouped'
       if (!groupMap.has(groupName)) {
@@ -24,7 +24,7 @@ export function useAssistantGroups(): AssistantGroup[] {
 
     // Convert map to AssistantGroup array
     const groups: AssistantGroup[] = []
-    
+
     // Sort groups: "Ungrouped" first, then alphabetically
     const sortedGroupNames = Array.from(groupMap.keys()).sort((a, b) => {
       if (a === 'Ungrouped') return -1
@@ -34,7 +34,7 @@ export function useAssistantGroups(): AssistantGroup[] {
 
     sortedGroupNames.forEach((groupName, index) => {
       const groupAssistants = groupMap.get(groupName)!
-      
+
       groups.push({
         id: groupName.toLowerCase().replace(/\s+/g, '-'),
         name: groupName,

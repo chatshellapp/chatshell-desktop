@@ -74,4 +74,3 @@ pub async fn delete_model_parameter_preset(
         .await
         .map_err(|e| e.to_string())
 }
-

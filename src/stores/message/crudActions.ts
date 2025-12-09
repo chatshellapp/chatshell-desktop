@@ -1,6 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, Conversation } from '@/types'
-import type { ImmerSet, StoreGet, MessageStoreCrudActions, SendMessageParameterOverrides } from './types'
+import type {
+  ImmerSet,
+  StoreGet,
+  MessageStoreCrudActions,
+  SendMessageParameterOverrides,
+} from './types'
 import { MAX_MESSAGES_IN_MEMORY } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'

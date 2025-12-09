@@ -4,13 +4,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { formatConversationTimestamp } from '@/lib/utils'
 import { buildConversationAvatars } from '@/lib/conversation-avatars'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { ParticipantSummary } from '@/types'
 
 interface ConversationListProps {
@@ -41,9 +35,7 @@ export function ConversationList({
               <MessageSquare />
             </EmptyMedia>
             <EmptyTitle>No Conversations Yet</EmptyTitle>
-            <EmptyDescription>
-              Start a new conversation to begin chatting.
-            </EmptyDescription>
+            <EmptyDescription>Start a new conversation to begin chatting.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>

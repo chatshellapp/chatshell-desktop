@@ -2,13 +2,7 @@ import { Bot, Drama, Users } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModelList, type Model, type ModelVendor } from '@/components/model-list'
 import { AssistantList, type Assistant, type AssistantGroup } from '@/components/assistant-list'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 interface ContactsContentProps {
   activeTab: string
@@ -89,9 +83,7 @@ export function ContactsContent({
               <Users />
             </EmptyMedia>
             <EmptyTitle>No People Yet</EmptyTitle>
-            <EmptyDescription>
-              You haven&apos;t added any contacts yet.
-            </EmptyDescription>
+            <EmptyDescription>You haven&apos;t added any contacts yet.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TabsContent>

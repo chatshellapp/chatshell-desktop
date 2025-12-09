@@ -109,10 +109,7 @@ export type {
 export type UrlStatus = 'fetching' | 'fetched'
 
 // Conversation settings types
-export type {
-  ModelParameterOverrides,
-  ConversationSettings,
-} from './conversation-settings'
+export type { ModelParameterOverrides, ConversationSettings } from './conversation-settings'
 export {
   createDefaultConversationSettings,
   PARAMETER_LIMITS,

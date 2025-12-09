@@ -10,13 +10,7 @@ import {
 import { Bot, ChevronDown, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ModelListItem } from '@/components/model-list-item'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 export interface Model {
   /**
@@ -143,9 +137,7 @@ export function ModelList({
             <Bot />
           </EmptyMedia>
           <EmptyTitle>No Models Yet</EmptyTitle>
-          <EmptyDescription>
-            Add a provider to start using models.
-          </EmptyDescription>
+          <EmptyDescription>Add a provider to start using models.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )

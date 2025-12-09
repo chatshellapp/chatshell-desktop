@@ -24,4 +24,3 @@ pub async fn create_model_parameter_presets_table(pool: &SqlitePool) -> Result<(
 
     Ok(())
 }
-

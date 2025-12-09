@@ -38,4 +38,3 @@ export interface UpdateModelParameterPresetRequest {
   additional_params?: Record<string, unknown>
   is_default?: boolean
 }
-

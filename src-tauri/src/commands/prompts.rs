@@ -52,10 +52,7 @@ pub async fn delete_prompt(state: State<'_, AppState>, id: String) -> Result<(),
 }
 
 #[tauri::command]
-pub async fn toggle_prompt_star(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Prompt, String> {
+pub async fn toggle_prompt_star(state: State<'_, AppState>, id: String) -> Result<Prompt, String> {
     state
         .db
         .toggle_prompt_star(&id)

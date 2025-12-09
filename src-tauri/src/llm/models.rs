@@ -140,7 +140,7 @@ pub async fn fetch_openrouter_models(api_key: String) -> Result<Vec<ModelInfo>> 
 /// Check if a model name indicates it's an embedding model
 fn is_embedding_model(model_name: &str) -> bool {
     let lower_name = model_name.to_lowercase();
-    
+
     // Common patterns for embedding models
     lower_name.starts_with("text-")
         || lower_name.contains("embed")

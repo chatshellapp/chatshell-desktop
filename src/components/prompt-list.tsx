@@ -10,13 +10,7 @@ import {
 import { ChevronDown, MoreVertical, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PromptListItem } from '@/components/prompt-list-item'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 
 export interface Prompt {
   /**
