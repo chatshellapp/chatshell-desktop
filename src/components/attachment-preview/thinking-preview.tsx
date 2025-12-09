@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
 
@@ -14,12 +14,75 @@ export function ThinkingPreview({
   // Auto-expand when streaming to show live thinking
   const [isExpanded, setIsExpanded] = useState(isStreaming)
 
+  // Refs for auto-scroll
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentEndRef = useRef<HTMLDivElement>(null)
+
+  // Track if user is at bottom of the thinking container
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const isUserScrollingRef = useRef(false)
+  const scrollTimeoutRef = useRef<number | null>(null)
+
+  // Check if user is near bottom (within 50px threshold)
+  const checkIfAtBottom = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return true
+
+    const threshold = 50
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+
+    return isNearBottom
+  }, [])
+
+  // Handle scroll events to track user position
+  const handleScroll = useCallback(() => {
+    isUserScrollingRef.current = true
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      isUserScrollingRef.current = false
+      setIsAtBottom(checkIfAtBottom())
+    }, 150)
+  }, [checkIfAtBottom])
+
   // Auto-expand when streaming starts
   useEffect(() => {
     if (isStreaming) {
       setIsExpanded(true)
     }
   }, [isStreaming])
+
+  // Auto-scroll to bottom when content changes while streaming
+  useEffect(() => {
+    if (!isStreaming || !isExpanded || isUserScrollingRef.current) {
+      return
+    }
+
+    if (isAtBottom && contentEndRef.current) {
+      contentEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [content, isStreaming, isExpanded, isAtBottom])
+
+  // Reset scroll position when streaming starts
+  useEffect(() => {
+    if (isStreaming && isExpanded) {
+      setIsAtBottom(true)
+      isUserScrollingRef.current = false
+    }
+  }, [isStreaming, isExpanded])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div className="w-full rounded-lg border border-muted overflow-hidden">
@@ -43,7 +106,11 @@ export function ThinkingPreview({
 
       {/* Expandable content */}
       {isExpanded && (
-        <div className="border-t border-muted px-3 py-3 max-h-80 overflow-y-auto">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="border-t border-muted px-3 py-3 max-h-80 overflow-y-auto"
+        >
           <div className="text-sm text-foreground/80 leading-relaxed">
             {content ? (
               <MarkdownContent content={content} className="text-sm" />
@@ -51,6 +118,8 @@ export function ThinkingPreview({
               <span className="text-muted-foreground/60 italic">Processing...</span>
             ) : null}
           </div>
+          {/* Scroll anchor */}
+          <div ref={contentEndRef} />
         </div>
       )}
     </div>
