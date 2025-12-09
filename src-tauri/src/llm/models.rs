@@ -137,6 +137,27 @@ pub async fn fetch_openrouter_models(api_key: String) -> Result<Vec<ModelInfo>> 
     Ok(models)
 }
 
+/// Check if a model name indicates it's an embedding model
+fn is_embedding_model(model_name: &str) -> bool {
+    let lower_name = model_name.to_lowercase();
+    
+    // Common patterns for embedding models
+    lower_name.starts_with("text-")
+        || lower_name.contains("embed")
+        || lower_name.starts_with("bge-")
+        || lower_name.starts_with("e5-")
+        || lower_name.starts_with("uae-")
+        || lower_name.starts_with("gte-")
+        || lower_name.contains("llm2vec")
+        || lower_name.contains("retrieval")
+        || lower_name.contains("jina-clip")
+        || lower_name.contains("jina-embeddings")
+        || lower_name.contains("voyage-")
+        || lower_name.contains("rerank")
+        || lower_name.contains("nomic-embed")
+        || lower_name.contains("mxbai-embed")
+}
+
 /// Fetch available models from Ollama
 pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
     let client = create_http_client();
@@ -158,6 +179,8 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
     let models: Vec<ModelInfo> = data
         .models
         .into_iter()
+        // Filter out embedding models
+        .filter(|m| !is_embedding_model(&m.name))
         .map(|m| {
             let display_name = format_model_display_name(&m.name);
             ModelInfo {
