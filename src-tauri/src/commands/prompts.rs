@@ -50,3 +50,15 @@ pub async fn update_prompt(
 pub async fn delete_prompt(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_prompt(&id).await.map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn toggle_prompt_star(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Prompt, String> {
+    state
+        .db
+        .toggle_prompt_star(&id)
+        .await
+        .map_err(|e| e.to_string())
+}

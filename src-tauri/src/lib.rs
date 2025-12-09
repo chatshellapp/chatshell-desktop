@@ -133,6 +133,7 @@ pub fn run() {
             commands::list_prompts_by_category,
             commands::update_prompt,
             commands::delete_prompt,
+            commands::toggle_prompt_star,
             // User commands
             commands::create_user,
             commands::get_user,

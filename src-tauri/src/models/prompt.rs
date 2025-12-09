@@ -9,6 +9,7 @@ pub struct Prompt {
     pub description: Option<String>,
     pub category: Option<String>,
     pub is_system: bool,
+    pub is_starred: bool,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -13,8 +13,8 @@ impl Database {
         let is_system = req.is_system.unwrap_or(false);
 
         sqlx::query(
-            "INSERT INTO prompts (id, name, content, description, category, is_system, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO prompts (id, name, content, description, category, is_system, is_starred, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
         )
         .bind(&id)
         .bind(&req.name)
@@ -34,7 +34,7 @@ impl Database {
 
     pub async fn get_prompt(&self, id: &str) -> Result<Option<Prompt>> {
         let row = sqlx::query(
-            "SELECT id, name, content, description, category, is_system, created_at, updated_at
+            "SELECT id, name, content, description, category, is_system, is_starred, created_at, updated_at
              FROM prompts WHERE id = ?",
         )
         .bind(id)
@@ -44,6 +44,7 @@ impl Database {
         match row {
             Some(row) => {
                 let is_system: i32 = row.get("is_system");
+                let is_starred: i32 = row.get("is_starred");
                 Ok(Some(Prompt {
                     id: row.get("id"),
                     name: row.get("name"),
@@ -51,6 +52,7 @@ impl Database {
                     description: row.get("description"),
                     category: row.get("category"),
                     is_system: is_system != 0,
+                    is_starred: is_starred != 0,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                 }))
@@ -61,7 +63,7 @@ impl Database {
 
     pub async fn list_prompts(&self) -> Result<Vec<Prompt>> {
         let rows = sqlx::query(
-            "SELECT id, name, content, description, category, is_system, created_at, updated_at
+            "SELECT id, name, content, description, category, is_system, is_starred, created_at, updated_at
              FROM prompts ORDER BY category, name",
         )
         .fetch_all(self.pool.as_ref())
@@ -71,6 +73,7 @@ impl Database {
             .into_iter()
             .map(|row| {
                 let is_system: i32 = row.get("is_system");
+                let is_starred: i32 = row.get("is_starred");
                 Prompt {
                     id: row.get("id"),
                     name: row.get("name"),
@@ -78,6 +81,7 @@ impl Database {
                     description: row.get("description"),
                     category: row.get("category"),
                     is_system: is_system != 0,
+                    is_starred: is_starred != 0,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                 }
@@ -89,7 +93,7 @@ impl Database {
 
     pub async fn list_prompts_by_category(&self, category: &str) -> Result<Vec<Prompt>> {
         let rows = sqlx::query(
-            "SELECT id, name, content, description, category, is_system, created_at, updated_at
+            "SELECT id, name, content, description, category, is_system, is_starred, created_at, updated_at
              FROM prompts WHERE category = ? ORDER BY name",
         )
         .bind(category)
@@ -100,6 +104,7 @@ impl Database {
             .into_iter()
             .map(|row| {
                 let is_system: i32 = row.get("is_system");
+                let is_starred: i32 = row.get("is_starred");
                 Prompt {
                     id: row.get("id"),
                     name: row.get("name"),
@@ -107,6 +112,7 @@ impl Database {
                     description: row.get("description"),
                     category: row.get("category"),
                     is_system: is_system != 0,
+                    is_starred: is_starred != 0,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                 }
@@ -145,5 +151,21 @@ impl Database {
             .execute(self.pool.as_ref())
             .await?;
         Ok(())
+    }
+
+    pub async fn toggle_prompt_star(&self, id: &str) -> Result<Prompt> {
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "UPDATE prompts SET is_starred = NOT is_starred, updated_at = ? WHERE id = ?"
+        )
+        .bind(&now)
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_prompt(id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Prompt not found"))
     }
 }

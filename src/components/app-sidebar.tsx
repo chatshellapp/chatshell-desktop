@@ -35,7 +35,6 @@ import type { Assistant as AssistantListItem } from '@/components/assistant-list
 import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
-import { logger } from '@/lib/logger'
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
@@ -58,6 +57,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const assistants = useAssistantStore((state) => state.assistants)
   const prompts = usePromptStore((state) => state.prompts)
   const ensurePromptsLoaded = usePromptStore((state) => state.ensureLoaded)
+  const togglePromptStar = usePromptStore((state) => state.togglePromptStar)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
 
@@ -86,7 +86,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         id: prompt.id,
         name: prompt.name,
         content: prompt.content,
-        isStarred: false, // TODO: Add isStarred to database schema if needed
+        isStarred: prompt.is_starred,
       })
     })
 
@@ -158,8 +158,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               }
             }}
             onPromptStarToggle={(prompt: PromptListItem) => {
-              // TODO: Implement star toggle in database
-              logger.info('Star toggle for prompt:', prompt.id)
+              togglePromptStar(prompt.id)
             }}
             onPromptDelete={(prompt: PromptListItem) => handlers.handlePromptDelete(prompt)}
             onPromptGroupSettings={() => {}}

@@ -6,6 +6,7 @@ export interface Prompt {
   description?: string
   category?: string
   is_system: boolean
+  is_starred: boolean
   created_at: string
   updated_at: string
 }

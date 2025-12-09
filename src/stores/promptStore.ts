@@ -15,6 +15,7 @@ interface PromptState {
   createPrompt: (req: CreatePromptRequest) => Promise<Prompt>
   updatePrompt: (id: string, req: CreatePromptRequest) => Promise<Prompt>
   deletePrompt: (id: string) => Promise<void>
+  togglePromptStar: (id: string) => Promise<Prompt>
   getPromptById: (id: string) => Prompt | undefined
 }
 
@@ -130,6 +131,30 @@ export const usePromptStore = create<PromptState>()(
           draft.prompts = draft.prompts.filter((p: Prompt) => p.id !== id)
           draft.isLoading = false
         })
+      } catch (error) {
+        set((draft) => {
+          draft.error = String(error)
+          draft.isLoading = false
+        })
+        throw error
+      }
+    },
+
+    togglePromptStar: async (id: string) => {
+      set((draft) => {
+        draft.isLoading = true
+        draft.error = null
+      })
+      try {
+        const prompt = await invoke<Prompt>('toggle_prompt_star', { id })
+        set((draft) => {
+          const index = draft.prompts.findIndex((p: Prompt) => p.id === id)
+          if (index >= 0) {
+            draft.prompts[index] = prompt
+          }
+          draft.isLoading = false
+        })
+        return prompt
       } catch (error) {
         set((draft) => {
           draft.error = String(error)
