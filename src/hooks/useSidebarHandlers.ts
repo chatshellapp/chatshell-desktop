@@ -132,6 +132,7 @@ export function useSidebarHandlers() {
             model_id: realAssistant.model_id,
             avatar_bg: realAssistant.avatar_bg,
             avatar_text: realAssistant.avatar_text,
+            group_name: realAssistant.group_name,
             is_starred: !realAssistant.is_starred,
           })
         } catch (error) {
