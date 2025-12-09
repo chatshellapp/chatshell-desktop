@@ -131,13 +131,13 @@ export function InputToolbar({
             </div>
             <Switch checked={webSearchEnabled} onCheckedChange={onWebSearchEnabledChange} />
           </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
+          {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Package className="size-4" />
               <span>Artifacts</span>
             </div>
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onModelParametersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
@@ -153,7 +153,7 @@ export function InputToolbar({
             </div>
             <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {/* <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onPromptSelect} className="gap-2">
             <Sparkles className="size-4" />
             <span>Prompt</span>
@@ -165,7 +165,7 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onToolSelect} className="gap-2">
             <Plug className="size-4" />
             <span>Tools</span>
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -181,7 +181,7 @@ export function InputToolbar({
         {/* Placeholder for future progress indicator */}
       </div>
 
-      <Separator orientation="vertical" className="!h-4" />
+      {/* <Separator orientation="vertical" className="!h-4" /> */}
 
       {/* Send/Stop button */}
       {isStreaming || isWaitingForAI ? (
