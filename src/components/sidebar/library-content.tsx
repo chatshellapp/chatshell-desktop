@@ -1,6 +1,13 @@
-import { Sparkles, BookOpen, Plug, File } from 'lucide-react'
+import { Sparkles, BookOpen, Plug } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PromptList, type Prompt, type PromptGroup } from '@/components/prompt-list'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 interface LibraryContentProps {
   activeTab: string
@@ -12,8 +19,6 @@ interface LibraryContentProps {
   onPromptStarToggle: (prompt: Prompt) => void
   onPromptDelete: (prompt: Prompt) => void
   onPromptGroupSettings: (group: PromptGroup) => void
-  files: Array<{ id: string; name: string; type: string; size: string; lastModified: string }>
-  tools: Array<{ id: string; name: string; description: string; status: string; lastSync: string }>
 }
 
 export function LibraryContent({
@@ -26,8 +31,6 @@ export function LibraryContent({
   onPromptStarToggle,
   onPromptDelete,
   onPromptGroupSettings,
-  files,
-  tools,
 }: LibraryContentProps) {
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full p-2">
@@ -57,51 +60,30 @@ export function LibraryContent({
         />
       </TabsContent>
       <TabsContent value="knowledge" className="mt-2">
-        {files.map((file) => (
-          <a
-            href="#"
-            key={file.id}
-            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
-          >
-            <div className="flex w-full items-center gap-2">
-              <File className="size-4 text-muted-foreground" />
-              <span className="font-medium">{file.name}</span>
-            </div>
-            <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-              <span>{file.type}</span>
-              <span>•</span>
-              <span>{file.size}</span>
-              <span className="ml-auto">{file.lastModified}</span>
-            </div>
-          </a>
-        ))}
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <BookOpen />
+            </EmptyMedia>
+            <EmptyTitle>No Knowledge Yet</EmptyTitle>
+            <EmptyDescription>
+              You haven&apos;t added any knowledge base yet.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </TabsContent>
       <TabsContent value="tools" className="mt-2">
-        {tools.map((tool) => (
-          <a
-            href="#"
-            key={tool.id}
-            className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0"
-          >
-            <div className="flex w-full items-center gap-2">
-              <Plug className="size-4 text-muted-foreground" />
-              <span className="font-medium">{tool.name}</span>
-              <span
-                className={`ml-auto text-xs px-2 py-0.5 rounded ${
-                  tool.status === 'connected'
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-red-500/10 text-red-500'
-                }`}
-              >
-                {tool.status}
-              </span>
-            </div>
-            <span className="text-muted-foreground text-xs line-clamp-2">{tool.description}</span>
-            <div className="flex w-full items-center gap-2 text-xs text-muted-foreground">
-              <span>Last sync: {tool.lastSync}</span>
-            </div>
-          </a>
-        ))}
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Plug />
+            </EmptyMedia>
+            <EmptyTitle>No Tools Yet</EmptyTitle>
+            <EmptyDescription>
+              You haven&apos;t configured any tools yet.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </TabsContent>
     </Tabs>
   )

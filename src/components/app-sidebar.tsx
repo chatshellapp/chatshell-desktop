@@ -29,25 +29,17 @@ import { useConversationStore } from '@/stores/conversation'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { SIDEBAR_DATA } from '@/lib/sidebar-data'
-import type { Person, PersonGroup } from '@/components/people-list'
 import type { Prompt as PromptListItem, PromptGroup } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
-import type { Artifact, ArtifactGroup } from '@/lib/sidebar-data'
 import { logger } from '@/lib/logger'
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
-  const [selectedPersonId, setSelectedPersonId] = React.useState<string | null>('person-1')
-  const [peopleGroups, setPeopleGroups] = React.useState<PersonGroup[]>(SIDEBAR_DATA.peopleGroups)
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
-  const [selectedArtifactId, setSelectedArtifactId] = React.useState<string | null>(null)
-  const [artifactGroups, setArtifactGroups] = React.useState<ArtifactGroup[]>(
-    SIDEBAR_DATA.artifactGroups
-  )
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
@@ -122,10 +114,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onTabChange={setActiveContactsTab}
             vendorsList={vendorsList}
             assistantGroups={assistantGroups}
-            peopleGroups={peopleGroups}
             selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
             selectedAssistantId={selectedAssistant?.id}
-            selectedPersonId={selectedPersonId || undefined}
             onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
             onModelSettings={(model: ModelListItem) => handlers.handleModelDelete(model)}
             onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
@@ -148,19 +138,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               handlers.handleAssistantDelete(assistant)
             }
             onGroupSettings={() => {}}
-            onPersonClick={(person: Person) => setSelectedPersonId(person.id)}
-            onPersonSettings={() => {}}
-            onPersonStarToggle={(person: Person) => {
-              setPeopleGroups((prevGroups) =>
-                prevGroups.map((group) => ({
-                  ...group,
-                  people: group.people.map((p: Person) =>
-                    p.id === person.id ? { ...p, isStarred: !p.isStarred } : p
-                  ),
-                }))
-              )
-            }}
-            onPersonGroupSettings={() => {}}
           />
         )
       case 'Library':
@@ -186,28 +163,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             }}
             onPromptDelete={(prompt: PromptListItem) => handlers.handlePromptDelete(prompt)}
             onPromptGroupSettings={() => {}}
-            files={SIDEBAR_DATA.files}
-            tools={SIDEBAR_DATA.tools}
           />
         )
       case 'Artifacts':
-        return (
-          <ArtifactsContent
-            artifactGroups={artifactGroups}
-            selectedArtifactId={selectedArtifactId || undefined}
-            onArtifactClick={(artifact: Artifact) => setSelectedArtifactId(artifact.id)}
-            onArtifactStarToggle={(artifact: Artifact) => {
-              setArtifactGroups((prevGroups) =>
-                prevGroups.map((group) => ({
-                  ...group,
-                  artifacts: group.artifacts.map((a: Artifact) =>
-                    a.id === artifact.id ? { ...a, isStarred: !a.isStarred } : a
-                  ),
-                }))
-              )
-            }}
-          />
-        )
+        return <ArtifactsContent />
       case 'Settings':
         return (
           <div className="p-4">

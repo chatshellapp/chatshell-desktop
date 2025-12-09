@@ -2,17 +2,21 @@ import { Bot, Drama, Users } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModelList, type Model, type ModelVendor } from '@/components/model-list'
 import { AssistantList, type Assistant, type AssistantGroup } from '@/components/assistant-list'
-import { PeopleList, type Person, type PersonGroup } from '@/components/people-list'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 interface ContactsContentProps {
   activeTab: string
   onTabChange: (tab: string) => void
   vendorsList: ModelVendor[]
   assistantGroups: AssistantGroup[]
-  peopleGroups: PersonGroup[]
   selectedModelId?: string
   selectedAssistantId?: string
-  selectedPersonId?: string
   onModelClick: (model: Model) => void
   onModelSettings: (model: Model) => void
   onModelStarToggle: (model: Model) => void
@@ -22,10 +26,6 @@ interface ContactsContentProps {
   onAssistantStarToggle: (assistant: Assistant) => void
   onAssistantDelete: (assistant: Assistant) => void
   onGroupSettings: (group: AssistantGroup) => void
-  onPersonClick: (person: Person) => void
-  onPersonSettings: (person: Person) => void
-  onPersonStarToggle: (person: Person) => void
-  onPersonGroupSettings: (group: PersonGroup) => void
 }
 
 export function ContactsContent({
@@ -33,10 +33,8 @@ export function ContactsContent({
   onTabChange,
   vendorsList,
   assistantGroups,
-  peopleGroups,
   selectedModelId,
   selectedAssistantId,
-  selectedPersonId,
   onModelClick,
   onModelSettings,
   onModelStarToggle,
@@ -46,10 +44,6 @@ export function ContactsContent({
   onAssistantStarToggle,
   onAssistantDelete,
   onGroupSettings,
-  onPersonClick,
-  onPersonSettings,
-  onPersonStarToggle,
-  onPersonGroupSettings,
 }: ContactsContentProps) {
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full p-2">
@@ -89,14 +83,17 @@ export function ContactsContent({
         />
       </TabsContent>
       <TabsContent value="people" className="mt-2">
-        <PeopleList
-          groups={peopleGroups}
-          selectedPersonId={selectedPersonId}
-          onPersonClick={onPersonClick}
-          onPersonSettings={onPersonSettings}
-          onPersonStarToggle={onPersonStarToggle}
-          onGroupSettings={onPersonGroupSettings}
-        />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Users />
+            </EmptyMedia>
+            <EmptyTitle>No People Yet</EmptyTitle>
+            <EmptyDescription>
+              You haven&apos;t added any contacts yet.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </TabsContent>
     </Tabs>
   )
