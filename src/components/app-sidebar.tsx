@@ -229,17 +229,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             )
           case 'people':
             return (
-              <div className="px-3 pt-2 pb-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center gap-2 h-9"
-                  onClick={() => {}}
-                >
-                  <Plus className="size-4" />
-                  Add Contact
-                </Button>
-              </div>
+              <></>
+              // <div className="px-3 pt-2 pb-2">
+              //   <Button
+              //     variant="outline"
+              //     size="sm"
+              //     className="w-full justify-center gap-2 h-9"
+              //     onClick={() => {}}
+              //   >
+              //     <Plus className="size-4" />
+              //     Add Contact
+              //   </Button>
+              // </div>
             )
         }
         break
