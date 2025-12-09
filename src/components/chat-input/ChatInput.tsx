@@ -28,7 +28,6 @@ export function ChatInput({}: ChatInputProps) {
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'models' | 'assistants'>('models')
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
-  const [artifactsEnabled, setArtifactsEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isWebPageDialogOpen, setIsWebPageDialogOpen] = useState(false)
   const [isModelParametersDialogOpen, setIsModelParametersDialogOpen] = useState(false)
@@ -81,11 +80,17 @@ export function ChatInput({}: ChatInputProps) {
   // Conversation settings - subscribe to the entire settings object for this conversation
   const allSettings = useConversationSettingsStore((state) => state.settings)
   const getSettings = useConversationSettingsStore((state) => state.getSettings)
-  const setUseProviderDefaults = useConversationSettingsStore((state) => state.setUseProviderDefaults)
+  const setUseProviderDefaults = useConversationSettingsStore(
+    (state) => state.setUseProviderDefaults
+  )
   const setParameterOverrides = useConversationSettingsStore((state) => state.setParameterOverrides)
-  const setUseCustomParameters = useConversationSettingsStore((state) => state.setUseCustomParameters)
+  const setUseCustomParameters = useConversationSettingsStore(
+    (state) => state.setUseCustomParameters
+  )
   const setSelectedPresetId = useConversationSettingsStore((state) => state.setSelectedPresetId)
-  const setContextMessageCount = useConversationSettingsStore((state) => state.setContextMessageCount)
+  const setContextMessageCount = useConversationSettingsStore(
+    (state) => state.setContextMessageCount
+  )
 
   // Get current conversation settings - this will update when allSettings changes
   const conversationSettings = useMemo(() => {
@@ -146,18 +151,6 @@ export function ChatInput({}: ChatInputProps) {
   }, [attachments])
 
   // Handlers for attachment types
-  const handlePromptSelect = () => {
-    logger.info('Prompt selected')
-  }
-
-  const handleKnowledgeBaseSelect = () => {
-    addAttachment('knowledge', 'Documentation')
-  }
-
-  const handleToolSelect = () => {
-    addAttachment('tools', 'Calculator')
-  }
-
   const handleWebPageSelect = () => {
     setIsWebPageDialogOpen(true)
   }
@@ -262,13 +255,8 @@ export function ChatInput({}: ChatInputProps) {
           onFileSelect={handleFileSelect}
           onImageSelect={handleImageSelect}
           onWebPageSelect={handleWebPageSelect}
-          onPromptSelect={handlePromptSelect}
-          onKnowledgeBaseSelect={handleKnowledgeBaseSelect}
-          onToolSelect={handleToolSelect}
           webSearchEnabled={webSearchEnabled}
           onWebSearchEnabledChange={setWebSearchEnabled}
-          artifactsEnabled={artifactsEnabled}
-          onArtifactsEnabledChange={setArtifactsEnabled}
           isModelMenuOpen={isModelMenuOpen}
           onModelMenuOpenChange={setIsModelMenuOpen}
           activeTab={activeTab}

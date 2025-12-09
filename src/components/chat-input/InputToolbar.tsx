@@ -3,14 +3,10 @@ import {
   Plus,
   FileText,
   Image,
-  Sparkles,
-  BookOpen,
-  Plug,
   Globe,
   Square,
   Settings2,
   Search,
-  Package,
   SlidersHorizontal,
   MessageSquare,
 } from 'lucide-react'
@@ -22,7 +18,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelectorDropdown } from './ModelSelectorDropdown'
 import type { Model } from '@/types'
@@ -33,14 +28,9 @@ interface InputToolbarProps {
   onFileSelect: () => void
   onImageSelect: () => void
   onWebPageSelect: () => void
-  onPromptSelect: () => void
-  onKnowledgeBaseSelect: () => void
-  onToolSelect: () => void
   // Settings
   webSearchEnabled: boolean
   onWebSearchEnabledChange: (enabled: boolean) => void
-  artifactsEnabled: boolean
-  onArtifactsEnabledChange: (enabled: boolean) => void
   // Model selector
   isModelMenuOpen: boolean
   onModelMenuOpenChange: (open: boolean) => void
@@ -67,13 +57,8 @@ export function InputToolbar({
   onFileSelect,
   onImageSelect,
   onWebPageSelect,
-  onPromptSelect,
-  onKnowledgeBaseSelect,
-  onToolSelect,
   webSearchEnabled,
   onWebSearchEnabledChange,
-  artifactsEnabled,
-  onArtifactsEnabledChange,
   isModelMenuOpen,
   onModelMenuOpenChange,
   activeTab,
