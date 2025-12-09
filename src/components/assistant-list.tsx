@@ -7,9 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, MoreVertical } from 'lucide-react'
+import { ChevronDown, Drama, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AssistantListItem, AssistantCapabilities } from '@/components/assistant-list-item'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 export interface Assistant {
   /**
@@ -148,6 +155,25 @@ export function AssistantList({
     name: 'Starred',
     assistants: starredAssistants,
     defaultOpen: true,
+  }
+
+  // Check if there are any assistants at all
+  const totalAssistants = groups.reduce((acc, group) => acc + group.assistants.length, 0)
+
+  if (totalAssistants === 0) {
+    return (
+      <Empty className={className}>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Drama />
+          </EmptyMedia>
+          <EmptyTitle>No Assistants Yet</EmptyTitle>
+          <EmptyDescription>
+            Create an assistant to customize your chat experience.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
   }
 
   return (

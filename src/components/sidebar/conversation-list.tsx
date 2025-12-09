@@ -1,8 +1,16 @@
+import { MessageSquare } from 'lucide-react'
 import { MessageListItem } from '@/components/message-list-item'
 import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { formatConversationTimestamp } from '@/lib/utils'
 import { buildConversationAvatars } from '@/lib/conversation-avatars'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import type { ParticipantSummary } from '@/types'
 
 interface ConversationListProps {
@@ -26,7 +34,19 @@ export function ConversationList({
 
   if (conversations.length === 0) {
     return (
-      <div className="text-center text-muted-foreground text-sm py-4">No conversations yet</div>
+      <div className="p-2">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageSquare />
+            </EmptyMedia>
+            <EmptyTitle>No Conversations Yet</EmptyTitle>
+            <EmptyDescription>
+              Start a new conversation to begin chatting.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
     )
   }
 

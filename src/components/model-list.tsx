@@ -7,9 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, MoreVertical } from 'lucide-react'
+import { Bot, ChevronDown, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ModelListItem } from '@/components/model-list-item'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 export interface Model {
   /**
@@ -123,6 +130,25 @@ export function ModelList({
     name: 'Starred',
     models: starredModels,
     defaultOpen: true,
+  }
+
+  // Check if there are any models at all
+  const totalModels = vendors.reduce((acc, vendor) => acc + vendor.models.length, 0)
+
+  if (totalModels === 0) {
+    return (
+      <Empty className={className}>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Bot />
+          </EmptyMedia>
+          <EmptyTitle>No Models Yet</EmptyTitle>
+          <EmptyDescription>
+            Add a provider to start using models.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
   }
 
   return (

@@ -7,9 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, MoreVertical } from 'lucide-react'
+import { ChevronDown, MoreVertical, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PromptListItem } from '@/components/prompt-list-item'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 
 export interface Prompt {
   /**
@@ -117,11 +124,22 @@ export function PromptList({
     defaultOpen: true,
   }
 
-  if (groups.length === 0) {
+  // Check if there are any prompts at all
+  const totalPrompts = groups.reduce((acc, group) => acc + group.prompts.length, 0)
+
+  if (totalPrompts === 0) {
     return (
-      <div className={cn('flex flex-col gap-1 p-4 text-sm text-muted-foreground', className)}>
-        No prompts available
-      </div>
+      <Empty className={className}>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Sparkles />
+          </EmptyMedia>
+          <EmptyTitle>No Prompts Yet</EmptyTitle>
+          <EmptyDescription>
+            Create a prompt to save and reuse your favorite messages.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     )
   }
 
