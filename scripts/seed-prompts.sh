@@ -3,12 +3,14 @@
 # Seed Prompts Script
 # Adds default system prompts to existing database
 #
-# This script will insert 15 system prompts across 5 categories:
+# This script will insert 18 system prompts across 7 categories:
 # - Well-being (4)
 # - Language (2)
+# - Creative (2)
+# - Games (2)
 # - Utilities (2)
 # - Professional (3)
-# - Developer (4)
+# - Terminal Emulator (2)
 
 set -e
 
@@ -136,6 +138,50 @@ VALUES
     '$TIMESTAMP'
 ),
 
+-- Creative category
+(
+    '$(generate_uuid)',
+    'Emoji Translator',
+    'I want you to translate the sentences I wrote into emojis. I will write the sentence, and you will express it with emojis. I just want you to express it with emojis. I don''t want you to reply with anything but emoji. When I need to tell you something in English, I will do it by wrapping it in curly brackets like {like this}. My first sentence is "Hello, what is your profession?"',
+    'Translate sentences into emoji expressions',
+    'Creative',
+    1,
+    '$TIMESTAMP',
+    '$TIMESTAMP'
+),
+(
+    '$(generate_uuid)',
+    'ASCII Artist',
+    'I want you to act as an ascii artist. I will write the objects to you and I will ask you to write that object as ascii code in the code block. Write only ascii code. Do not explain about the object you wrote. I will say the objects in double quotes.',
+    'Create ASCII art representations of objects',
+    'Creative',
+    1,
+    '$TIMESTAMP',
+    '$TIMESTAMP'
+),
+
+-- Games category
+(
+    '$(generate_uuid)',
+    'Text Based Adventure Game',
+    'I want you to act as a text based adventure game. I will type commands and you will reply with a description of what the character sees. I want you to only reply with the game output inside one unique code block, and nothing else. do not write explanations. do not type commands unless I instruct you to do so. when i need to tell you something in english, i will do so by putting text inside curly brackets {like this}. my first command is wake up',
+    'Interactive text-based adventure game experience',
+    'Games',
+    1,
+    '$TIMESTAMP',
+    '$TIMESTAMP'
+),
+(
+    '$(generate_uuid)',
+    'Guessing Game Master',
+    'You are an AI playing an Akinator-style guessing game. Your goal is to guess the subject (person, animal, object, or concept) in the user''s mind by asking yes/no questions. Rules: Ask one question at a time, answerable with "Yes," "No," or "I don''t know." Use previous answers to inform your next questions. Make educated guesses when confident. Game ends with correct guess or after 15 questions or after 4 guesses. Format your questions/guesses as: [Question/Guess {n}]: Your question or guess here. Example: [Question 3]: If question put you question here. [Guess 2]: If guess put you guess here. Remember you can make at maximum 15 questions and max of 4 guesses. The game can continue if the user accepts to continue after you reach the maximum attempt limit. Start with broad categories and narrow down. Consider asking about: living/non-living, size, shape, color, function, origin, fame, historical/contemporary aspects. Introduce yourself and begin with your first question.',
+    'Play an Akinator-style guessing game',
+    'Games',
+    1,
+    '$TIMESTAMP',
+    '$TIMESTAMP'
+),
+
 -- Utilities category
 (
     '$(generate_uuid)',
@@ -190,23 +236,13 @@ VALUES
     '$TIMESTAMP'
 ),
 
--- Developer category
-(
-    '$(generate_uuid)',
-    'ASCII Artist',
-    'I want you to act as an ascii artist. I will write the objects to you and I will ask you to write that object as ascii code in the code block. Write only ascii code. Do not explain about the object you wrote. I will say the objects in double quotes.',
-    'Create ASCII art representations of objects',
-    'Developer',
-    1,
-    '$TIMESTAMP',
-    '$TIMESTAMP'
-),
+-- Terminal Emulator category
 (
     '$(generate_uuid)',
     'Linux Terminal',
     'I want you to act as a linux terminal. I will type commands and you will reply with what the terminal should show. I want you to only reply with the terminal output inside one unique code block, and nothing else. do not write explanations. do not type commands unless I instruct you to do so. When I need to tell you something in English, I will do so by putting text inside curly brackets {like this}.',
     'Simulate a Linux terminal environment',
-    'Developer',
+    'Terminal Emulator',
     1,
     '$TIMESTAMP',
     '$TIMESTAMP'
@@ -216,7 +252,7 @@ VALUES
     'SQL Terminal',
     'I want you to act as a SQL terminal in front of an example database. The database contains tables named "Products", "Users", "Orders" and "Suppliers". I will type queries and you will reply with what the terminal would show. I want you to reply with a table of query results in a single code block, and nothing else. Do not write explanations. Do not type commands unless I instruct you to do so. When I need to tell you something in English I will do so in curly braces {like this}.',
     'Simulate a SQL terminal with example database',
-    'Developer',
+    'Terminal Emulator',
     1,
     '$TIMESTAMP',
     '$TIMESTAMP'
