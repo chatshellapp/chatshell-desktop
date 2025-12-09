@@ -12,12 +12,55 @@ mod settings;
 mod steps;
 mod users;
 
+/// Current schema version. Increment this when adding new migrations.
+const CURRENT_SCHEMA_VERSION: i32 = 1;
+
+async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
+    let row: (i32,) = sqlx::query_as("PRAGMA user_version")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.0)
+}
+
+async fn set_user_version(pool: &SqlitePool, version: i32) -> Result<()> {
+    // PRAGMA statements cannot use bound parameters
+    sqlx::query(&format!("PRAGMA user_version = {}", version))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     // Enable foreign keys
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(pool)
         .await?;
 
+    let current_version = get_user_version(pool).await?;
+    tracing::info!(
+        "Database version: {}, target version: {}",
+        current_version,
+        CURRENT_SCHEMA_VERSION
+    );
+
+    // Run migrations based on current version
+    if current_version < 1 {
+        migrate_v0_to_v1(pool).await?;
+        set_user_version(pool, 1).await?;
+        tracing::info!("Migration to v1 completed");
+    }
+
+    // Future migrations will be added here:
+    // if current_version < 2 {
+    //     migrate_v1_to_v2(pool).await?;
+    //     set_user_version(pool, 2).await?;
+    // }
+
+    Ok(())
+}
+
+/// Initial schema (v1) - used for fresh installations
+async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     providers::create_providers_table(pool).await?;
     providers::create_models_table(pool).await?;
     model_parameter_presets::create_model_parameter_presets_table(pool).await?;
