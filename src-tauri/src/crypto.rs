@@ -1,14 +1,14 @@
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{Aead, KeyInit, OsRng},
+    Aes256Gcm, Nonce,
 };
 use anyhow::Result;
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use crate::db::Database;
+use crate::keychain;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedKeyPair {
@@ -44,28 +44,53 @@ pub fn import_keypair(json: &str) -> Result<GeneratedKeyPair> {
     Ok(serde_json::from_str(json)?)
 }
 
-const ENCRYPTION_KEY_SETTING: &str = "app_encryption_key";
+const MASTER_KEY_NAME: &str = "master_encryption_key";
 
-// Cache for the encryption key to avoid repeated database reads
+// Cache for the encryption key to avoid repeated keychain reads
 static ENCRYPTION_KEY_CACHE: OnceLock<[u8; 32]> = OnceLock::new();
 
-/// Initialize the encryption key from database or generate a new one
+// Track whether keychain is available for secure storage
+static KEYCHAIN_AVAILABLE: OnceLock<bool> = OnceLock::new();
+
+/// Initialize the encryption key from OS keychain or generate a new one
 /// This should be called once during app startup
-pub async fn init_encryption_key(db: &Database) -> Result<()> {
-    let key = get_or_create_encryption_key(db).await?;
-    let _ = ENCRYPTION_KEY_CACHE.set(key);
-    Ok(())
+/// 
+/// If keychain access is denied, falls back to an ephemeral in-memory key.
+/// In this case, API keys will need to be re-entered after app restart.
+pub fn init_encryption_key() {
+    match get_or_create_encryption_key() {
+        Ok(key) => {
+            let _ = ENCRYPTION_KEY_CACHE.set(key);
+            let _ = KEYCHAIN_AVAILABLE.set(true);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "⚠️ [crypto] Keychain unavailable, API keys will not be persisted securely: {}",
+                e
+            );
+            // Generate a temporary in-memory key
+            let mut key = [0u8; 32];
+            OsRng.fill_bytes(&mut key);
+            let _ = ENCRYPTION_KEY_CACHE.set(key);
+            let _ = KEYCHAIN_AVAILABLE.set(false);
+        }
+    }
 }
 
-/// Get or create the encryption key from the database
-async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
-    // Try to read existing key from settings
-    let existing: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = ?")
-        .bind(ENCRYPTION_KEY_SETTING)
-        .fetch_optional(db.pool())
-        .await?;
+/// Check if keychain is available for secure storage
+/// 
+/// Returns false if:
+/// - User denied keychain access
+/// - No keychain service available (e.g., headless Linux without Secret Service)
+/// - Keychain initialization hasn't been called yet
+pub fn is_keychain_available() -> bool {
+    KEYCHAIN_AVAILABLE.get().copied().unwrap_or(false)
+}
 
-    if let Some(key_b64) = existing {
+/// Get or create the encryption key from the OS keychain
+fn get_or_create_encryption_key() -> Result<[u8; 32]> {
+    // Try to read existing key from OS keychain
+    if let Some(key_b64) = keychain::get_secret(MASTER_KEY_NAME)? {
         // Decode existing key
         let key_bytes = general_purpose::STANDARD
             .decode(&key_b64)
@@ -77,7 +102,7 @@ async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
 
         let mut key = [0u8; 32];
         key.copy_from_slice(&key_bytes);
-        tracing::info!("🔐 [crypto] Loaded encryption key from database");
+        tracing::info!("🔐 [crypto] Loaded encryption key from OS keychain");
         Ok(key)
     } else {
         // Generate new key
@@ -85,16 +110,9 @@ async fn get_or_create_encryption_key(db: &Database) -> Result<[u8; 32]> {
         OsRng.fill_bytes(&mut key);
 
         let key_b64 = general_purpose::STANDARD.encode(&key);
-        let now = chrono::Utc::now().to_rfc3339();
+        keychain::set_secret(MASTER_KEY_NAME, &key_b64)?;
 
-        sqlx::query("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)")
-            .bind(ENCRYPTION_KEY_SETTING)
-            .bind(&key_b64)
-            .bind(&now)
-            .execute(db.pool())
-            .await?;
-
-        tracing::info!("🔐 [crypto] Generated and stored new encryption key in database");
+        tracing::info!("🔐 [crypto] Generated and stored new encryption key in OS keychain");
         Ok(key)
     }
 }

@@ -1,6 +1,7 @@
 pub mod commands;
 mod crypto;
 pub mod db;
+mod keychain;
 mod llm;
 mod logger;
 pub mod models;
@@ -186,6 +187,7 @@ pub fn run() {
             commands::generate_keypair,
             commands::export_keypair,
             commands::import_keypair,
+            commands::is_keychain_available,
             // Model fetching commands
             commands::fetch_openai_models,
             commands::fetch_openrouter_models,

@@ -39,8 +39,9 @@ impl Database {
 
         schema::init_schema(&db.pool).await?;
 
-        // Initialize encryption key for API key storage
-        crate::crypto::init_encryption_key(&db).await?;
+        // Initialize encryption key for API key storage (stored in OS keychain)
+        // This gracefully falls back to an ephemeral key if keychain access is denied
+        crate::crypto::init_encryption_key();
 
         // Ensure default parameter presets exist
         db.ensure_default_presets().await?;
