@@ -37,6 +37,7 @@ export function ProviderForm({
             value={apiKey}
             onChange={(e) => onApiKeyChange(e.target.value)}
             className="pr-10"
+            disabled={selectedProvider.id === 'ollama'}
           />
           <Button
             type="button"
