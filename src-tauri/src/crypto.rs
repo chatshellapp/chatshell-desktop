@@ -6,7 +6,8 @@ use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 use crate::keychain;
 
@@ -52,6 +53,10 @@ static ENCRYPTION_KEY_CACHE: OnceLock<[u8; 32]> = OnceLock::new();
 // Track whether keychain is available for secure storage
 static KEYCHAIN_AVAILABLE: OnceLock<bool> = OnceLock::new();
 
+// In-memory cache for API keys when keychain is unavailable
+// Key: provider_id, Value: plaintext API key
+static EPHEMERAL_API_KEY_CACHE: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
+
 /// Initialize the encryption key from OS keychain or generate a new one
 /// This should be called once during app startup
 /// 
@@ -78,13 +83,45 @@ pub fn init_encryption_key() {
 }
 
 /// Check if keychain is available for secure storage
-/// 
+///
 /// Returns false if:
 /// - User denied keychain access
 /// - No keychain service available (e.g., headless Linux without Secret Service)
 /// - Keychain initialization hasn't been called yet
 pub fn is_keychain_available() -> bool {
     KEYCHAIN_AVAILABLE.get().copied().unwrap_or(false)
+}
+
+/// Get the ephemeral API key cache
+fn get_api_key_cache() -> &'static RwLock<HashMap<String, String>> {
+    EPHEMERAL_API_KEY_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Store an API key in the ephemeral in-memory cache
+/// Used when keychain is unavailable
+pub fn cache_api_key(provider_id: &str, api_key: &str) {
+    if let Ok(mut cache) = get_api_key_cache().write() {
+        cache.insert(provider_id.to_string(), api_key.to_string());
+        tracing::info!(
+            "🔐 [crypto] Cached API key in memory for provider: {}",
+            provider_id
+        );
+    }
+}
+
+/// Get an API key from the ephemeral in-memory cache
+pub fn get_cached_api_key(provider_id: &str) -> Option<String> {
+    get_api_key_cache()
+        .read()
+        .ok()
+        .and_then(|cache| cache.get(provider_id).cloned())
+}
+
+/// Remove an API key from the ephemeral in-memory cache
+pub fn remove_cached_api_key(provider_id: &str) {
+    if let Ok(mut cache) = get_api_key_cache().write() {
+        cache.remove(provider_id);
+    }
 }
 
 /// Get or create the encryption key from the OS keychain

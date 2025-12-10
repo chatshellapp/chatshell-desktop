@@ -12,18 +12,26 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
-        // Encrypt API key if provided
+        // Handle API key based on keychain availability
         let encrypted_api_key = if let Some(ref api_key) = req.api_key {
             if !api_key.is_empty() {
-                match crate::crypto::encrypt(api_key) {
-                    Ok(encrypted) => {
-                        tracing::info!("🔐 [db] API key encrypted and stored in database");
-                        Some(encrypted)
+                if crate::crypto::is_keychain_available() {
+                    // Keychain available: encrypt and store in DB
+                    match crate::crypto::encrypt(api_key) {
+                        Ok(encrypted) => {
+                            tracing::info!("🔐 [db] API key encrypted and stored in database");
+                            Some(encrypted)
+                        }
+                        Err(e) => {
+                            tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
+                            None
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
-                        None
-                    }
+                } else {
+                    // Keychain unavailable: store in memory only, not in DB
+                    crate::crypto::cache_api_key(&id, api_key);
+                    tracing::info!("🔐 [db] API key cached in memory only (keychain unavailable)");
+                    None
                 }
             } else {
                 None
@@ -67,21 +75,20 @@ impl Database {
                 let provider_id: String = row.get("id");
                 let encrypted_api_key: Option<String> = row.get("api_key");
 
-                // Decrypt API key if present
-                let api_key =
-                    encrypted_api_key.and_then(|encrypted| {
-                        match crate::crypto::decrypt(&encrypted) {
-                            Ok(decrypted) => Some(decrypted),
-                            Err(e) => {
-                                tracing::error!(
-                                    "⚠️  [db] Failed to decrypt API key for provider {}: {}",
-                                    provider_id,
-                                    e
-                                );
-                                None
-                            }
+                // Get API key: try DB first, then fall back to in-memory cache
+                let api_key = encrypted_api_key
+                    .and_then(|encrypted| match crate::crypto::decrypt(&encrypted) {
+                        Ok(decrypted) => Some(decrypted),
+                        Err(e) => {
+                            tracing::error!(
+                                "⚠️  [db] Failed to decrypt API key for provider {}: {}",
+                                provider_id,
+                                e
+                            );
+                            None
                         }
-                    });
+                    })
+                    .or_else(|| crate::crypto::get_cached_api_key(&provider_id));
 
                 let is_enabled: i32 = row.get("is_enabled");
 
@@ -114,8 +121,9 @@ impl Database {
             let provider_id: String = row.get("id");
             let encrypted_api_key: Option<String> = row.get("api_key");
 
-            let api_key =
-                encrypted_api_key.and_then(|encrypted| match crate::crypto::decrypt(&encrypted) {
+            // Get API key: try DB first, then fall back to in-memory cache
+            let api_key = encrypted_api_key
+                .and_then(|encrypted| match crate::crypto::decrypt(&encrypted) {
                     Ok(decrypted) => Some(decrypted),
                     Err(e) => {
                         tracing::error!(
@@ -125,7 +133,8 @@ impl Database {
                         );
                         None
                     }
-                });
+                })
+                .or_else(|| crate::crypto::get_cached_api_key(&provider_id));
 
             let is_enabled: i32 = row.get("is_enabled");
 
@@ -149,18 +158,33 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 
-        // Encrypt API key if provided
+        // Handle API key based on keychain availability
         let encrypted_api_key = if let Some(ref api_key) = req.api_key {
             if !api_key.is_empty() {
-                match crate::crypto::encrypt(api_key) {
-                    Ok(encrypted) => Some(encrypted),
-                    Err(e) => {
-                        tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
-                        None
+                if crate::crypto::is_keychain_available() {
+                    // Keychain available: encrypt and store in DB
+                    // Also clear any cached key
+                    crate::crypto::remove_cached_api_key(id);
+                    match crate::crypto::encrypt(api_key) {
+                        Ok(encrypted) => Some(encrypted),
+                        Err(e) => {
+                            tracing::warn!("⚠️  [db] Failed to encrypt API key: {}", e);
+                            None
+                        }
                     }
+                } else {
+                    // Keychain unavailable: store in memory only, not in DB
+                    crate::crypto::cache_api_key(id, api_key);
+                    tracing::info!("🔐 [db] API key cached in memory only (keychain unavailable)");
+                    // Return early - don't update api_key column in DB
+                    return self
+                        .update_provider_without_api_key(id, &req, &now, is_enabled)
+                        .await;
                 }
             } else {
-                None // Empty API key means clear it
+                // Empty API key means clear it
+                crate::crypto::remove_cached_api_key(id);
+                None
             }
         } else {
             // No API key in request - keep existing (don't update api_key column)
@@ -214,6 +238,9 @@ impl Database {
     }
 
     pub async fn delete_provider(&self, id: &str) -> Result<()> {
+        // Clear cached API key if any
+        crate::crypto::remove_cached_api_key(id);
+
         sqlx::query("DELETE FROM providers WHERE id = ?")
             .bind(id)
             .execute(self.pool.as_ref())
