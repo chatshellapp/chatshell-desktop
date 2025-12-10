@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationStore } from '@/stores/conversation'
@@ -12,6 +13,7 @@ import { logger } from '@/lib/logger'
 export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keychainAvailable, setKeychainAvailable] = useState(true)
 
   // Use selector only for reactive state (conversations)
   const conversations = useConversationStore((state: any) => state.conversations)
@@ -53,6 +55,17 @@ export function useAppInit() {
         // Load conversations
         logger.info('Loading conversations...')
         await conversationStore.loadConversations()
+
+        // Check keychain availability
+        try {
+          const available = await invoke<boolean>('is_keychain_available')
+          setKeychainAvailable(available)
+          if (!available) {
+            logger.warn('Keychain access denied, API keys will not persist across restarts')
+          }
+        } catch (err) {
+          logger.warn('Failed to check keychain availability:', err)
+        }
 
         // Check if onboarding is needed
         const onboardingComplete = await settingsStore.getSetting('onboarding_complete')
@@ -148,5 +161,5 @@ export function useAppInit() {
     }
   }, [conversations])
 
-  return { isInitialized, error }
+  return { isInitialized, error, keychainAvailable }
 }

@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, X } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
 import {
@@ -18,7 +19,8 @@ import { OnboardingDialog } from '@/components/onboarding-dialog'
 
 export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
-  const { isInitialized, error: initError } = useAppInit()
+  const { isInitialized, error: initError, keychainAvailable } = useAppInit()
+  const [showKeychainWarning, setShowKeychainWarning] = useState(true)
 
   // Prevent default browser drag-drop behavior (which opens files)
   // This allows only the chat-input component to handle file drops
@@ -89,6 +91,24 @@ export function ChatPage() {
               </BreadcrumbList>
             </Breadcrumb>
           </header>
+          {!keychainAvailable && showKeychainWarning && (
+            <div className="flex items-center justify-between gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>
+                  Keychain access denied. API keys are stored temporarily and will need to be
+                  re-entered after restarting the app.
+                </span>
+              </div>
+              <button
+                onClick={() => setShowKeychainWarning(false)}
+                className="p-1 hover:bg-amber-500/20 rounded transition-colors"
+                aria-label="Dismiss warning"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <ChatView />
         </SidebarInset>
       </SidebarProvider>
