@@ -48,12 +48,14 @@ export function useFetchModels({
         if (!apiKey) {
           throw new Error('OpenAI API key is required. Please enter your API key above.')
         }
-        fetchedModels = await invoke<ModelInfo[]>('fetch_openai_models', { apiKey })
+        const baseUrl = apiBaseUrl || undefined
+        fetchedModels = await invoke<ModelInfo[]>('fetch_openai_models', { apiKey, baseUrl })
       } else if (providerId === 'openrouter') {
         if (!apiKey) {
           throw new Error('OpenRouter API key is required. Please enter your API key above.')
         }
-        fetchedModels = await invoke<ModelInfo[]>('fetch_openrouter_models', { apiKey })
+        const baseUrl = apiBaseUrl || undefined
+        fetchedModels = await invoke<ModelInfo[]>('fetch_openrouter_models', { apiKey, baseUrl })
       } else if (providerId === 'ollama') {
         const baseUrl = apiBaseUrl || 'http://localhost:11434'
         fetchedModels = await invoke<ModelInfo[]>('fetch_ollama_models', { baseUrl })
