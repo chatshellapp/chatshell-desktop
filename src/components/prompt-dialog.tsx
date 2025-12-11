@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Loader2 } from 'lucide-react'
 import type { Prompt, CreatePromptRequest } from '@/types'
 import { usePromptStore } from '@/stores/promptStore'
@@ -31,6 +32,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
   const [content, setContent] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
+  const [isSystem, setIsSystem] = useState(true)
 
   // UI state
   const [isSaving, setIsSaving] = useState(false)
@@ -44,12 +46,14 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
         setContent(prompt.content)
         setDescription(prompt.description || '')
         setCategory(prompt.category || '')
+        setIsSystem(prompt.is_system)
       } else {
         // Reset form for create mode
         setName('')
         setContent('')
         setDescription('')
         setCategory('')
+        setIsSystem(true)
       }
       setError(null)
     }
@@ -75,7 +79,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
         content: content.trim(),
         description: description.trim() || undefined,
         category: category.trim() || undefined,
-        is_system: false,
+        is_system: isSystem,
       }
 
       if (mode === 'edit' && prompt) {
@@ -123,6 +127,33 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
               onChange={(e) => setName(e.target.value)}
               autoFocus
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Prompt Type *</Label>
+            <RadioGroup
+              value={isSystem ? 'system' : 'user'}
+              onValueChange={(value) => setIsSystem(value === 'system')}
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="system" id="prompt-type-system" />
+                <Label htmlFor="prompt-type-system" className="font-normal cursor-pointer">
+                  System Prompt
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="user" id="prompt-type-user" />
+                <Label htmlFor="prompt-type-user" className="font-normal cursor-pointer">
+                  User Prompt
+                </Label>
+              </div>
+            </RadioGroup>
+            <p className="text-xs text-muted-foreground">
+              {isSystem
+                ? 'Will be used as a system instruction for the AI'
+                : 'Will be used as a user message'}
+            </p>
           </div>
 
           <div className="space-y-2">
