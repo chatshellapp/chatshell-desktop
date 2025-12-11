@@ -113,9 +113,9 @@ export function PromptListItem({
         <ItemHeader className="relative">
           <ItemTitle className="text-sm font-medium flex items-center gap-2">
             {isSystem ? (
-              <SquareTerminal className="size-4 shrink-0" />
+              <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />
             ) : (
-              <MessageSquare className="size-4 shrink-0" />
+              <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
             )}
             <span>{name}</span>
           </ItemTitle>
