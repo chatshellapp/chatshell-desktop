@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { MoreVertical, Star } from 'lucide-react'
+import { MoreVertical, Star, SquareTerminal, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeletePromptDialog } from './prompt-list-item/delete-dialog'
 import { logger } from '@/lib/logger'
@@ -26,6 +26,10 @@ interface PromptListItemProps {
    * Whether the prompt is starred/favorited
    */
   isStarred?: boolean
+  /**
+   * Whether the prompt is a system prompt
+   */
+  isSystem?: boolean
   /**
    * Click handler for the item
    */
@@ -60,6 +64,7 @@ export function PromptListItem({
   name,
   content,
   isStarred = false,
+  isSystem = false,
   onClick,
   onSettingsClick,
   onStarClick,
@@ -106,7 +111,14 @@ export function PromptListItem({
       <ItemContent>
         {/* First row: Name */}
         <ItemHeader className="relative">
-          <ItemTitle className="text-sm font-medium">{name}</ItemTitle>
+          <ItemTitle className="text-sm font-medium flex items-center gap-2">
+            {isSystem ? (
+              <SquareTerminal className="size-4 shrink-0" />
+            ) : (
+              <MessageSquare className="size-4 shrink-0" />
+            )}
+            <span>{name}</span>
+          </ItemTitle>
 
           {/* Floating action overlay */}
           <div

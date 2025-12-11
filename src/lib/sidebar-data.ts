@@ -1,4 +1,4 @@
-import { MessageSquare, Users, Library, Package, Settings } from 'lucide-react'
+import { MessagesSquare, Users, Library, Package, Settings } from 'lucide-react'
 import type { PromptGroup } from '@/components/prompt-list'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 
@@ -50,7 +50,7 @@ export const SIDEBAR_DATA: {
     {
       title: 'Conversations',
       url: '#',
-      icon: MessageSquare,
+      icon: MessagesSquare,
       isActive: true,
     },
     {

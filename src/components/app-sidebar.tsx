@@ -87,6 +87,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         name: prompt.name,
         content: prompt.content,
         isStarred: prompt.is_starred,
+        isSystem: prompt.is_system,
       })
     })
 

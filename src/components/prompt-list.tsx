@@ -29,6 +29,10 @@ export interface Prompt {
    * Whether the prompt is starred/favorited
    */
   isStarred?: boolean
+  /**
+   * Whether the prompt is a system prompt
+   */
+  isSystem?: boolean
 }
 
 export interface PromptGroup {
@@ -269,6 +273,7 @@ function PromptGroupComponent({
             name={prompt.name}
             content={prompt.content}
             isStarred={prompt.isStarred}
+            isSystem={prompt.isSystem}
             isActive={selectedPromptId === prompt.id}
             onClick={() => onPromptClick?.(prompt)}
             onSettingsClick={() => onPromptSettings?.(prompt)}
