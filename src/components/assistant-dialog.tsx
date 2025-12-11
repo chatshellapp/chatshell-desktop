@@ -87,10 +87,15 @@ export function AssistantDialog({
   const [groupName, setGroupName] = useState('')
   const [isStarred, setIsStarred] = useState(false)
 
-  // Prompt mode state
-  const [promptMode, setPromptMode] = useState<'existing' | 'custom'>('existing')
-  const [selectedPromptId, setSelectedPromptId] = useState('')
-  const [promptSearchQuery, setPromptSearchQuery] = useState('')
+  // System Prompt mode state
+  const [systemPromptMode, setSystemPromptMode] = useState<'existing' | 'custom'>('existing')
+  const [selectedSystemPromptId, setSelectedSystemPromptId] = useState('')
+  const [systemPromptSearchQuery, setSystemPromptSearchQuery] = useState('')
+
+  // User Prompt mode state
+  const [userPromptMode, setUserPromptMode] = useState<'none' | 'existing' | 'custom'>('none')
+  const [selectedUserPromptId, setSelectedUserPromptId] = useState('')
+  const [userPromptSearchQuery, setUserPromptSearchQuery] = useState('')
 
   // UI state
   const [isSaving, setIsSaving] = useState(false)
@@ -168,18 +173,37 @@ export function AssistantDialog({
       .filter((provider) => provider.models.length > 0)
   }, [modelsByProvider, modelSearchQuery])
 
-  // Filter prompts by search query
-  const filteredPrompts = useMemo(() => {
-    if (!promptSearchQuery.trim()) return prompts
+  // Filter prompts by search query for system prompt (only system prompts)
+  const filteredSystemPrompts = useMemo(() => {
+    // First filter to only system prompts (is_system === true)
+    const systemPrompts = prompts.filter((p) => p.is_system)
 
-    const query = promptSearchQuery.toLowerCase()
-    return prompts.filter(
+    if (!systemPromptSearchQuery.trim()) return systemPrompts
+
+    const query = systemPromptSearchQuery.toLowerCase()
+    return systemPrompts.filter(
       (prompt) =>
         prompt.name.toLowerCase().includes(query) ||
         prompt.content.toLowerCase().includes(query) ||
         (prompt.description && prompt.description.toLowerCase().includes(query))
     )
-  }, [prompts, promptSearchQuery])
+  }, [prompts, systemPromptSearchQuery])
+
+  // Filter prompts by search query for user prompt (only user prompts)
+  const filteredUserPrompts = useMemo(() => {
+    // First filter to only user prompts (is_system === false)
+    const userPrompts = prompts.filter((p) => !p.is_system)
+
+    if (!userPromptSearchQuery.trim()) return userPrompts
+
+    const query = userPromptSearchQuery.toLowerCase()
+    return userPrompts.filter(
+      (prompt) =>
+        prompt.name.toLowerCase().includes(query) ||
+        prompt.content.toLowerCase().includes(query) ||
+        (prompt.description && prompt.description.toLowerCase().includes(query))
+    )
+  }, [prompts, userPromptSearchQuery])
 
   // Initialize form when assistant changes or dialog opens
   useEffect(() => {
@@ -198,14 +222,33 @@ export function AssistantDialog({
         setGroupInputValue('')
         setIsStarred(assistant.is_starred)
 
-        // Check if system prompt matches an existing prompt
-        const matchingPrompt = prompts.find((p) => p.content === assistant.system_prompt)
-        if (matchingPrompt) {
-          setPromptMode('existing')
-          setSelectedPromptId(matchingPrompt.id)
+        // Check if system prompt matches an existing system prompt (is_system === true)
+        const matchingSystemPrompt = prompts.find(
+          (p) => p.is_system && p.content === assistant.system_prompt
+        )
+        if (matchingSystemPrompt) {
+          setSystemPromptMode('existing')
+          setSelectedSystemPromptId(matchingSystemPrompt.id)
         } else {
-          setPromptMode('custom')
-          setSelectedPromptId('')
+          setSystemPromptMode('custom')
+          setSelectedSystemPromptId('')
+        }
+
+        // Check if user prompt matches an existing user prompt (is_system === false)
+        if (assistant.user_prompt) {
+          const matchingUserPrompt = prompts.find(
+            (p) => !p.is_system && p.content === assistant.user_prompt
+          )
+          if (matchingUserPrompt) {
+            setUserPromptMode('existing')
+            setSelectedUserPromptId(matchingUserPrompt.id)
+          } else {
+            setUserPromptMode('custom')
+            setSelectedUserPromptId('')
+          }
+        } else {
+          setUserPromptMode('none')
+          setSelectedUserPromptId('')
         }
       } else {
         // Reset form for create mode
@@ -246,8 +289,12 @@ export function AssistantDialog({
         setGroupName('')
         setGroupInputValue('')
         setIsStarred(false)
-        setPromptMode('existing')
-        setSelectedPromptId('')
+        setSystemPromptMode('existing')
+        setSelectedSystemPromptId('')
+        setSystemPromptSearchQuery('')
+        setUserPromptMode('none')
+        setSelectedUserPromptId('')
+        setUserPromptSearchQuery('')
       }
       setError(null)
     }
@@ -464,80 +511,76 @@ export function AssistantDialog({
 
     if (activeSection === 'Prompts') {
       return (
-        <div className="space-y-4">
-          {/* Prompt Mode Selection */}
-          <div className="space-y-2">
-            <Label>Prompt Type</Label>
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  id="prompt-existing"
-                  name="prompt-mode"
-                  checked={promptMode === 'existing'}
-                  onChange={() => setPromptMode('existing')}
-                  className="size-4 cursor-pointer"
-                />
-                <Label htmlFor="prompt-existing" className="cursor-pointer font-normal">
-                  Select Existing
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  id="prompt-custom"
-                  name="prompt-mode"
-                  checked={promptMode === 'custom'}
-                  onChange={() => setPromptMode('custom')}
-                  className="size-4 cursor-pointer"
-                />
-                <Label htmlFor="prompt-custom" className="cursor-pointer font-normal">
-                  Custom
-                </Label>
+        <div className="space-y-6">
+          {/* System Prompt Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">System Prompt *</Label>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="system-prompt-existing"
+                    name="system-prompt-mode"
+                    checked={systemPromptMode === 'existing'}
+                    onChange={() => setSystemPromptMode('existing')}
+                    className="size-3.5 cursor-pointer"
+                  />
+                  <Label htmlFor="system-prompt-existing" className="cursor-pointer font-normal text-xs">
+                    Select Existing
+                  </Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="system-prompt-custom"
+                    name="system-prompt-mode"
+                    checked={systemPromptMode === 'custom'}
+                    onChange={() => setSystemPromptMode('custom')}
+                    className="size-3.5 cursor-pointer"
+                  />
+                  <Label htmlFor="system-prompt-custom" className="cursor-pointer font-normal text-xs">
+                    Custom
+                  </Label>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Existing Prompt Selection */}
-          {promptMode === 'existing' && (
-            <div className="space-y-2">
-              <Label htmlFor="existing-prompt">Select Prompt</Label>
+            {/* System Prompt Selection */}
+            {systemPromptMode === 'existing' && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full justify-between">
                     <span className="truncate">
-                      {selectedPromptId
-                        ? prompts.find((p) => p.id === selectedPromptId)?.name || 'Select a prompt'
+                      {selectedSystemPromptId
+                        ? prompts.find((p) => p.id === selectedSystemPromptId)?.name || 'Select a prompt'
                         : 'Select a prompt'}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-full max-h-[400px] flex flex-col p-0">
-                  {/* Search Input */}
+                <DropdownMenuContent className="w-full max-h-[300px] flex flex-col p-0">
                   <div className="p-2 border-b">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
                         placeholder="Search prompts..."
-                        value={promptSearchQuery}
-                        onChange={(e) => setPromptSearchQuery(e.target.value)}
+                        value={systemPromptSearchQuery}
+                        onChange={(e) => setSystemPromptSearchQuery(e.target.value)}
                         className="h-8 pl-8 text-sm"
                         onClick={(e) => e.stopPropagation()}
                       />
                     </div>
                   </div>
-
-                  {/* Prompts list */}
-                  <div className="overflow-y-auto max-h-[320px]">
-                    {filteredPrompts.length > 0 ? (
-                      filteredPrompts.map((prompt) => (
+                  <div className="overflow-y-auto max-h-[240px]">
+                    {filteredSystemPrompts.length > 0 ? (
+                      filteredSystemPrompts.map((prompt) => (
                         <DropdownMenuItem
                           key={prompt.id}
                           onClick={() => {
-                            setSelectedPromptId(prompt.id)
+                            setSelectedSystemPromptId(prompt.id)
                             setSystemPrompt(prompt.content)
-                            setPromptSearchQuery('')
+                            setSystemPromptSearchQuery('')
                           }}
                           className="flex flex-col items-start"
                         >
@@ -557,42 +600,143 @@ export function AssistantDialog({
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <p className="text-xs text-muted-foreground">
-                Choose from existing prompts to use as the system prompt
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* System Prompt Display/Edit */}
-          <div className="space-y-2">
-            <Label htmlFor="system-prompt">System Prompt *</Label>
             <Textarea
               id="system-prompt"
               placeholder="You are a helpful AI assistant..."
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
-              rows={promptMode === 'existing' ? 8 : 10}
+              rows={systemPromptMode === 'existing' ? 4 : 6}
               className="font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              This defines the assistant's behavior and personality (sent as system message)
+              Defines the assistant's behavior and personality (sent as system message)
             </p>
           </div>
 
-          {/* User Prompt */}
-          <div className="space-y-2">
-            <Label htmlFor="user-prompt">User Prompt (Optional)</Label>
-            <Textarea
-              id="user-prompt"
-              placeholder="Additional context or instructions..."
-              value={userPrompt}
-              onChange={(e) => setUserPrompt(e.target.value)}
-              rows={4}
-              className="font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              This will be prepended to user messages (optional)
-            </p>
+          {/* User Prompt Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">User Prompt (Optional)</Label>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="user-prompt-none"
+                    name="user-prompt-mode"
+                    checked={userPromptMode === 'none'}
+                    onChange={() => {
+                      setUserPromptMode('none')
+                      setUserPrompt('')
+                      setSelectedUserPromptId('')
+                    }}
+                    className="size-3.5 cursor-pointer"
+                  />
+                  <Label htmlFor="user-prompt-none" className="cursor-pointer font-normal text-xs">
+                    None
+                  </Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="user-prompt-existing"
+                    name="user-prompt-mode"
+                    checked={userPromptMode === 'existing'}
+                    onChange={() => setUserPromptMode('existing')}
+                    className="size-3.5 cursor-pointer"
+                  />
+                  <Label htmlFor="user-prompt-existing" className="cursor-pointer font-normal text-xs">
+                    Select Existing
+                  </Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="user-prompt-custom"
+                    name="user-prompt-mode"
+                    checked={userPromptMode === 'custom'}
+                    onChange={() => setUserPromptMode('custom')}
+                    className="size-3.5 cursor-pointer"
+                  />
+                  <Label htmlFor="user-prompt-custom" className="cursor-pointer font-normal text-xs">
+                    Custom
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            {/* User Prompt Selection */}
+            {userPromptMode === 'existing' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between">
+                    <span className="truncate">
+                      {selectedUserPromptId
+                        ? prompts.find((p) => p.id === selectedUserPromptId)?.name || 'Select a prompt'
+                        : 'Select a prompt'}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full max-h-[300px] flex flex-col p-0">
+                  <div className="p-2 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search prompts..."
+                        value={userPromptSearchQuery}
+                        onChange={(e) => setUserPromptSearchQuery(e.target.value)}
+                        className="h-8 pl-8 text-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto max-h-[240px]">
+                    {filteredUserPrompts.length > 0 ? (
+                      filteredUserPrompts.map((prompt) => (
+                        <DropdownMenuItem
+                          key={prompt.id}
+                          onClick={() => {
+                            setSelectedUserPromptId(prompt.id)
+                            setUserPrompt(prompt.content)
+                            setUserPromptSearchQuery('')
+                          }}
+                          className="flex flex-col items-start"
+                        >
+                          <span className="font-medium">{prompt.name}</span>
+                          {prompt.description && (
+                            <span className="text-xs text-muted-foreground">
+                              {prompt.description}
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <div className="py-6 text-center text-sm text-muted-foreground">
+                        No prompts found
+                      </div>
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {userPromptMode !== 'none' && (
+              <>
+                <Textarea
+                  id="user-prompt"
+                  placeholder="Additional context or instructions..."
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  rows={userPromptMode === 'existing' ? 3 : 4}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This will be prepended to user messages
+                </p>
+              </>
+            )}
           </div>
         </div>
       )
