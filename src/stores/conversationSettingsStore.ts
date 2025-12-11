@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { persist } from 'zustand/middleware'
-import type { ConversationSettings, ModelParameterOverrides } from '@/types'
+import type { ConversationSettings, ModelParameterOverrides, PromptMode } from '@/types'
 import { createDefaultConversationSettings } from '@/types'
 
 interface ConversationSettingsState {
@@ -27,6 +27,16 @@ interface ConversationSettingsActions {
 
   // Set context message count
   setContextMessageCount: (conversationId: string, count: number | null) => void
+
+  // System prompt settings
+  setSystemPromptMode: (conversationId: string, mode: PromptMode) => void
+  setSelectedSystemPromptId: (conversationId: string, promptId: string | null) => void
+  setCustomSystemPrompt: (conversationId: string, content: string) => void
+
+  // User prompt settings
+  setUserPromptMode: (conversationId: string, mode: PromptMode) => void
+  setSelectedUserPromptId: (conversationId: string, promptId: string | null) => void
+  setCustomUserPrompt: (conversationId: string, content: string) => void
 
   // Reset settings to default
   resetSettings: (conversationId: string) => void
@@ -114,6 +124,74 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
             draft.settings[conversationId] = createDefaultConversationSettings()
           }
           draft.settings[conversationId].contextMessageCount = count
+        })
+      },
+
+      setSystemPromptMode: (conversationId: string, mode: PromptMode) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].systemPromptMode = mode
+          // Clear selection when switching to 'none' or 'custom'
+          if (mode === 'none' || mode === 'custom') {
+            draft.settings[conversationId].selectedSystemPromptId = null
+          }
+          if (mode === 'none') {
+            draft.settings[conversationId].customSystemPrompt = ''
+          }
+        })
+      },
+
+      setSelectedSystemPromptId: (conversationId: string, promptId: string | null) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].selectedSystemPromptId = promptId
+        })
+      },
+
+      setCustomSystemPrompt: (conversationId: string, content: string) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].customSystemPrompt = content
+        })
+      },
+
+      setUserPromptMode: (conversationId: string, mode: PromptMode) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].userPromptMode = mode
+          // Clear selection when switching to 'none' or 'custom'
+          if (mode === 'none' || mode === 'custom') {
+            draft.settings[conversationId].selectedUserPromptId = null
+          }
+          if (mode === 'none') {
+            draft.settings[conversationId].customUserPrompt = ''
+          }
+        })
+      },
+
+      setSelectedUserPromptId: (conversationId: string, promptId: string | null) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].selectedUserPromptId = promptId
+        })
+      },
+
+      setCustomUserPrompt: (conversationId: string, content: string) => {
+        set((draft) => {
+          if (!draft.settings[conversationId]) {
+            draft.settings[conversationId] = createDefaultConversationSettings()
+          }
+          draft.settings[conversationId].customUserPrompt = content
         })
       },
 

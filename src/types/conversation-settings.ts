@@ -9,6 +9,9 @@ export interface ModelParameterOverrides {
   presence_penalty?: number
 }
 
+// Prompt mode options
+export type PromptMode = 'none' | 'existing' | 'custom'
+
 export interface ConversationSettings {
   // Use provider defaults - when true, no parameters are sent to API
   useProviderDefaults: boolean
@@ -25,6 +28,22 @@ export interface ConversationSettings {
   // Which preset is currently selected (for UI display)
   // null when using default or custom parameters
   selectedPresetId: string | null
+
+  // System prompt settings
+  // 'none' = no override (use assistant's system prompt)
+  // 'existing' = use a selected existing prompt
+  // 'custom' = use custom content
+  systemPromptMode: PromptMode
+  selectedSystemPromptId: string | null
+  customSystemPrompt: string
+
+  // User prompt settings
+  // 'none' = no user prompt
+  // 'existing' = use a selected existing prompt
+  // 'custom' = use custom content
+  userPromptMode: PromptMode
+  selectedUserPromptId: string | null
+  customUserPrompt: string
 }
 
 // Default conversation settings
@@ -34,6 +53,13 @@ export const createDefaultConversationSettings = (): ConversationSettings => ({
   parameterOverrides: {},
   contextMessageCount: null,
   selectedPresetId: null,
+  // Prompt defaults - 'none' means use assistant's prompts
+  systemPromptMode: 'none',
+  selectedSystemPromptId: null,
+  customSystemPrompt: '',
+  userPromptMode: 'none',
+  selectedUserPromptId: null,
+  customUserPrompt: '',
 })
 
 // Parameter limits for validation

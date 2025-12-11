@@ -2,6 +2,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
+import { usePromptStore } from '@/stores/promptStore'
 import type { Attachment } from './types'
 import { logger } from '@/lib/logger'
 
@@ -30,6 +31,9 @@ export function useSubmitHandler({
 
   // Get conversation settings
   const getSettings = useConversationSettingsStore((state) => state.getSettings)
+
+  // Get prompt by ID
+  const getPromptById = usePromptStore((state) => state.getPromptById)
 
   // Get conversation-specific state
   const conversationState = useMessageStore((state) =>
@@ -102,18 +106,43 @@ export function useSubmitHandler({
       const apiKey: string | undefined = provider.api_key
       const baseUrl: string | undefined = provider.base_url
 
-      // Get prompts from assistant if selected
-      let systemPrompt: string | undefined
-      let userPrompt: string | undefined
+      // Get conversation settings first to check for prompt overrides
+      const conversationId = currentConversation?.id
+      const settings = conversationId ? getSettings(conversationId) : null
 
-      if (selectedAssistant) {
+      // Determine system prompt based on conversation settings
+      let systemPrompt: string | undefined
+      if (settings?.systemPromptMode === 'existing' && settings.selectedSystemPromptId) {
+        // Use selected existing prompt
+        const prompt = getPromptById(settings.selectedSystemPromptId)
+        systemPrompt = prompt?.content
+        logger.info('Using existing system prompt from settings:', { promptId: settings.selectedSystemPromptId })
+      } else if (settings?.systemPromptMode === 'custom' && settings.customSystemPrompt) {
+        // Use custom prompt
+        systemPrompt = settings.customSystemPrompt
+        logger.info('Using custom system prompt from settings')
+      } else if (selectedAssistant) {
+        // Fall back to assistant's system prompt
         systemPrompt = selectedAssistant.system_prompt
-        userPrompt = selectedAssistant.user_prompt || undefined
-        logger.info('Using assistant prompts:', {
-          hasSystemPrompt: !!systemPrompt,
-          hasUserPrompt: !!userPrompt,
-        })
+        logger.info('Using assistant system prompt')
       }
+
+      // User prompt is now directly in the input field, so we don't send it separately
+      // Only fall back to assistant's user prompt if no user prompt is set in conversation settings
+      let userPrompt: string | undefined
+      if (settings?.userPromptMode === 'none' && selectedAssistant?.user_prompt) {
+        // Only use assistant's user prompt when mode is 'none'
+        userPrompt = selectedAssistant.user_prompt
+        logger.info('Using assistant user prompt')
+      }
+      // When userPromptMode is 'existing' or 'custom', the content is already in the input field
+
+      logger.info('Final prompts:', {
+        hasSystemPrompt: !!systemPrompt,
+        hasUserPrompt: !!userPrompt,
+        systemPromptMode: settings?.systemPromptMode,
+        userPromptMode: settings?.userPromptMode,
+      })
 
       // Extract file attachments as structured data (sent via rig's Document)
       const fileAttachments = attachments.filter((att) => att.type === 'file' && att.content)
@@ -151,10 +180,6 @@ export function useSubmitHandler({
 
       // Extract webpage URLs from attachments
       const webpageUrls = attachments.filter((att) => att.type === 'webpage').map((att) => att.name)
-
-      // Get conversation settings for parameter overrides and context count
-      const conversationId = currentConversation?.id
-      const settings = conversationId ? getSettings(conversationId) : null
 
       // Determine what parameters to send:
       // - useProviderDefaults: true → send flag to skip all parameters

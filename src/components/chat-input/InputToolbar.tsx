@@ -9,6 +9,7 @@ import {
   Search,
   SlidersHorizontal,
   MessageSquare,
+  Sparkles,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -28,6 +29,7 @@ interface InputToolbarProps {
   onFileSelect: () => void
   onImageSelect: () => void
   onWebPageSelect: () => void
+  onUserPromptSelect: () => void
   // Settings
   webSearchEnabled: boolean
   onWebSearchEnabledChange: (enabled: boolean) => void
@@ -51,12 +53,16 @@ interface InputToolbarProps {
   // Context count
   onContextCountClick: () => void
   contextCountLabel: string
+  // System Prompt
+  onSystemPromptClick: () => void
+  systemPromptLabel: string
 }
 
 export function InputToolbar({
   onFileSelect,
   onImageSelect,
   onWebPageSelect,
+  onUserPromptSelect,
   webSearchEnabled,
   onWebSearchEnabledChange,
   isModelMenuOpen,
@@ -75,6 +81,8 @@ export function InputToolbar({
   modelParametersLabel,
   onContextCountClick,
   contextCountLabel,
+  onSystemPromptClick,
+  systemPromptLabel,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -86,6 +94,11 @@ export function InputToolbar({
           </InputGroupButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem]">
+          <DropdownMenuItem onClick={onUserPromptSelect} className="gap-2">
+            <Sparkles className="size-4" />
+            <span>User Prompt</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onWebPageSelect} className="gap-2">
             <Globe className="size-4" />
             <span>Web Page</span>
@@ -124,6 +137,13 @@ export function InputToolbar({
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
           </DropdownMenuItem> */}
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onSystemPromptClick} className="gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4" />
+              <span>System Prompt</span>
+            </div>
+            <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={onModelParametersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="size-4" />
@@ -139,10 +159,6 @@ export function InputToolbar({
             <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
           {/* <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onPromptSelect} className="gap-2">
-            <Sparkles className="size-4" />
-            <span>Prompt</span>
-          </DropdownMenuItem>
           <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
             <BookOpen className="size-4" />
             <span>Knowledge</span>
