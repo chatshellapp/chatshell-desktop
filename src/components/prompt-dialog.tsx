@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Loader2 } from 'lucide-react'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Loader2, ChevronsUpDown, Check } from 'lucide-react'
 import type { Prompt, CreatePromptRequest } from '@/types'
 import { usePromptStore } from '@/stores/promptStore'
 import { logger } from '@/lib/logger'
@@ -25,7 +34,7 @@ interface PromptDialogProps {
 }
 
 export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: PromptDialogProps) {
-  const { createPrompt, updatePrompt } = usePromptStore()
+  const { prompts, createPrompt, updatePrompt, ensureLoaded } = usePromptStore()
 
   // Form state
   const [name, setName] = useState('')
@@ -37,6 +46,33 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
   // UI state
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [categoryComboboxOpen, setCategoryComboboxOpen] = useState(false)
+  const [categoryInputValue, setCategoryInputValue] = useState('')
+
+  // Load prompts on mount to get existing categories
+  useEffect(() => {
+    if (open) {
+      ensureLoaded()
+    }
+  }, [open, ensureLoaded])
+
+  // Get unique category names from existing prompts
+  const existingCategories = useMemo(() => {
+    const categories = new Set<string>()
+    prompts.forEach((p) => {
+      if (p.category) {
+        categories.add(p.category)
+      }
+    })
+    return Array.from(categories).sort()
+  }, [prompts])
+
+  // Filter categories by input value
+  const filteredCategories = useMemo(() => {
+    if (!categoryInputValue.trim()) return existingCategories
+    const query = categoryInputValue.toLowerCase()
+    return existingCategories.filter((cat) => cat.toLowerCase().includes(query))
+  }, [existingCategories, categoryInputValue])
 
   // Initialize form when prompt changes or dialog opens
   useEffect(() => {
@@ -55,6 +91,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
         setCategory('')
         setIsSystem(true)
       }
+      setCategoryInputValue('')
       setError(null)
     }
   }, [open, mode, prompt])
@@ -158,12 +195,71 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
 
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Input
-              id="category"
-              placeholder="e.g., Development, Writing, Analysis"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
+            <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={categoryComboboxOpen}
+                  className="w-full justify-between"
+                >
+                  <span className="truncate">{category || 'Select or create category...'}</span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Search or type new category..."
+                    value={categoryInputValue}
+                    onValueChange={setCategoryInputValue}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      <div className="py-2 px-2">
+                        {categoryInputValue.trim() ? (
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => {
+                              setCategory(categoryInputValue.trim())
+                              setCategoryComboboxOpen(false)
+                              setCategoryInputValue('')
+                            }}
+                          >
+                            Create "{categoryInputValue.trim()}"
+                          </Button>
+                        ) : (
+                          <div className="text-sm text-muted-foreground text-center">
+                            Type to create a new category
+                          </div>
+                        )}
+                      </div>
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {filteredCategories.map((cat) => (
+                        <CommandItem
+                          key={cat}
+                          value={cat}
+                          onSelect={() => {
+                            setCategory(cat)
+                            setCategoryComboboxOpen(false)
+                            setCategoryInputValue('')
+                          }}
+                        >
+                          {cat}
+                          <Check
+                            className={
+                              category === cat ? 'ml-auto opacity-100' : 'ml-auto opacity-0'
+                            }
+                          />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <p className="text-xs text-muted-foreground">Organize prompts by category (optional)</p>
           </div>
 
