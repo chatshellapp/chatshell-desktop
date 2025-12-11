@@ -7,6 +7,7 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { X, Sparkles } from 'lucide-react'
 
 import { useAttachments } from './useAttachments'
@@ -22,6 +23,7 @@ import { SystemPromptDialog } from './SystemPromptDialog'
 import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useMessageStore } from '@/stores/message'
 import { CONTEXT_COUNT_OPTIONS } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
@@ -106,6 +108,12 @@ export function ChatInput({}: ChatInputProps) {
 
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
+
+  // Get message count from message store to determine if system prompt can be changed
+  const conversationState = useMessageStore((state) =>
+    currentConversation ? state.getConversationState(currentConversation.id) : null
+  )
+  const hasMessages = (conversationState?.messages?.length ?? 0) > 0
 
   // Get current conversation settings - this will update when allSettings changes
   const conversationSettings = useMemo(() => {
@@ -328,36 +336,56 @@ export function ChatInput({}: ChatInputProps) {
         {/* System Prompt Tag */}
         {activeSystemPromptInfo && (
           <div className="flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
-            >
-              <button
-                type="button"
-                onClick={handleClearSystemPrompt}
-                className="hover:text-destructive transition-colors -ml-0.5"
-                title="Clear system prompt"
+            {hasMessages ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="text-muted-foreground gap-1.5 cursor-not-allowed opacity-70"
+                  >
+                    <Sparkles className="size-3" />
+                    <span className="max-w-[200px] truncate">
+                      {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                      {activeSystemPromptInfo.name}
+                    </span>
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  System prompt can only be changed when conversation is empty
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Badge
+                variant="outline"
+                className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
               >
-                <X className="size-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (currentConversation) {
-                    getSettings(currentConversation.id)
-                    ensurePromptsLoaded()
-                  }
-                  setIsSystemPromptDialogOpen(true)
-                }}
-                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
-              >
-                <Sparkles className="size-3" />
-                <span className="max-w-[200px] truncate">
-                  {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
-                  {activeSystemPromptInfo.name}
-                </span>
-              </button>
-            </Badge>
+                <button
+                  type="button"
+                  onClick={handleClearSystemPrompt}
+                  className="hover:text-destructive transition-colors -ml-0.5"
+                  title="Clear system prompt"
+                >
+                  <X className="size-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentConversation) {
+                      getSettings(currentConversation.id)
+                      ensurePromptsLoaded()
+                    }
+                    setIsSystemPromptDialogOpen(true)
+                  }}
+                  className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
+                >
+                  <Sparkles className="size-3" />
+                  <span className="max-w-[200px] truncate">
+                    {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                    {activeSystemPromptInfo.name}
+                  </span>
+                </button>
+              </Badge>
+            )}
           </div>
         )}
 
@@ -424,6 +452,7 @@ export function ChatInput({}: ChatInputProps) {
             setIsSystemPromptDialogOpen(true)
           }}
           systemPromptLabel={systemPromptLabel}
+          systemPromptDisabled={hasMessages}
         />
         </InputGroup>
       </div>

@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
 import { Switch } from '@/components/ui/switch'
 import { ModelSelectorDropdown } from './ModelSelectorDropdown'
@@ -56,6 +57,7 @@ interface InputToolbarProps {
   // System Prompt
   onSystemPromptClick: () => void
   systemPromptLabel: string
+  systemPromptDisabled?: boolean
 }
 
 export function InputToolbar({
@@ -83,6 +85,7 @@ export function InputToolbar({
   contextCountLabel,
   onSystemPromptClick,
   systemPromptLabel,
+  systemPromptDisabled = false,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -137,13 +140,37 @@ export function InputToolbar({
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
           </DropdownMenuItem> */}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onSystemPromptClick} className="gap-2 justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4" />
-              <span>System Prompt</span>
-            </div>
-            <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
-          </DropdownMenuItem>
+          {systemPromptDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-not-allowed">
+                  <DropdownMenuItem
+                    className="gap-2 justify-between pointer-events-none opacity-50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="size-4" />
+                      <span>System Prompt</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
+                  </DropdownMenuItem>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                System prompt can only be changed when conversation is empty
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem
+              onClick={onSystemPromptClick}
+              className="gap-2 justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4" />
+                <span>System Prompt</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={onModelParametersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="size-4" />
