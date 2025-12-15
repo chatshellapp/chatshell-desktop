@@ -66,7 +66,7 @@ class Logger {
     try {
       const formattedMessage = this.formatMessage(entry)
       const date = new Date().toISOString().split('T')[0]
-      const filename = `chatshell-frontend.log.${date}`
+      const filename = `chatshell-frontend-${date}.log`
 
       await writeTextFile(`logs/${filename}`, formattedMessage, {
         baseDir: BaseDirectory.AppData,

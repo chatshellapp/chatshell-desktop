@@ -19,7 +19,7 @@ pub fn init_logger(log_dir: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&log_dir)?;
 
     let file_appender =
-        RollingFileAppender::new(Rotation::DAILY, log_dir.clone(), "chatshell-backend.log");
+        RollingFileAppender::new(Rotation::DAILY, log_dir.clone(), "chatshell-backend");
 
     let console_layer = fmt::layer()
         .with_target(true)
