@@ -37,7 +37,10 @@ interface ConversationSettingsActions {
   setUseProviderDefaults: (conversationId: string, useDefaults: boolean) => Promise<void>
 
   // Update parameter overrides
-  setParameterOverrides: (conversationId: string, overrides: ModelParameterOverrides) => Promise<void>
+  setParameterOverrides: (
+    conversationId: string,
+    overrides: ModelParameterOverrides
+  ) => Promise<void>
 
   // Toggle between custom and preset parameters
   setUseCustomParameters: (conversationId: string, useCustom: boolean) => Promise<void>
@@ -141,10 +144,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       return get().settings[conversationId]
     },
 
-    updateSettings: async (
-      conversationId: string,
-      updates: UpdateConversationSettingsRequest
-    ) => {
+    updateSettings: async (conversationId: string, updates: UpdateConversationSettingsRequest) => {
       try {
         const response = await updateSettingsInBackend(conversationId, updates)
         set((draft) => {

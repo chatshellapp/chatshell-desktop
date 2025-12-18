@@ -108,17 +108,21 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
   if (req.contextMessageCount !== undefined) result.context_message_count = req.contextMessageCount
   if (req.selectedPresetId !== undefined) result.selected_preset_id = req.selectedPresetId
   if (req.systemPromptMode !== undefined) result.system_prompt_mode = req.systemPromptMode
-  if (req.selectedSystemPromptId !== undefined) result.selected_system_prompt_id = req.selectedSystemPromptId
+  if (req.selectedSystemPromptId !== undefined)
+    result.selected_system_prompt_id = req.selectedSystemPromptId
   if (req.customSystemPrompt !== undefined) result.custom_system_prompt = req.customSystemPrompt
   if (req.userPromptMode !== undefined) result.user_prompt_mode = req.userPromptMode
-  if (req.selectedUserPromptId !== undefined) result.selected_user_prompt_id = req.selectedUserPromptId
+  if (req.selectedUserPromptId !== undefined)
+    result.selected_user_prompt_id = req.selectedUserPromptId
   if (req.customUserPrompt !== undefined) result.custom_user_prompt = req.customUserPrompt
 
   return result
 }
 
 // Default conversation settings
-export const createDefaultConversationSettings = (conversationId: string): ConversationSettings => ({
+export const createDefaultConversationSettings = (
+  conversationId: string
+): ConversationSettings => ({
   conversationId,
   useProviderDefaults: true, // Default: use provider's default settings
   useCustomParameters: false,

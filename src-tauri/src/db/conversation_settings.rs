@@ -42,23 +42,37 @@ impl Database {
         let existing = self.get_conversation_settings(conversation_id).await?;
 
         // Merge updates
-        let use_provider_defaults = req.use_provider_defaults.unwrap_or(existing.use_provider_defaults);
-        let use_custom_parameters = req.use_custom_parameters.unwrap_or(existing.use_custom_parameters);
-        let parameter_overrides = req.parameter_overrides.unwrap_or(existing.parameter_overrides);
+        let use_provider_defaults = req
+            .use_provider_defaults
+            .unwrap_or(existing.use_provider_defaults);
+        let use_custom_parameters = req
+            .use_custom_parameters
+            .unwrap_or(existing.use_custom_parameters);
+        let parameter_overrides = req
+            .parameter_overrides
+            .unwrap_or(existing.parameter_overrides);
         let context_message_count = req
             .context_message_count
             .unwrap_or(existing.context_message_count);
-        let selected_preset_id = req.selected_preset_id.unwrap_or(existing.selected_preset_id);
-        let system_prompt_mode = req.system_prompt_mode.unwrap_or(existing.system_prompt_mode);
+        let selected_preset_id = req
+            .selected_preset_id
+            .unwrap_or(existing.selected_preset_id);
+        let system_prompt_mode = req
+            .system_prompt_mode
+            .unwrap_or(existing.system_prompt_mode);
         let selected_system_prompt_id = req
             .selected_system_prompt_id
             .unwrap_or(existing.selected_system_prompt_id);
-        let custom_system_prompt = req.custom_system_prompt.unwrap_or(existing.custom_system_prompt);
+        let custom_system_prompt = req
+            .custom_system_prompt
+            .unwrap_or(existing.custom_system_prompt);
         let user_prompt_mode = req.user_prompt_mode.unwrap_or(existing.user_prompt_mode);
         let selected_user_prompt_id = req
             .selected_user_prompt_id
             .unwrap_or(existing.selected_user_prompt_id);
-        let custom_user_prompt = req.custom_user_prompt.unwrap_or(existing.custom_user_prompt);
+        let custom_user_prompt = req
+            .custom_user_prompt
+            .unwrap_or(existing.custom_user_prompt);
 
         // Serialize parameter overrides to JSON
         let parameter_overrides_json = serde_json::to_string(&parameter_overrides)?;
@@ -138,4 +152,3 @@ impl Database {
         }
     }
 }
-

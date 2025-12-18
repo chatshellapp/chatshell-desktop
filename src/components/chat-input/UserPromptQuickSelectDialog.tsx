@@ -57,7 +57,7 @@ export function UserPromptQuickSelectDialog({
   // Group by category
   const groupedPrompts = useMemo(() => {
     const groups = new Map<string, typeof filteredPrompts>()
-    
+
     filteredPrompts.forEach((prompt) => {
       const category = prompt.category || 'Uncategorized'
       if (!groups.has(category)) {
@@ -84,9 +84,7 @@ export function UserPromptQuickSelectDialog({
       <DialogContent className="max-w-[500px] max-h-[70vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>Select User Prompt</DialogTitle>
-          <DialogDescription>
-            Choose a prompt template to fill in the input
-          </DialogDescription>
+          <DialogDescription>Choose a prompt template to fill in the input</DialogDescription>
         </DialogHeader>
 
         {/* Search */}
@@ -125,9 +123,7 @@ export function UserPromptQuickSelectDialog({
                       <div className="flex items-start gap-2">
                         <MessageSquare className="size-4 mt-0.5 text-muted-foreground shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium text-sm truncate">
-                            {prompt.name}
-                          </div>
+                          <div className="font-medium text-sm truncate">{prompt.name}</div>
                           {prompt.description && (
                             <div className="text-xs text-muted-foreground truncate">
                               {prompt.description}

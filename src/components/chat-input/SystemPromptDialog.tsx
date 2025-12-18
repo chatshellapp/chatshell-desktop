@@ -122,7 +122,6 @@ export function SystemPromptDialog({
     })
   }, [filteredPrompts])
 
-
   const handleSelectDefault = () => {
     updateSystemPrompt('none', null, null)
     onOpenChange(false)
@@ -201,9 +200,7 @@ export function SystemPromptDialog({
       <DialogContent className="max-w-[500px] max-h-[70vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>System Prompt</DialogTitle>
-          <DialogDescription>
-            Override the system prompt for this conversation
-          </DialogDescription>
+          <DialogDescription>Override the system prompt for this conversation</DialogDescription>
         </DialogHeader>
 
         {/* Search */}
@@ -332,4 +329,3 @@ export function SystemPromptDialog({
     </Dialog>
   )
 }
-

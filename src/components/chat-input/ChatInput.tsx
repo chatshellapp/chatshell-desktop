@@ -190,9 +190,10 @@ export function ChatInput({}: ChatInputProps) {
 
     if (systemPromptMode === 'custom' && customSystemPrompt) {
       // Show first 20 chars of custom prompt as name
-      const truncated = customSystemPrompt.length > 20 
-        ? customSystemPrompt.substring(0, 20) + '...' 
-        : customSystemPrompt
+      const truncated =
+        customSystemPrompt.length > 20
+          ? customSystemPrompt.substring(0, 20) + '...'
+          : customSystemPrompt
       return { name: truncated, type: 'custom' as const }
     }
 
@@ -370,70 +371,70 @@ export function ChatInput({}: ChatInputProps) {
         )}
 
         <InputGroup>
-        <AttachmentPreviewRow
-          attachments={attachments}
-          onRemove={removeAttachment}
-          onImageClick={setLightboxImageIndex}
-          onFileClick={setPreviewingFileId}
-        />
-        <InputGroupTextarea
-          ref={textareaRef}
-          placeholder="Ask, Search or Chat..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          disabled={!selectedModel && !selectedAssistant}
-        />
-        <InputToolbar
-          onFileSelect={handleFileSelect}
-          onImageSelect={handleImageSelect}
-          onWebPageSelect={handleWebPageSelect}
-          onUserPromptSelect={() => {
-            ensurePromptsLoaded()
-            setIsUserPromptDialogOpen(true)
-          }}
-          webSearchEnabled={webSearchEnabled}
-          onWebSearchEnabledChange={setWebSearchEnabled}
-          isModelMenuOpen={isModelMenuOpen}
-          onModelMenuOpenChange={setIsModelMenuOpen}
-          activeTab={activeTab}
-          onActiveTabChange={setActiveTab}
-          isStreaming={isStreaming}
-          isWaitingForAI={isWaitingForAI}
-          isSending={isSending}
-          canSend={!!input.trim()}
-          selectedModel={selectedModel}
-          selectedAssistant={selectedAssistant}
-          onSend={handleSend}
-          onStop={handleStop}
-          onModelParametersClick={() => {
-            // Ensure settings exist before opening dialog
-            if (currentConversation) {
-              getSettings(currentConversation.id)
-            }
-            setIsModelParametersDialogOpen(true)
-          }}
-          modelParametersLabel={modelParametersLabel}
-          onContextCountClick={() => {
-            // Ensure settings exist before opening dialog
-            if (currentConversation) {
-              getSettings(currentConversation.id)
-            }
-            setIsContextCountDialogOpen(true)
-          }}
-          contextCountLabel={contextCountLabel}
-          onSystemPromptClick={() => {
-            // Ensure settings exist and prompts are loaded before opening dialog
-            if (currentConversation) {
-              getSettings(currentConversation.id)
+          <AttachmentPreviewRow
+            attachments={attachments}
+            onRemove={removeAttachment}
+            onImageClick={setLightboxImageIndex}
+            onFileClick={setPreviewingFileId}
+          />
+          <InputGroupTextarea
+            ref={textareaRef}
+            placeholder="Ask, Search or Chat..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={!selectedModel && !selectedAssistant}
+          />
+          <InputToolbar
+            onFileSelect={handleFileSelect}
+            onImageSelect={handleImageSelect}
+            onWebPageSelect={handleWebPageSelect}
+            onUserPromptSelect={() => {
               ensurePromptsLoaded()
-            }
-            setIsSystemPromptDialogOpen(true)
-          }}
-          systemPromptLabel={systemPromptLabel}
-          systemPromptDisabled={hasMessages}
-        />
+              setIsUserPromptDialogOpen(true)
+            }}
+            webSearchEnabled={webSearchEnabled}
+            onWebSearchEnabledChange={setWebSearchEnabled}
+            isModelMenuOpen={isModelMenuOpen}
+            onModelMenuOpenChange={setIsModelMenuOpen}
+            activeTab={activeTab}
+            onActiveTabChange={setActiveTab}
+            isStreaming={isStreaming}
+            isWaitingForAI={isWaitingForAI}
+            isSending={isSending}
+            canSend={!!input.trim()}
+            selectedModel={selectedModel}
+            selectedAssistant={selectedAssistant}
+            onSend={handleSend}
+            onStop={handleStop}
+            onModelParametersClick={() => {
+              // Ensure settings exist before opening dialog
+              if (currentConversation) {
+                getSettings(currentConversation.id)
+              }
+              setIsModelParametersDialogOpen(true)
+            }}
+            modelParametersLabel={modelParametersLabel}
+            onContextCountClick={() => {
+              // Ensure settings exist before opening dialog
+              if (currentConversation) {
+                getSettings(currentConversation.id)
+              }
+              setIsContextCountDialogOpen(true)
+            }}
+            contextCountLabel={contextCountLabel}
+            onSystemPromptClick={() => {
+              // Ensure settings exist and prompts are loaded before opening dialog
+              if (currentConversation) {
+                getSettings(currentConversation.id)
+                ensurePromptsLoaded()
+              }
+              setIsSystemPromptDialogOpen(true)
+            }}
+            systemPromptLabel={systemPromptLabel}
+            systemPromptDisabled={hasMessages}
+          />
         </InputGroup>
       </div>
 

@@ -138,4 +138,3 @@ pub struct UpdateConversationSettingsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_user_prompt: Option<Option<String>>,
 }
-

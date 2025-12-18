@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use keyring::Entry;
 
 /// Service name for keychain entries
@@ -84,4 +84,3 @@ mod tests {
         assert!(result.is_ok(), "Failed to create keyring entry");
     }
 }
-

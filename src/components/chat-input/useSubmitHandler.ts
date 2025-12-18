@@ -116,7 +116,9 @@ export function useSubmitHandler({
         // Use selected existing prompt
         const prompt = getPromptById(settings.selectedSystemPromptId)
         systemPrompt = prompt?.content
-        logger.info('Using existing system prompt from settings:', { promptId: settings.selectedSystemPromptId })
+        logger.info('Using existing system prompt from settings:', {
+          promptId: settings.selectedSystemPromptId,
+        })
       } else if (settings?.systemPromptMode === 'custom' && settings.customSystemPrompt) {
         // Use custom prompt
         systemPrompt = settings.customSystemPrompt

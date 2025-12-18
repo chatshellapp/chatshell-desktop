@@ -210,7 +210,10 @@ export function PromptSelectDialog({
                     onChange={() => updateSystemPrompt('none', null, null)}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="system-prompt-none" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="system-prompt-none"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Default
                   </Label>
                 </div>
@@ -223,7 +226,10 @@ export function PromptSelectDialog({
                     onChange={() => updateSystemPrompt('existing', selectedSystemPromptId, null)}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="system-prompt-existing" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="system-prompt-existing"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Select Existing
                   </Label>
                 </div>
@@ -236,7 +242,10 @@ export function PromptSelectDialog({
                     onChange={() => updateSystemPrompt('custom', null, customSystemPrompt)}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="system-prompt-custom" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="system-prompt-custom"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Custom
                   </Label>
                 </div>
@@ -347,7 +356,10 @@ export function PromptSelectDialog({
                     onChange={() => updateUserPrompt('existing', selectedUserPromptId, null)}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="user-prompt-existing" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="user-prompt-existing"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Select Existing
                   </Label>
                 </div>
@@ -360,7 +372,10 @@ export function PromptSelectDialog({
                     onChange={() => updateUserPrompt('custom', null, customUserPrompt)}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="user-prompt-custom" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="user-prompt-custom"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Custom
                   </Label>
                 </div>
@@ -443,9 +458,7 @@ export function PromptSelectDialog({
             )}
 
             {userPromptMode === 'none' && (
-              <p className="text-xs text-muted-foreground">
-                No user prompt will be applied
-              </p>
+              <p className="text-xs text-muted-foreground">No user prompt will be applied</p>
             )}
           </div>
         </div>
@@ -453,6 +466,3 @@ export function PromptSelectDialog({
     </Dialog>
   )
 }
-
-
-

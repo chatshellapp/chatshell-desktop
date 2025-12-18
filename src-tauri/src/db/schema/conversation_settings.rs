@@ -27,4 +27,3 @@ pub async fn create_conversation_settings_table(pool: &SqlitePool) -> Result<()>
 
     Ok(())
 }
-

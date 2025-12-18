@@ -1,9 +1,9 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
 use anyhow::Result;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -59,7 +59,7 @@ static EPHEMERAL_API_KEY_CACHE: OnceLock<RwLock<HashMap<String, String>>> = Once
 
 /// Initialize the encryption key from OS keychain or generate a new one
 /// This should be called once during app startup
-/// 
+///
 /// If keychain access is denied, falls back to an ephemeral in-memory key.
 /// In this case, API keys will need to be re-entered after app restart.
 pub fn init_encryption_key() {

@@ -526,7 +526,10 @@ export function AssistantDialog({
                     onChange={() => setSystemPromptMode('existing')}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="system-prompt-existing" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="system-prompt-existing"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Select Existing
                   </Label>
                 </div>
@@ -539,7 +542,10 @@ export function AssistantDialog({
                     onChange={() => setSystemPromptMode('custom')}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="system-prompt-custom" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="system-prompt-custom"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Custom
                   </Label>
                 </div>
@@ -553,7 +559,8 @@ export function AssistantDialog({
                   <Button variant="outline" className="w-full justify-between">
                     <span className="truncate">
                       {selectedSystemPromptId
-                        ? prompts.find((p) => p.id === selectedSystemPromptId)?.name || 'Select a prompt'
+                        ? prompts.find((p) => p.id === selectedSystemPromptId)?.name ||
+                          'Select a prompt'
                         : 'Select a prompt'}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -646,7 +653,10 @@ export function AssistantDialog({
                     onChange={() => setUserPromptMode('existing')}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="user-prompt-existing" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="user-prompt-existing"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Select Existing
                   </Label>
                 </div>
@@ -659,7 +669,10 @@ export function AssistantDialog({
                     onChange={() => setUserPromptMode('custom')}
                     className="size-3.5 cursor-pointer"
                   />
-                  <Label htmlFor="user-prompt-custom" className="cursor-pointer font-normal text-xs">
+                  <Label
+                    htmlFor="user-prompt-custom"
+                    className="cursor-pointer font-normal text-xs"
+                  >
                     Custom
                   </Label>
                 </div>
@@ -673,7 +686,8 @@ export function AssistantDialog({
                   <Button variant="outline" className="w-full justify-between">
                     <span className="truncate">
                       {selectedUserPromptId
-                        ? prompts.find((p) => p.id === selectedUserPromptId)?.name || 'Select a prompt'
+                        ? prompts.find((p) => p.id === selectedUserPromptId)?.name ||
+                          'Select a prompt'
                         : 'Select a prompt'}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

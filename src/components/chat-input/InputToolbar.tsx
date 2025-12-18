@@ -144,9 +144,7 @@ export function InputToolbar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="cursor-not-allowed">
-                  <DropdownMenuItem
-                    className="gap-2 justify-between pointer-events-none opacity-50"
-                  >
+                  <DropdownMenuItem className="gap-2 justify-between pointer-events-none opacity-50">
                     <div className="flex items-center gap-2">
                       <Sparkles className="size-4" />
                       <span>System Prompt</span>
@@ -160,10 +158,7 @@ export function InputToolbar({
               </TooltipContent>
             </Tooltip>
           ) : (
-            <DropdownMenuItem
-              onClick={onSystemPromptClick}
-              className="gap-2 justify-between"
-            >
+            <DropdownMenuItem onClick={onSystemPromptClick} className="gap-2 justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4" />
                 <span>System Prompt</span>

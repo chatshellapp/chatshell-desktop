@@ -2,14 +2,20 @@ use crate::llm;
 pub use crate::llm::models::ModelInfo;
 
 #[tauri::command]
-pub async fn fetch_openai_models(api_key: String, base_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn fetch_openai_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>, String> {
     llm::models::fetch_openai_models(api_key, base_url)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn fetch_openrouter_models(api_key: String, base_url: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn fetch_openrouter_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>, String> {
     llm::models::fetch_openrouter_models(api_key, base_url)
         .await
         .map_err(|e| e.to_string())

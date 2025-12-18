@@ -64,12 +64,13 @@ struct OllamaModel {
 }
 
 /// Fetch available models from OpenAI
-pub async fn fetch_openai_models(api_key: String, base_url: Option<String>) -> Result<Vec<ModelInfo>> {
+pub async fn fetch_openai_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>> {
     let client = create_http_client();
 
-    let url = base_url
-        .as_deref()
-        .unwrap_or("https://api.openai.com/v1");
+    let url = base_url.as_deref().unwrap_or("https://api.openai.com/v1");
     let url = if url.ends_with('/') {
         format!("{}models", url)
     } else {
@@ -109,7 +110,10 @@ pub async fn fetch_openai_models(api_key: String, base_url: Option<String>) -> R
 }
 
 /// Fetch available models from OpenRouter
-pub async fn fetch_openrouter_models(api_key: String, base_url: Option<String>) -> Result<Vec<ModelInfo>> {
+pub async fn fetch_openrouter_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>> {
     let client = create_http_client();
 
     let url = base_url
