@@ -96,6 +96,10 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       const { useMessageStore } = await import('../message')
       useMessageStore.getState().removeConversationState(id)
 
+      // Clean up conversation settings from cache
+      const { useConversationSettingsStore } = await import('../conversationSettingsStore')
+      useConversationSettingsStore.getState().removeSettings(id)
+
       set((draft) => {
         draft.conversations = draft.conversations.filter((c: Conversation) => c.id !== id)
         if (draft.currentConversation?.id === id) {
@@ -126,6 +130,10 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
         })
         // Load participants for this conversation
         await get().loadParticipants(id)
+
+        // Load conversation settings from database
+        const { useConversationSettingsStore } = await import('../conversationSettingsStore')
+        await useConversationSettingsStore.getState().loadSettings(id)
 
         // Set selected model/assistant based on conversation participants (select the LAST joined one)
         const participants = get().currentParticipants

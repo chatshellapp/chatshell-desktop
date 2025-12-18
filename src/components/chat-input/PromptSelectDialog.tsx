@@ -31,13 +31,24 @@ interface PromptSelectDialogProps {
   userPromptMode: PromptMode
   selectedUserPromptId: string | null
   customUserPrompt: string
-  // Callbacks
-  onSystemPromptModeChange: (mode: PromptMode) => void
-  onSelectedSystemPromptIdChange: (id: string | null) => void
-  onCustomSystemPromptChange: (content: string) => void
-  onUserPromptModeChange: (mode: PromptMode) => void
-  onSelectedUserPromptIdChange: (id: string | null) => void
-  onCustomUserPromptChange: (content: string) => void
+  // Atomic callbacks (preferred)
+  onSystemPromptChange?: (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => void
+  onUserPromptChange?: (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => void
+  // Legacy callbacks (deprecated, kept for compatibility)
+  onSystemPromptModeChange?: (mode: PromptMode) => void
+  onSelectedSystemPromptIdChange?: (id: string | null) => void
+  onCustomSystemPromptChange?: (content: string) => void
+  onUserPromptModeChange?: (mode: PromptMode) => void
+  onSelectedUserPromptIdChange?: (id: string | null) => void
+  onCustomUserPromptChange?: (content: string) => void
 }
 
 export function PromptSelectDialog({
@@ -49,6 +60,8 @@ export function PromptSelectDialog({
   userPromptMode,
   selectedUserPromptId,
   customUserPrompt,
+  onSystemPromptChange,
+  onUserPromptChange,
   onSystemPromptModeChange,
   onSelectedSystemPromptIdChange,
   onCustomSystemPromptChange,
@@ -61,6 +74,45 @@ export function PromptSelectDialog({
   // Search queries for filtering
   const [systemPromptSearchQuery, setSystemPromptSearchQuery] = useState('')
   const [userPromptSearchQuery, setUserPromptSearchQuery] = useState('')
+
+  // Helper to use atomic callback when available, fallback to legacy
+  const updateSystemPrompt = (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => {
+    if (onSystemPromptChange) {
+      onSystemPromptChange(mode, promptId, customContent)
+    } else {
+      // Legacy fallback
+      onSystemPromptModeChange?.(mode)
+      if (mode === 'existing' && promptId !== undefined) {
+        onSelectedSystemPromptIdChange?.(promptId)
+      }
+      if (mode === 'custom' && customContent !== undefined) {
+        onCustomSystemPromptChange?.(customContent ?? '')
+      }
+    }
+  }
+
+  const updateUserPrompt = (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => {
+    if (onUserPromptChange) {
+      onUserPromptChange(mode, promptId, customContent)
+    } else {
+      // Legacy fallback
+      onUserPromptModeChange?.(mode)
+      if (mode === 'existing' && promptId !== undefined) {
+        onSelectedUserPromptIdChange?.(promptId)
+      }
+      if (mode === 'custom' && customContent !== undefined) {
+        onCustomUserPromptChange?.(customContent ?? '')
+      }
+    }
+  }
 
   // Load prompts when dialog opens
   useEffect(() => {
@@ -155,7 +207,7 @@ export function PromptSelectDialog({
                     id="system-prompt-none"
                     name="system-prompt-mode"
                     checked={systemPromptMode === 'none'}
-                    onChange={() => onSystemPromptModeChange('none')}
+                    onChange={() => updateSystemPrompt('none', null, null)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="system-prompt-none" className="cursor-pointer font-normal text-xs">
@@ -168,7 +220,7 @@ export function PromptSelectDialog({
                     id="system-prompt-existing"
                     name="system-prompt-mode"
                     checked={systemPromptMode === 'existing'}
-                    onChange={() => onSystemPromptModeChange('existing')}
+                    onChange={() => updateSystemPrompt('existing', selectedSystemPromptId, null)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="system-prompt-existing" className="cursor-pointer font-normal text-xs">
@@ -181,7 +233,7 @@ export function PromptSelectDialog({
                     id="system-prompt-custom"
                     name="system-prompt-mode"
                     checked={systemPromptMode === 'custom'}
-                    onChange={() => onSystemPromptModeChange('custom')}
+                    onChange={() => updateSystemPrompt('custom', null, customSystemPrompt)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="system-prompt-custom" className="cursor-pointer font-normal text-xs">
@@ -219,7 +271,7 @@ export function PromptSelectDialog({
                         <DropdownMenuItem
                           key={prompt.id}
                           onClick={() => {
-                            onSelectedSystemPromptIdChange(prompt.id)
+                            updateSystemPrompt('existing', prompt.id, null)
                             setSystemPromptSearchQuery('')
                           }}
                           className="flex flex-col items-start"
@@ -255,7 +307,7 @@ export function PromptSelectDialog({
               <Textarea
                 placeholder="You are a helpful AI assistant..."
                 value={customSystemPrompt}
-                onChange={(e) => onCustomSystemPromptChange(e.target.value)}
+                onChange={(e) => updateSystemPrompt('custom', null, e.target.value)}
                 rows={6}
                 className="font-mono text-sm"
               />
@@ -279,7 +331,7 @@ export function PromptSelectDialog({
                     id="user-prompt-none"
                     name="user-prompt-mode"
                     checked={userPromptMode === 'none'}
-                    onChange={() => onUserPromptModeChange('none')}
+                    onChange={() => updateUserPrompt('none', null, null)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="user-prompt-none" className="cursor-pointer font-normal text-xs">
@@ -292,7 +344,7 @@ export function PromptSelectDialog({
                     id="user-prompt-existing"
                     name="user-prompt-mode"
                     checked={userPromptMode === 'existing'}
-                    onChange={() => onUserPromptModeChange('existing')}
+                    onChange={() => updateUserPrompt('existing', selectedUserPromptId, null)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="user-prompt-existing" className="cursor-pointer font-normal text-xs">
@@ -305,7 +357,7 @@ export function PromptSelectDialog({
                     id="user-prompt-custom"
                     name="user-prompt-mode"
                     checked={userPromptMode === 'custom'}
-                    onChange={() => onUserPromptModeChange('custom')}
+                    onChange={() => updateUserPrompt('custom', null, customUserPrompt)}
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="user-prompt-custom" className="cursor-pointer font-normal text-xs">
@@ -343,7 +395,7 @@ export function PromptSelectDialog({
                         <DropdownMenuItem
                           key={prompt.id}
                           onClick={() => {
-                            onSelectedUserPromptIdChange(prompt.id)
+                            updateUserPrompt('existing', prompt.id, null)
                             setUserPromptSearchQuery('')
                           }}
                           className="flex flex-col items-start"
@@ -380,7 +432,7 @@ export function PromptSelectDialog({
                 <Textarea
                   placeholder="Additional context or instructions..."
                   value={customUserPrompt}
-                  onChange={(e) => onCustomUserPromptChange(e.target.value)}
+                  onChange={(e) => updateUserPrompt('custom', null, e.target.value)}
                   rows={4}
                   className="font-mono text-sm"
                 />
@@ -401,5 +453,6 @@ export function PromptSelectDialog({
     </Dialog>
   )
 }
+
 
 

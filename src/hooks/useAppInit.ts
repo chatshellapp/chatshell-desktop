@@ -97,9 +97,10 @@ export function useAppInit() {
     const conversationStore = useConversationStore.getState()
 
     // When messageStore creates a new conversation, update conversationStore
-    messageStore.onNewConversationCreated = (conversation) => {
+    messageStore.onNewConversationCreated = async (conversation) => {
       logger.info('[useAppInit] New conversation created via callback:', conversation.id)
-      conversationStore.setCurrentConversation(conversation)
+      // Use selectConversation to ensure settings are loaded
+      await conversationStore.selectConversation(conversation.id)
       // Also add to conversations list if not already there
       if (!conversationStore.conversations.find((c) => c.id === conversation.id)) {
         conversationStore.loadConversations()

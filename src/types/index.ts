@@ -109,9 +109,17 @@ export type {
 export type UrlStatus = 'fetching' | 'fetched'
 
 // Conversation settings types
-export type { ModelParameterOverrides, ConversationSettings, PromptMode } from './conversation-settings'
+export type {
+  ModelParameterOverrides,
+  ConversationSettings,
+  PromptMode,
+  UpdateConversationSettingsRequest,
+  ConversationSettingsResponse,
+} from './conversation-settings'
 export {
   createDefaultConversationSettings,
+  fromBackendSettings,
+  toBackendRequest,
   PARAMETER_LIMITS,
   CONTEXT_COUNT_OPTIONS,
 } from './conversation-settings'

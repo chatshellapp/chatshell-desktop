@@ -2,6 +2,7 @@ mod assistant;
 mod attachment;
 mod context;
 mod conversation;
+mod conversation_settings;
 mod knowledge_base;
 mod message;
 mod message_resources;
@@ -41,6 +42,11 @@ pub use user::{CreateUserRelationshipRequest, CreateUserRequest, User, UserRelat
 pub use conversation::{
     Conversation, ConversationParticipant, CreateConversationParticipantRequest,
     CreateConversationRequest, ParticipantSummary,
+};
+
+// Conversation Settings
+pub use conversation_settings::{
+    ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest,
 };
 
 // Message

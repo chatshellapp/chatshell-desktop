@@ -12,6 +12,7 @@ import { Search, SquareTerminal, RotateCcw, Pencil } from 'lucide-react'
 import { usePromptStore } from '@/stores/promptStore'
 import { cn } from '@/lib/utils'
 import type { PromptMode } from '@/types'
+import { logger } from '@/lib/logger'
 
 interface SystemPromptDialogProps {
   isOpen: boolean
@@ -19,9 +20,16 @@ interface SystemPromptDialogProps {
   systemPromptMode: PromptMode
   selectedSystemPromptId: string | null
   customSystemPrompt: string
-  onSystemPromptModeChange: (mode: PromptMode) => void
-  onSelectedSystemPromptIdChange: (id: string | null) => void
-  onCustomSystemPromptChange: (content: string) => void
+  // Atomic update callback (preferred)
+  onSystemPromptChange?: (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => void
+  // Legacy individual callbacks (deprecated, kept for compatibility)
+  onSystemPromptModeChange?: (mode: PromptMode) => void
+  onSelectedSystemPromptIdChange?: (id: string | null) => void
+  onCustomSystemPromptChange?: (content: string) => void
 }
 
 export function SystemPromptDialog({
@@ -30,6 +38,7 @@ export function SystemPromptDialog({
   systemPromptMode,
   selectedSystemPromptId,
   customSystemPrompt,
+  onSystemPromptChange,
   onSystemPromptModeChange,
   onSelectedSystemPromptIdChange,
   onCustomSystemPromptChange,
@@ -38,6 +47,27 @@ export function SystemPromptDialog({
   const [searchQuery, setSearchQuery] = useState('')
   const [isCustomMode, setIsCustomMode] = useState(false)
   const [customText, setCustomText] = useState('')
+
+  // Helper to use atomic callback when available, fallback to legacy
+  const updateSystemPrompt = (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => {
+    if (onSystemPromptChange) {
+      onSystemPromptChange(mode, promptId, customContent)
+    } else {
+      // Legacy fallback - may cause race conditions
+      logger.warn('[SystemPromptDialog] Using legacy fallback!')
+      onSystemPromptModeChange?.(mode)
+      if (mode === 'existing' && promptId !== undefined) {
+        onSelectedSystemPromptIdChange?.(promptId)
+      }
+      if (mode === 'custom' && customContent !== undefined) {
+        onCustomSystemPromptChange?.(customContent ?? '')
+      }
+    }
+  }
 
   // Load prompts when dialog opens
   useEffect(() => {
@@ -92,22 +122,14 @@ export function SystemPromptDialog({
     })
   }, [filteredPrompts])
 
-  // Get selected prompt name for display
-  const selectedPromptName = useMemo(() => {
-    if (!selectedSystemPromptId) return null
-    const prompt = prompts.find((p) => p.id === selectedSystemPromptId)
-    return prompt?.name || null
-  }, [prompts, selectedSystemPromptId])
 
   const handleSelectDefault = () => {
-    onSystemPromptModeChange('none')
-    onSelectedSystemPromptIdChange(null)
+    updateSystemPrompt('none', null, null)
     onOpenChange(false)
   }
 
   const handleSelectPrompt = (promptId: string) => {
-    onSystemPromptModeChange('existing')
-    onSelectedSystemPromptIdChange(promptId)
+    updateSystemPrompt('existing', promptId, null)
     onOpenChange(false)
   }
 
@@ -117,8 +139,7 @@ export function SystemPromptDialog({
   }
 
   const handleSaveCustom = () => {
-    onSystemPromptModeChange('custom')
-    onCustomSystemPromptChange(customText)
+    updateSystemPrompt('custom', null, customText)
     onOpenChange(false)
   }
 
@@ -311,3 +332,4 @@ export function SystemPromptDialog({
     </Dialog>
   )
 }
+

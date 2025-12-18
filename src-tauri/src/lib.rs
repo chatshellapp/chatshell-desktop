@@ -151,6 +151,10 @@ pub fn run() {
             commands::list_conversation_participants,
             commands::get_conversation_participant_summary,
             commands::remove_conversation_participant,
+            // Conversation Settings commands
+            commands::get_conversation_settings,
+            commands::update_conversation_settings,
+            commands::delete_conversation_settings,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

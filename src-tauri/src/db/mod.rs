@@ -1,6 +1,7 @@
 mod assistants;
 mod attachments;
 mod contexts;
+mod conversation_settings;
 mod conversations;
 mod fetch_results;
 mod messages;

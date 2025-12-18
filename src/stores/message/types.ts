@@ -49,7 +49,7 @@ export interface MessageStoreState {
   error: string | null
 
   // Callback for inter-store communication (avoids direct store imports)
-  onNewConversationCreated?: (conversation: Conversation) => void
+  onNewConversationCreated?: (conversation: Conversation) => void | Promise<void>
 }
 
 // Selector actions

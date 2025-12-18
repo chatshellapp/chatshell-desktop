@@ -2,6 +2,7 @@ use anyhow::Result;
 use sqlx::SqlitePool;
 
 mod assistants;
+mod conversation_settings;
 mod conversations;
 mod knowledge;
 mod messages;
@@ -13,7 +14,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 1;
+const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -50,11 +51,11 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v1 completed");
     }
 
-    // Future migrations will be added here:
-    // if current_version < 2 {
-    //     migrate_v1_to_v2(pool).await?;
-    //     set_user_version(pool, 2).await?;
-    // }
+    if current_version < 2 {
+        migrate_v1_to_v2(pool).await?;
+        set_user_version(pool, 2).await?;
+        tracing::info!("Migration to v2 completed");
+    }
 
     Ok(())
 }
@@ -76,5 +77,11 @@ async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     prompts::create_prompts_table(pool).await?;
     settings::create_settings_table(pool).await?;
 
+    Ok(())
+}
+
+/// Migration v1 -> v2: Add conversation_settings table
+async fn migrate_v1_to_v2(pool: &SqlitePool) -> Result<()> {
+    conversation_settings::create_conversation_settings_table(pool).await?;
     Ok(())
 }

@@ -100,11 +100,7 @@ export function ChatInput({}: ChatInputProps) {
   const setContextMessageCount = useConversationSettingsStore(
     (state) => state.setContextMessageCount
   )
-  const setSystemPromptMode = useConversationSettingsStore((state) => state.setSystemPromptMode)
-  const setSelectedSystemPromptId = useConversationSettingsStore(
-    (state) => state.setSelectedSystemPromptId
-  )
-  const setCustomSystemPrompt = useConversationSettingsStore((state) => state.setCustomSystemPrompt)
+  const setSystemPrompt = useConversationSettingsStore((state) => state.setSystemPrompt)
 
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
@@ -206,7 +202,18 @@ export function ChatInput({}: ChatInputProps) {
   // Handler to clear system prompt
   const handleClearSystemPrompt = () => {
     if (currentConversation) {
-      setSystemPromptMode(currentConversation.id, 'none')
+      setSystemPrompt(currentConversation.id, 'none', null, null)
+    }
+  }
+
+  // Atomic system prompt change handler
+  const handleSystemPromptChange = (
+    mode: PromptMode,
+    promptId?: string | null,
+    customContent?: string | null
+  ) => {
+    if (currentConversation) {
+      setSystemPrompt(currentConversation.id, mode, promptId, customContent)
     }
   }
 
@@ -219,14 +226,6 @@ export function ChatInput({}: ChatInputProps) {
       }, 100)
     }
   }, [currentConversation])
-
-  // Debug: log attachments changes
-  useEffect(() => {
-    logger.info('[ChatInput] Attachments updated', {
-      count: attachments.length,
-      attachments: attachments.map((a) => ({ type: a.type, name: a.name })),
-    })
-  }, [attachments])
 
   // Handlers for attachment types
   const handleWebPageSelect = () => {
@@ -265,25 +264,6 @@ export function ChatInput({}: ChatInputProps) {
   const handleSaveContextCount = (count: number | null) => {
     if (currentConversation) {
       setContextMessageCount(currentConversation.id, count)
-    }
-  }
-
-  // Prompt settings handlers
-  const handleSystemPromptModeChange = (mode: PromptMode) => {
-    if (currentConversation) {
-      setSystemPromptMode(currentConversation.id, mode)
-    }
-  }
-
-  const handleSelectedSystemPromptIdChange = (promptId: string | null) => {
-    if (currentConversation) {
-      setSelectedSystemPromptId(currentConversation.id, promptId)
-    }
-  }
-
-  const handleCustomSystemPromptChange = (content: string) => {
-    if (currentConversation) {
-      setCustomSystemPrompt(currentConversation.id, content)
     }
   }
 
@@ -494,16 +474,14 @@ export function ChatInput({}: ChatInputProps) {
         systemPromptMode={conversationSettings?.systemPromptMode ?? 'none'}
         selectedSystemPromptId={conversationSettings?.selectedSystemPromptId ?? null}
         customSystemPrompt={conversationSettings?.customSystemPrompt ?? ''}
-        onSystemPromptModeChange={handleSystemPromptModeChange}
-        onSelectedSystemPromptIdChange={handleSelectedSystemPromptIdChange}
-        onCustomSystemPromptChange={handleCustomSystemPromptChange}
+        onSystemPromptChange={handleSystemPromptChange}
       />
 
       {/* User Prompt Quick Select Dialog */}
       <UserPromptQuickSelectDialog
         isOpen={isUserPromptDialogOpen}
         onOpenChange={setIsUserPromptDialogOpen}
-        onSelectPrompt={(promptId, content) => {
+        onSelectPrompt={(_promptId, content) => {
           // Set the prompt content directly to the input
           setInput(content)
         }}

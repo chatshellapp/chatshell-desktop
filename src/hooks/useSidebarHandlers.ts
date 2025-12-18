@@ -12,7 +12,6 @@ import { logger } from '@/lib/logger'
 export function useSidebarHandlers() {
   const conversations = useConversationStore((state) => state.conversations)
   const createConversation = useConversationStore((state) => state.createConversation)
-  const setCurrentConversation = useConversationStore((state) => state.setCurrentConversation)
   const selectConversation = useConversationStore((state) => state.selectConversation)
   const updateConversation = useConversationStore((state) => state.updateConversation)
   const deleteConversation = useConversationStore((state) => state.deleteConversation)
@@ -53,14 +52,15 @@ export function useSidebarHandlers() {
           targetConversation = await createConversation('New Conversation')
         }
 
+        // Use selectConversation to ensure settings are loaded
+        await selectConversation(targetConversation.id)
         setSelectedModel(realModel)
-        setCurrentConversation(targetConversation)
       } catch (error) {
         logger.error('Failed to handle model click:', error)
         alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
-    [conversations, getModelById, createConversation, setSelectedModel, setCurrentConversation]
+    [conversations, getModelById, createConversation, setSelectedModel, selectConversation]
   )
 
   const handleAssistantClick = useCallback(
@@ -89,8 +89,9 @@ export function useSidebarHandlers() {
           targetConversation = await createConversation('New Conversation')
         }
 
+        // Use selectConversation to ensure settings are loaded
+        await selectConversation(targetConversation.id)
         setSelectedAssistant(realAssistant)
-        setCurrentConversation(targetConversation)
       } catch (error) {
         logger.error('Failed to handle assistant click:', error)
         alert(
@@ -98,7 +99,7 @@ export function useSidebarHandlers() {
         )
       }
     },
-    [conversations, assistants, createConversation, setSelectedAssistant, setCurrentConversation]
+    [conversations, assistants, createConversation, setSelectedAssistant, selectConversation]
   )
 
   const handleModelStarToggle = useCallback(
@@ -227,16 +228,16 @@ export function useSidebarHandlers() {
         }
       }
 
-      // Create a new conversation
+      // Create a new conversation and select it (which loads settings)
       const newConversation = await createConversation('New Conversation')
-      setCurrentConversation(newConversation)
+      await selectConversation(newConversation.id)
     } catch (error) {
       logger.error('Failed to create new conversation:', error)
       alert(
         `Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`
       )
     }
-  }, [conversations, createConversation, selectConversation, setCurrentConversation])
+  }, [conversations, createConversation, selectConversation])
 
   const handleGenerateTitle = useCallback(
     async (conversationId: string) => {
