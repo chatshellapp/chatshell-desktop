@@ -101,7 +101,7 @@ jobs:
       - name: Build App
         working-directory: src-tauri
         run: |
-          cargo tauri build --target x86_64-pc-windows-msvc --bundles msi
+          pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -160,8 +160,8 @@ jobs:
       - name: Build Universal Binary (Intel + Apple Silicon)
         working-directory: src-tauri
         run: |
-          cargo tauri build --target aarch64-apple-darwin --bundles dmg
-          cargo tauri build --target x86_64-apple-darwin --bundles dmg
+          pnpm tauri build --target aarch64-apple-darwin --bundles dmg
+          pnpm tauri build --target x86_64-apple-darwin --bundles dmg
 
       - name: Organize DMG files
         run: |
