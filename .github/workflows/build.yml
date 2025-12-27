@@ -234,8 +234,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      notarizer: write
-      developer-status: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -300,28 +299,34 @@ jobs:
           mv chatshell-desktop-x86_64.dmg universal/
 
       - name: Import Code Signing Certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
         uses: apple-actions/import-codesign-certs@v2
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        env:
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
 
       - name: Sign Universal DMG
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
         run: |
           for dmg in universal/*.dmg; do
             echo "Signing: $dmg"
             codesign --sign "${{ secrets.APPLE_CERTIFICATE }}" --timestamp --options runtime "$dmg"
           done
+        env:
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
 
       - name: Setup API Key for Notarization
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
           echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 -d > api_key.p8
           echo "API key saved to api_key.p8"
+        env:
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
 
       - name: Notarize App
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
           for dmg in universal/*.dmg; do
             echo "Notarizing: $dmg"
@@ -332,14 +337,18 @@ jobs:
               --wait
           done
           rm -f api_key.p8
+        env:
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
 
       - name: Staple Notarization
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
           for dmg in universal/*.dmg; do
             echo "Stapling: $dmg"
             xcrun stapler staple "$dmg"
           done
+        env:
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
