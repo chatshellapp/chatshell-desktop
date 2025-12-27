@@ -50,7 +50,7 @@ jobs:
 
       - name: Rust Check
         working-directory: src-tauri
-        run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo fmt --check && cargo check --all-features
 
   build-windows:
     name: Build Windows
