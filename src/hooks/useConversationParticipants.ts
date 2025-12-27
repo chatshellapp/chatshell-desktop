@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { ParticipantSummary } from '@/types'
 import { useConversationStore } from '@/stores/conversation'
-import { useUserStore } from '@/stores/UserStore'
+import { useUserStore } from '@/stores/userStore'
 import { logger } from '@/lib/logger'
 
 export function useConversationParticipants() {

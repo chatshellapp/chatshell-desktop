@@ -1,7 +1,7 @@
 import { MessageSquare } from 'lucide-react'
 import { MessageListItem } from '@/components/message-list-item'
 import { useConversationStore } from '@/stores/conversation'
-import { useModelStore } from '@/stores/ModelStore'
+import { useModelStore } from '@/stores/modelStore'
 import { formatConversationTimestamp } from '@/lib/utils'
 import { buildConversationAvatars } from '@/lib/conversation-avatars'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'

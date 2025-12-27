@@ -23,7 +23,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Loader2, ChevronsUpDown, Check } from 'lucide-react'
 import type { Prompt, CreatePromptRequest } from '@/types'
-import { usePromptStore } from '@/stores/PromptStore'
+import { usePromptStore } from '@/stores/promptStore'
 import { logger } from '@/lib/logger'
 
 interface PromptDialogProps {

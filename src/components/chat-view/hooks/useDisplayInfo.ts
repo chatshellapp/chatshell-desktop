@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useModelStore } from '@/stores/ModelStore'
+import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { getModelLogo } from '@/lib/model-logos'
 import { formatModelDisplayName } from '../utils'

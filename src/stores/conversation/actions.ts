@@ -147,7 +147,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
 
         if (modelOrAssistantParticipant) {
           // Import stores dynamically to avoid circular dependencies
-          const { useModelStore } = await import('../ModelStore')
+          const { useModelStore } = await import('../modelStore')
           const { useAssistantStore } = await import('../assistantStore')
 
           if (

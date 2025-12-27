@@ -9,7 +9,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Search, SquareTerminal, RotateCcw, Pencil } from 'lucide-react'
-import { usePromptStore } from '@/stores/PromptStore'
+import { usePromptStore } from '@/stores/promptStore'
 import { cn } from '@/lib/utils'
 import type { PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
