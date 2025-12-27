@@ -44,6 +44,7 @@ export function ChatView() {
   } = useScrollBehavior({
     messagesLength: messages.length,
     streamingContent,
+    streamingReasoningContent,
     isStreaming,
     isWaitingForAI,
     conversationId,

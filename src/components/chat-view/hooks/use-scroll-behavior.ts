@@ -3,6 +3,7 @@ import { useRef, useState, useEffect, useCallback, RefObject } from 'react'
 interface UseScrollBehaviorOptions {
   messagesLength: number
   streamingContent: string
+  streamingReasoningContent: string
   isStreaming: boolean
   isWaitingForAI: boolean
   conversationId: string | null
@@ -21,6 +22,7 @@ interface UseScrollBehaviorReturn {
 export function useScrollBehavior({
   messagesLength,
   streamingContent,
+  streamingReasoningContent,
   isStreaming,
   isWaitingForAI,
   conversationId,
@@ -111,7 +113,7 @@ export function useScrollBehavior({
     if (isAtBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messagesLength, streamingContent, isStreaming, isWaitingForAI, isAtBottom])
+  }, [messagesLength, streamingContent, streamingReasoningContent, isStreaming, isWaitingForAI, isAtBottom])
 
   // Reset to bottom when conversation changes
   useEffect(() => {
