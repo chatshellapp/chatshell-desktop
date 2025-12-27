@@ -49,6 +49,9 @@ jobs:
       - name: Type Check & Lint
         run: pnpm check
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Rust Check
         working-directory: src-tauri
         run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
@@ -101,12 +104,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
             libwebkit2gtk-4.1-dev \
             libwebkit2gtk-4.0-dev \
             libgtk-3-dev \
             libsoup-3-dev \
             libsoup2.4-1 \
             libopenssl-dev \
+            libssl-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf2.0-dev \
+            librsvg2-dev \
+            libayatana-appindicator3-dev \
             clang \
             lld \
             pkg-config \
@@ -180,9 +195,16 @@ jobs:
       - name: Install system dependencies
         run: |
           dnf -y install \
+            gcc-c++ \
             webkit2gtk4.1-devel \
             webkit2gtk4.0-devel \
             gtk3-devel \
+            glib2-devel \
+            cairo-devel \
+            pango-devel \
+            atk-devel \
+            gdk-pixbuf2-devel \
+            librsvg2-devel \
             libsoup-devel \
             libsoup3-devel \
             openssl-devel \
@@ -191,7 +213,7 @@ jobs:
             pkg-config \
             libappindicator-gtk3-devel \
             libsecret-devel \
-            libxdo-devel
+            xdotool-devel
 
       - name: Build App (rpm)
         working-directory: src-tauri
