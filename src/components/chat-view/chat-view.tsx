@@ -47,6 +47,9 @@ export function ChatView() {
     streamingReasoningContent,
     isStreaming,
     isWaitingForAI,
+    isReasoningActive,
+    pendingSearchDecisionsCount: Object.keys(pendingSearchDecisions).length,
+    attachmentRefreshKey,
     conversationId,
   })
 

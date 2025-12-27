@@ -6,6 +6,9 @@ interface UseScrollBehaviorOptions {
   streamingReasoningContent: string
   isStreaming: boolean
   isWaitingForAI: boolean
+  isReasoningActive: boolean
+  pendingSearchDecisionsCount: number
+  attachmentRefreshKey: number
   conversationId: string | null
 }
 
@@ -25,6 +28,9 @@ export function useScrollBehavior({
   streamingReasoningContent,
   isStreaming,
   isWaitingForAI,
+  isReasoningActive,
+  pendingSearchDecisionsCount,
+  attachmentRefreshKey,
   conversationId,
 }: UseScrollBehaviorOptions): UseScrollBehaviorReturn {
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -113,7 +119,7 @@ export function useScrollBehavior({
     if (isAtBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messagesLength, streamingContent, streamingReasoningContent, isStreaming, isWaitingForAI, isAtBottom])
+  }, [messagesLength, streamingContent, streamingReasoningContent, isStreaming, isWaitingForAI, isReasoningActive, pendingSearchDecisionsCount, attachmentRefreshKey, isAtBottom])
 
   // Reset to bottom when conversation changes
   useEffect(() => {
