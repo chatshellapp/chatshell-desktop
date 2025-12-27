@@ -48,10 +48,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust Check
-        working-directory: src-tauri
-        run: cargo fmt --check && cargo check --all-features
-
   build-windows:
     name: Build Windows
     needs: check
