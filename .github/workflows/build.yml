@@ -8,7 +8,7 @@ on:
 jobs:
   check:
     name: Type Check & Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,190 +43,6 @@ jobs:
 
       - name: Type Check & Lint
         run: pnpm check
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libssl-dev \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libwebkit2gtk-4.1-dev \
-            libfuse2 \
-            libsecret-1-dev \
-            libdbus-1-dev \
-            patchelf
-
-      - name: Rust Check
-        working-directory: src-tauri
-        run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
-
-  build-linux:
-    name: Build Linux (deb + appimage)
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Frontend
-        run: pnpm build
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libssl-dev \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libwebkit2gtk-4.1-dev \
-            libfuse2 \
-            libsecret-1-dev \
-            libdbus-1-dev \
-            patchelf
-
-      - name: Build App (deb)
-        working-directory: src-tauri
-        run: |
-          cargo tauri build --target x86_64-unknown-linux-gnu --bundles deb
-
-      - name: Build AppImage
-        working-directory: src-tauri
-        run: |
-          cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: chatshell-linux
-          path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-
-  build-linux-rpm:
-    name: Build Linux (rpm)
-    needs: check
-    runs-on: ubuntu-latest
-    container: fedora:latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Frontend
-        run: pnpm build
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Install system dependencies
-        run: |
-          dnf -y install \
-            gcc-c++ \
-            webkit2gtk4.1-devel \
-            webkit2gtk4.0-devel \
-            gtk3-devel \
-            glib2-devel \
-            cairo-devel \
-            pango-devel \
-            atk-devel \
-            gdk-pixbuf2-devel \
-            librsvg2-devel \
-            libsoup-devel \
-            libsoup3-devel \
-            openssl-devel \
-            clang-devel \
-            lld \
-            pkg-config \
-            libappindicator-gtk3-devel \
-            libsecret-devel \
-            xdotool-devel
-
-      - name: Build App (rpm)
-        working-directory: src-tauri
-        run: |
-          cargo tauri build --target x86_64-unknown-linux-gnu --bundles rpm
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: chatshell-linux-rpm
-          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
 
   build-windows:
     name: Build Windows
@@ -409,7 +225,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-linux, build-linux-rpm, build-windows, build-macos]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -424,9 +240,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/chatshell-linux/*.deb
-            release/chatshell-linux/*.AppImage
-            release/chatshell-linux-rpm/*.rpm
             release/chatshell-windows/*.msi
             release/chatshell-macos/*
           generate_release_notes: true
