@@ -27,8 +27,8 @@ dist-ssr
 src/components/demo
 src-tauri/src/demo
 
-# Docs directory
-docs
+# Internal docs directory
+internal-docs
 
 # Design assets files
 design-assets
