@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode, type ComponentProps } from 'react'
 import { MermaidBlock } from './mermaid-block'
 import { CodeBlock } from './code-block'
 
@@ -6,21 +6,28 @@ interface UseMarkdownComponentsOptions {
   compact?: boolean
 }
 
+interface CodeProps {
+  className?: string
+  children: ReactNode
+  node?: { position?: { start: { line: number } } }
+  [key: string]: unknown
+}
+
+type PropsWithChildren = { children?: ReactNode; start?: number; [key: string]: unknown }
+
 export function useMarkdownComponents({ compact = false }: UseMarkdownComponentsOptions) {
-  return useMemo(
-    () => ({
-      code(props: any) {
+  return useMemo(() => {
+    const components = {
+      code(props: CodeProps) {
         const { className, children, node, ...rest } = props
         const languageMatch = /language-([\w-+]+)/.exec(className || '')
         const codeContent = String(children).replace(/\n$/, '')
         const isMultiline = codeContent.includes('\n')
-        // Check if this is inside a <pre> tag (code block) vs inline code
         const isCodeBlock = node?.position && (languageMatch || isMultiline)
 
         if (isCodeBlock) {
           const language = languageMatch ? languageMatch[1] : ''
 
-          // Handle mermaid diagrams
           if (language === 'mermaid') {
             return <MermaidBlock code={codeContent} />
           }
@@ -35,156 +42,153 @@ export function useMarkdownComponents({ compact = false }: UseMarkdownComponents
         )
       },
 
-      pre({ children }: any) {
-        // Just return children directly since CodeBlock handles its own wrapper
-        return <>{children}</>
+      pre(props: PropsWithChildren) {
+        return <>{props.children}</>
       },
 
-      p({ children }: any) {
-        return <p className="mb-2 last:mb-0">{children}</p>
+      p(props: PropsWithChildren) {
+        return <p className="mb-2 last:mb-0">{props.children}</p>
       },
 
-      ul({ children }: any) {
-        return <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>
+      ul(props: PropsWithChildren) {
+        return <ul className="list-disc pl-5 mb-2 space-y-1">{props.children}</ul>
       },
-      ol({ children, start }: any) {
+      ol(props: PropsWithChildren) {
         return (
-          <ol className="list-decimal pl-5 mb-2 space-y-1" start={start}>
-            {children}
+          <ol className="list-decimal pl-5 mb-2 space-y-1" start={props.start}>
+            {props.children}
           </ol>
         )
       },
-      li({ children }: any) {
-        return <li className="pl-1">{children}</li>
+      li(props: PropsWithChildren) {
+        return <li className="pl-1">{props.children}</li>
       },
 
-      blockquote({ children }: any) {
+      blockquote(props: PropsWithChildren) {
         return (
           <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">
-            {children}
+            {props.children}
           </blockquote>
         )
       },
 
-      h1({ children }: any) {
+      h1(props: PropsWithChildren) {
         return (
           <h1 className={compact ? 'text-xl font-bold mb-2 mt-3' : 'text-2xl font-bold mb-2 mt-4'}>
-            {children}
+            {props.children}
           </h1>
         )
       },
-      h2({ children }: any) {
+      h2(props: PropsWithChildren) {
         return (
           <h2 className={compact ? 'text-lg font-bold mb-2 mt-2' : 'text-xl font-bold mb-2 mt-3'}>
-            {children}
+            {props.children}
           </h2>
         )
       },
-      h3({ children }: any) {
+      h3(props: PropsWithChildren) {
         return (
           <h3 className={compact ? 'text-base font-bold mb-2 mt-2' : 'text-lg font-bold mb-2 mt-2'}>
-            {children}
+            {props.children}
           </h3>
         )
       },
-      h4({ children }: any) {
+      h4(props: PropsWithChildren) {
         return (
           <h4 className={compact ? 'text-sm font-bold mb-2 mt-2' : 'text-base font-bold mb-2 mt-2'}>
-            {children}
+            {props.children}
           </h4>
         )
       },
-      h5({ children }: any) {
-        return <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>
+      h5(props: PropsWithChildren) {
+        return <h5 className="text-sm font-bold mb-1 mt-2">{props.children}</h5>
       },
-      h6({ children }: any) {
+      h6(props: PropsWithChildren) {
         return (
           <h6
             className={
               compact ? 'text-xs font-semibold mb-1 mt-2' : 'text-sm font-semibold mb-1 mt-2'
             }
           >
-            {children}
+            {props.children}
           </h6>
         )
       },
 
-      a({ href, children }: any) {
+      a(props: ComponentProps<'a'>) {
         return (
           <a
-            href={href}
+            href={props.href}
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary underline underline-offset-2 hover:text-primary/80"
           >
-            {children}
+            {props.children}
           </a>
         )
       },
 
-      img({ src, alt }: any) {
+      img(props: ComponentProps<'img'>) {
         return (
           <img
-            src={src}
-            alt={alt || ''}
+            src={props.src}
+            alt={props.alt || ''}
             className="max-w-full h-auto rounded-md my-2"
             loading="lazy"
           />
         )
       },
 
-      table({ children }: any) {
+      table(props: PropsWithChildren) {
         return (
           <div className="overflow-x-auto my-2">
-            <table className="min-w-full border-collapse border border-border">{children}</table>
+            <table className="min-w-full border-collapse border border-border">{props.children}</table>
           </div>
         )
       },
-      thead({ children }: any) {
-        return <thead className="bg-muted">{children}</thead>
+      thead(props: PropsWithChildren) {
+        return <thead className="bg-muted">{props.children}</thead>
       },
-      tbody({ children }: any) {
-        return <tbody>{children}</tbody>
+      tbody(props: PropsWithChildren) {
+        return <tbody>{props.children}</tbody>
       },
-      tr({ children }: any) {
-        return <tr className="border-b border-border">{children}</tr>
+      tr(props: PropsWithChildren) {
+        return <tr className="border-b border-border">{props.children}</tr>
       },
-      th({ children }: any) {
+      th(props: PropsWithChildren) {
         return (
           <th className="border border-border px-3 py-1 text-left text-sm font-semibold">
-            {children}
+            {props.children}
           </th>
         )
       },
-      td({ children }: any) {
-        return <td className="border border-border px-3 py-1 text-sm">{children}</td>
+      td(props: PropsWithChildren) {
+        return <td className="border border-border px-3 py-1 text-sm">{props.children}</td>
       },
 
       hr() {
         return <hr className="my-4 border-border" />
       },
 
-      // Task list checkbox (GFM feature)
-      input({ type, checked, disabled }: any) {
-        if (type === 'checkbox') {
+      input(props: ComponentProps<'input'>) {
+        if (props.type === 'checkbox') {
           return (
             <input
               type="checkbox"
-              checked={checked}
-              disabled={disabled}
+              checked={props.checked}
+              disabled={props.disabled}
               className="mr-2 h-4 w-4 rounded border-border"
               readOnly
             />
           )
         }
-        return <input type={type} />
+        return <input type={props.type} />
       },
 
-      // Strikethrough (GFM feature)
-      del({ children }: any) {
-        return <del className="text-muted-foreground line-through">{children}</del>
+      del(props: PropsWithChildren) {
+        return <del className="text-muted-foreground line-through">{props.children}</del>
       },
-    }),
-    [compact]
-  )
+    }
+    return components
+  }, [compact])
 }

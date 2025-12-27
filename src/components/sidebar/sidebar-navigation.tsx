@@ -33,7 +33,6 @@ export function SidebarNavigation({
   onItemClick,
   onSettingsClick,
   onNewConversation,
-  user: _user,
 }: SidebarNavigationProps) {
   const { state } = useSidebar()
   const isCollapsed = state === 'collapsed'

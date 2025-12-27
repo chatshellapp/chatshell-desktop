@@ -62,7 +62,6 @@ export function PersonListItem({
   avatar,
   name,
   email,
-  phone: _phone,
   bio,
   isStarred = false,
   onClick,

@@ -4,6 +4,7 @@ import { useModelStore } from '@/stores/modelStore'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import type { Attachment } from './types'
+import type { Model } from '@/types'
 import { logger } from '@/lib/logger'
 
 interface UseSubmitHandlerOptions {
@@ -67,9 +68,7 @@ export function useSubmitHandler({
     }
 
     // Determine which model to use
-    let modelToUse
-    let providerType: string
-    let modelIdStr: string
+    let modelToUse: Model | undefined
 
     if (selectedAssistant) {
       // Use assistant's model
@@ -95,8 +94,8 @@ export function useSubmitHandler({
       return
     }
 
-    providerType = provider.provider_type
-    modelIdStr = modelToUse.model_id
+    const providerType = provider.provider_type
+    const modelIdStr = modelToUse.model_id
 
     const content = input.trim()
     setInput('')

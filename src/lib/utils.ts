@@ -45,7 +45,7 @@ export function parseThinkingContent(text: string): ParsedThinkingContent {
     { open: /<reasoning>/i, close: /<\/reasoning>/i, tag: 'reasoning' },
   ]
 
-  for (const { open, close, tag: _tag } of unclosedPatterns) {
+  for (const { open, close } of unclosedPatterns) {
     const openMatch = cleanedContent.match(open)
     if (openMatch && !close.test(cleanedContent.slice(openMatch.index))) {
       // We have an unclosed tag - extract the partial content

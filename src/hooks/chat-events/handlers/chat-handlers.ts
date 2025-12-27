@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
+import type { Message } from '@/types'
 import { logger } from '@/lib/logger'
 
 /**
@@ -16,7 +17,7 @@ export function useChatHandlers() {
     useMessageStore.getState().appendStreamingReasoningChunk(convId, chunk)
   }, [])
 
-  const handleChatComplete = useCallback((convId: string, message: any) => {
+  const handleChatComplete = useCallback((convId: string, message: Message) => {
     logger.info('[useChatEvents] handleChatComplete called', { conversation: convId, message })
     const store = useMessageStore.getState()
     const convState = store.getConversationState(convId)

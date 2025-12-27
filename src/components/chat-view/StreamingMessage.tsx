@@ -1,15 +1,10 @@
 import { ChatMessage } from '@/components/chat-message'
 import { AttachmentPreview, ThinkingPreview } from '@/components/attachment-preview'
 import { parseThinkingContent } from '@/lib/utils'
-import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
+import type { Message, UrlStatus } from '@/types'
+import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG } from './utils'
 import type { DisplayInfo } from './hooks'
-
-interface MessageResources {
-  attachments: any[]
-  contexts: ContextEnrichment[]
-  steps: ProcessStep[]
-}
 
 interface StreamingMessageProps {
   messages: Message[]
@@ -110,12 +105,12 @@ export function StreamingMessage({
         )}
         {/* Show search decisions */}
         {searchDecisionSteps.map((step) => (
-          <AttachmentPreview key={(step as any).id} step={step} />
+          <AttachmentPreview key={step.id} step={step} />
         ))}
         {/* Show search results (fetch results from search are shown inside) */}
         {searchResultContexts.map((context) => (
           <AttachmentPreview
-            key={(context as any).id}
+            key={context.id}
             context={context}
             urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
             messageId={lastUserMessage?.id}

@@ -7,6 +7,7 @@ import { usePromptStore } from '@/stores/promptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
+import type { Message } from '@/types'
 import { logger } from '@/lib/logger'
 
 export function useSidebarHandlers() {
@@ -39,7 +40,7 @@ export function useSidebarHandlers() {
 
         if (conversations.length > 0) {
           const latestConversation = conversations[0]
-          const messages = await invoke<any[]>('list_messages_by_conversation', {
+          const messages = await invoke<Message[]>('list_messages_by_conversation', {
             conversationId: latestConversation.id,
           })
 
@@ -76,7 +77,7 @@ export function useSidebarHandlers() {
 
         if (conversations.length > 0) {
           const latestConversation = conversations[0]
-          const messages = await invoke<any[]>('list_messages_by_conversation', {
+          const messages = await invoke<Message[]>('list_messages_by_conversation', {
             conversationId: latestConversation.id,
           })
 
@@ -214,11 +215,11 @@ export function useSidebarHandlers() {
   const handleNewConversation = useCallback(async () => {
     try {
       // Check if the latest conversation is empty
-      if (conversations.length > 0) {
-        const latestConversation = conversations[0]
-        const messages = await invoke<unknown[]>('list_messages_by_conversation', {
-          conversationId: latestConversation.id,
-        })
+        if (conversations.length > 0) {
+          const latestConversation = conversations[0]
+          const messages = await invoke<Message[]>('list_messages_by_conversation', {
+            conversationId: latestConversation.id,
+          })
 
         if (messages.length === 0) {
           // Latest conversation is empty, navigate to it using selectConversation

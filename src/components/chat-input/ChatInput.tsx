@@ -28,9 +28,9 @@ import { CONTEXT_COUNT_OPTIONS } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
 
-interface ChatInputProps {}
+// interface ChatInputProps {}
 
-export function ChatInput({}: ChatInputProps) {
+export function ChatInput(/* _props: ChatInputProps */) {
   // State
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'models' | 'assistants'>('models')

@@ -76,10 +76,10 @@ export function useConversationParticipants() {
 
   // Listen for chat-complete event
   useEffect(() => {
-    const unlistenComplete = listen('chat-complete', (event: any) => {
+    const unlistenComplete = listen('chat-complete', (event: { payload: { conversation_id?: string } }) => {
       if (event.payload.conversation_id) {
         setTimeout(() => {
-          refreshConversationParticipants(event.payload.conversation_id)
+          refreshConversationParticipants(event.payload.conversation_id!)
           loadConversations()
         }, 100)
       }

@@ -7,13 +7,14 @@ import 'katex/dist/katex.min.css'
 
 import { useMarkdownComponents } from './markdown-components'
 import type { MarkdownContentProps } from './types'
+import type { Components } from 'react-markdown'
 
 export function MarkdownContent({
   content,
   className = '',
   compact = false,
 }: MarkdownContentProps) {
-  const markdownComponents = useMarkdownComponents({ compact })
+  const markdownComponents = useMarkdownComponents({ compact }) as unknown as Components
 
   return (
     <div className={className}>

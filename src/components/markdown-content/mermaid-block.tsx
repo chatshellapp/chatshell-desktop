@@ -55,7 +55,6 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
 
   useEffect(() => {
     let cancelled = false
-    let timeoutId: ReturnType<typeof setTimeout>
 
     // Show waiting state immediately when code changes
     setIsWaiting(true)
@@ -88,7 +87,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
     }
 
     // Debounce rendering to avoid flickering during streaming
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (!cancelled) {
         renderDiagram()
       }

@@ -5,14 +5,9 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
+import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
-
-interface MessageResources {
-  attachments: any[]
-  contexts: ContextEnrichment[]
-  steps: ProcessStep[]
-}
 
 interface MessageItemProps {
   message: Message
@@ -63,7 +58,7 @@ export function MessageItem({
   // Search-initiated fetch results should be shown inside SearchResultPreview
   const userFetchResults = isUserMessage
     ? resources.contexts.filter(
-        (c) => c.type === 'fetch_result' && (c as any).source_type !== 'search'
+        (c) => c.type === 'fetch_result' && c.source_type !== 'search'
       )
     : []
 
@@ -106,12 +101,12 @@ export function MessageItem({
       <div className="space-y-1.5 mb-2">
         {/* Search decisions first */}
         {stepsToShow.map((step) => (
-          <AttachmentPreview key={(step as any).id} step={step} />
+          <AttachmentPreview key={step.id} step={step} />
         ))}
         {/* Then search results */}
         {contextsToShow.map((context) => (
           <AttachmentPreview
-            key={(context as any).id}
+            key={context.id}
             context={context}
             urlStatuses={
               context.type === 'search_result' && prevUserMessageId
@@ -123,7 +118,7 @@ export function MessageItem({
         ))}
         {/* Finally thinking content */}
         {thinkingSteps.map((step) => (
-          <ThinkingPreview key={(step as any).id} content={(step as any).content} />
+          <ThinkingPreview key={step.id} content={step.content} />
         ))}
       </div>
     ) : undefined
@@ -161,28 +156,28 @@ export function MessageItem({
         <div className="flex justify-end px-4 my-1">
           <div className="max-w-[80%] space-y-1.5">
             {(() => {
-              // Collect all image attachments for lightbox navigation
-              const imageAttachments = userAttachments.filter(
-                (a) => a.type === 'file' && (a as any).mime_type?.startsWith('image/')
-              )
-              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
-                id: (a as any).id,
-                fileName: (a as any).file_name,
-                storagePath: (a as any).storage_path,
-              }))
+               // Collect all image attachments for lightbox navigation
+               const imageAttachments = userAttachments.filter(
+                 (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
+               )
+               const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
+                 id: a.id,
+                 fileName: a.file_name,
+                 storagePath: a.storage_path,
+               }))
 
-              return userAttachments.map((attachment) => {
-                // Check if this is an image to determine index
-                const isImage =
-                  attachment.type === 'file' && (attachment as any).mime_type?.startsWith('image/')
-                const imageIndex = isImage
-                  ? imageAttachments.findIndex((img) => (img as any).id === (attachment as any).id)
-                  : undefined
+               return userAttachments.map((attachment) => {
+                 // Check if this is an image to determine index
+                 const isImage =
+                   attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
+                 const imageIndex = isImage
+                   ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                   : undefined
 
-                return (
-                  <AttachmentPreview
-                    key={(attachment as any).id}
-                    userAttachment={attachment}
+                 return (
+                   <AttachmentPreview
+                     key={attachment.id}
+                     userAttachment={attachment}
                     allImages={isImage ? allImages : undefined}
                     currentImageIndex={imageIndex}
                   />
@@ -191,7 +186,7 @@ export function MessageItem({
             })()}
             {/* User-provided fetch results (webpage attachments) */}
             {userFetchResults.map((context) => (
-              <AttachmentPreview key={(context as any).id} context={context} />
+              <AttachmentPreview key={context.id} context={context} />
             ))}
             {/* Standalone processing URLs (no search result) */}
             {urls.map((url) => (

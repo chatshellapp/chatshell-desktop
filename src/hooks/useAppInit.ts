@@ -16,7 +16,7 @@ export function useAppInit() {
   const [keychainAvailable, setKeychainAvailable] = useState(true)
 
   // Use selector only for reactive state (conversations)
-  const conversations = useConversationStore((state: any) => state.conversations)
+  const conversations = useConversationStore((state) => state.conversations)
 
   // Initialize once on mount - use getState() to avoid dependency issues
   useEffect(() => {
@@ -87,8 +87,6 @@ export function useAppInit() {
     }
 
     initialize()
-    // Empty deps - run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Set up inter-store communication callbacks (runs once on mount)
@@ -138,7 +136,7 @@ export function useAppInit() {
         // Case 4: No models at all - don't select anything
         logger.info('[useAppInit] No models available, no selection')
       } else {
-        const starredModels = models.filter((m: any) => m.is_starred)
+        const starredModels = models.filter((m) => m.is_starred)
 
         if (starredModels.length > 0) {
           // Case 2: Has starred models - select the last starred model
