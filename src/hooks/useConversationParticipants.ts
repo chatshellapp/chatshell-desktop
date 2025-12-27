@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { ParticipantSummary } from '@/types'
 import { useConversationStore } from '@/stores/conversation'
-import { useUserStore } from '@/stores/userStore'
+import { useUserStore } from '@/stores/UserStore'
 import { logger } from '@/lib/logger'
 
 export function useConversationParticipants() {
@@ -76,14 +76,17 @@ export function useConversationParticipants() {
 
   // Listen for chat-complete event
   useEffect(() => {
-    const unlistenComplete = listen('chat-complete', (event: { payload: { conversation_id?: string } }) => {
-      if (event.payload.conversation_id) {
-        setTimeout(() => {
-          refreshConversationParticipants(event.payload.conversation_id!)
-          loadConversations()
-        }, 100)
+    const unlistenComplete = listen(
+      'chat-complete',
+      (event: { payload: { conversation_id?: string } }) => {
+        if (event.payload.conversation_id) {
+          setTimeout(() => {
+            refreshConversationParticipants(event.payload.conversation_id!)
+            loadConversations()
+          }, 100)
+        }
       }
-    })
+    )
 
     return () => {
       unlistenComplete.then((fn) => fn())

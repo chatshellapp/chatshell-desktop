@@ -51,8 +51,8 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar'
-import { useModelStore } from '@/stores/modelStore'
-import { useSettingsStore } from '@/stores/settingsStore'
+import { useModelStore } from '@/stores/ModelStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod, LogLevel } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'

@@ -6,12 +6,12 @@ export interface ProviderSettingsDialogProps {
 }
 
 // Re-export hook return types for external use
-export type { UseProviderFormStateReturn } from './use-provider-form-state'
-export type { UseProviderDataReturn } from './use-provider-data'
-export type { UseModelListReturn } from './use-model-list'
-export type { UseFetchModelsReturn } from './use-fetch-models'
-export type { UseModelFilteringReturn } from './use-model-filtering'
-export type { UseProviderSaveReturn } from './use-provider-save'
+export type { UseProviderFormStateReturn } from './useProviderFormState'
+export type { UseProviderDataReturn } from './useProviderData'
+export type { UseModelListReturn } from './useModelList'
+export type { UseFetchModelsReturn } from './useFetchModels'
+export type { UseModelFilteringReturn } from './useModelFiltering'
+export type { UseProviderSaveReturn } from './useProviderSave'
 
 export interface ModelItem {
   id: string

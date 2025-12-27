@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useConversationStore } from '@/stores/conversation'
-import { useModelStore } from '@/stores/modelStore'
+import { useModelStore } from '@/stores/ModelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
-import { usePromptStore } from '@/stores/promptStore'
+import { usePromptStore } from '@/stores/PromptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
@@ -215,11 +215,11 @@ export function useSidebarHandlers() {
   const handleNewConversation = useCallback(async () => {
     try {
       // Check if the latest conversation is empty
-        if (conversations.length > 0) {
-          const latestConversation = conversations[0]
-          const messages = await invoke<Message[]>('list_messages_by_conversation', {
-            conversationId: latestConversation.id,
-          })
+      if (conversations.length > 0) {
+        const latestConversation = conversations[0]
+        const messages = await invoke<Message[]>('list_messages_by_conversation', {
+          conversationId: latestConversation.id,
+        })
 
         if (messages.length === 0) {
           // Latest conversation is empty, navigate to it using selectConversation

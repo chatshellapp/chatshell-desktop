@@ -57,9 +57,7 @@ export function MessageItem({
   // Get fetch results for user message - only user-initiated ones (not from search)
   // Search-initiated fetch results should be shown inside SearchResultPreview
   const userFetchResults = isUserMessage
-    ? resources.contexts.filter(
-        (c) => c.type === 'fetch_result' && c.source_type !== 'search'
-      )
+    ? resources.contexts.filter((c) => c.type === 'fetch_result' && c.source_type !== 'search')
     : []
 
   // Check if this message has a search result (URLs will be shown inside it)
@@ -156,28 +154,28 @@ export function MessageItem({
         <div className="flex justify-end px-4 my-1">
           <div className="max-w-[80%] space-y-1.5">
             {(() => {
-               // Collect all image attachments for lightbox navigation
-               const imageAttachments = userAttachments.filter(
-                 (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
-               )
-               const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
-                 id: a.id,
-                 fileName: a.file_name,
-                 storagePath: a.storage_path,
-               }))
+              // Collect all image attachments for lightbox navigation
+              const imageAttachments = userAttachments.filter(
+                (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
+              )
+              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
+                id: a.id,
+                fileName: a.file_name,
+                storagePath: a.storage_path,
+              }))
 
-               return userAttachments.map((attachment) => {
-                 // Check if this is an image to determine index
-                 const isImage =
-                   attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
-                 const imageIndex = isImage
-                   ? imageAttachments.findIndex((img) => img.id === attachment.id)
-                   : undefined
+              return userAttachments.map((attachment) => {
+                // Check if this is an image to determine index
+                const isImage =
+                  attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
+                const imageIndex = isImage
+                  ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                  : undefined
 
-                 return (
-                   <AttachmentPreview
-                     key={attachment.id}
-                     userAttachment={attachment}
+                return (
+                  <AttachmentPreview
+                    key={attachment.id}
+                    userAttachment={attachment}
                     allImages={isImage ? allImages : undefined}
                     currentImageIndex={imageIndex}
                   />

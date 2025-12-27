@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useModelStore } from '@/stores/modelStore'
+import { useModelStore } from '@/stores/ModelStore'
 import { getModelLogo } from '@/lib/model-logos'
 import type { ModelVendor } from '@/components/model-list'
 

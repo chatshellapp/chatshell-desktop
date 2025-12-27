@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useModelStore } from '@/stores/modelStore'
+import { useModelStore } from '@/stores/ModelStore'
 import type { Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
 

@@ -142,7 +142,9 @@ export function useMarkdownComponents({ compact = false }: UseMarkdownComponents
       table(props: PropsWithChildren) {
         return (
           <div className="overflow-x-auto my-2">
-            <table className="min-w-full border-collapse border border-border">{props.children}</table>
+            <table className="min-w-full border-collapse border border-border">
+              {props.children}
+            </table>
           </div>
         )
       },

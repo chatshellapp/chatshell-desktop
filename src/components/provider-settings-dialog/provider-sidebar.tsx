@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/sidebar'
 import type { Provider } from '@/types'
 import type { LLMProvider } from './types'
-import { llmProviders } from './constants'
+import { LLM_PROVIDERS } from './constants'
 
 interface ProviderSidebarProps {
   selectedProvider: LLMProvider
@@ -30,7 +30,7 @@ export function ProviderSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {llmProviders.map((provider) => {
+              {LLM_PROVIDERS.map((provider) => {
                 const hasExisting = storeProviders.some((p) => p.provider_type === provider.id)
                 return (
                   <SidebarMenuItem key={provider.id}>

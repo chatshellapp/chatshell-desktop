@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useModelStore } from '@/stores/modelStore'
+import { useModelStore } from '@/stores/ModelStore'
 import type { ModelItem, ModelInfo } from './types'
 
 export interface UseModelListReturn {

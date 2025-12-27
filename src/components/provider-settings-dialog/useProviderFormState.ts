@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { LLMProvider } from './types'
-import { llmProviders } from './constants'
+import { LLM_PROVIDERS } from './constants'
 
 export interface UseProviderFormStateReturn {
   selectedProvider: LLMProvider
@@ -17,10 +17,10 @@ export interface UseProviderFormStateReturn {
  * Manages basic form state for provider settings
  */
 export function useProviderFormState(): UseProviderFormStateReturn {
-  const [selectedProvider, setSelectedProvider] = React.useState<LLMProvider>(llmProviders[0])
+  const [selectedProvider, setSelectedProvider] = React.useState<LLMProvider>(LLM_PROVIDERS[0])
   const [apiKey, setApiKey] = React.useState('')
   const [showApiKey, setShowApiKey] = React.useState(false)
-  const [apiBaseUrl, setApiBaseUrl] = React.useState(llmProviders[0].baseUrl)
+  const [apiBaseUrl, setApiBaseUrl] = React.useState(LLM_PROVIDERS[0].baseUrl)
 
   // Update base URL when provider changes
   React.useEffect(() => {

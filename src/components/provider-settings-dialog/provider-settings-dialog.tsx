@@ -20,7 +20,7 @@ import {
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import type { ProviderSettingsDialogProps } from './types'
-import { useProviderSettings } from './use-provider-settings'
+import { useProviderSettings } from './useProviderSettings'
 import { ProviderSidebar } from './provider-sidebar'
 import { ProviderForm } from './provider-form'
 import { ModelsTable } from './models-table'

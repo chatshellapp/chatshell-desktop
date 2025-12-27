@@ -2,12 +2,12 @@
 
 import * as React from 'react'
 import type { UseProviderSettingsReturn, ModelItem } from './types'
-import { useProviderFormState } from './use-provider-form-state'
-import { useProviderData } from './use-provider-data'
-import { useModelList } from './use-model-list'
-import { useFetchModels } from './use-fetch-models'
-import { useModelFiltering } from './use-model-filtering'
-import { useProviderSave } from './use-provider-save'
+import { useProviderFormState } from './useProviderFormState'
+import { useProviderData } from './useProviderData'
+import { useModelList } from './useModelList'
+import { useFetchModels } from './useFetchModels'
+import { useModelFiltering } from './useModelFiltering'
+import { useProviderSave } from './useProviderSave'
 import { logger } from '@/lib/logger'
 
 /**

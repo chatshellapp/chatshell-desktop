@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Search, MessageSquare } from 'lucide-react'
-import { usePromptStore } from '@/stores/promptStore'
+import { usePromptStore } from '@/stores/PromptStore'
 import { cn } from '@/lib/utils'
 
 interface UserPromptQuickSelectDialogProps {

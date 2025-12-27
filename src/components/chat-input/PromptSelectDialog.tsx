@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, Search } from 'lucide-react'
-import { usePromptStore } from '@/stores/promptStore'
+import { usePromptStore } from '@/stores/PromptStore'
 import type { PromptMode } from '@/types'
 
 interface PromptSelectDialogProps {

@@ -119,7 +119,17 @@ export function useScrollBehavior({
     if (isAtBottom && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messagesLength, streamingContent, streamingReasoningContent, isStreaming, isWaitingForAI, isReasoningActive, pendingSearchDecisionsCount, attachmentRefreshKey, isAtBottom])
+  }, [
+    messagesLength,
+    streamingContent,
+    streamingReasoningContent,
+    isStreaming,
+    isWaitingForAI,
+    isReasoningActive,
+    pendingSearchDecisionsCount,
+    attachmentRefreshKey,
+    isAtBottom,
+  ])
 
   // Reset to bottom when conversation changes
   useEffect(() => {

@@ -15,8 +15,8 @@ import { Separator } from '@/components/ui/separator'
 import { ProviderForm } from '@/components/provider-settings-dialog/provider-form'
 import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
-import { useProviderSettings } from '@/components/provider-settings-dialog/use-provider-settings'
-import { llmProviders } from '@/components/provider-settings-dialog/constants'
+import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
+import { LLM_PROVIDERS } from '@/components/provider-settings-dialog/constants'
 
 interface LLMProviderSettingsProps {
   open: boolean
@@ -73,7 +73,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {llmProviders.map((provider) => {
+                {LLM_PROVIDERS.map((provider) => {
                   const hasExisting = storeProviders.some((p) => p.provider_type === provider.id)
                   return (
                     <SidebarMenuItem key={provider.id}>

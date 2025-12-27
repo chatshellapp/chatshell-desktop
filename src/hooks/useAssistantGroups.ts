@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAssistantStore } from '@/stores/assistantStore'
-import { useModelStore } from '@/stores/modelStore'
+import { useModelStore } from '@/stores/ModelStore'
 import { getModelLogo } from '@/lib/model-logos'
 import type { AssistantGroup } from '@/components/assistant-list'
 

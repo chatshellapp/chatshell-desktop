@@ -9,7 +9,7 @@ import ollamaLogo from '@/assets/avatars/providers/ollama.png'
 // import cohereLogo from '@/assets/avatars/providers/cohere.png'
 // import huggingfaceLogo from '@/assets/avatars/providers/huggingface.png'
 
-export const llmProviders: LLMProvider[] = [
+export const LLM_PROVIDERS: LLMProvider[] = [
   { id: 'openai', name: 'OpenAI', logo: openaiLogo, baseUrl: 'https://api.openai.com/v1' },
   // { id: 'anthropic', name: 'Anthropic', logo: anthropicLogo, baseUrl: 'https://api.anthropic.com' },
   // {
