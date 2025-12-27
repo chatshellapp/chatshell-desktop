@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   check:
@@ -43,6 +44,13 @@ jobs:
 
       - name: Type Check & Lint
         run: pnpm check
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Check
+        working-directory: src-tauri
+        run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
 
   build-windows:
     name: Build Windows
@@ -227,7 +235,7 @@ jobs:
     name: Create Release
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     steps:
