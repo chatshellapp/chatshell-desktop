@@ -314,24 +314,24 @@ pub(crate) async fn handle_agent_streaming(
     };
 
     // Save thinking content as a ThinkingStep if present
-    if let Some(thinking_content) = response.thinking_content {
-        if !thinking_content.is_empty() {
-            match state_clone
-                .db
-                .create_thinking_step(CreateThinkingStepRequest {
-                    message_id: assistant_message.id.clone(),
-                    content: thinking_content,
-                    source: Some("llm".to_string()),
-                    display_order: Some(0),
-                })
-                .await
-            {
-                Ok(_thinking_step) => {
-                    // ThinkingStep is now directly linked via message_id FK
-                }
-                Err(e) => {
-                    tracing::error!("Failed to save thinking step: {}", e);
-                }
+    if let Some(thinking_content) = response.thinking_content
+        && !thinking_content.is_empty()
+    {
+        match state_clone
+            .db
+            .create_thinking_step(CreateThinkingStepRequest {
+                message_id: assistant_message.id.clone(),
+                content: thinking_content,
+                source: Some("llm".to_string()),
+                display_order: Some(0),
+            })
+            .await
+        {
+            Ok(_thinking_step) => {
+                // ThinkingStep is now directly linked via message_id FK
+            }
+            Err(e) => {
+                tracing::error!("Failed to save thinking step: {}", e);
             }
         }
     }

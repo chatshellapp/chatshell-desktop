@@ -1,21 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 /// Prompt mode for system/user prompts
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PromptMode {
     /// No override - use assistant's default prompt
+    #[default]
     None,
     /// Use a selected existing prompt from the prompts table
     Existing,
     /// Use custom content
     Custom,
-}
-
-impl Default for PromptMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl From<&str> for PromptMode {

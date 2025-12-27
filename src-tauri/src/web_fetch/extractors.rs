@@ -5,6 +5,7 @@ use url::Url;
 use super::types::{IMG_ALT_REGEX, IMG_SRC_REGEX, IMG_TAG_REGEX, URL_REGEX};
 
 /// Extract and validate URLs from text, with deduplication
+#[allow(dead_code)]
 pub fn extract_urls(text: &str) -> Vec<String> {
     URL_REGEX
         .find_iter(text)

@@ -28,13 +28,13 @@ pub async fn ensure_participants(
         .iter()
         .any(|p| p.participant_type == "user");
 
-    let current_model_exists = model_db_id.as_ref().map_or(false, |model_id| {
+    let current_model_exists = model_db_id.as_ref().is_some_and(|model_id| {
         existing_participants
             .iter()
             .any(|p| p.participant_type == "model" && p.participant_id.as_ref() == Some(model_id))
     });
 
-    let current_assistant_exists = assistant_db_id.as_ref().map_or(false, |assistant_id| {
+    let current_assistant_exists = assistant_db_id.as_ref().is_some_and(|assistant_id| {
         existing_participants.iter().any(|p| {
             p.participant_type == "assistant" && p.participant_id.as_ref() == Some(assistant_id)
         })
@@ -55,10 +55,10 @@ pub async fn ensure_participants(
         if !current_assistant_exists {
             add_assistant_participant(state, conversation_id, assistant_id).await;
         }
-    } else if let Some(model_id) = model_db_id {
-        if !current_model_exists {
-            add_model_participant(state, conversation_id, model_id).await;
-        }
+    } else if let Some(model_id) = model_db_id
+        && !current_model_exists
+    {
+        add_model_participant(state, conversation_id, model_id).await;
     }
 }
 

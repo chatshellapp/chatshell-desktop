@@ -14,10 +14,10 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
     let mut request = HTTP_CLIENT.get(&jina_url).header("Accept", "text/markdown");
 
     // Add API key if provided (optional - Jina works without it)
-    if let Some(key) = api_key {
-        if !key.is_empty() {
-            request = request.header("Authorization", format!("Bearer {}", key));
-        }
+    if let Some(key) = api_key
+        && !key.is_empty()
+    {
+        request = request.header("Authorization", format!("Bearer {}", key));
     }
 
     match request.send().await {
@@ -90,8 +90,8 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
 fn extract_title_from_markdown(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("# ") {
-            return Some(trimmed[2..].trim().to_string());
+        if let Some(stripped) = trimmed.strip_prefix("# ") {
+            return Some(stripped.trim().to_string());
         }
     }
     None

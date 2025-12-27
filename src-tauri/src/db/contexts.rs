@@ -63,14 +63,14 @@ impl Database {
             let context_id: String = row.get("context_id");
             let display_order: i32 = row.get("display_order");
 
-            if context_type == "fetch_result" {
-                if let Ok(fetch_result) = self.get_fetch_result(&context_id).await {
-                    contexts.push((
-                        display_order,
-                        fetch_result.created_at.clone(),
-                        ContextEnrichment::FetchResult(fetch_result),
-                    ));
-                }
+            if context_type == "fetch_result"
+                && let Ok(fetch_result) = self.get_fetch_result(&context_id).await
+            {
+                contexts.push((
+                    display_order,
+                    fetch_result.created_at.clone(),
+                    ContextEnrichment::FetchResult(Box::new(fetch_result)),
+                ));
             }
         }
 

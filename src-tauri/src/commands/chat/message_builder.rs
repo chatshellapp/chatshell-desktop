@@ -39,50 +39,49 @@ pub async fn build_chat_messages(
     }];
 
     // Include message history if requested
-    if include_history {
-        if let Ok(messages) = state
+    if include_history
+        && let Ok(messages) = state
             .db
             .list_messages_by_conversation(conversation_id)
             .await
-        {
-            // Filter out the current user message first
-            let history_messages: Vec<_> = messages
-                .iter()
-                .filter(|msg| msg.id != user_message_id)
-                .collect();
+    {
+        // Filter out the current user message first
+        let history_messages: Vec<_> = messages
+            .iter()
+            .filter(|msg| msg.id != user_message_id)
+            .collect();
 
-            // Apply context message count limit if specified
-            let messages_to_include = match context_message_count {
-                Some(count) if count > 0 => {
-                    let count = count as usize;
-                    if history_messages.len() > count {
-                        // Take only the last N messages
-                        tracing::info!(
-                            "📊 [message_builder] Limiting context to {} messages (had {})",
-                            count,
-                            history_messages.len()
-                        );
-                        &history_messages[history_messages.len() - count..]
-                    } else {
-                        &history_messages[..]
-                    }
+        // Apply context message count limit if specified
+        let messages_to_include = match context_message_count {
+            Some(count) if count > 0 => {
+                let count = count as usize;
+                if history_messages.len() > count {
+                    // Take only the last N messages
+                    tracing::info!(
+                        "📊 [message_builder] Limiting context to {} messages (had {})",
+                        count,
+                        history_messages.len()
+                    );
+                    &history_messages[history_messages.len() - count..]
+                } else {
+                    &history_messages[..]
                 }
-                _ => &history_messages[..], // None or negative: include all
-            };
-
-            for msg in messages_to_include.iter() {
-                let chat_role = match msg.sender_type.as_str() {
-                    "user" => "user",
-                    "model" | "assistant" => "assistant",
-                    _ => continue,
-                };
-                chat_messages.push(ChatMessage {
-                    role: chat_role.to_string(),
-                    content: msg.content.clone(),
-                    images: vec![],
-                    files: vec![],
-                });
             }
+            _ => &history_messages[..], // None or negative: include all
+        };
+
+        for msg in messages_to_include.iter() {
+            let chat_role = match msg.sender_type.as_str() {
+                "user" => "user",
+                "model" | "assistant" => "assistant",
+                _ => continue,
+            };
+            chat_messages.push(ChatMessage {
+                role: chat_role.to_string(),
+                content: msg.content.clone(),
+                images: vec![],
+                files: vec![],
+            });
         }
     }
 

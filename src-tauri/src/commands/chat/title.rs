@@ -267,45 +267,42 @@ pub(crate) async fn auto_generate_title_if_needed(
     api_key: Option<String>,
     base_url: Option<String>,
 ) {
-    if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await {
-        if conversation.title == "New Conversation" {
-            tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
-            match generate_conversation_title(
-                state,
-                conversation_id,
-                user_content,
-                assistant_content,
-                provider,
-                model,
-                api_key,
-                base_url,
-            )
-            .await
-            {
-                Ok(title) => {
-                    match state.db.update_conversation(conversation_id, &title).await {
-                        Ok(_) => {
-                            tracing::info!(
-                                "✅ [auto_title] Conversation title updated to: {}",
-                                title
-                            );
-                            // Notify frontend of title update
-                            let _ = app.emit(
-                                "conversation-updated",
-                                serde_json::json!({
-                                    "conversation_id": conversation_id,
-                                    "title": title,
-                                }),
-                            );
-                        }
-                        Err(e) => tracing::error!(
-                            "⚠️  [auto_title] Failed to update conversation title: {}",
-                            e
-                        ),
+    if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await
+        && conversation.title == "New Conversation"
+    {
+        tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
+        match generate_conversation_title(
+            state,
+            conversation_id,
+            user_content,
+            assistant_content,
+            provider,
+            model,
+            api_key,
+            base_url,
+        )
+        .await
+        {
+            Ok(title) => {
+                match state.db.update_conversation(conversation_id, &title).await {
+                    Ok(_) => {
+                        tracing::info!("✅ [auto_title] Conversation title updated to: {}", title);
+                        // Notify frontend of title update
+                        let _ = app.emit(
+                            "conversation-updated",
+                            serde_json::json!({
+                                "conversation_id": conversation_id,
+                                "title": title,
+                            }),
+                        );
                     }
+                    Err(e) => tracing::error!(
+                        "⚠️  [auto_title] Failed to update conversation title: {}",
+                        e
+                    ),
                 }
-                Err(e) => tracing::warn!("⚠️  [auto_title] Failed to generate title: {}", e),
             }
+            Err(e) => tracing::warn!("⚠️  [auto_title] Failed to generate title: {}", e),
         }
     }
 }

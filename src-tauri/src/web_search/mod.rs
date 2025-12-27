@@ -18,9 +18,7 @@ mod yahoo;
 use anyhow::Result;
 
 // Re-export types
-pub use types::{
-    DuckDuckGoSearchResponse, SearchDecisionResult, SearchProvider, WebSearchResponse,
-};
+pub use types::{SearchDecisionResult, SearchProvider, WebSearchResponse};
 
 // Re-export decision and utils functions
 pub use decision::decide_search_needed;

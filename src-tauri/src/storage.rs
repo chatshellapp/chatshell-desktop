@@ -79,8 +79,8 @@ pub fn generate_fetch_storage_path(content_hash: &str, content_type: &str) -> St
 /// Generate storage path for a file attachment using content hash for deduplication
 /// Uses hash as filename to enable content-based deduplication
 pub fn generate_file_storage_path(content_hash: &str, original_ext: &str) -> String {
-    let ext = if original_ext.starts_with('.') {
-        &original_ext[1..]
+    let ext = if let Some(stripped) = original_ext.strip_prefix('.') {
+        stripped
     } else {
         original_ext
     };

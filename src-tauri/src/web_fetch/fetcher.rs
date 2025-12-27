@@ -409,6 +409,7 @@ pub async fn fetch_urls_with_config(
 /// Fetch multiple URLs in parallel, sending results through a channel as they complete.
 /// Returns a receiver for streaming results and a join handle for the fetch task.
 /// Results are sent one by one as each URL completes, enabling real-time UI updates.
+#[allow(dead_code)]
 pub async fn fetch_urls_with_channel(
     urls: &[String],
     max_chars: Option<usize>,

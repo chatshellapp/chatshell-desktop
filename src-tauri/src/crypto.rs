@@ -146,7 +146,7 @@ fn get_or_create_encryption_key() -> Result<[u8; 32]> {
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
 
-        let key_b64 = general_purpose::STANDARD.encode(&key);
+        let key_b64 = general_purpose::STANDARD.encode(key);
         keychain::set_secret(MASTER_KEY_NAME, &key_b64)?;
 
         tracing::info!("🔐 [crypto] Generated and stored new encryption key in OS keychain");

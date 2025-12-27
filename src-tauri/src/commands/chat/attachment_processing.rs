@@ -19,31 +19,30 @@ pub(crate) fn parse_image_attachments(
 ) -> Vec<ParsedImage> {
     let mut user_images = Vec::new();
 
-    if let Some(images) = images {
-        if !images.is_empty() {
-            tracing::info!(
-                "🖼️  [attachment] Processing {} image attachments",
-                images.len()
-            );
-            for img in images.iter() {
-                // Parse data URL: "data:image/png;base64,xxxxx"
-                if let Some(rest) = img.base64.strip_prefix("data:") {
-                    if let Some((media_type, base64_data)) = rest.split_once(";base64,") {
-                        user_images.push(ParsedImage {
-                            name: img.name.clone(),
-                            data: ImageData {
-                                base64: base64_data.to_string(),
-                                media_type: media_type.to_string(),
-                            },
-                        });
-                        tracing::info!(
-                            "   - Parsed image: {} - {} ({} chars)",
-                            img.name,
-                            media_type,
-                            base64_data.len()
-                        );
-                    }
-                }
+    if let Some(images) = images
+        && !images.is_empty()
+    {
+        tracing::info!(
+            "🖼️  [attachment] Processing {} image attachments",
+            images.len()
+        );
+        for img in images.iter() {
+            if let Some(rest) = img.base64.strip_prefix("data:")
+                && let Some((media_type, base64_data)) = rest.split_once(";base64,")
+            {
+                user_images.push(ParsedImage {
+                    name: img.name.clone(),
+                    data: ImageData {
+                        base64: base64_data.to_string(),
+                        media_type: media_type.to_string(),
+                    },
+                });
+                tracing::info!(
+                    "   - Parsed image: {} - {} ({} chars)",
+                    img.name,
+                    media_type,
+                    base64_data.len()
+                );
             }
         }
     }
@@ -55,25 +54,25 @@ pub(crate) fn parse_image_attachments(
 pub(crate) fn parse_file_attachments(files: Option<Vec<FileAttachmentInput>>) -> Vec<FileData> {
     let mut user_files = Vec::new();
 
-    if let Some(files) = files {
-        if !files.is_empty() {
+    if let Some(files) = files
+        && !files.is_empty()
+    {
+        tracing::info!(
+            "📄 [attachment] Processing {} file attachments",
+            files.len()
+        );
+        for file in files.iter() {
+            user_files.push(FileData {
+                name: file.name.clone(),
+                content: file.content.clone(),
+                media_type: file.mime_type.clone(),
+            });
             tracing::info!(
-                "📄 [attachment] Processing {} file attachments",
-                files.len()
+                "   - File: {} ({} chars, {})",
+                file.name,
+                file.content.len(),
+                file.mime_type
             );
-            for file in files.iter() {
-                user_files.push(FileData {
-                    name: file.name.clone(),
-                    content: file.content.clone(),
-                    media_type: file.mime_type.clone(),
-                });
-                tracing::info!(
-                    "   - File: {} ({} chars, {})",
-                    file.name,
-                    file.content.len(),
-                    file.mime_type
-                );
-            }
         }
     }
 

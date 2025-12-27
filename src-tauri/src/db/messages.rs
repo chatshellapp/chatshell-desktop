@@ -12,11 +12,7 @@ impl Database {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
-        let target_id = req
-            .conversation_id
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
+        let target_id = req.conversation_id.as_deref().unwrap_or("unknown");
         tracing::info!(
             "💾 [db] Executing INSERT for message (conversation_id: {})",
             target_id

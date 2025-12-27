@@ -67,7 +67,7 @@ fn search_duckduckgo_sync(query: &str, max_results: usize) -> Result<Vec<SearchR
         .map_err(|e| anyhow::anyhow!("Blank navigation timeout: {}", e))?;
 
     // Inject stealth JavaScript to hide headless detection
-    tab.evaluate(&*STEALTH_JS, false)
+    tab.evaluate(&STEALTH_JS, false)
         .map_err(|e| anyhow::anyhow!("Failed to inject stealth JS: {}", e))?;
 
     tracing::info!("🛡️ [web_search] Stealth mode enabled, navigating to DuckDuckGo...");
@@ -178,16 +178,14 @@ fn extract_actual_url(href: &str) -> String {
             // If the decoded string is empty or different, try percent decoding directly
             if decoded.is_empty() || !decoded.starts_with("http") {
                 // Try direct percent decode
-                if let Ok(decoded) = url::Url::parse(&format!("http://x?x={}", encoded_url)) {
-                    if let Some(value) = decoded
+                if let Ok(decoded) = url::Url::parse(&format!("http://x?x={}", encoded_url))
+                    && let Some(value) = decoded
                         .query_pairs()
                         .find(|(k, _)| k == "x")
                         .map(|(_, v)| v.to_string())
-                    {
-                        if value.starts_with("http") {
-                            return value;
-                        }
-                    }
+                    && value.starts_with("http")
+                {
+                    return value;
                 }
                 // Fallback: manual percent decode
                 let decoded = percent_decode_str(encoded_url);
@@ -217,11 +215,11 @@ fn percent_decode_str(input: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '%' {
             let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2 {
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                    result.push(byte as char);
-                    continue;
-                }
+            if hex.len() == 2
+                && let Ok(byte) = u8::from_str_radix(&hex, 16)
+            {
+                result.push(byte as char);
+                continue;
             }
             result.push('%');
             result.push_str(&hex);

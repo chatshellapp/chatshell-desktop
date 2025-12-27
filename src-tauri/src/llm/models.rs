@@ -59,7 +59,6 @@ struct OllamaModelsResponse {
 #[derive(Debug, Deserialize)]
 struct OllamaModel {
     name: String,
-    model: String,
     size: Option<i64>,
 }
 

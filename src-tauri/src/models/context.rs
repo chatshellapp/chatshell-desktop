@@ -110,7 +110,7 @@ impl std::str::FromStr for ContextType {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContextEnrichment {
     SearchResult(SearchResult),
-    FetchResult(FetchResult),
+    FetchResult(Box<FetchResult>),
 }
 
 impl ContextEnrichment {

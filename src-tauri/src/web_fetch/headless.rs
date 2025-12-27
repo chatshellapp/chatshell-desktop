@@ -49,7 +49,7 @@ pub fn fetch_with_headless_browser(url: &str) -> Result<String> {
         .map_err(|e| anyhow::anyhow!("Blank navigation timeout: {}", e))?;
 
     // Inject stealth JavaScript to hide headless detection
-    tab.evaluate(&*STEALTH_JS, false)
+    tab.evaluate(&STEALTH_JS, false)
         .map_err(|e| anyhow::anyhow!("Failed to inject stealth JS: {}", e))?;
 
     tracing::info!("🛡️ [headless] Stealth mode enabled, navigating to target...");

@@ -96,10 +96,10 @@ fn extract_json_from_response(response: &str) -> Result<String> {
     }
 
     // Try to find raw JSON object
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed.rfind('}') {
-            return Ok(trimmed[start..=end].to_string());
-        }
+    if let Some(start) = trimmed.find('{')
+        && let Some(end) = trimmed.rfind('}')
+    {
+        return Ok(trimmed[start..=end].to_string());
     }
 
     Err(anyhow::anyhow!("No JSON found in response"))

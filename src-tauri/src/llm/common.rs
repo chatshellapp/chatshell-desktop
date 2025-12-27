@@ -83,13 +83,12 @@ pub fn format_model_display_name(model_id: &str) -> String {
             // Handle special cases for numbers
             } else if part.chars().all(|c| c.is_ascii_digit()) {
                 part.to_string()
-            } else if part.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            } else if part.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 // Contains numbers mixed with letters (e.g., "gemma3" -> "Gemma 3")
                 let mut result = String::new();
-                let mut chars = part.chars().peekable();
-                let mut is_first = true;
+                let chars = part.chars().peekable();
 
-                while let Some(ch) = chars.next() {
+                for ch in chars {
                     if ch.is_ascii_digit() {
                         // Add space before digit unless at start, after space, or after dot (for version numbers like "5.1")
                         if !result.is_empty() && !result.ends_with(' ') && !result.ends_with('.') {
@@ -97,12 +96,7 @@ pub fn format_model_display_name(model_id: &str) -> String {
                         }
                         result.push(ch);
                     } else {
-                        if is_first {
-                            result.push(ch.to_ascii_uppercase());
-                            is_first = false;
-                        } else {
-                            result.push(ch);
-                        }
+                        result.push(ch);
                     }
                 }
                 result
