@@ -39,20 +39,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('chatshell-desktop/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        working-directory: chatshell-desktop
         run: pnpm install --frozen-lockfile
 
       - name: Type Check & Lint
-        working-directory: chatshell-desktop
         run: pnpm check
 
       - name: Rust Check
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
 
   build-linux:
@@ -84,16 +82,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('chatshell-desktop/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        working-directory: chatshell-desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build Frontend
-        working-directory: chatshell-desktop
         run: pnpm build
 
       - name: Setup Rust
@@ -119,12 +115,12 @@ jobs:
             libxdo-dev
 
       - name: Build App (deb)
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: |
           cargo tauri build --target x86_64-unknown-linux-gnu --bundles deb
 
       - name: Build AppImage
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: |
           cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
@@ -133,8 +129,8 @@ jobs:
         with:
           name: chatshell-linux
           path: |
-            chatshell-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            chatshell-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
 
   build-linux-rpm:
     name: Build Linux (rpm)
@@ -166,16 +162,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('chatshell-desktop/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        working-directory: chatshell-desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build Frontend
-        working-directory: chatshell-desktop
         run: pnpm build
 
       - name: Setup Rust
@@ -200,7 +194,7 @@ jobs:
             libxdo-devel
 
       - name: Build App (rpm)
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: |
           cargo tauri build --target x86_64-unknown-linux-gnu --bundles rpm
 
@@ -208,7 +202,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-linux-rpm
-          path: chatshell-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
 
   build-windows:
     name: Build Windows
@@ -239,16 +233,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('chatshell-desktop/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        working-directory: chatshell-desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build Frontend
-        working-directory: chatshell-desktop
         run: pnpm build
 
       - name: Setup Rust
@@ -263,7 +255,7 @@ jobs:
           Remove-Item "MicrosoftEdgeWebView2RuntimeInstaller.exe"
 
       - name: Build App
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: |
           cargo tauri build --target x86_64-pc-windows-msvc --bundles msi
 
@@ -271,7 +263,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-windows
-          path: chatshell-desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
 
   build-macos:
     name: Build macOS
@@ -306,16 +298,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('chatshell-desktop/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        working-directory: chatshell-desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build Frontend
-        working-directory: chatshell-desktop
         run: pnpm build
 
       - name: Setup Rust
@@ -324,7 +314,7 @@ jobs:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Build Universal Binary (Intel + Apple Silicon)
-        working-directory: chatshell-desktop/src-tauri
+        working-directory: src-tauri
         run: |
           cargo tauri build --target aarch64-apple-darwin --bundles dmg
           cargo tauri build --target x86_64-apple-darwin --bundles dmg
@@ -332,8 +322,8 @@ jobs:
       - name: Organize DMG files
         run: |
           mkdir -p dist
-          cp chatshell-desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist/
-          cp chatshell-desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg dist/
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist/
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg dist/
 
       - name: Import Code Signing Certificate
         if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
