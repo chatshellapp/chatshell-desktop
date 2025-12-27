@@ -315,13 +315,13 @@ jobs:
           done
 
       - name: Setup API Key for Notarization
-        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
-          echo "${{ secrets.APPLE_API_KEY_PATH }}" | base64 -d > api_key.p8
+          echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 -d > api_key.p8
           echo "API key saved to api_key.p8"
 
       - name: Notarize App
-        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
           for dmg in universal/*.dmg; do
             echo "Notarizing: $dmg"
@@ -334,7 +334,7 @@ jobs:
           rm -f api_key.p8
 
       - name: Staple Notarization
-        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
           for dmg in universal/*.dmg; do
             echo "Stapling: $dmg"
