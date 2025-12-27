@@ -32,3 +32,6 @@ internal-docs
 
 # Design assets files
 design-assets
+
+# Claude settings
+.claude
