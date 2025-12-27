@@ -1,0 +1,372 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PNPM_CACHE_FOLDER: .pnpm-store
+
+jobs:
+  check:
+    name: Type Check & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: chatshell-desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: chatshell-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Type Check & Lint
+        working-directory: chatshell-desktop
+        run: pnpm check
+
+      - name: Rust Check
+        working-directory: chatshell-desktop/src-tauri
+        run: cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings
+
+  build-linux:
+    name: Build Linux (deb + appimage)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: chatshell-desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: chatshell-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend
+        working-directory: chatshell-desktop
+        run: pnpm build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
+            libsoup-3-dev \
+            libsoup2.4-1 \
+            libopenssl-dev \
+            clang \
+            lld \
+            pkg-config \
+            libappindicator3-1 \
+            libsecret-1-0 \
+            libxdo-dev
+
+      - name: Build App (deb)
+        working-directory: chatshell-desktop/src-tauri
+        run: |
+          cargo tauri build --target x86_64-unknown-linux-gnu --bundles deb
+
+      - name: Build AppImage
+        working-directory: chatshell-desktop/src-tauri
+        run: |
+          cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatshell-linux
+          path: |
+            chatshell-desktop/src-tauri/target/release/build/bundle/deb
+            chatshell-desktop/src-tauri/target/release/build/bundle/appimage
+
+  build-linux-rpm:
+    name: Build Linux (rpm)
+    needs: check
+    runs-on: fedora:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: chatshell-desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: chatshell-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend
+        working-directory: chatshell-desktop
+        run: pnpm build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install system dependencies
+        run: |
+          dnf -y install \
+            webkit2gtk4.1-devel \
+            webkit2gtk4.0-devel \
+            gtk3-devel \
+            libsoup-devel \
+            libsoup3-devel \
+            openssl-devel \
+            clang-devel \
+            lld \
+            pkg-config \
+            libappindicator-gtk3-devel \
+            libsecret-devel \
+            libxdo-devel
+
+      - name: Build App (rpm)
+        working-directory: chatshell-desktop/src-tauri
+        run: |
+          cargo tauri build --target x86_64-unknown-linux-gnu --bundles rpm
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatshell-linux-rpm
+          path: chatshell-desktop/src-tauri/target/release/build/bundle/rpm
+
+  build-windows:
+    name: Build Windows
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: chatshell-desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: chatshell-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend
+        working-directory: chatshell-desktop
+        run: pnpm build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install WebView2
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "MicrosoftEdgeWebView2RuntimeInstaller.exe" -UseBasicParsing
+          Start-Process -FilePath "MicrosoftEdgeWebView2RuntimeInstaller.exe" -ArgumentList "/silent", "/install" -Wait
+          Remove-Item "MicrosoftEdgeWebView2RuntimeInstaller.exe"
+
+      - name: Build App
+        working-directory: chatshell-desktop/src-tauri
+        run: |
+          cargo tauri build --target x86_64-pc-windows-msvc --bundles msi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatshell-windows
+          path: chatshell-desktop/src-tauri/target/release/bundle/msi
+
+  build-macos:
+    name: Build macOS
+    needs: check
+    runs-on: macos-14
+    permissions:
+      contents: read
+      security-events: write
+      notarizer: write
+      developer-status: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: chatshell-desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: chatshell-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend
+        working-directory: chatshell-desktop
+        run: pnpm build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+          args: --profile release
+
+      - name: Build Universal Binary (Intel + Apple Silicon)
+        working-directory: chatshell-desktop/src-tauri
+        run: |
+          cargo tauri build --target aarch64-apple-darwin --bundles dmg
+          cargo tauri build --target x86_64-apple-darwin --bundles dmg
+
+      - name: Create Universal DMG
+        run: |
+          mkdir -p universal
+          cp chatshell-desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg chatshell-desktop-aarch64.dmg
+          cp chatshell-desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg chatshell-desktop-x86_64.dmg
+          
+          # Install create-dmg if not available
+          if ! command -v create-dmg &> /dev/null; then
+            brew install create-dmg
+          fi
+          
+          create-dmg \
+            --volname "ChatShell" \
+            --window-pos 200 120 \
+            --window-size 800 450 \
+            --icon-size 100 \
+            --icon "ChatShell.app" 200 190 \
+            --hide-extension "ChatShell.app" \
+            --app-drop-link 600 185 \
+            chatshell-desktop-universal.dmg \
+            chatshell-desktop-aarch64.dmg
+
+          mv chatshell-desktop-universal.dmg universal/
+          mv chatshell-desktop-aarch64.dmg universal/
+          mv chatshell-desktop-x86_64.dmg universal/
+
+      - name: Import Code Signing Certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Sign Universal DMG
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        run: |
+          for dmg in universal/*.dmg; do
+            echo "Signing: $dmg"
+            codesign --sign "${{ secrets.APPLE_CERTIFICATE }}" --timestamp --options runtime "$dmg"
+          done
+
+      - name: Setup API Key for Notarization
+        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        run: |
+          echo "${{ secrets.APPLE_API_KEY_PATH }}" | base64 -d > api_key.p8
+          echo "API key saved to api_key.p8"
+
+      - name: Notarize App
+        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        run: |
+          for dmg in universal/*.dmg; do
+            echo "Notarizing: $dmg"
+            xcrun notarytool submit "$dmg" \
+              --apple-api-key api_key.p8 \
+              --apple-api-key-id "${{ secrets.APPLE_API_KEY }}" \
+              --apple-api-issuer "${{ secrets.APPLE_API_ISSUER }}" \
+              --wait
+          done
+          rm -f api_key.p8
+
+      - name: Staple Notarization
+        if: ${{ secrets.APPLE_API_KEY_PATH != '' }}
+        run: |
+          for dmg in universal/*.dmg; do
+            echo "Stapling: $dmg"
+            xcrun stapler staple "$dmg"
+          done
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatshell-macos
+          path: universal
+
+  release:
+    name: Create Release
+    needs: [build-linux, build-linux-rpm, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/chatshell-linux/*.deb
+            release/chatshell-linux/*.AppImage
+            release/chatshell-linux-rpm/*.rpm
+            release/chatshell-windows/*.msi
+            release/chatshell-macos/*
+          generate_release_notes: true
