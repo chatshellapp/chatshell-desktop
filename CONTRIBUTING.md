@@ -42,20 +42,12 @@ There are several ways you can contribute:
 
 For installation and quick start commands, see the [Development section in README.md](README.md#development).
 
-### Frontend (React/TypeScript)
+### Commands
 
 ```bash
-cd chatshell-desktop
-pnpm install
-pnpm dev
-```
-
-### Backend (Rust/Tauri)
-
-```bash
-cd chatshell-desktop/src-tauri
-cargo build
-cargo run
+pnpm install              # Install dependencies
+pnpm tauri dev            # Start development app
+pnpm tauri build          # Build release bundle
 ```
 
 ## Tech Stack
@@ -67,7 +59,7 @@ ChatShell is built with a modern hybrid architecture:
 | Desktop Framework | Tauri 2 (Rust edition 2024) |
 | Frontend | React 19, TypeScript, Vite |
 | Styling | TailwindCSS v4 |
-| UI Components | Radix UI primitives, Lucide Icons |
+| UI Components | shadcn/ui (built on Radix UI), Lucide Icons |
 | State Management | Zustand + Immer |
 | Database | SQLite + sqlx |
 | LLM Framework | Rig (Rust) |
@@ -80,7 +72,7 @@ ChatShell is built with a modern hybrid architecture:
 
 - **Tauri 2**: Lightweight, secure desktop framework
 - **Rig**: Modular LLM application framework in Rust
-- **Radix UI**: Unstyled, accessible UI components
+- **shadcn/ui**: Re-usable components built with Radix UI and TailwindCSS
 - **Zustand + Immer**: Simple state management with immutable updates
 - **sqlx**: Async SQL toolkit with compile-time checks
 
@@ -148,7 +140,7 @@ logger.error('Failed to load:', error)
 **Formatting (rustfmt)**
 - Edition 2024
 - Max line width: 100 characters
-- Run `cargo fmt --all` before committing
+- Run `pnpm format:rust` before committing
 
 **Naming Conventions**
 - Modules: snake_case
@@ -221,23 +213,16 @@ All tests must pass before merging:
 
 ```bash
 # Frontend
-cd chatshell-desktop
-pnpm type-check
-pnpm lint
-pnpm format:check
+pnpm check
 
 # Backend
-cd src-tauri
-cargo fmt --all -- --check
-cargo clippy --all-targets
-cargo test
+pnpm check:rust
 ```
 
 ### Available Commands
 
 ```bash
-# Frontend
-pnpm dev              # Start Vite dev server
+pnpm dev              # Start Vite dev server (frontend only)
 pnpm build            # TypeScript compile + Vite build
 pnpm preview          # Preview production build
 pnpm lint             # Run ESLint
@@ -246,14 +231,10 @@ pnpm format           # Auto-format with Prettier
 pnpm format:check     # Check Prettier formatting
 pnpm type-check       # TypeScript type checking
 pnpm check            # Full check: type-check + lint + format
+pnpm check:rust       # Rust format check + clippy
 pnpm format:all       # Format TypeScript + Rust
-
-# Backend
-cd src-tauri && cargo fmt --all        # Format Rust code
-cd src-tauri && cargo fmt --all -- --check  # Check Rust formatting
-cd src-tauri && cargo clippy --all-targets  # Run Rust linter
-cd src-tauri && cargo build --release  # Release build
-cd src-tauri && cargo test             # Run Rust tests
+pnpm tauri dev        # Start development app
+pnpm tauri build      # Build release bundle
 ```
 
 ### Consider Opening Draft Pull Requests

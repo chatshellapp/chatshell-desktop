@@ -85,21 +85,12 @@ Download **signed binaries** from [chatshell.app](https://chatshell.app/) or bui
 - Node.js 20+
 - pnpm
 - Rust 1.75+
-- SQLite
 
 ### Quick Start
 
 ```bash
-# Frontend setup
-cd chatshell-desktop
 pnpm install
-
-# Start development server (frontend)
-pnpm dev
-
-# Start Tauri app (separate terminal)
-cd src-tauri
-cargo run
+pnpm tauri dev
 ```
 
 The app will be available at `http://localhost:1420`
@@ -109,12 +100,7 @@ For detailed commands and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.
 ### Build
 
 ```bash
-# Frontend build
-pnpm build
-
-# Desktop app build
-cd src-tauri
-cargo build --release
+pnpm tauri build
 ```
 
 ---
@@ -151,4 +137,5 @@ Built on the shoulders of giants:
 - [Tauri](https://tauri.app/) - Build smaller, faster, and more secure desktop applications
 - [Rig](https://rig.rs/) - Modular LLM application framework
 - [Radix UI](https://www.radix-ui.com/) - Unstyled, accessible UI components
+- [shadcn/ui](https://ui.shadcn.com/) - Beautiful, customizable components built with Radix UI and TailwindCSS
 - [React](https://react.dev/) - The library for web and native user interfaces
