@@ -32,6 +32,8 @@ export function useChatHandlers() {
     )
     store.setIsStreaming(convId, false)
     store.setStreamingContent(convId, '')
+    // Clear streaming tool calls when chat completes
+    store.clearStreamingToolCalls(convId)
   }, [])
 
   const handleChatError = useCallback((convId: string, error: string) => {

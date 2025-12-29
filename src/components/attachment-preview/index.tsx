@@ -1,6 +1,6 @@
 import { Globe } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { FetchResult, SearchResult, FileAttachment, SearchDecision } from '@/types'
+import type { FetchResult, SearchResult, FileAttachment, SearchDecision, ToolCall } from '@/types'
 
 // Re-export types
 export type { ImageAttachmentData, AttachmentPreviewProps, FilePreviewDialogProps } from './types'
@@ -15,6 +15,8 @@ export {
 export { FilePreviewDialog, FileAttachmentPreview } from './file-preview'
 export { ImageLightbox } from './image-lightbox'
 export { ThinkingPreview } from './thinking-preview'
+export { ToolCallPreview, PendingToolCallPreview } from './tool-call-preview'
+export type { StreamingToolCall } from './tool-call-preview'
 
 // Re-export utilities
 export { getDomain, getFaviconUrl, formatFileSize, isMarkdownFile } from './utils'
@@ -29,6 +31,7 @@ import {
   PendingSearchDecisionPreview,
 } from './search-result-preview'
 import { FileAttachmentPreview } from './file-preview'
+import { ToolCallPreview } from './tool-call-preview'
 
 export function AttachmentPreview({
   userAttachment,
@@ -104,8 +107,7 @@ export function AttachmentPreview({
         // Thinking is handled by ThinkingPreview component directly
         return null
       case 'tool_call':
-        // TODO: Add ToolCallPreview component
-        return null
+        return <ToolCallPreview toolCall={step as ToolCall} />
       case 'code_execution':
         // TODO: Add CodeExecutionPreview component
         return null

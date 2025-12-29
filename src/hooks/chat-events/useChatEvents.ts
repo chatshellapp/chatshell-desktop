@@ -16,6 +16,8 @@ import type {
   GenerationStoppedEvent,
   ReasoningStartedEvent,
   SearchDecisionStartedEvent,
+  ToolCallStartedEvent,
+  ToolCallCompletedEvent,
 } from './types'
 import { logger } from '@/lib/logger'
 import {
@@ -23,6 +25,7 @@ import {
   useAttachmentHandlers,
   useSearchDecisionHandlers,
   useConversationHandlers,
+  useToolCallHandlers,
 } from './handlers'
 
 export function useChatEvents(conversationId: string | null) {
@@ -52,6 +55,8 @@ export function useChatEvents(conversationId: string | null) {
   const { handleSearchDecisionStarted, handleSearchDecisionComplete } = useSearchDecisionHandlers()
 
   const { handleConversationUpdated, handleGenerationStopped } = useConversationHandlers()
+
+  const { handleToolCallStarted, handleToolCallCompleted } = useToolCallHandlers()
 
   useEffect(() => {
     if (!conversationId) return
@@ -173,6 +178,30 @@ export function useChatEvents(conversationId: string | null) {
       handleReasoningStarted(event.payload.conversation_id)
     })
 
+    // Listen for MCP tool call started
+    const unlistenToolCallStarted = listen<ToolCallStartedEvent>('tool-call-started', (event) => {
+      logger.info('[useChatEvents] Received tool-call-started event:', event.payload)
+      handleToolCallStarted(
+        event.payload.conversation_id,
+        event.payload.tool_call_id,
+        event.payload.tool_name,
+        event.payload.tool_input
+      )
+    })
+
+    // Listen for MCP tool call completed
+    const unlistenToolCallCompleted = listen<ToolCallCompletedEvent>(
+      'tool-call-completed',
+      (event) => {
+        logger.info('[useChatEvents] Received tool-call-completed event:', event.payload)
+        handleToolCallCompleted(
+          event.payload.conversation_id,
+          event.payload.tool_call_id,
+          event.payload.tool_output
+        )
+      }
+    )
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
@@ -189,6 +218,8 @@ export function useChatEvents(conversationId: string | null) {
       unlistenConversationUpdated.then((fn) => fn())
       unlistenGenerationStopped.then((fn) => fn())
       unlistenReasoningStarted.then((fn) => fn())
+      unlistenToolCallStarted.then((fn) => fn())
+      unlistenToolCallCompleted.then((fn) => fn())
     }
   }, [
     conversationId,
@@ -205,5 +236,7 @@ export function useChatEvents(conversationId: string | null) {
     handleConversationUpdated,
     handleGenerationStopped,
     handleReasoningStarted,
+    handleToolCallStarted,
+    handleToolCallCompleted,
   ])
 }

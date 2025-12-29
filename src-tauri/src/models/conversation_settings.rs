@@ -85,6 +85,10 @@ pub struct ConversationSettings {
 
     /// Custom user prompt content (when mode is 'custom')
     pub custom_user_prompt: Option<String>,
+
+    /// Enabled MCP server IDs for this conversation (JSON array)
+    #[serde(default)]
+    pub enabled_mcp_server_ids: Vec<String>,
 }
 
 impl ConversationSettings {
@@ -103,6 +107,7 @@ impl ConversationSettings {
             user_prompt_mode: PromptMode::None,
             selected_user_prompt_id: None,
             custom_user_prompt: None,
+            enabled_mcp_server_ids: Vec::new(),
         }
     }
 }
@@ -132,4 +137,6 @@ pub struct UpdateConversationSettingsRequest {
     pub selected_user_prompt_id: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_user_prompt: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_server_ids: Option<Vec<String>>,
 }

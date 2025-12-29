@@ -30,6 +30,7 @@ export function useConversationState() {
   const urlStatuses = conversationState?.urlStatuses || {}
   const pendingSearchDecisions = conversationState?.pendingSearchDecisions || {}
   const apiError = conversationState?.apiError || null
+  const streamingToolCalls = conversationState?.streamingToolCalls || {}
 
   // Set up event listeners for chat streaming and scraping
   useChatEvents(currentConversation?.id || null)
@@ -68,6 +69,7 @@ export function useConversationState() {
     attachmentRefreshKey,
     urlStatuses,
     pendingSearchDecisions,
+    streamingToolCalls,
 
     // Actions
     handleClearApiError,

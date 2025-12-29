@@ -4,6 +4,7 @@ pub mod db;
 mod keychain;
 mod llm;
 mod logger;
+pub mod mcp;
 pub mod models;
 mod prompts;
 pub mod storage;
@@ -13,6 +14,7 @@ mod web_search;
 
 use commands::AppState;
 use db::Database;
+use mcp::McpConnectionManager;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
@@ -94,6 +96,7 @@ pub fn run() {
             let app_state = AppState {
                 db,
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+                mcp_manager: Arc::new(McpConnectionManager::new()),
             };
             app.manage(app_state);
 
@@ -203,6 +206,16 @@ pub fn run() {
             commands::chat::web_search::perform_web_search,
             commands::chat::web_search::extract_search_keywords,
             commands::chat::web_search::get_search_providers,
+            // MCP commands
+            commands::create_mcp_server,
+            commands::list_mcp_servers,
+            commands::get_mcp_server,
+            commands::update_mcp_server,
+            commands::delete_mcp_server,
+            commands::toggle_mcp_server,
+            commands::test_mcp_connection,
+            commands::list_mcp_server_tools,
+            commands::get_conversation_mcp_servers,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

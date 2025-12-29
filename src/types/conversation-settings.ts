@@ -47,6 +47,9 @@ export interface ConversationSettings {
   userPromptMode: PromptMode
   selectedUserPromptId: string | null
   customUserPrompt: string | null
+
+  // MCP server IDs enabled for this conversation
+  enabledMcpServerIds: string[]
 }
 
 // Request to update conversation settings (all fields optional for partial updates)
@@ -62,6 +65,7 @@ export interface UpdateConversationSettingsRequest {
   userPromptMode?: PromptMode
   selectedUserPromptId?: string | null
   customUserPrompt?: string | null
+  enabledMcpServerIds?: string[]
 }
 
 // Backend response format (snake_case)
@@ -78,6 +82,7 @@ export interface ConversationSettingsResponse {
   user_prompt_mode: PromptMode
   selected_user_prompt_id: string | null
   custom_user_prompt: string | null
+  enabled_mcp_server_ids: string[]
 }
 
 // Convert backend response to frontend format
@@ -95,6 +100,7 @@ export function fromBackendSettings(response: ConversationSettingsResponse): Con
     userPromptMode: response.user_prompt_mode,
     selectedUserPromptId: response.selected_user_prompt_id,
     customUserPrompt: response.custom_user_prompt,
+    enabledMcpServerIds: response.enabled_mcp_server_ids ?? [],
   }
 }
 
@@ -115,6 +121,7 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
   if (req.selectedUserPromptId !== undefined)
     result.selected_user_prompt_id = req.selectedUserPromptId
   if (req.customUserPrompt !== undefined) result.custom_user_prompt = req.customUserPrompt
+  if (req.enabledMcpServerIds !== undefined) result.enabled_mcp_server_ids = req.enabledMcpServerIds
 
   return result
 }
@@ -136,6 +143,7 @@ export const createDefaultConversationSettings = (
   userPromptMode: 'none',
   selectedUserPromptId: null,
   customUserPrompt: null,
+  enabledMcpServerIds: [],
 })
 
 // Parameter limits for validation

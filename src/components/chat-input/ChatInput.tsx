@@ -21,9 +21,11 @@ import { ModelParametersDialog } from './ModelParametersDialog'
 import { ContextCountDialog } from './ContextCountDialog'
 import { SystemPromptDialog } from './SystemPromptDialog'
 import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
+import { McpServersDialog } from './McpServersDialog'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
+import { useMcpStore } from '@/stores/mcpStore'
 import { CONTEXT_COUNT_OPTIONS } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
@@ -41,6 +43,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const [isContextCountDialogOpen, setIsContextCountDialogOpen] = useState(false)
   const [isSystemPromptDialogOpen, setIsSystemPromptDialogOpen] = useState(false)
   const [isUserPromptDialogOpen, setIsUserPromptDialogOpen] = useState(false)
+  const [isMcpServersDialogOpen, setIsMcpServersDialogOpen] = useState(false)
   // Preview state for attachments
   const [previewingFileId, setPreviewingFileId] = useState<string | null>(null)
   const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null)
@@ -101,9 +104,16 @@ export function ChatInput(/* _props: ChatInputProps */) {
     (state) => state.setContextMessageCount
   )
   const setSystemPrompt = useConversationSettingsStore((state) => state.setSystemPrompt)
+  const setEnabledMcpServerIds = useConversationSettingsStore(
+    (state) => state.setEnabledMcpServerIds
+  )
 
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
+
+  // MCP store for getting server names
+  const mcpServers = useMcpStore((state) => state.servers)
+  const ensureMcpServersLoaded = useMcpStore((state) => state.ensureLoaded)
 
   // Get message count from message store to determine if system prompt can be changed
   const conversationState = useMessageStore((state) =>
@@ -199,6 +209,25 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
     return null
   }, [conversationSettings, prompts])
+
+  // Compute MCP servers label
+  const mcpServersLabel = useMemo(() => {
+    if (!conversationSettings) return 'None'
+    const enabledCount = conversationSettings.enabledMcpServerIds?.length || 0
+    if (enabledCount === 0) return 'None'
+    if (enabledCount === 1) {
+      const server = mcpServers.find((s) => s.id === conversationSettings.enabledMcpServerIds[0])
+      return server?.name || '1 server'
+    }
+    return `${enabledCount} servers`
+  }, [conversationSettings, mcpServers])
+
+  // Handler to change enabled MCP server IDs
+  const handleMcpServerIdsChange = (serverIds: string[]) => {
+    if (currentConversation) {
+      setEnabledMcpServerIds(currentConversation.id, serverIds)
+    }
+  }
 
   // Handler to clear system prompt
   const handleClearSystemPrompt = () => {
@@ -434,6 +463,14 @@ export function ChatInput(/* _props: ChatInputProps */) {
             }}
             systemPromptLabel={systemPromptLabel}
             systemPromptDisabled={hasMessages}
+            onMcpServersClick={() => {
+              if (currentConversation) {
+                getSettings(currentConversation.id)
+                ensureMcpServersLoaded()
+              }
+              setIsMcpServersDialogOpen(true)
+            }}
+            mcpServersLabel={mcpServersLabel}
           />
         </InputGroup>
       </div>
@@ -486,6 +523,14 @@ export function ChatInput(/* _props: ChatInputProps */) {
           // Set the prompt content directly to the input
           setInput(content)
         }}
+      />
+
+      {/* MCP Servers Dialog */}
+      <McpServersDialog
+        open={isMcpServersDialogOpen}
+        onOpenChange={setIsMcpServersDialogOpen}
+        enabledServerIds={conversationSettings?.enabledMcpServerIds ?? []}
+        onServerIdsChange={handleMcpServerIdsChange}
       />
     </div>
   )

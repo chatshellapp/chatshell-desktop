@@ -8,11 +8,11 @@ use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
 use rig::completion::{CompletionModel, Message};
 use rig::message::Reasoning;
-use rig::streaming::{StreamedAssistantContent, StreamingChat};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingChat};
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::ChatResponse;
-use crate::llm::common::StreamChunkType;
+use crate::llm::common::{StreamChunkType, ToolCallInfo, ToolResultInfo};
 use crate::thinking_parser;
 
 /// Generic implementation for streaming with any agent type
@@ -92,9 +92,80 @@ where
                     }
                 }
             }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall(
+                tool_call,
+            ))) => {
+                consecutive_errors = 0;
+                // Convert tool call arguments to JSON string
+                let tool_input = serde_json::to_string(&tool_call.function.arguments)
+                    .unwrap_or_else(|_| "{}".to_string());
+
+                tracing::info!(
+                    "🔧 [{}] Tool call: {} (id: {})",
+                    log_prefix,
+                    tool_call.function.name,
+                    tool_call.id
+                );
+
+                let tool_info = ToolCallInfo {
+                    id: tool_call.id.clone(),
+                    tool_name: tool_call.function.name.clone(),
+                    tool_input,
+                };
+
+                if !callback(String::new(), StreamChunkType::ToolCall(tool_info)) {
+                    tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                    cancelled = true;
+                    break;
+                }
+            }
+            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tool_result))) => {
+                consecutive_errors = 0;
+                // Extract text content from tool result
+                let tool_output = tool_result
+                    .content
+                    .iter()
+                    .filter_map(|c| match c {
+                        rig::message::ToolResultContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                tracing::info!(
+                    "📦 [{}] Tool result received (id: {}, {} chars)",
+                    log_prefix,
+                    tool_result.id,
+                    tool_output.len()
+                );
+
+                let result_info = ToolResultInfo {
+                    id: tool_result.id.clone(),
+                    tool_output,
+                };
+
+                if !callback(String::new(), StreamChunkType::ToolResult(result_info)) {
+                    tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                    cancelled = true;
+                    break;
+                }
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
+                consecutive_errors = 0;
+                // Log final response usage if available
+                let usage = final_response.usage();
+                if usage.input_tokens > 0 || usage.output_tokens > 0 {
+                    tracing::info!(
+                        "📊 [{}] Usage: {} input, {} output tokens",
+                        log_prefix,
+                        usage.input_tokens,
+                        usage.output_tokens
+                    );
+                }
+            }
             Ok(_) => {
                 consecutive_errors = 0;
-                // Ignore tool calls, final responses, and user items for now
+                // Ignore other events (e.g., ToolCallDelta, ReasoningDelta)
             }
             Err(e) => {
                 consecutive_errors += 1;

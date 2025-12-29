@@ -14,7 +14,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 2;
+const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -57,6 +57,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v2 completed");
     }
 
+    if current_version < 3 {
+        migrate_v2_to_v3(pool).await?;
+        set_user_version(pool, 3).await?;
+        tracing::info!("Migration to v3 completed");
+    }
+
     Ok(())
 }
 
@@ -83,5 +89,28 @@ async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
 /// Migration v1 -> v2: Add conversation_settings table
 async fn migrate_v1_to_v2(pool: &SqlitePool) -> Result<()> {
     conversation_settings::create_conversation_settings_table(pool).await?;
+    Ok(())
+}
+
+/// Migration v2 -> v3: Add enabled_mcp_server_ids column to conversation_settings
+async fn migrate_v2_to_v3(pool: &SqlitePool) -> Result<()> {
+    // Add enabled_mcp_server_ids column if it doesn't exist
+    // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check manually
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('conversation_settings')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns
+        .iter()
+        .any(|(name,)| name == "enabled_mcp_server_ids");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE conversation_settings ADD COLUMN enabled_mcp_server_ids TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added enabled_mcp_server_ids column to conversation_settings table");
+    }
+
     Ok(())
 }

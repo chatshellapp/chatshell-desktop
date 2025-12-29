@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   MessageSquare,
   Sparkles,
+  Plug,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -58,6 +59,9 @@ interface InputToolbarProps {
   onSystemPromptClick: () => void
   systemPromptLabel: string
   systemPromptDisabled?: boolean
+  // MCP Servers
+  onMcpServersClick: () => void
+  mcpServersLabel: string
 }
 
 export function InputToolbar({
@@ -86,6 +90,8 @@ export function InputToolbar({
   onSystemPromptClick,
   systemPromptLabel,
   systemPromptDisabled = false,
+  onMcpServersClick,
+  mcpServersLabel,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -180,14 +186,17 @@ export function InputToolbar({
             </div>
             <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
-          {/* <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onMcpServersClick} className="gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <Plug className="size-4" />
+              <span>MCP Servers</span>
+            </div>
+            <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
+          </DropdownMenuItem>
+          {/* <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
             <BookOpen className="size-4" />
             <span>Knowledge</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onToolSelect} className="gap-2">
-            <Plug className="size-4" />
-            <span>Tools</span>
           </DropdownMenuItem> */}
         </DropdownMenuContent>
       </DropdownMenu>

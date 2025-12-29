@@ -14,7 +14,8 @@ impl Database {
             "SELECT conversation_id, use_provider_defaults, use_custom_parameters,
              parameter_overrides, context_message_count, selected_preset_id,
              system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
-             user_prompt_mode, selected_user_prompt_id, custom_user_prompt
+             user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
+             enabled_mcp_server_ids
              FROM conversation_settings WHERE conversation_id = ?",
         )
         .bind(conversation_id)
@@ -73,9 +74,14 @@ impl Database {
         let custom_user_prompt = req
             .custom_user_prompt
             .unwrap_or(existing.custom_user_prompt);
+        let enabled_mcp_server_ids = req
+            .enabled_mcp_server_ids
+            .unwrap_or(existing.enabled_mcp_server_ids);
 
         // Serialize parameter overrides to JSON
         let parameter_overrides_json = serde_json::to_string(&parameter_overrides)?;
+        // Serialize enabled MCP server IDs to JSON
+        let enabled_mcp_server_ids_json = serde_json::to_string(&enabled_mcp_server_ids)?;
 
         // Upsert
         sqlx::query(
@@ -83,8 +89,9 @@ impl Database {
                 conversation_id, use_provider_defaults, use_custom_parameters,
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
-                user_prompt_mode, selected_user_prompt_id, custom_user_prompt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
+                enabled_mcp_server_ids
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
@@ -96,7 +103,8 @@ impl Database {
                 custom_system_prompt = excluded.custom_system_prompt,
                 user_prompt_mode = excluded.user_prompt_mode,
                 selected_user_prompt_id = excluded.selected_user_prompt_id,
-                custom_user_prompt = excluded.custom_user_prompt",
+                custom_user_prompt = excluded.custom_user_prompt,
+                enabled_mcp_server_ids = excluded.enabled_mcp_server_ids",
         )
         .bind(conversation_id)
         .bind(use_provider_defaults as i32)
@@ -110,6 +118,7 @@ impl Database {
         .bind(String::from(user_prompt_mode.clone()))
         .bind(&selected_user_prompt_id)
         .bind(&custom_user_prompt)
+        .bind(&enabled_mcp_server_ids_json)
         .execute(self.pool.as_ref())
         .await?;
 
@@ -131,8 +140,13 @@ impl Database {
         let parameter_overrides_json: Option<String> = row.get("parameter_overrides");
         let system_prompt_mode_str: String = row.get("system_prompt_mode");
         let user_prompt_mode_str: String = row.get("user_prompt_mode");
+        let enabled_mcp_server_ids_json: Option<String> = row.get("enabled_mcp_server_ids");
 
         let parameter_overrides = parameter_overrides_json
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
+
+        let enabled_mcp_server_ids = enabled_mcp_server_ids_json
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default();
 
@@ -149,6 +163,7 @@ impl Database {
             user_prompt_mode: PromptMode::from(user_prompt_mode_str.as_str()),
             selected_user_prompt_id: row.get("selected_user_prompt_id"),
             custom_user_prompt: row.get("custom_user_prompt"),
+            enabled_mcp_server_ids,
         }
     }
 }

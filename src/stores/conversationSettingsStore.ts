@@ -82,6 +82,9 @@ interface ConversationSettingsActions {
 
   // Remove settings from cache when conversation is deleted
   removeSettings: (conversationId: string) => void
+
+  // MCP server settings
+  setEnabledMcpServerIds: (conversationId: string, serverIds: string[]) => Promise<void>
 }
 
 type ConversationSettingsStore = ConversationSettingsState & ConversationSettingsActions
@@ -411,6 +414,19 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         delete draft.settings[conversationId]
         delete draft.loading[conversationId]
       })
+    },
+
+    setEnabledMcpServerIds: async (conversationId: string, serverIds: string[]) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          enabledMcpServerIds: serverIds,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error('[conversationSettingsStore] Failed to update enabledMcpServerIds:', error)
+      }
     },
   }))
 )

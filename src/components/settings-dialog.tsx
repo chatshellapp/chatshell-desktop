@@ -13,13 +13,17 @@ import {
   // Home,
   // Keyboard,
   // Link,
+  Loader2,
   // Lock,
   // Menu,
   // MessageCircle,
   // Paintbrush,
+  Plug,
+  Plus,
   Search,
   Settings,
   // Settings,
+  Trash2,
   // Video,
 } from 'lucide-react'
 
@@ -51,15 +55,18 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar'
+import { useMcpStore } from '@/stores/mcpStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod, LogLevel } from '@/types'
+import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod, LogLevel, Tool } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
+import { Switch } from '@/components/ui/switch'
 
 const data = {
   nav: [
     { name: 'LLM Provider', icon: Bot },
+    { name: 'MCP Servers', icon: Plug },
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
@@ -98,6 +105,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [logLevelRust, setLogLevelRustState] = React.useState<LogLevel>('info')
   const [logLevelTypeScript, setLogLevelTypeScriptState] = React.useState<LogLevel>('info')
 
+  // MCP state
+  const [newMcpName, setNewMcpName] = React.useState('')
+  const [newMcpEndpoint, setNewMcpEndpoint] = React.useState('')
+  const [newMcpDescription, setNewMcpDescription] = React.useState('')
+  const [editingMcpId, setEditingMcpId] = React.useState<string | null>(null)
+  const [editMcpName, setEditMcpName] = React.useState('')
+  const [editMcpEndpoint, setEditMcpEndpoint] = React.useState('')
+  const [editMcpDescription, setEditMcpDescription] = React.useState('')
+  const [testingMcpEndpoint, setTestingMcpEndpoint] = React.useState<string | null>(null)
+
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
   const searchProviders = useSettingsStore((state) => state.searchProviders)
@@ -121,11 +138,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const getLogLevelTypeScript = useSettingsStore((state) => state.getLogLevelTypeScript)
   const saveLogLevelTypeScript = useSettingsStore((state) => state.setLogLevelTypeScript)
 
+  // MCP store methods
+  const mcpServers = useMcpStore((state) => state.servers)
+  const mcpLoading = useMcpStore((state) => state.isLoading)
+  const loadMcpServers = useMcpStore((state) => state.loadServers)
+  const createMcpServer = useMcpStore((state) => state.createServer)
+  const updateMcpServer = useMcpStore((state) => state.updateServer)
+  const deleteMcpServer = useMcpStore((state) => state.deleteServer)
+  const toggleMcpServer = useMcpStore((state) => state.toggleServer)
+  const testMcpConnection = useMcpStore((state) => state.testConnection)
+
   // Load models and settings when dialog opens
   React.useEffect(() => {
     if (open) {
       loadModels()
       loadSearchProviders()
+      loadMcpServers()
       const loadSettings = async () => {
         const summaryModelValue = await getSetting('conversation_summary_model_id')
         if (summaryModelValue) setSummaryModelId(summaryModelValue)
@@ -158,6 +186,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     open,
     loadModels,
     loadSearchProviders,
+    loadMcpServers,
     getSetting,
     getWebFetchMode,
     getWebFetchLocalMethod,
@@ -230,12 +259,249 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
+  // MCP handlers
+  const handleCreateMcpServer = async () => {
+    if (!newMcpName.trim() || !newMcpEndpoint.trim()) return
+    try {
+      await createMcpServer(
+        newMcpName.trim(),
+        newMcpEndpoint.trim(),
+        newMcpDescription.trim() || undefined
+      )
+      setNewMcpName('')
+      setNewMcpEndpoint('')
+      setNewMcpDescription('')
+    } catch (error) {
+      logger.error('Failed to create MCP server:', error)
+    }
+  }
+
+  const handleUpdateMcpServer = async (id: string) => {
+    if (!editMcpName.trim() || !editMcpEndpoint.trim()) return
+    try {
+      await updateMcpServer(
+        id,
+        editMcpName.trim(),
+        editMcpEndpoint.trim(),
+        editMcpDescription.trim() || undefined
+      )
+      setEditingMcpId(null)
+    } catch (error) {
+      logger.error('Failed to update MCP server:', error)
+    }
+  }
+
+  const handleDeleteMcpServer = async (id: string) => {
+    try {
+      await deleteMcpServer(id)
+    } catch (error) {
+      logger.error('Failed to delete MCP server:', error)
+    }
+  }
+
+  const handleToggleMcpServer = async (id: string) => {
+    try {
+      await toggleMcpServer(id)
+    } catch (error) {
+      logger.error('Failed to toggle MCP server:', error)
+    }
+  }
+
+  const handleTestMcpConnection = async (endpoint: string) => {
+    setTestingMcpEndpoint(endpoint)
+    try {
+      await testMcpConnection(endpoint)
+      logger.info('MCP connection test successful')
+    } catch (error) {
+      logger.error('MCP connection test failed:', error)
+    } finally {
+      setTestingMcpEndpoint(null)
+    }
+  }
+
+  const startEditingMcp = (server: Tool) => {
+    setEditingMcpId(server.id)
+    setEditMcpName(server.name)
+    setEditMcpEndpoint(server.endpoint || '')
+    setEditMcpDescription(server.description || '')
+  }
+
+  const cancelEditingMcp = () => {
+    setEditingMcpId(null)
+    setEditMcpName('')
+    setEditMcpEndpoint('')
+    setEditMcpDescription('')
+  }
+
   const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
   const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
   const renderContent = () => {
     if (activeSection === 'LLM Provider') {
       return <LLMProviderSettings open={open} />
+    }
+
+    if (activeSection === 'MCP Servers') {
+      return (
+        <div className="grid gap-6">
+          <div className="grid gap-2">
+            <p className="text-sm text-muted-foreground max-w-md">
+              Configure MCP (Model Context Protocol) servers to extend your AI assistant with
+              external tools and capabilities.
+            </p>
+          </div>
+
+          {/* Add new MCP server */}
+          <div className="grid gap-3 rounded-lg border p-4 max-w-lg">
+            <h4 className="text-sm font-medium">Add New MCP Server</h4>
+            <div className="grid gap-2">
+              <Label htmlFor="mcp-name">Name</Label>
+              <Input
+                id="mcp-name"
+                placeholder="My MCP Server"
+                value={newMcpName}
+                onChange={(e) => setNewMcpName(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
+              <Input
+                id="mcp-endpoint"
+                placeholder="http://localhost:8080/mcp"
+                value={newMcpEndpoint}
+                onChange={(e) => setNewMcpEndpoint(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mcp-description">Description (optional)</Label>
+              <Input
+                id="mcp-description"
+                placeholder="A brief description of this MCP server"
+                value={newMcpDescription}
+                onChange={(e) => setNewMcpDescription(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCreateMcpServer}
+                disabled={!newMcpName.trim() || !newMcpEndpoint.trim() || mcpLoading}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Server
+              </Button>
+              {newMcpEndpoint.trim() && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleTestMcpConnection(newMcpEndpoint)}
+                  disabled={testingMcpEndpoint === newMcpEndpoint}
+                >
+                  {testingMcpEndpoint === newMcpEndpoint ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plug className="mr-2 h-4 w-4" />
+                  )}
+                  Test
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* List of existing MCP servers */}
+          {mcpServers.length > 0 && (
+            <div className="grid gap-3">
+              <h4 className="text-sm font-medium">Configured Servers</h4>
+              {mcpServers.map((server) => (
+                <div key={server.id} className="rounded-lg border p-4 max-w-lg">
+                  {editingMcpId === server.id ? (
+                    <div className="grid gap-3">
+                      <div className="grid gap-2">
+                        <Label>Name</Label>
+                        <Input
+                          value={editMcpName}
+                          onChange={(e) => setEditMcpName(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Endpoint URL</Label>
+                        <Input
+                          value={editMcpEndpoint}
+                          onChange={(e) => setEditMcpEndpoint(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Description</Label>
+                        <Input
+                          value={editMcpDescription}
+                          onChange={(e) => setEditMcpDescription(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleUpdateMcpServer(server.id)}
+                          disabled={!editMcpName.trim() || !editMcpEndpoint.trim()}
+                        >
+                          Save
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={cancelEditingMcp}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="grid gap-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate">{server.name}</span>
+                          {server.is_enabled ? (
+                            <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                              Enabled
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {server.endpoint}
+                        </span>
+                        {server.description && (
+                          <span className="text-xs text-muted-foreground">
+                            {server.description}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Switch
+                          checked={server.is_enabled}
+                          onCheckedChange={() => handleToggleMcpServer(server.id)}
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => startEditingMcp(server)}>
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteMcpServer(server.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {mcpServers.length === 0 && !mcpLoading && (
+            <div className="text-sm text-muted-foreground">
+              No MCP servers configured yet. Add one above to get started.
+            </div>
+          )}
+        </div>
+      )
     }
 
     if (activeSection === 'Conversation Title') {

@@ -145,4 +145,48 @@ export const createStreamingActions = (
       }
     })
   },
+
+  // Tool call streaming actions (MCP)
+  addStreamingToolCall: (
+    conversationId: string,
+    toolCallId: string,
+    toolName: string,
+    toolInput: string
+  ) => {
+    get().getConversationState(conversationId) // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.streamingToolCalls[toolCallId] = {
+          id: toolCallId,
+          tool_name: toolName,
+          tool_input: toolInput,
+          status: 'running',
+        }
+        // When a tool call starts, we're no longer waiting for AI
+        convState.isWaitingForAI = false
+      }
+    })
+  },
+
+  updateStreamingToolCall: (conversationId: string, toolCallId: string, toolOutput: string) => {
+    get().getConversationState(conversationId) // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState && convState.streamingToolCalls[toolCallId]) {
+        convState.streamingToolCalls[toolCallId].tool_output = toolOutput
+        convState.streamingToolCalls[toolCallId].status = 'success'
+      }
+    })
+  },
+
+  clearStreamingToolCalls: (conversationId: string) => {
+    get().getConversationState(conversationId) // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.streamingToolCalls = {}
+      }
+    })
+  },
 })

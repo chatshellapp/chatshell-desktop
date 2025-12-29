@@ -5,6 +5,7 @@ mod contexts;
 mod conversation_settings;
 mod conversations;
 mod crypto;
+pub mod mcp;
 mod messages;
 mod model_fetch;
 mod model_parameter_presets;
@@ -17,6 +18,7 @@ mod steps;
 mod users;
 
 use crate::db::Database;
+use crate::mcp::McpConnectionManager;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -32,6 +34,7 @@ pub(crate) type GenerationTasks = Arc<RwLock<HashMap<String, CancellationToken>>
 pub struct AppState {
     pub db: Database,
     pub generation_tasks: GenerationTasks,
+    pub mcp_manager: Arc<McpConnectionManager>,
 }
 
 // Re-export all commands
@@ -42,6 +45,7 @@ pub use contexts::*;
 pub use conversation_settings::*;
 pub use conversations::*;
 pub use crypto::*;
+pub use mcp::*;
 pub use messages::*;
 pub use model_fetch::*;
 pub use model_parameter_presets::*;

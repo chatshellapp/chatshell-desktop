@@ -25,11 +25,33 @@ pub fn create_http_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+/// Tool call information for streaming callback
+#[derive(Debug, Clone)]
+pub struct ToolCallInfo {
+    /// Tool call ID (from the LLM)
+    pub id: String,
+    /// Name of the tool being called
+    pub tool_name: String,
+    /// Input arguments as JSON string
+    pub tool_input: String,
+}
+
+/// Tool result information for streaming callback
+#[derive(Debug, Clone)]
+pub struct ToolResultInfo {
+    /// Tool call ID this result is for
+    pub id: String,
+    /// Output content from the tool
+    pub tool_output: String,
+}
+
 /// Type of streamed chunk for callback
 #[derive(Debug, Clone)]
 pub enum StreamChunkType {
     Text,
     Reasoning,
+    ToolCall(ToolCallInfo),
+    ToolResult(ToolResultInfo),
 }
 
 /// Convert MIME type string to rig's ImageMediaType

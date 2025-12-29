@@ -14,6 +14,7 @@ mod search_results;
 mod seed;
 mod settings;
 mod steps;
+mod tools;
 mod users;
 
 use anyhow::Result;

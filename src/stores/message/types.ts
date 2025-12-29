@@ -1,6 +1,16 @@
 import type { Message, Conversation } from '@/types'
 import type { Draft } from 'immer'
 
+// Streaming tool call (before saved to DB)
+export interface StreamingToolCall {
+  id: string
+  tool_name: string
+  tool_input: string
+  tool_output?: string
+  status: 'pending' | 'running' | 'success' | 'error'
+  error?: string
+}
+
 // Per-conversation state
 export interface ConversationState {
   messages: Message[]
@@ -21,6 +31,8 @@ export interface ConversationState {
   pendingSearchDecisions: Record<string, boolean>
   // API error state - shown when LLM request fails
   apiError: string | null
+  // Track streaming tool calls (MCP): { toolCallId: StreamingToolCall }
+  streamingToolCalls: Record<string, StreamingToolCall>
 }
 
 // Default state for a new conversation
@@ -37,6 +49,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   urlStatuses: {},
   pendingSearchDecisions: {},
   apiError: null,
+  streamingToolCalls: {},
 })
 
 // Message store state (without actions)
@@ -66,6 +79,15 @@ export interface MessageStoreStreamingActions {
   appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
   setIsReasoningActive: (conversationId: string, isActive: boolean) => void
+  // Tool call streaming actions (MCP)
+  addStreamingToolCall: (
+    conversationId: string,
+    toolCallId: string,
+    toolName: string,
+    toolInput: string
+  ) => void
+  updateStreamingToolCall: (conversationId: string, toolCallId: string, toolOutput: string) => void
+  clearStreamingToolCalls: (conversationId: string) => void
 }
 
 // Parameter overrides for conversation-level settings

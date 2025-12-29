@@ -10,6 +10,9 @@ use rig::client::{CompletionClient, Nothing};
 use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
 use rig::providers::{ollama, openai, openrouter};
+use rmcp::RoleClient;
+use rmcp::model::Tool as McpTool;
+use rmcp::service::Peer;
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::ChatResponse;
@@ -21,9 +24,18 @@ use crate::llm::{
 };
 use crate::models::ModelParameters;
 
+/// MCP tools configuration for agent
+#[derive(Clone)]
+pub struct McpToolsConfig {
+    /// MCP tools from connected servers
+    pub tools: Vec<McpTool>,
+    /// Client peer for calling tools
+    pub client: Peer<RoleClient>,
+}
+
 /// Configuration for building an agent.
 /// Combines system prompt with model parameters and tool registry.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct AgentConfig {
     /// System prompt (preamble) for the agent
     pub system_prompt: Option<String>,
@@ -33,6 +45,8 @@ pub struct AgentConfig {
     pub tool_registry: Option<ToolRegistry>,
     /// Optional list of specific tool names to enable (if None, all tools are enabled)
     pub enabled_tools: Option<Vec<String>>,
+    /// Optional MCP tools configuration
+    pub mcp_tools: Option<McpToolsConfig>,
 }
 
 impl AgentConfig {
@@ -77,6 +91,11 @@ impl AgentConfig {
 
     pub fn with_default_tools(mut self) -> Self {
         self.tool_registry = Some(ToolRegistry::with_defaults());
+        self
+    }
+
+    pub fn with_mcp_tools(mut self, tools: Vec<McpTool>, client: Peer<RoleClient>) -> Self {
+        self.mcp_tools = Some(McpToolsConfig { tools, client });
         self
     }
 }
@@ -209,6 +228,18 @@ fn build_agent<M: CompletionModel>(
             tracing::info!("🔧 Tool registry prepared with {} tool(s)", tools.len());
             // TODO: Apply tools when rig library supports it
             // builder = builder.tools(tools);
+        }
+    }
+
+    // Apply MCP tools if configured
+    // Note: rmcp_tools returns a different builder type (AgentBuilderSimple),
+    // so we need to build immediately after adding MCP tools
+    if let Some(ref mcp_config) = config.mcp_tools {
+        if !mcp_config.tools.is_empty() {
+            tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
+            return builder
+                .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
+                .build();
         }
     }
 

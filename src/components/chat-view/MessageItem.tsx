@@ -88,10 +88,12 @@ export function MessageItem({
     }
   }
 
-  // Get thinking steps from the assistant message itself
+  // Get thinking steps and tool calls from the assistant message itself
   const thinkingSteps = resources.steps.filter((s) => s.type === 'thinking')
+  const toolCallSteps = resources.steps.filter((s) => s.type === 'tool_call')
   const hasThinkingContent = isAssistantMessage && thinkingSteps.length > 0
-  const hasAssistantResources = contextsToShow.length > 0 || stepsToShow.length > 0
+  const hasToolCalls = isAssistantMessage && toolCallSteps.length > 0
+  const hasAssistantResources = contextsToShow.length > 0 || stepsToShow.length > 0 || hasToolCalls
 
   // Build headerContent for assistant messages (steps, contexts, thinking shown between header and content)
   const headerContent =
@@ -114,9 +116,13 @@ export function MessageItem({
             messageId={prevUserMessageId ?? undefined}
           />
         ))}
-        {/* Finally thinking content */}
+        {/* Thinking content */}
         {thinkingSteps.map((step) => (
           <ThinkingPreview key={step.id} content={step.content} />
+        ))}
+        {/* Tool calls (MCP) - shown below thinking */}
+        {toolCallSteps.map((step) => (
+          <AttachmentPreview key={step.id} step={step} />
         ))}
       </div>
     ) : undefined

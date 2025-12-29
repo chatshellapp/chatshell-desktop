@@ -17,3 +17,19 @@ export interface SearchDecisionStartedEvent {
   message_id: string
   conversation_id: string
 }
+
+// Tool call events for MCP
+export interface ToolCallStartedEvent {
+  conversation_id: string
+  tool_call_id: string
+  tool_name: string
+  tool_input: string
+}
+
+export interface ToolCallCompletedEvent {
+  conversation_id: string
+  tool_call_id: string
+  tool_name: string
+  tool_input: string
+  tool_output: string
+}

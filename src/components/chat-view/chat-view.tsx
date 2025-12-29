@@ -29,6 +29,7 @@ export function ChatView() {
     attachmentRefreshKey,
     urlStatuses,
     pendingSearchDecisions,
+    streamingToolCalls,
     handleClearApiError,
   } = useConversationState()
 
@@ -81,9 +82,12 @@ export function ChatView() {
   })
 
   // Check if streaming message should be shown
+  const hasStreamingToolCalls = Object.keys(streamingToolCalls).length > 0
   const showStreamingMessage =
     isWaitingForAI ||
-    (isStreaming && (streamingContent || streamingReasoningContent) && !isWaitingForAI)
+    (isStreaming &&
+      (streamingContent || streamingReasoningContent || hasStreamingToolCalls) &&
+      !isWaitingForAI)
 
   return (
     <div ref={rootRef} className="flex flex-col flex-1 overflow-hidden">
@@ -122,6 +126,7 @@ export function ChatView() {
                 messageResources={messageResources}
                 urlStatuses={urlStatuses}
                 pendingSearchDecisions={pendingSearchDecisions}
+                streamingToolCalls={streamingToolCalls}
                 isWaitingForAI={isWaitingForAI}
                 isStreaming={isStreaming}
                 streamingContent={streamingContent}

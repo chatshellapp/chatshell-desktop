@@ -1,5 +1,9 @@
 import { ChatMessage } from '@/components/chat-message'
 import { AttachmentPreview, ThinkingPreview } from '@/components/attachment-preview'
+import {
+  ToolCallPreview,
+  type StreamingToolCall,
+} from '@/components/attachment-preview/tool-call-preview'
 import { parseThinkingContent } from '@/lib/utils'
 import type { Message, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
@@ -11,6 +15,7 @@ interface StreamingMessageProps {
   messageResources: Record<string, MessageResources>
   urlStatuses: Record<string, Record<string, UrlStatus>>
   pendingSearchDecisions: Record<string, boolean>
+  streamingToolCalls: Record<string, StreamingToolCall>
   isWaitingForAI: boolean
   isStreaming: boolean
   streamingContent: string
@@ -30,6 +35,7 @@ export function StreamingMessage({
   messageResources,
   urlStatuses,
   pendingSearchDecisions,
+  streamingToolCalls,
   isWaitingForAI,
   isStreaming,
   streamingContent,
@@ -78,6 +84,7 @@ export function StreamingMessage({
   const hasPendingDecision = lastUserMessage ? pendingSearchDecisions[lastUserMessage.id] : false
   const hasAssistantResources = searchResultContexts.length > 0 || searchDecisionSteps.length > 0
   const hasStreamingThinking = combinedThinkingContent !== null
+  const hasStreamingToolCalls = Object.keys(streamingToolCalls).length > 0
 
   // Show thinking when reasoning has actually started (received first reasoning chunk)
   // This provides visual feedback that reasoning models (GPT-5, o1, etc.) are actively thinking
@@ -95,7 +102,8 @@ export function StreamingMessage({
     hasAssistantResources ||
     hasPendingDecision ||
     hasStreamingThinking ||
-    showThinkingPlaceholder
+    showThinkingPlaceholder ||
+    hasStreamingToolCalls
   ) {
     streamingHeaderContent = (
       <div className="space-y-1.5 mb-2">
@@ -124,6 +132,14 @@ export function StreamingMessage({
             isStreaming={showThinkingPlaceholder || isThinkingInProgress}
           />
         )}
+        {/* Show streaming tool calls (MCP) - below thinking */}
+        {Object.values(streamingToolCalls).map((toolCall) => (
+          <ToolCallPreview
+            key={toolCall.id}
+            streamingToolCall={toolCall}
+            isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+          />
+        ))}
       </div>
     )
   }

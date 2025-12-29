@@ -6,8 +6,13 @@ use crate::llm::agent_builder::{
     stream_chat_with_agent,
 };
 use crate::llm::{ChatMessage, StreamChunkType};
-use crate::models::{CreateMessageRequest, CreateThinkingStepRequest, ModelParameters};
+use crate::models::{
+    CreateMessageRequest, CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
+};
 use rig::completion::Message as RigMessage;
+use rmcp::RoleClient;
+use rmcp::model::Tool as McpTool;
+use rmcp::service::Peer;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::RwLock;
@@ -42,6 +47,20 @@ pub(crate) async fn handle_agent_streaming(
     let mut config = AgentConfig::new().with_model_params(model_params);
     if let Some(prompt) = system_prompt.clone() {
         config = config.with_system_prompt(prompt);
+    }
+
+    // Load MCP tools for this conversation
+    let mcp_tools_config =
+        load_mcp_tools_for_conversation(&state_clone, &conversation_id_clone).await;
+
+    if let Some((tools, client)) = mcp_tools_config {
+        if !tools.is_empty() {
+            tracing::info!(
+                "🔌 [agent_streaming] Loaded {} MCP tools for conversation",
+                tools.len()
+            );
+            config = config.with_mcp_tools(tools, client);
+        }
     }
 
     // Create the agent
@@ -102,9 +121,14 @@ pub(crate) async fn handle_agent_streaming(
     let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
     let reasoning_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+    // Track tool calls: HashMap<tool_call_id, (tool_name, tool_input, tool_output)>
+    let tool_calls_map: Arc<RwLock<std::collections::HashMap<String, (String, String, Option<String>)>>> =
+        Arc::new(RwLock::new(std::collections::HashMap::new()));
+
     let accumulated_content_for_callback = accumulated_content.clone();
     let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
     let reasoning_started_for_callback = reasoning_started.clone();
+    let tool_calls_for_callback = tool_calls_map.clone();
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
@@ -156,6 +180,42 @@ pub(crate) async fn handle_agent_streaming(
                         "content": chunk,
                     });
                     let _ = app_for_stream.emit("chat-stream-reasoning", payload);
+                }
+                StreamChunkType::ToolCall(tool_info) => {
+                    // Store tool call in tracking map
+                    if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
+                        tool_calls.insert(
+                            tool_info.id.clone(),
+                            (tool_info.tool_name.clone(), tool_info.tool_input.clone(), None),
+                        );
+                    }
+
+                    // Emit tool call event to frontend
+                    let payload = serde_json::json!({
+                        "conversation_id": conversation_id_for_stream,
+                        "tool_call_id": tool_info.id,
+                        "tool_name": tool_info.tool_name,
+                        "tool_input": tool_info.tool_input,
+                    });
+                    let _ = app_for_stream.emit("tool-call-started", payload);
+                }
+                StreamChunkType::ToolResult(result_info) => {
+                    // Update tool call with result
+                    if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
+                        if let Some((name, input, output)) = tool_calls.get_mut(&result_info.id) {
+                            *output = Some(result_info.tool_output.clone());
+
+                            // Emit tool result event to frontend
+                            let payload = serde_json::json!({
+                                "conversation_id": conversation_id_for_stream,
+                                "tool_call_id": result_info.id,
+                                "tool_name": name.clone(),
+                                "tool_input": input.clone(),
+                                "tool_output": result_info.tool_output,
+                            });
+                            let _ = app_for_stream.emit("tool-call-completed", payload);
+                        }
+                    }
                 }
             }
 
@@ -336,6 +396,61 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
+    // Save tool calls to database
+    let tool_calls_data = tool_calls_map.read().await;
+    if !tool_calls_data.is_empty() {
+        tracing::info!(
+            "💾 [agent_streaming] Saving {} tool call(s) to database",
+            tool_calls_data.len()
+        );
+
+        for (index, (tool_call_id, (tool_name, tool_input, tool_output))) in
+            tool_calls_data.iter().enumerate()
+        {
+            let status = if tool_output.is_some() {
+                "success"
+            } else {
+                "pending"
+            };
+
+            match state_clone
+                .db
+                .create_tool_call(CreateToolCallRequest {
+                    message_id: assistant_message.id.clone(),
+                    tool_name: tool_name.clone(),
+                    tool_input: Some(tool_input.clone()),
+                    tool_output: tool_output.clone(),
+                    status: Some(status.to_string()),
+                    error: None,
+                    duration_ms: None,
+                    display_order: Some(index as i32),
+                    completed_at: if tool_output.is_some() {
+                        Some(chrono::Utc::now().to_rfc3339())
+                    } else {
+                        None
+                    },
+                })
+                .await
+            {
+                Ok(tc) => {
+                    tracing::info!(
+                        "✅ [agent_streaming] Tool call saved: {} ({})",
+                        tc.tool_name,
+                        tc.id
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "❌ [agent_streaming] Failed to save tool call {}: {}",
+                        tool_call_id,
+                        e
+                    );
+                }
+            }
+        }
+    }
+    drop(tool_calls_data);
+
     tracing::info!(
         "✅ [agent_streaming] Assistant message saved with id: {}",
         assistant_message.id
@@ -379,4 +494,80 @@ pub(crate) async fn handle_agent_streaming(
         )
         .await;
     });
+}
+
+/// Load MCP tools for a conversation
+/// Returns (tools, client) if MCP servers are configured, None otherwise
+async fn load_mcp_tools_for_conversation(
+    state: &AppState,
+    conversation_id: &str,
+) -> Option<(Vec<McpTool>, Peer<RoleClient>)> {
+    // Get conversation settings to find enabled MCP servers
+    let settings = match state.db.get_conversation_settings(conversation_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("⚠️ [mcp] Failed to get conversation settings: {}", e);
+            return None;
+        }
+    };
+
+    if settings.enabled_mcp_server_ids.is_empty() {
+        return None;
+    }
+
+    tracing::info!(
+        "🔌 [mcp] Loading {} MCP server(s) for conversation",
+        settings.enabled_mcp_server_ids.len()
+    );
+
+    // Get the tool configurations from DB
+    let tools = match state
+        .db
+        .get_tools_by_ids(&settings.enabled_mcp_server_ids)
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!("⚠️ [mcp] Failed to get MCP server configs: {}", e);
+            return None;
+        }
+    };
+
+    // Filter to only enabled MCP tools
+    let enabled_tools: Vec<_> = tools
+        .into_iter()
+        .filter(|t| t.r#type == "mcp" && t.is_enabled)
+        .collect();
+
+    if enabled_tools.is_empty() {
+        return None;
+    }
+
+    // Connect to all enabled MCP servers and collect tools
+    let connections = match state.mcp_manager.connect_multiple(&enabled_tools).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("⚠️ [mcp] Failed to connect to MCP servers: {}", e);
+            return None;
+        }
+    };
+
+    if connections.is_empty() {
+        return None;
+    }
+
+    // Collect all tools from all servers
+    // Note: For simplicity, we use the first server's client for all tools
+    // In a more complex setup, we'd need to track which client handles which tools
+    let mut all_tools = Vec::new();
+    let mut first_client: Option<Peer<RoleClient>> = None;
+
+    for (conn, tools) in connections {
+        if first_client.is_none() {
+            first_client = Some(conn.client.clone());
+        }
+        all_tools.extend(tools);
+    }
+
+    first_client.map(|client| (all_tools, client))
 }
