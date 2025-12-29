@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { useMcpStore } from '@/stores/mcpStore'
 
@@ -66,16 +66,11 @@ export function McpServersDialog({
             </p>
           ) : (
             enabledMcpServers.map((server) => (
-              <div key={server.id} className="flex items-start space-x-3">
-                <Checkbox
-                  id={server.id}
-                  checked={enabledServerIds.includes(server.id)}
-                  onCheckedChange={(checked) => handleToggleServer(server.id, checked === true)}
-                />
-                <div className="grid gap-1.5 leading-none">
+              <div key={server.id} className="flex items-center justify-between py-2">
+                <div className="grid gap-1.5">
                   <Label
                     htmlFor={server.id}
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    className="text-sm font-medium leading-none"
                   >
                     {server.name}
                   </Label>
@@ -86,6 +81,11 @@ export function McpServersDialog({
                     {server.endpoint}
                   </p>
                 </div>
+                <Switch
+                  id={server.id}
+                  checked={enabledServerIds.includes(server.id)}
+                  onCheckedChange={(checked) => handleToggleServer(server.id, checked === true)}
+                />
               </div>
             ))
           )}
