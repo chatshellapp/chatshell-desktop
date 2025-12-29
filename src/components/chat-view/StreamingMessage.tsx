@@ -4,6 +4,7 @@ import {
   ToolCallPreview,
   type StreamingToolCall,
 } from '@/components/attachment-preview/tool-call-preview'
+import { MarkdownContent } from '@/components/markdown-content'
 import { parseThinkingContent } from '@/lib/utils'
 import type { Message, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
@@ -98,6 +99,18 @@ export function StreamingMessage({
   const searchDecisionResolved = !hasPendingDecision || searchDecisionSteps.length > 0
   const showThinkingPlaceholder = isReasoningActive && searchDecisionResolved
 
+  // Sort tool calls by order for proper display
+  const sortedToolCalls = Object.values(streamingToolCalls).sort((a, b) => a.order - b.order)
+
+  // Check if we have interleaved content (tool calls with content or reasoning before them)
+  const hasInterleavedContent =
+    hasStreamingToolCalls &&
+    sortedToolCalls.some(
+      (tc) =>
+        (tc.contentBefore && tc.contentBefore.length > 0) ||
+        (tc.reasoningBefore && tc.reasoningBefore.length > 0)
+    )
+
   if (
     hasAssistantResources ||
     hasPendingDecision ||
@@ -105,43 +118,161 @@ export function StreamingMessage({
     showThinkingPlaceholder ||
     hasStreamingToolCalls
   ) {
-    streamingHeaderContent = (
-      <div className="space-y-1.5 mb-2">
-        {/* Show pending search decision preview */}
-        {hasPendingDecision && searchDecisionSteps.length === 0 && (
-          <AttachmentPreview pendingSearchDecision={true} />
-        )}
-        {/* Show search decisions */}
-        {searchDecisionSteps.map((step) => (
-          <AttachmentPreview key={step.id} step={step} />
-        ))}
-        {/* Show search results (fetch results from search are shown inside) */}
-        {searchResultContexts.map((context) => (
-          <AttachmentPreview
-            key={context.id}
-            context={context}
-            urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
-            messageId={lastUserMessage?.id}
-          />
-        ))}
-        {/* Show thinking placeholder while waiting, or actual content when available */}
-        {/* Only show when search decision is resolved */}
-        {searchDecisionResolved && (showThinkingPlaceholder || combinedThinkingContent) && (
-          <ThinkingPreview
-            content={combinedThinkingContent || ''}
-            isStreaming={showThinkingPlaceholder || isThinkingInProgress}
-          />
-        )}
-        {/* Show streaming tool calls (MCP) - below thinking */}
-        {Object.values(streamingToolCalls).map((toolCall) => (
-          <ToolCallPreview
-            key={toolCall.id}
-            streamingToolCall={toolCall}
-            isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
-          />
-        ))}
-      </div>
-    )
+    // If we have interleaved content, render it properly ordered
+    if (hasInterleavedContent) {
+      streamingHeaderContent = (
+        <div className="space-y-2 mb-2">
+          {/* Show pending search decision preview */}
+          {hasPendingDecision && searchDecisionSteps.length === 0 && (
+            <AttachmentPreview pendingSearchDecision={true} />
+          )}
+          {/* Show search decisions */}
+          {searchDecisionSteps.map((step) => (
+            <AttachmentPreview key={step.id} step={step} />
+          ))}
+          {/* Show search results (fetch results from search are shown inside) */}
+          {searchResultContexts.map((context) => (
+            <AttachmentPreview
+              key={context.id}
+              context={context}
+              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
+              messageId={lastUserMessage?.id}
+            />
+          ))}
+          {/* Interleaved tool calls with reasoning and content between them */}
+          {sortedToolCalls.map((toolCall, index) => {
+            // Calculate reasoning segment to show before this tool call
+            let reasoningSegment = ''
+            if (index === 0) {
+              // First tool call - show all reasoning that came before it
+              reasoningSegment = toolCall.reasoningBefore || ''
+            } else {
+              // Calculate reasoning between previous tool call and this one
+              const prevToolCall = sortedToolCalls[index - 1]
+              const prevReasoningLength = prevToolCall.reasoningBefore?.length || 0
+              const currentReasoningLength = toolCall.reasoningBefore?.length || 0
+              if (currentReasoningLength > prevReasoningLength) {
+                reasoningSegment = (toolCall.reasoningBefore || '').slice(prevReasoningLength)
+              }
+            }
+
+            // Calculate content segment to show before this tool call
+            let contentSegment = ''
+            if (index === 0) {
+              // First tool call - content before it (typically empty or minimal)
+              // Skip as we show reasoning separately
+            } else {
+              // Calculate content between previous tool call and this one
+              const prevToolCall = sortedToolCalls[index - 1]
+              const prevContentLength = prevToolCall.contentBefore?.length || 0
+              const currentContentLength = toolCall.contentBefore?.length || 0
+              if (currentContentLength > prevContentLength) {
+                // Parse the content segment (remove thinking tags if present)
+                const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
+                const parsed = parseThinkingContent(rawSegment)
+                contentSegment = parsed.content
+              }
+            }
+
+            return (
+              <div key={toolCall.id} className="space-y-2">
+                {/* Reasoning before this tool call */}
+                {reasoningSegment && reasoningSegment.trim() && searchDecisionResolved && (
+                  <ThinkingPreview
+                    content={reasoningSegment}
+                    isStreaming={false}
+                  />
+                )}
+                {/* Content before this tool call */}
+                {contentSegment && contentSegment.trim() && (
+                  <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none">
+                    <MarkdownContent content={contentSegment} />
+                  </div>
+                )}
+                {/* The tool call itself */}
+                <ToolCallPreview
+                  streamingToolCall={toolCall}
+                  isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+                />
+              </div>
+            )
+          })}
+          {/* Show remaining reasoning after last tool call (if streaming is still active) */}
+          {(() => {
+            const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+            const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
+            const currentReasoningLength = streamingReasoningContent.length
+            if (currentReasoningLength > lastReasoningLength) {
+              const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
+              if (remainingReasoning.trim() && searchDecisionResolved) {
+                return (
+                  <ThinkingPreview
+                    content={remainingReasoning}
+                    isStreaming={isThinkingInProgress}
+                  />
+                )
+              }
+            }
+            return null
+          })()}
+        </div>
+      )
+    } else {
+      // Non-interleaved display (original behavior)
+      streamingHeaderContent = (
+        <div className="space-y-1.5 mb-2">
+          {/* Show pending search decision preview */}
+          {hasPendingDecision && searchDecisionSteps.length === 0 && (
+            <AttachmentPreview pendingSearchDecision={true} />
+          )}
+          {/* Show search decisions */}
+          {searchDecisionSteps.map((step) => (
+            <AttachmentPreview key={step.id} step={step} />
+          ))}
+          {/* Show search results (fetch results from search are shown inside) */}
+          {searchResultContexts.map((context) => (
+            <AttachmentPreview
+              key={context.id}
+              context={context}
+              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
+              messageId={lastUserMessage?.id}
+            />
+          ))}
+          {/* Show thinking placeholder while waiting, or actual content when available */}
+          {/* Only show when search decision is resolved */}
+          {searchDecisionResolved && (showThinkingPlaceholder || combinedThinkingContent) && (
+            <ThinkingPreview
+              content={combinedThinkingContent || ''}
+              isStreaming={showThinkingPlaceholder || isThinkingInProgress}
+            />
+          )}
+          {/* Show streaming tool calls (MCP) - below thinking, ordered */}
+          {sortedToolCalls.map((toolCall) => (
+            <ToolCallPreview
+              key={toolCall.id}
+              streamingToolCall={toolCall}
+              isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+            />
+          ))}
+        </div>
+      )
+    }
+  }
+
+  // Calculate the content to display after all tool calls
+  // This is the content that came after the last tool call
+  let finalContent = parsedStreaming.content
+  if (hasInterleavedContent && sortedToolCalls.length > 0) {
+    const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+    const lastContentLength = lastToolCall.contentBefore?.length || 0
+    const totalContentLength = streamingContent.length
+    if (totalContentLength > lastContentLength) {
+      const rawSegment = streamingContent.slice(lastContentLength)
+      const parsed = parseThinkingContent(rawSegment)
+      finalContent = parsed.content
+    } else {
+      finalContent = ''
+    }
   }
 
   // Only show content when:
@@ -154,7 +285,7 @@ export function StreamingMessage({
     <ChatMessage
       key={isWaitingForAI ? 'waiting' : 'streaming'}
       role="assistant"
-      content={showContent ? parsedStreaming.content : ''}
+      content={showContent ? finalContent : ''}
       timestamp="Now"
       displayName={info.displayName}
       senderType={info.senderType}

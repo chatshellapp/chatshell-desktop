@@ -4,7 +4,9 @@ import {
   ThinkingPreview,
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
+import { MarkdownContent } from '@/components/markdown-content'
 import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
+import { isContentBlock, isThinkingStep, isToolCall, getDisplayOrder } from '@/types/process-step'
 import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
@@ -70,7 +72,7 @@ export function MessageItem({
 
   // For assistant messages in history, get context and steps from previous user message
   let contextsToShow: ContextEnrichment[] = []
-  let stepsToShow: ProcessStep[] = []
+  let searchDecisionSteps: ProcessStep[] = []
   let prevUserMessageId: string | null = null
   if (isAssistantMessage && index > 0) {
     const prevMessage = messages[index - 1]
@@ -84,23 +86,82 @@ export function MessageItem({
       // Only show search_result - fetch_results from search are shown inside SearchResultPreview
       contextsToShow = prevResources.contexts.filter((c) => c.type === 'search_result')
       // Show search decisions from previous user message
-      stepsToShow = prevResources.steps.filter((s) => s.type === 'search_decision')
+      searchDecisionSteps = prevResources.steps.filter((s) => s.type === 'search_decision')
     }
   }
 
-  // Get thinking steps and tool calls from the assistant message itself
-  const thinkingSteps = resources.steps.filter((s) => s.type === 'thinking')
-  const toolCallSteps = resources.steps.filter((s) => s.type === 'tool_call')
+  // Check if we have content blocks for interleaved display
+  const contentBlocks = resources.steps.filter(isContentBlock)
+  const hasContentBlocks = contentBlocks.length > 0
+
+  // Get steps that should be displayed in order (thinking, tool calls, content blocks)
+  const orderedSteps = resources.steps
+    .filter((s) => isThinkingStep(s) || isToolCall(s) || isContentBlock(s))
+    .sort((a, b) => getDisplayOrder(a) - getDisplayOrder(b))
+
+  // Check if we have any interleaved content (tool calls with content blocks)
+  const hasInterleavedContent = hasContentBlocks && orderedSteps.length > 1
+
+  // For non-interleaved display, use the old approach
+  const thinkingSteps = resources.steps.filter(isThinkingStep)
+  const toolCallSteps = resources.steps.filter(isToolCall)
   const hasThinkingContent = isAssistantMessage && thinkingSteps.length > 0
   const hasToolCalls = isAssistantMessage && toolCallSteps.length > 0
-  const hasAssistantResources = contextsToShow.length > 0 || stepsToShow.length > 0 || hasToolCalls
+  const hasAssistantResources =
+    contextsToShow.length > 0 || searchDecisionSteps.length > 0 || hasToolCalls
 
-  // Build headerContent for assistant messages (steps, contexts, thinking shown between header and content)
+  // Build interleaved content for assistant messages
+  // This shows steps and content blocks in the correct order based on display_order
+  const interleavedContent =
+    isAssistantMessage && hasInterleavedContent ? (
+      <div className="space-y-2">
+        {/* Search decisions first (from previous user message) */}
+        {searchDecisionSteps.map((step) => (
+          <AttachmentPreview key={step.id} step={step} />
+        ))}
+        {/* Search results (from previous user message) */}
+        {contextsToShow.map((context) => (
+          <AttachmentPreview
+            key={context.id}
+            context={context}
+            urlStatuses={
+              context.type === 'search_result' && prevUserMessageId
+                ? urlStatuses[prevUserMessageId]
+                : undefined
+            }
+            messageId={prevUserMessageId ?? undefined}
+          />
+        ))}
+        {/* Interleaved steps and content blocks in display_order */}
+        {orderedSteps.map((step) => {
+          if (isThinkingStep(step)) {
+            return <ThinkingPreview key={step.id} content={step.content} />
+          }
+          if (isToolCall(step)) {
+            return <AttachmentPreview key={step.id} step={step} />
+          }
+          if (isContentBlock(step)) {
+            return (
+              <div
+                key={step.id}
+                className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
+              >
+                <MarkdownContent content={step.content} />
+              </div>
+            )
+          }
+          return null
+        })}
+      </div>
+    ) : null
+
+  // Build headerContent for non-interleaved assistant messages
+  // (steps, contexts, thinking shown between header and content)
   const headerContent =
-    isAssistantMessage && (hasAssistantResources || hasThinkingContent) ? (
+    isAssistantMessage && !hasInterleavedContent && (hasAssistantResources || hasThinkingContent) ? (
       <div className="space-y-1.5 mb-2">
         {/* Search decisions first */}
-        {stepsToShow.map((step) => (
+        {searchDecisionSteps.map((step) => (
           <AttachmentPreview key={step.id} step={step} />
         ))}
         {/* Then search results */}
@@ -131,7 +192,9 @@ export function MessageItem({
     <div key={message.id}>
       <ChatMessage
         role={role}
-        content={message.content}
+        // When we have interleaved content, don't show message.content separately
+        // as it's already included in the content blocks
+        content={hasInterleavedContent ? '' : message.content}
         timestamp={formatTimestamp(message.created_at)}
         displayName={info.displayName}
         senderType={info.senderType}
@@ -146,7 +209,7 @@ export function MessageItem({
         assistantModelId={info.assistantModelId}
         userMessageAlign={CHAT_CONFIG.userMessageAlign}
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-        headerContent={headerContent}
+        headerContent={hasInterleavedContent ? interleavedContent : headerContent}
         onCopy={onCopy}
         onResend={onResend}
         onTranslate={onTranslate}

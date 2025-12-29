@@ -14,7 +14,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 3;
+const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -61,6 +61,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         migrate_v2_to_v3(pool).await?;
         set_user_version(pool, 3).await?;
         tracing::info!("Migration to v3 completed");
+    }
+
+    if current_version < 4 {
+        migrate_v3_to_v4(pool).await?;
+        set_user_version(pool, 4).await?;
+        tracing::info!("Migration to v4 completed");
     }
 
     Ok(())
@@ -112,5 +118,15 @@ async fn migrate_v2_to_v3(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Added enabled_mcp_server_ids column to conversation_settings table");
     }
 
+    Ok(())
+}
+
+/// Migration v3 -> v4: Ensure all step-related tables exist
+/// This fixes databases that were created before content_blocks table was added
+async fn migrate_v3_to_v4(pool: &SqlitePool) -> Result<()> {
+    // Re-run create_steps_table which uses CREATE TABLE IF NOT EXISTS
+    // This will create any missing tables (like content_blocks) without affecting existing ones
+    steps::create_steps_table(pool).await?;
+    tracing::info!("Ensured all step-related tables exist (thinking_steps, search_decisions, tool_calls, code_executions, content_blocks)");
     Ok(())
 }

@@ -2,15 +2,9 @@ import { useState } from 'react'
 import { Wrench, ChevronDown, ChevronUp, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import type { ToolCall } from '@/types'
 
-// Streaming tool call interface (before saved to DB)
-export interface StreamingToolCall {
-  id: string
-  tool_name: string
-  tool_input: string
-  tool_output?: string
-  status: 'pending' | 'running' | 'success' | 'error'
-  error?: string
-}
+// Re-export StreamingToolCall from store types for consistency
+export type { StreamingToolCall } from '@/stores/message/types'
+import type { StreamingToolCall } from '@/stores/message/types'
 
 interface ToolCallPreviewProps {
   // Either a saved ToolCall from DB or a streaming one

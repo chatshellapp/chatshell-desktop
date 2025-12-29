@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use super::Database;
 use crate::models::{
-    CodeExecution, CreateCodeExecutionRequest, CreateSearchDecisionRequest,
-    CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep, SearchDecision, ThinkingStep,
-    ToolCall,
+    CodeExecution, ContentBlock, CreateCodeExecutionRequest, CreateContentBlockRequest,
+    CreateSearchDecisionRequest, CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep,
+    SearchDecision, ThinkingStep, ToolCall,
 };
 
 impl Database {
@@ -386,6 +386,76 @@ impl Database {
         Ok(())
     }
 
+    // Content Block operations
+    pub async fn create_content_block(&self, req: CreateContentBlockRequest) -> Result<ContentBlock> {
+        let id = Uuid::now_v7().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO content_blocks (id, message_id, content, display_order, created_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(&req.message_id)
+        .bind(&req.content)
+        .bind(req.display_order)
+        .bind(&now)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_content_block(&id).await
+    }
+
+    pub async fn get_content_block(&self, id: &str) -> Result<ContentBlock> {
+        let row = sqlx::query(
+            "SELECT id, message_id, content, display_order, created_at FROM content_blocks WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(self.pool.as_ref())
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Content block not found: {}", id))?;
+
+        Ok(ContentBlock {
+            id: row.get("id"),
+            message_id: row.get("message_id"),
+            content: row.get("content"),
+            display_order: row.get("display_order"),
+            created_at: row.get("created_at"),
+        })
+    }
+
+    pub async fn get_content_blocks_by_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Vec<ContentBlock>> {
+        let rows = sqlx::query(
+            "SELECT id, message_id, content, display_order, created_at
+             FROM content_blocks WHERE message_id = ? ORDER BY display_order, created_at",
+        )
+        .bind(message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows
+            .iter()
+            .map(|row| ContentBlock {
+                id: row.get("id"),
+                message_id: row.get("message_id"),
+                content: row.get("content"),
+                display_order: row.get("display_order"),
+                created_at: row.get("created_at"),
+            })
+            .collect())
+    }
+
+    pub async fn delete_content_block(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM content_blocks WHERE id = ?")
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(())
+    }
+
     // Get all process steps for a message (combined from all step tables)
     pub async fn get_message_steps(&self, message_id: &str) -> Result<Vec<ProcessStep>> {
         let mut steps: Vec<(i32, String, ProcessStep)> = Vec::new();
@@ -423,6 +493,15 @@ impl Database {
                 step.display_order,
                 step.created_at.clone(),
                 ProcessStep::CodeExecution(step),
+            ));
+        }
+
+        // Fetch content blocks
+        for block in self.get_content_blocks_by_message(message_id).await? {
+            steps.push((
+                block.display_order,
+                block.created_at.clone(),
+                ProcessStep::ContentBlock(block),
             ));
         }
 

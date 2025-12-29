@@ -107,6 +107,24 @@ pub struct CreateCodeExecutionRequest {
     pub completed_at: Option<String>,
 }
 
+/// Content block - stores segmented content for interleaved display with tool calls
+/// Used to properly show the order of agent work: thinking -> tool call -> response chunk
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ContentBlock {
+    pub id: String,
+    pub message_id: String,
+    pub content: String,
+    pub display_order: i32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateContentBlockRequest {
+    pub message_id: String,
+    pub content: String,
+    pub display_order: i32,
+}
+
 /// Process step type enum
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -115,6 +133,7 @@ pub enum StepType {
     SearchDecision,
     ToolCall,
     CodeExecution,
+    ContentBlock,
 }
 
 impl std::fmt::Display for StepType {
@@ -124,6 +143,7 @@ impl std::fmt::Display for StepType {
             StepType::SearchDecision => write!(f, "search_decision"),
             StepType::ToolCall => write!(f, "tool_call"),
             StepType::CodeExecution => write!(f, "code_execution"),
+            StepType::ContentBlock => write!(f, "content_block"),
         }
     }
 }
@@ -137,6 +157,7 @@ impl std::str::FromStr for StepType {
             "search_decision" => Ok(StepType::SearchDecision),
             "tool_call" => Ok(StepType::ToolCall),
             "code_execution" => Ok(StepType::CodeExecution),
+            "content_block" => Ok(StepType::ContentBlock),
             _ => Err(format!("Invalid step type: {}", s)),
         }
     }
@@ -150,6 +171,7 @@ pub enum ProcessStep {
     SearchDecision(SearchDecision),
     ToolCall(ToolCall),
     CodeExecution(CodeExecution),
+    ContentBlock(ContentBlock),
 }
 
 impl ProcessStep {
@@ -159,6 +181,7 @@ impl ProcessStep {
             ProcessStep::SearchDecision(d) => &d.id,
             ProcessStep::ToolCall(t) => &t.id,
             ProcessStep::CodeExecution(c) => &c.id,
+            ProcessStep::ContentBlock(b) => &b.id,
         }
     }
 
@@ -168,6 +191,18 @@ impl ProcessStep {
             ProcessStep::SearchDecision(_) => StepType::SearchDecision,
             ProcessStep::ToolCall(_) => StepType::ToolCall,
             ProcessStep::CodeExecution(_) => StepType::CodeExecution,
+            ProcessStep::ContentBlock(_) => StepType::ContentBlock,
+        }
+    }
+
+    /// Get the display_order of this process step
+    pub fn display_order(&self) -> i32 {
+        match self {
+            ProcessStep::Thinking(t) => t.display_order,
+            ProcessStep::SearchDecision(d) => d.display_order,
+            ProcessStep::ToolCall(t) => t.display_order,
+            ProcessStep::CodeExecution(c) => c.display_order,
+            ProcessStep::ContentBlock(b) => b.display_order,
         }
     }
 }

@@ -9,6 +9,14 @@ export interface StreamingToolCall {
   tool_output?: string
   status: 'pending' | 'running' | 'success' | 'error'
   error?: string
+  // Order in which this tool call was received (for proper display ordering)
+  order: number
+  // Content that was accumulated before this tool call started
+  // This allows proper interleaving during streaming display
+  contentBefore?: string
+  // Reasoning content that was accumulated before this tool call started
+  // This allows proper interleaving of thinking blocks with tool calls
+  reasoningBefore?: string
 }
 
 // Per-conversation state

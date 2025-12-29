@@ -98,5 +98,25 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    // Content blocks table - stores segmented content for interleaved display
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS content_blocks (
+            id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            display_order INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_content_blocks_message ON content_blocks(message_id)",
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }

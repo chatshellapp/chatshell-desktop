@@ -63,9 +63,9 @@ pub use context::{
 
 // Process steps (AI workflow artifacts)
 pub use process_step::{
-    CodeExecution, CreateCodeExecutionRequest, CreateSearchDecisionRequest,
-    CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep, SearchDecision, StepType,
-    ThinkingStep, ToolCall,
+    CodeExecution, ContentBlock, CreateCodeExecutionRequest, CreateContentBlockRequest,
+    CreateSearchDecisionRequest, CreateThinkingStepRequest, CreateToolCallRequest, ProcessStep,
+    SearchDecision, StepType, ThinkingStep, ToolCall,
 };
 
 // Message resources

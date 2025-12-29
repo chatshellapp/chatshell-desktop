@@ -7,7 +7,8 @@ use crate::llm::agent_builder::{
 };
 use crate::llm::{ChatMessage, StreamChunkType};
 use crate::models::{
-    CreateMessageRequest, CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
+    CreateContentBlockRequest, CreateMessageRequest, CreateThinkingStepRequest,
+    CreateToolCallRequest, ModelParameters,
 };
 use rig::completion::Message as RigMessage;
 use rmcp::RoleClient;
@@ -121,14 +122,37 @@ pub(crate) async fn handle_agent_streaming(
     let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
     let reasoning_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Track tool calls: HashMap<tool_call_id, (tool_name, tool_input, tool_output)>
+    // Track display order for proper interleaving of thinking, tool calls, and content
+    // display_order_counter increments whenever we transition between content/thinking/tool calls
+    let display_order_counter = Arc::new(std::sync::atomic::AtomicI32::new(0));
+
+    // Track current content block being accumulated (will be flushed before tool calls)
+    let current_content_block = Arc::new(RwLock::new(String::new()));
+
+    // Track content blocks with their display order: Vec<(display_order, content)>
+    let content_blocks: Arc<RwLock<Vec<(i32, String)>>> = Arc::new(RwLock::new(Vec::new()));
+
+    // Track reasoning/thinking blocks with display order: Vec<(display_order, content)>
+    let reasoning_blocks: Arc<RwLock<Vec<(i32, String)>>> = Arc::new(RwLock::new(Vec::new()));
+
+    // Track current reasoning block being accumulated
+    let current_reasoning_block = Arc::new(RwLock::new(String::new()));
+    let current_reasoning_order = Arc::new(std::sync::atomic::AtomicI32::new(-1));
+
+    // Track tool calls: HashMap<tool_call_id, (display_order, tool_name, tool_input, tool_output)>
     let tool_calls_map: Arc<
-        RwLock<std::collections::HashMap<String, (String, String, Option<String>)>>,
+        RwLock<std::collections::HashMap<String, (i32, String, String, Option<String>)>>,
     > = Arc::new(RwLock::new(std::collections::HashMap::new()));
 
     let accumulated_content_for_callback = accumulated_content.clone();
     let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
     let reasoning_started_for_callback = reasoning_started.clone();
+    let display_order_for_callback = display_order_counter.clone();
+    let current_content_for_callback = current_content_block.clone();
+    let content_blocks_for_callback = content_blocks.clone();
+    let reasoning_blocks_for_callback = reasoning_blocks.clone();
+    let current_reasoning_for_callback = current_reasoning_block.clone();
+    let current_reasoning_order_for_callback = current_reasoning_order.clone();
     let tool_calls_for_callback = tool_calls_map.clone();
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
@@ -149,9 +173,14 @@ pub(crate) async fn handle_agent_streaming(
 
             match chunk_type {
                 StreamChunkType::Text => {
-                    // Accumulate text content
+                    // Accumulate text content (for final message)
                     if let Ok(mut content) = accumulated_content_for_callback.try_write() {
                         content.push_str(&chunk);
+                    }
+
+                    // Also accumulate into current content block for proper ordering
+                    if let Ok(mut current_block) = current_content_for_callback.try_write() {
+                        current_block.push_str(&chunk);
                     }
 
                     let payload = serde_json::json!({
@@ -165,6 +194,24 @@ pub(crate) async fn handle_agent_streaming(
                     if !reasoning_started_for_callback
                         .swap(true, std::sync::atomic::Ordering::SeqCst)
                     {
+                        // First reasoning chunk - flush any pending content block
+                        if let Ok(mut current_block) = current_content_for_callback.try_write() {
+                            if !current_block.trim().is_empty() {
+                                let order = display_order_for_callback
+                                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
+                                    blocks.push((order, current_block.clone()));
+                                }
+                                current_block.clear();
+                            }
+                        }
+
+                        // Set current reasoning order
+                        let order = display_order_for_callback
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        current_reasoning_order_for_callback
+                            .store(order, std::sync::atomic::Ordering::SeqCst);
+
                         let started_payload = serde_json::json!({
                             "conversation_id": conversation_id_for_stream,
                         });
@@ -176,6 +223,11 @@ pub(crate) async fn handle_agent_streaming(
                         reasoning.push_str(&chunk);
                     }
 
+                    // Also accumulate into current reasoning block
+                    if let Ok(mut current_reasoning) = current_reasoning_for_callback.try_write() {
+                        current_reasoning.push_str(&chunk);
+                    }
+
                     let payload = serde_json::json!({
                         "conversation_id": conversation_id_for_stream,
                         "content": chunk,
@@ -183,11 +235,45 @@ pub(crate) async fn handle_agent_streaming(
                     let _ = app_for_stream.emit("chat-stream-reasoning", payload);
                 }
                 StreamChunkType::ToolCall(tool_info) => {
-                    // Store tool call in tracking map
+                    // Flush any pending reasoning block before tool call
+                    if let Ok(mut current_reasoning) = current_reasoning_for_callback.try_write() {
+                        if !current_reasoning.trim().is_empty() {
+                            let order = current_reasoning_order_for_callback
+                                .load(std::sync::atomic::Ordering::SeqCst);
+                            if order >= 0 {
+                                if let Ok(mut blocks) = reasoning_blocks_for_callback.try_write() {
+                                    blocks.push((order, current_reasoning.clone()));
+                                }
+                            }
+                            current_reasoning.clear();
+                        }
+                    }
+                    // Reset reasoning started for next round
+                    reasoning_started_for_callback
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+
+                    // Flush any pending content block before tool call
+                    if let Ok(mut current_block) = current_content_for_callback.try_write() {
+                        if !current_block.trim().is_empty() {
+                            let order = display_order_for_callback
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
+                                blocks.push((order, current_block.clone()));
+                            }
+                            current_block.clear();
+                        }
+                    }
+
+                    // Get display order for this tool call
+                    let tool_order = display_order_for_callback
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    // Store tool call in tracking map with display order
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
                         tool_calls.insert(
                             tool_info.id.clone(),
                             (
+                                tool_order,
                                 tool_info.tool_name.clone(),
                                 tool_info.tool_input.clone(),
                                 None,
@@ -207,7 +293,8 @@ pub(crate) async fn handle_agent_streaming(
                 StreamChunkType::ToolResult(result_info) => {
                     // Update tool call with result
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
-                        if let Some((name, input, output)) = tool_calls.get_mut(&result_info.id) {
+                        if let Some((_, name, input, output)) = tool_calls.get_mut(&result_info.id)
+                        {
                             *output = Some(result_info.tool_output.clone());
 
                             // Emit tool result event to frontend
@@ -378,30 +465,90 @@ pub(crate) async fn handle_agent_streaming(
         }
     };
 
-    // Save thinking content as a ThinkingStep if present
-    if let Some(thinking_content) = response.thinking_content
-        && !thinking_content.is_empty()
+    // Flush any remaining reasoning block
     {
-        match state_clone
-            .db
-            .create_thinking_step(CreateThinkingStepRequest {
-                message_id: assistant_message.id.clone(),
-                content: thinking_content,
-                source: Some("llm".to_string()),
-                display_order: Some(0),
-            })
-            .await
-        {
-            Ok(_thinking_step) => {
-                // ThinkingStep is now directly linked via message_id FK
-            }
-            Err(e) => {
-                tracing::error!("Failed to save thinking step: {}", e);
+        let current_reasoning = current_reasoning_block.read().await;
+        if !current_reasoning.trim().is_empty() {
+            let order = current_reasoning_order.load(std::sync::atomic::Ordering::SeqCst);
+            if order >= 0 {
+                let mut blocks = reasoning_blocks.write().await;
+                blocks.push((order, current_reasoning.clone()));
             }
         }
     }
 
-    // Save tool calls to database
+    // Flush any remaining content block
+    {
+        let current_block = current_content_block.read().await;
+        if !current_block.trim().is_empty() {
+            let order = display_order_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut blocks = content_blocks.write().await;
+            blocks.push((order, current_block.clone()));
+        }
+    }
+
+    // Save reasoning/thinking blocks with proper display order
+    let reasoning_data = reasoning_blocks.read().await;
+    if !reasoning_data.is_empty() {
+        tracing::info!(
+            "💾 [agent_streaming] Saving {} reasoning block(s) to database",
+            reasoning_data.len()
+        );
+
+        for (order, content) in reasoning_data.iter() {
+            if content.trim().is_empty() {
+                continue;
+            }
+            match state_clone
+                .db
+                .create_thinking_step(CreateThinkingStepRequest {
+                    message_id: assistant_message.id.clone(),
+                    content: content.clone(),
+                    source: Some("llm".to_string()),
+                    display_order: Some(*order),
+                })
+                .await
+            {
+                Ok(_thinking_step) => {
+                    tracing::info!(
+                        "✅ [agent_streaming] Thinking step saved with display_order: {}",
+                        order
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Failed to save thinking step: {}", e);
+                }
+            }
+        }
+    }
+    drop(reasoning_data);
+
+    // Fallback: if no ordered reasoning blocks but we have thinking content, save it
+    if reasoning_blocks.read().await.is_empty() {
+        if let Some(thinking_content) = response.thinking_content
+            && !thinking_content.is_empty()
+        {
+            match state_clone
+                .db
+                .create_thinking_step(CreateThinkingStepRequest {
+                    message_id: assistant_message.id.clone(),
+                    content: thinking_content,
+                    source: Some("llm".to_string()),
+                    display_order: Some(0),
+                })
+                .await
+            {
+                Ok(_thinking_step) => {
+                    // ThinkingStep is now directly linked via message_id FK
+                }
+                Err(e) => {
+                    tracing::error!("Failed to save thinking step: {}", e);
+                }
+            }
+        }
+    }
+
+    // Save tool calls to database with proper display order
     let tool_calls_data = tool_calls_map.read().await;
     if !tool_calls_data.is_empty() {
         tracing::info!(
@@ -409,8 +556,8 @@ pub(crate) async fn handle_agent_streaming(
             tool_calls_data.len()
         );
 
-        for (index, (tool_call_id, (tool_name, tool_input, tool_output))) in
-            tool_calls_data.iter().enumerate()
+        for (tool_call_id, (display_order, tool_name, tool_input, tool_output)) in
+            tool_calls_data.iter()
         {
             let status = if tool_output.is_some() {
                 "success"
@@ -428,7 +575,7 @@ pub(crate) async fn handle_agent_streaming(
                     status: Some(status.to_string()),
                     error: None,
                     duration_ms: None,
-                    display_order: Some(index as i32),
+                    display_order: Some(*display_order),
                     completed_at: if tool_output.is_some() {
                         Some(chrono::Utc::now().to_rfc3339())
                     } else {
@@ -439,9 +586,10 @@ pub(crate) async fn handle_agent_streaming(
             {
                 Ok(tc) => {
                     tracing::info!(
-                        "✅ [agent_streaming] Tool call saved: {} ({})",
+                        "✅ [agent_streaming] Tool call saved: {} ({}) with display_order: {}",
                         tc.tool_name,
-                        tc.id
+                        tc.id,
+                        display_order
                     );
                 }
                 Err(e) => {
@@ -455,6 +603,47 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
     drop(tool_calls_data);
+
+    // Save content blocks to database with proper display order
+    // Only save if we have tool calls (otherwise content is just the message content)
+    let content_data = content_blocks.read().await;
+    let has_tool_calls = !tool_calls_map.read().await.is_empty();
+    if has_tool_calls && !content_data.is_empty() {
+        tracing::info!(
+            "💾 [agent_streaming] Saving {} content block(s) to database",
+            content_data.len()
+        );
+
+        for (order, content) in content_data.iter() {
+            if content.trim().is_empty() {
+                continue;
+            }
+            match state_clone
+                .db
+                .create_content_block(CreateContentBlockRequest {
+                    message_id: assistant_message.id.clone(),
+                    content: content.clone(),
+                    display_order: *order,
+                })
+                .await
+            {
+                Ok(block) => {
+                    tracing::info!(
+                        "✅ [agent_streaming] Content block saved ({}) with display_order: {}",
+                        block.id,
+                        order
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "❌ [agent_streaming] Failed to save content block: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+    drop(content_data);
 
     tracing::info!(
         "✅ [agent_streaming] Assistant message saved with id: {}",

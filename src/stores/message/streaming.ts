@@ -157,11 +157,22 @@ export const createStreamingActions = (
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
+        // Calculate order based on existing tool calls
+        const existingCount = Object.keys(convState.streamingToolCalls).length
+        // Capture the content accumulated before this tool call started
+        const contentBefore = convState.streamingContent
+        // Capture the reasoning content accumulated before this tool call started
+        // This allows proper interleaving of thinking blocks with tool calls
+        const reasoningBefore = convState.streamingReasoningContent
+
         convState.streamingToolCalls[toolCallId] = {
           id: toolCallId,
           tool_name: toolName,
           tool_input: toolInput,
           status: 'running',
+          order: existingCount,
+          contentBefore: contentBefore,
+          reasoningBefore: reasoningBefore,
         }
         // When a tool call starts, we're no longer waiting for AI
         convState.isWaitingForAI = false
