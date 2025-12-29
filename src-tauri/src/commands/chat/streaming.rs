@@ -122,8 +122,9 @@ pub(crate) async fn handle_agent_streaming(
     let reasoning_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     // Track tool calls: HashMap<tool_call_id, (tool_name, tool_input, tool_output)>
-    let tool_calls_map: Arc<RwLock<std::collections::HashMap<String, (String, String, Option<String>)>>> =
-        Arc::new(RwLock::new(std::collections::HashMap::new()));
+    let tool_calls_map: Arc<
+        RwLock<std::collections::HashMap<String, (String, String, Option<String>)>>,
+    > = Arc::new(RwLock::new(std::collections::HashMap::new()));
 
     let accumulated_content_for_callback = accumulated_content.clone();
     let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
@@ -186,7 +187,11 @@ pub(crate) async fn handle_agent_streaming(
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
                         tool_calls.insert(
                             tool_info.id.clone(),
-                            (tool_info.tool_name.clone(), tool_info.tool_input.clone(), None),
+                            (
+                                tool_info.tool_name.clone(),
+                                tool_info.tool_input.clone(),
+                                None,
+                            ),
                         );
                     }
 

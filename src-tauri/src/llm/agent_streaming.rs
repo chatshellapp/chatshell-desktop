@@ -33,7 +33,8 @@ where
     // Use stream_chat to get a streaming response with chat history
     // stream_chat returns a StreamingPromptRequest which implements IntoFuture
     // When awaited, it returns the stream directly (not wrapped in Result)
-    let mut stream = agent.stream_chat(prompt, chat_history).await;
+    // multi_turn(10) allows up to 10 conversation turns for tool calling
+    let mut stream = agent.stream_chat(prompt, chat_history).multi_turn(10).await;
 
     let mut full_content = String::new();
     let mut full_reasoning = String::new();
@@ -119,7 +120,9 @@ where
                     break;
                 }
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tool_result))) => {
+            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(
+                tool_result,
+            ))) => {
                 consecutive_errors = 0;
                 // Extract text content from tool result
                 let tool_output = tool_result
