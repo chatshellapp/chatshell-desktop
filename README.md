@@ -49,6 +49,15 @@ ChatShell is an open-source desktop AI client built with Tauri 2 and React 19. C
 - **Smart Web Fetching**: Extract and summarize content from URLs
 - **Jina API Integration**: High-quality content extraction
 
+### 🔌 MCP (Model Context Protocol) Integration
+
+- **Extensible Tool System**: Connect AI assistants with external tools and data sources
+- **Server Management**: Add, configure, and manage MCP servers directly from the UI
+- **Dynamic Tool Discovery**: Automatically detect and expose tools from MCP servers
+- **Seamless Integration**: AI can invoke MCP tools naturally during conversations
+- **Flexible Configuration**: Support for stdio and Streamable HTTP transport types
+- **Environment Variables**: Configure servers with custom environment settings
+
 ### 🎨 Custom Assistants
 
 - Create personalized AI assistants with custom system prompts
