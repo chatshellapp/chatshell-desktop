@@ -58,7 +58,17 @@ import {
 import { useMcpStore } from '@/stores/mcpStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { SearchProviderId, WebFetchMode, WebFetchLocalMethod, LogLevel, Tool } from '@/types'
+import type {
+  SearchProviderId,
+  WebFetchMode,
+  WebFetchLocalMethod,
+  LogLevel,
+  Tool,
+  McpTransportType,
+  McpServerConfig,
+} from '@/types'
+import { parseMcpConfig, getTransportType } from '@/types'
+import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
 import { Switch } from '@/components/ui/switch'
@@ -107,11 +117,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   // MCP state
   const [newMcpName, setNewMcpName] = React.useState('')
+  const [newMcpTransport, setNewMcpTransport] = React.useState<McpTransportType>('http')
   const [newMcpEndpoint, setNewMcpEndpoint] = React.useState('')
+  const [newMcpCommand, setNewMcpCommand] = React.useState('')
+  const [newMcpArgs, setNewMcpArgs] = React.useState('')
+  const [newMcpEnv, setNewMcpEnv] = React.useState('')
+  const [newMcpCwd, setNewMcpCwd] = React.useState('')
   const [newMcpDescription, setNewMcpDescription] = React.useState('')
   const [editingMcpId, setEditingMcpId] = React.useState<string | null>(null)
   const [editMcpName, setEditMcpName] = React.useState('')
+  const [editMcpTransport, setEditMcpTransport] = React.useState<McpTransportType>('http')
   const [editMcpEndpoint, setEditMcpEndpoint] = React.useState('')
+  const [editMcpCommand, setEditMcpCommand] = React.useState('')
+  const [editMcpArgs, setEditMcpArgs] = React.useState('')
+  const [editMcpEnv, setEditMcpEnv] = React.useState('')
+  const [editMcpCwd, setEditMcpCwd] = React.useState('')
   const [editMcpDescription, setEditMcpDescription] = React.useState('')
   const [testingMcpEndpoint, setTestingMcpEndpoint] = React.useState<string | null>(null)
 
@@ -146,7 +166,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const updateMcpServer = useMcpStore((state) => state.updateServer)
   const deleteMcpServer = useMcpStore((state) => state.deleteServer)
   const toggleMcpServer = useMcpStore((state) => state.toggleServer)
-  const testMcpConnection = useMcpStore((state) => state.testConnection)
+  const testHttpConnection = useMcpStore((state) => state.testHttpConnection)
+  const testStdioConnection = useMcpStore((state) => state.testStdioConnection)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
@@ -259,17 +280,71 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
+  // Helper to parse args from textarea (one per line)
+  const parseArgs = (argsText: string): string[] => {
+    return argsText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  }
+
+  // Helper to parse env vars from textarea (KEY=VALUE per line)
+  const parseEnv = (envText: string): Record<string, string> => {
+    const env: Record<string, string> = {}
+    envText.split('\n').forEach((line) => {
+      const trimmed = line.trim()
+      if (trimmed && trimmed.includes('=')) {
+        const eqIndex = trimmed.indexOf('=')
+        const key = trimmed.substring(0, eqIndex).trim()
+        const value = trimmed.substring(eqIndex + 1).trim()
+        if (key) {
+          env[key] = value
+        }
+      }
+    })
+    return env
+  }
+
+  // Helper to format env vars for textarea
+  const formatEnv = (env?: Record<string, string>): string => {
+    if (!env) return ''
+    return Object.entries(env)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n')
+  }
+
   // MCP handlers
   const handleCreateMcpServer = async () => {
-    if (!newMcpName.trim() || !newMcpEndpoint.trim()) return
+    if (!newMcpName.trim()) return
+
+    // Validate based on transport type
+    if (newMcpTransport === 'http' && !newMcpEndpoint.trim()) return
+    if (newMcpTransport === 'stdio' && !newMcpCommand.trim()) return
+
     try {
+      const config: McpServerConfig = {
+        transport: newMcpTransport,
+        command: newMcpTransport === 'stdio' ? newMcpCommand.trim() : undefined,
+        args: newMcpTransport === 'stdio' && newMcpArgs.trim() ? parseArgs(newMcpArgs) : undefined,
+        env: newMcpTransport === 'stdio' && newMcpEnv.trim() ? parseEnv(newMcpEnv) : undefined,
+        cwd: newMcpTransport === 'stdio' && newMcpCwd.trim() ? newMcpCwd.trim() : undefined,
+      }
+
       await createMcpServer(
         newMcpName.trim(),
-        newMcpEndpoint.trim(),
-        newMcpDescription.trim() || undefined
+        newMcpTransport === 'http' ? newMcpEndpoint.trim() : undefined,
+        newMcpDescription.trim() || undefined,
+        config
       )
+
+      // Reset form
       setNewMcpName('')
+      setNewMcpTransport('http')
       setNewMcpEndpoint('')
+      setNewMcpCommand('')
+      setNewMcpArgs('')
+      setNewMcpEnv('')
+      setNewMcpCwd('')
       setNewMcpDescription('')
     } catch (error) {
       logger.error('Failed to create MCP server:', error)
@@ -277,13 +352,28 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }
 
   const handleUpdateMcpServer = async (id: string) => {
-    if (!editMcpName.trim() || !editMcpEndpoint.trim()) return
+    if (!editMcpName.trim()) return
+
+    // Validate based on transport type
+    if (editMcpTransport === 'http' && !editMcpEndpoint.trim()) return
+    if (editMcpTransport === 'stdio' && !editMcpCommand.trim()) return
+
     try {
+      const config: McpServerConfig = {
+        transport: editMcpTransport,
+        command: editMcpTransport === 'stdio' ? editMcpCommand.trim() : undefined,
+        args:
+          editMcpTransport === 'stdio' && editMcpArgs.trim() ? parseArgs(editMcpArgs) : undefined,
+        env: editMcpTransport === 'stdio' && editMcpEnv.trim() ? parseEnv(editMcpEnv) : undefined,
+        cwd: editMcpTransport === 'stdio' && editMcpCwd.trim() ? editMcpCwd.trim() : undefined,
+      }
+
       await updateMcpServer(
         id,
         editMcpName.trim(),
-        editMcpEndpoint.trim(),
-        editMcpDescription.trim() || undefined
+        editMcpTransport === 'http' ? editMcpEndpoint.trim() : undefined,
+        editMcpDescription.trim() || undefined,
+        config
       )
       setEditingMcpId(null)
     } catch (error) {
@@ -307,29 +397,62 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
-  const handleTestMcpConnection = async (endpoint: string) => {
-    setTestingMcpEndpoint(endpoint)
-    try {
-      await testMcpConnection(endpoint)
-      logger.info('MCP connection test successful')
-    } catch (error) {
-      logger.error('MCP connection test failed:', error)
-    } finally {
-      setTestingMcpEndpoint(null)
+  const handleTestMcpConnection = async () => {
+    if (newMcpTransport === 'http') {
+      if (!newMcpEndpoint.trim()) return
+      setTestingMcpEndpoint(newMcpEndpoint)
+      try {
+        await testHttpConnection(newMcpEndpoint.trim())
+        logger.info('HTTP MCP connection test successful')
+      } catch (error) {
+        logger.error('HTTP MCP connection test failed:', error)
+      } finally {
+        setTestingMcpEndpoint(null)
+      }
+    } else {
+      if (!newMcpCommand.trim()) return
+      setTestingMcpEndpoint(newMcpCommand)
+      try {
+        const config: McpServerConfig = {
+          transport: 'stdio',
+          command: newMcpCommand.trim(),
+          args: newMcpArgs.trim() ? parseArgs(newMcpArgs) : undefined,
+          env: newMcpEnv.trim() ? parseEnv(newMcpEnv) : undefined,
+          cwd: newMcpCwd.trim() ? newMcpCwd.trim() : undefined,
+        }
+        await testStdioConnection(config)
+        logger.info('STDIO MCP connection test successful')
+      } catch (error) {
+        logger.error('STDIO MCP connection test failed:', error)
+      } finally {
+        setTestingMcpEndpoint(null)
+      }
     }
   }
 
   const startEditingMcp = (server: Tool) => {
     setEditingMcpId(server.id)
     setEditMcpName(server.name)
+    const config = parseMcpConfig(server.config)
+    const transport = getTransportType(server)
+    setEditMcpTransport(transport)
     setEditMcpEndpoint(server.endpoint || '')
+    setEditMcpCommand(config?.command || '')
+    setEditMcpArgs(config?.args?.join('\n') || '')
+    setEditMcpEnv(formatEnv(config?.env))
+    setEditMcpCwd(config?.cwd || '')
     setEditMcpDescription(server.description || '')
   }
 
   const cancelEditingMcp = () => {
     setEditingMcpId(null)
     setEditMcpName('')
+    setEditMcpTransport('http')
     setEditMcpEndpoint('')
+    setEditMcpCommand('')
+    setEditMcpArgs('')
+    setEditMcpEnv('')
+    setEditMcpCwd('')
     setEditMcpDescription('')
   }
 
@@ -342,18 +465,34 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
 
     if (activeSection === 'MCP Servers') {
+      const canCreateServer =
+        newMcpName.trim() &&
+        ((newMcpTransport === 'http' && newMcpEndpoint.trim()) ||
+          (newMcpTransport === 'stdio' && newMcpCommand.trim()))
+
+      const canTestConnection =
+        (newMcpTransport === 'http' && newMcpEndpoint.trim()) ||
+        (newMcpTransport === 'stdio' && newMcpCommand.trim())
+
+      const canUpdateServer =
+        editMcpName.trim() &&
+        ((editMcpTransport === 'http' && editMcpEndpoint.trim()) ||
+          (editMcpTransport === 'stdio' && editMcpCommand.trim()))
+
       return (
         <div className="grid gap-6">
           <div className="grid gap-2">
             <p className="text-sm text-muted-foreground max-w-md">
               Configure MCP (Model Context Protocol) servers to extend your AI assistant with
-              external tools and capabilities.
+              external tools and capabilities. Supports both HTTP and STDIO transports.
             </p>
           </div>
 
           {/* Add new MCP server */}
           <div className="grid gap-3 rounded-lg border p-4 max-w-lg">
             <h4 className="text-sm font-medium">Add New MCP Server</h4>
+
+            {/* Name */}
             <div className="grid gap-2">
               <Label htmlFor="mcp-name">Name</Label>
               <Input
@@ -363,15 +502,119 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 onChange={(e) => setNewMcpName(e.target.value)}
               />
             </div>
+
+            {/* Transport Type */}
             <div className="grid gap-2">
-              <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
-              <Input
-                id="mcp-endpoint"
-                placeholder="http://localhost:8080/mcp"
-                value={newMcpEndpoint}
-                onChange={(e) => setNewMcpEndpoint(e.target.value)}
-              />
+              <Label>Transport</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between">
+                    <span>
+                      {newMcpTransport === 'http' ? 'HTTP (Streamable)' : 'STDIO (Local Process)'}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  <DropdownMenuItem onClick={() => setNewMcpTransport('http')}>
+                    <div className="flex items-center gap-2">
+                      {newMcpTransport === 'http' && <Check className="h-4 w-4 text-primary" />}
+                      <div>
+                        <span className={newMcpTransport === 'http' ? 'font-medium' : ''}>
+                          HTTP (Streamable)
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Connect to a remote MCP server via HTTP
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setNewMcpTransport('stdio')}>
+                    <div className="flex items-center gap-2">
+                      {newMcpTransport === 'stdio' && <Check className="h-4 w-4 text-primary" />}
+                      <div>
+                        <span className={newMcpTransport === 'stdio' ? 'font-medium' : ''}>
+                          STDIO (Local Process)
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Run a local MCP server as a subprocess
+                        </p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+
+            {/* HTTP-specific fields */}
+            {newMcpTransport === 'http' && (
+              <div className="grid gap-2">
+                <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
+                <Input
+                  id="mcp-endpoint"
+                  placeholder="http://localhost:8080/mcp"
+                  value={newMcpEndpoint}
+                  onChange={(e) => setNewMcpEndpoint(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* STDIO-specific fields */}
+            {newMcpTransport === 'stdio' && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-command">Command</Label>
+                  <Input
+                    id="mcp-command"
+                    placeholder="npx -y @modelcontextprotocol/server-filesystem"
+                    value={newMcpCommand}
+                    onChange={(e) => setNewMcpCommand(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Full command with arguments, or just the executable (e.g., npx, uvx)
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-args">Arguments (one per line)</Label>
+                  <Textarea
+                    id="mcp-args"
+                    placeholder={'/path/to/allowed/directory\n/another/directory'}
+                    value={newMcpArgs}
+                    onChange={(e) => setNewMcpArgs(e.target.value)}
+                    rows={3}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-env">Environment Variables (KEY=VALUE per line)</Label>
+                  <Textarea
+                    id="mcp-env"
+                    placeholder={'API_KEY=your-api-key\nDEBUG=true'}
+                    value={newMcpEnv}
+                    onChange={(e) => setNewMcpEnv(e.target.value)}
+                    rows={2}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Custom environment variables (system environment is inherited)
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-cwd">Working Directory (optional)</Label>
+                  <Input
+                    id="mcp-cwd"
+                    placeholder="~/projects/my-project"
+                    value={newMcpCwd}
+                    onChange={(e) => setNewMcpCwd(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Defaults to home directory if not specified
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Description */}
             <div className="grid gap-2">
               <Label htmlFor="mcp-description">Description (optional)</Label>
               <Input
@@ -381,21 +624,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 onChange={(e) => setNewMcpDescription(e.target.value)}
               />
             </div>
+
+            {/* Actions */}
             <div className="flex gap-2">
-              <Button
-                onClick={handleCreateMcpServer}
-                disabled={!newMcpName.trim() || !newMcpEndpoint.trim() || mcpLoading}
-              >
+              <Button onClick={handleCreateMcpServer} disabled={!canCreateServer || mcpLoading}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Server
               </Button>
-              {newMcpEndpoint.trim() && (
+              {canTestConnection && (
                 <Button
                   variant="outline"
-                  onClick={() => handleTestMcpConnection(newMcpEndpoint)}
-                  disabled={testingMcpEndpoint === newMcpEndpoint}
+                  onClick={handleTestMcpConnection}
+                  disabled={!!testingMcpEndpoint}
                 >
-                  {testingMcpEndpoint === newMcpEndpoint ? (
+                  {testingMcpEndpoint ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <Plug className="mr-2 h-4 w-4" />
@@ -410,88 +652,190 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {mcpServers.length > 0 && (
             <div className="grid gap-3">
               <h4 className="text-sm font-medium">Configured Servers</h4>
-              {mcpServers.map((server) => (
-                <div key={server.id} className="rounded-lg border p-4 max-w-lg">
-                  {editingMcpId === server.id ? (
-                    <div className="grid gap-3">
-                      <div className="grid gap-2">
-                        <Label>Name</Label>
-                        <Input
-                          value={editMcpName}
-                          onChange={(e) => setEditMcpName(e.target.value)}
-                        />
+              {mcpServers.map((server) => {
+                const serverTransport = getTransportType(server)
+                const serverConfig = parseMcpConfig(server.config)
+
+                return (
+                  <div key={server.id} className="rounded-lg border p-4 max-w-lg">
+                    {editingMcpId === server.id ? (
+                      <div className="grid gap-3">
+                        {/* Edit Name */}
+                        <div className="grid gap-2">
+                          <Label>Name</Label>
+                          <Input
+                            value={editMcpName}
+                            onChange={(e) => setEditMcpName(e.target.value)}
+                          />
+                        </div>
+
+                        {/* Edit Transport */}
+                        <div className="grid gap-2">
+                          <Label>Transport</Label>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" className="w-full justify-between">
+                                <span>
+                                  {editMcpTransport === 'http'
+                                    ? 'HTTP (Streamable)'
+                                    : 'STDIO (Local Process)'}
+                                </span>
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-full">
+                              <DropdownMenuItem onClick={() => setEditMcpTransport('http')}>
+                                <div className="flex items-center gap-2">
+                                  {editMcpTransport === 'http' && (
+                                    <Check className="h-4 w-4 text-primary" />
+                                  )}
+                                  <span
+                                    className={editMcpTransport === 'http' ? 'font-medium' : ''}
+                                  >
+                                    HTTP (Streamable)
+                                  </span>
+                                </div>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setEditMcpTransport('stdio')}>
+                                <div className="flex items-center gap-2">
+                                  {editMcpTransport === 'stdio' && (
+                                    <Check className="h-4 w-4 text-primary" />
+                                  )}
+                                  <span
+                                    className={editMcpTransport === 'stdio' ? 'font-medium' : ''}
+                                  >
+                                    STDIO (Local Process)
+                                  </span>
+                                </div>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                        {/* Edit HTTP fields */}
+                        {editMcpTransport === 'http' && (
+                          <div className="grid gap-2">
+                            <Label>Endpoint URL</Label>
+                            <Input
+                              value={editMcpEndpoint}
+                              onChange={(e) => setEditMcpEndpoint(e.target.value)}
+                            />
+                          </div>
+                        )}
+
+                        {/* Edit STDIO fields */}
+                        {editMcpTransport === 'stdio' && (
+                          <>
+                            <div className="grid gap-2">
+                              <Label>Command</Label>
+                              <Input
+                                value={editMcpCommand}
+                                onChange={(e) => setEditMcpCommand(e.target.value)}
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Arguments (one per line)</Label>
+                              <Textarea
+                                value={editMcpArgs}
+                                onChange={(e) => setEditMcpArgs(e.target.value)}
+                                rows={3}
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Environment Variables</Label>
+                              <Textarea
+                                value={editMcpEnv}
+                                onChange={(e) => setEditMcpEnv(e.target.value)}
+                                rows={2}
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Working Directory</Label>
+                              <Input
+                                value={editMcpCwd}
+                                onChange={(e) => setEditMcpCwd(e.target.value)}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {/* Edit Description */}
+                        <div className="grid gap-2">
+                          <Label>Description</Label>
+                          <Input
+                            value={editMcpDescription}
+                            onChange={(e) => setEditMcpDescription(e.target.value)}
+                          />
+                        </div>
+
+                        {/* Edit Actions */}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateMcpServer(server.id)}
+                            disabled={!canUpdateServer}
+                          >
+                            Save
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={cancelEditingMcp}>
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
-                      <div className="grid gap-2">
-                        <Label>Endpoint URL</Label>
-                        <Input
-                          value={editMcpEndpoint}
-                          onChange={(e) => setEditMcpEndpoint(e.target.value)}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Description</Label>
-                        <Input
-                          value={editMcpDescription}
-                          onChange={(e) => setEditMcpDescription(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleUpdateMcpServer(server.id)}
-                          disabled={!editMcpName.trim() || !editMcpEndpoint.trim()}
-                        >
-                          Save
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={cancelEditingMcp}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="grid gap-1 min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium truncate">{server.name}</span>
-                          {server.is_enabled ? (
-                            <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                              Enabled
+                    ) : (
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="grid gap-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate">{server.name}</span>
+                            <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                              {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
                             </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              Disabled
+                            {server.is_enabled ? (
+                              <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                                Enabled
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground truncate font-mono">
+                            {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
+                          </span>
+                          {server.description && (
+                            <span className="text-xs text-muted-foreground">
+                              {server.description}
                             </span>
                           )}
                         </div>
-                        <span className="text-xs text-muted-foreground truncate">
-                          {server.endpoint}
-                        </span>
-                        {server.description && (
-                          <span className="text-xs text-muted-foreground">
-                            {server.description}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Switch
+                            checked={server.is_enabled}
+                            onCheckedChange={() => handleToggleMcpServer(server.id)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => startEditingMcp(server)}
+                          >
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteMcpServer(server.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Switch
-                          checked={server.is_enabled}
-                          onCheckedChange={() => handleToggleMcpServer(server.id)}
-                        />
-                        <Button variant="ghost" size="icon" onClick={() => startEditingMcp(server)}>
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteMcpServer(server.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 

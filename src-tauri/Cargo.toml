@@ -55,11 +55,13 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 lazy_static = "1.4"
 async-trait = "0.1"
+dirs = "5"
+shell-words = "1"
 
 # LLM framework
 rig-core = { version = "0.25", features = ["rmcp"] }
 # Use same version as rig-core to avoid type mismatch
-rmcp = { version = "0.9.1", features = ["client", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "0.9.1", features = ["client", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 
 # Logging
 tracing = "0.1"

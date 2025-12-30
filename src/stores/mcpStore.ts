@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
-import type { Tool } from '@/types'
+import type { Tool, McpServerConfig } from '@/types'
 import { logger } from '@/lib/logger'
 
 // MCP tool info returned from server
@@ -26,21 +26,22 @@ interface McpState {
   ensureLoaded: () => Promise<void>
   createServer: (
     name: string,
-    endpoint: string,
+    endpoint?: string,
     description?: string,
-    config?: string
+    config?: McpServerConfig
   ) => Promise<Tool>
   updateServer: (
     id: string,
     name: string,
-    endpoint: string,
+    endpoint?: string,
     description?: string,
-    config?: string,
+    config?: McpServerConfig,
     isEnabled?: boolean
   ) => Promise<Tool>
   deleteServer: (id: string) => Promise<void>
   toggleServer: (id: string) => Promise<Tool>
-  testConnection: (endpoint: string) => Promise<McpToolInfo[]>
+  testHttpConnection: (endpoint: string) => Promise<McpToolInfo[]>
+  testStdioConnection: (config: McpServerConfig) => Promise<McpToolInfo[]>
   listServerTools: (id: string) => Promise<McpToolInfo[]>
   getServerById: (id: string) => Tool | undefined
   clearTestResult: () => void
@@ -83,7 +84,12 @@ export const useMcpStore = create<McpState>()(
       }
     },
 
-    createServer: async (name: string, endpoint: string, description?: string, config?: string) => {
+    createServer: async (
+      name: string,
+      endpoint?: string,
+      description?: string,
+      config?: McpServerConfig
+    ) => {
       set((draft) => {
         draft.isLoading = true
         draft.error = null
@@ -114,9 +120,9 @@ export const useMcpStore = create<McpState>()(
     updateServer: async (
       id: string,
       name: string,
-      endpoint: string,
+      endpoint?: string,
       description?: string,
-      config?: string,
+      config?: McpServerConfig,
       isEnabled?: boolean
     ) => {
       set((draft) => {
@@ -202,7 +208,7 @@ export const useMcpStore = create<McpState>()(
       }
     },
 
-    testConnection: async (endpoint: string) => {
+    testHttpConnection: async (endpoint: string) => {
       set((draft) => {
         draft.testingEndpoint = endpoint
         draft.testResult = null
@@ -210,14 +216,38 @@ export const useMcpStore = create<McpState>()(
       })
       try {
         const tools = await invoke<McpToolInfo[]>('test_mcp_connection', { endpoint })
-        logger.info('[mcpStore] Test connection successful:', { count: tools.length })
+        logger.info('[mcpStore] HTTP test connection successful:', { count: tools.length })
         set((draft) => {
           draft.testResult = tools
           draft.testingEndpoint = null
         })
         return tools
       } catch (error) {
-        logger.error('[mcpStore] Test connection failed:', error)
+        logger.error('[mcpStore] HTTP test connection failed:', error)
+        set((draft) => {
+          draft.testError = String(error)
+          draft.testingEndpoint = null
+        })
+        throw error
+      }
+    },
+
+    testStdioConnection: async (config: McpServerConfig) => {
+      set((draft) => {
+        draft.testingEndpoint = config.command || 'stdio'
+        draft.testResult = null
+        draft.testError = null
+      })
+      try {
+        const tools = await invoke<McpToolInfo[]>('test_mcp_stdio_connection', { config })
+        logger.info('[mcpStore] STDIO test connection successful:', { count: tools.length })
+        set((draft) => {
+          draft.testResult = tools
+          draft.testingEndpoint = null
+        })
+        return tools
+      } catch (error) {
+        logger.error('[mcpStore] STDIO test connection failed:', error)
         set((draft) => {
           draft.testError = String(error)
           draft.testingEndpoint = null

@@ -214,6 +214,7 @@ pub fn run() {
             commands::delete_mcp_server,
             commands::toggle_mcp_server,
             commands::test_mcp_connection,
+            commands::test_mcp_stdio_connection,
             commands::list_mcp_server_tools,
             commands::get_conversation_mcp_servers,
         ])

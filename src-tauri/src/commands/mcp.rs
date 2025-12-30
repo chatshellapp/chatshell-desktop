@@ -1,8 +1,9 @@
 //! MCP server management commands
 
 use super::AppState;
-use crate::models::{CreateToolRequest, Tool};
+use crate::models::{CreateToolRequest, McpConfig, McpTransportType, Tool};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::State;
 
 /// MCP tool info returned from server
@@ -12,22 +13,97 @@ pub struct McpToolInfo {
     pub description: Option<String>,
 }
 
+/// MCP server configuration for frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    pub transport: String, // "http" or "stdio"
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub env: Option<HashMap<String, String>>,
+    pub cwd: Option<String>,
+}
+
+impl From<McpConfig> for McpServerConfig {
+    fn from(config: McpConfig) -> Self {
+        Self {
+            transport: match config.transport {
+                McpTransportType::Http => "http".to_string(),
+                McpTransportType::Stdio => "stdio".to_string(),
+            },
+            command: config.command,
+            args: config.args,
+            env: config.env,
+            cwd: config.cwd,
+        }
+    }
+}
+
+impl From<McpServerConfig> for McpConfig {
+    fn from(config: McpServerConfig) -> Self {
+        Self {
+            transport: match config.transport.as_str() {
+                "stdio" => McpTransportType::Stdio,
+                _ => McpTransportType::Http,
+            },
+            command: config.command,
+            args: config.args,
+            env: config.env,
+            cwd: config.cwd,
+        }
+    }
+}
+
 /// Create a new MCP server configuration
 #[tauri::command]
 pub async fn create_mcp_server(
     state: State<'_, AppState>,
     name: String,
-    endpoint: String,
+    endpoint: Option<String>,
     description: Option<String>,
-    config: Option<String>,
+    config: Option<McpServerConfig>,
 ) -> Result<Tool, String> {
-    tracing::info!("🔌 Creating MCP server: {} at {}", name, endpoint);
+    // Determine transport type and validate
+    let (final_endpoint, final_config) = if let Some(cfg) = config {
+        let transport = cfg.transport.as_str();
+        match transport {
+            "stdio" => {
+                if cfg.command.is_none() {
+                    return Err("STDIO transport requires a command".to_string());
+                }
+                let mcp_config: McpConfig = cfg.into();
+                tracing::info!(
+                    "🔌 Creating STDIO MCP server: {} (command: {:?})",
+                    name,
+                    mcp_config.command
+                );
+                (None, Some(mcp_config.to_json().map_err(|e| e.to_string())?))
+            }
+            "http" | _ => {
+                let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
+                tracing::info!("🔌 Creating HTTP MCP server: {} at {}", name, ep);
+                let mcp_config = McpConfig::http();
+                (
+                    Some(ep),
+                    Some(mcp_config.to_json().map_err(|e| e.to_string())?),
+                )
+            }
+        }
+    } else {
+        // Backward compatibility: no config means HTTP transport
+        let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
+        tracing::info!("🔌 Creating HTTP MCP server: {} at {}", name, ep);
+        let mcp_config = McpConfig::http();
+        (
+            Some(ep),
+            Some(mcp_config.to_json().map_err(|e| e.to_string())?),
+        )
+    };
 
     let req = CreateToolRequest {
         name,
         r#type: "mcp".to_string(),
-        endpoint: Some(endpoint),
-        config,
+        endpoint: final_endpoint,
+        config: final_config,
         description,
         is_enabled: Some(true),
     };
@@ -57,21 +133,56 @@ pub async fn update_mcp_server(
     state: State<'_, AppState>,
     id: String,
     name: String,
-    endpoint: String,
+    endpoint: Option<String>,
     description: Option<String>,
-    config: Option<String>,
+    config: Option<McpServerConfig>,
     is_enabled: Option<bool>,
 ) -> Result<Tool, String> {
-    tracing::info!("📝 Updating MCP server: {} at {}", name, endpoint);
-
-    // Disconnect existing connection if endpoint changed
+    // Disconnect existing connection
     state.mcp_manager.disconnect(&id).await;
+
+    // Determine transport type and validate
+    let (final_endpoint, final_config) = if let Some(cfg) = config {
+        let transport = cfg.transport.as_str();
+        match transport {
+            "stdio" => {
+                if cfg.command.is_none() {
+                    return Err("STDIO transport requires a command".to_string());
+                }
+                let mcp_config: McpConfig = cfg.into();
+                tracing::info!(
+                    "📝 Updating STDIO MCP server: {} (command: {:?})",
+                    name,
+                    mcp_config.command
+                );
+                (None, Some(mcp_config.to_json().map_err(|e| e.to_string())?))
+            }
+            "http" | _ => {
+                let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
+                tracing::info!("📝 Updating HTTP MCP server: {} at {}", name, ep);
+                let mcp_config = McpConfig::http();
+                (
+                    Some(ep),
+                    Some(mcp_config.to_json().map_err(|e| e.to_string())?),
+                )
+            }
+        }
+    } else {
+        // Backward compatibility: no config means HTTP transport
+        let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
+        tracing::info!("📝 Updating HTTP MCP server: {} at {}", name, ep);
+        let mcp_config = McpConfig::http();
+        (
+            Some(ep),
+            Some(mcp_config.to_json().map_err(|e| e.to_string())?),
+        )
+    };
 
     let req = CreateToolRequest {
         name,
         r#type: "mcp".to_string(),
-        endpoint: Some(endpoint),
-        config,
+        endpoint: final_endpoint,
+        config: final_config,
         description,
         is_enabled,
     };
@@ -104,17 +215,46 @@ pub async fn toggle_mcp_server(state: State<'_, AppState>, id: String) -> Result
         .map_err(|e| e.to_string())
 }
 
-/// Test connection to an MCP server endpoint
+/// Test connection to an MCP server via HTTP endpoint
 #[tauri::command]
 pub async fn test_mcp_connection(
     state: State<'_, AppState>,
     endpoint: String,
 ) -> Result<Vec<McpToolInfo>, String> {
-    tracing::info!("🧪 Testing MCP connection to: {}", endpoint);
+    tracing::info!("🧪 Testing HTTP MCP connection to: {}", endpoint);
 
     let tools = state
         .mcp_manager
-        .test_connection(&endpoint)
+        .test_http_connection(&endpoint)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(tools
+        .into_iter()
+        .map(|t| McpToolInfo {
+            name: t.name.to_string(),
+            description: t.description.map(|d| d.to_string()),
+        })
+        .collect())
+}
+
+/// Test connection to an MCP server via STDIO
+#[tauri::command]
+pub async fn test_mcp_stdio_connection(
+    state: State<'_, AppState>,
+    config: McpServerConfig,
+) -> Result<Vec<McpToolInfo>, String> {
+    tracing::info!("🧪 Testing STDIO MCP connection: {:?}", config.command);
+
+    if config.command.is_none() {
+        return Err("STDIO transport requires a command".to_string());
+    }
+
+    let mcp_config: McpConfig = config.into();
+
+    let tools = state
+        .mcp_manager
+        .test_stdio_connection(&mcp_config)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -173,4 +313,3 @@ pub async fn get_conversation_mcp_servers(
         .await
         .map_err(|e| e.to_string())
 }
-
