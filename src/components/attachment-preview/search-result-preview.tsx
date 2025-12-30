@@ -23,6 +23,9 @@ function getSearchEngineName(engineId: string): string {
   return SEARCH_ENGINE_NAMES[engineId.toLowerCase()] || engineId
 }
 
+type CollapseState = 'initial' | 'processing' | 'collapsed'
+const collapseStateMap = new Map<string, CollapseState>()
+
 // SearchResult preview component - expandable inline list
 export function SearchResultPreview({
   searchResult,
@@ -33,6 +36,11 @@ export function SearchResultPreview({
   urlStatuses?: Record<string, 'fetching' | 'fetched'>
   messageId?: string
 }) {
+  // Use module-level state to check if already auto-collapsed (survives remounts)
+  const searchId = searchResult.id
+  const collapseState = collapseStateMap.get(searchId) || 'initial'
+  const alreadyCollapsed = collapseState === 'collapsed'
+
   const [isExpanded, setIsExpanded] = useState(false)
   const [fetchResults, setFetchResults] = useState<FetchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -42,16 +50,35 @@ export function SearchResultPreview({
   const hasUrlStatuses = urlStatuses && Object.keys(urlStatuses).length > 0
   const isProcessing = hasUrlStatuses && Object.values(urlStatuses).some((s) => s === 'fetching')
 
+  // State machine effect: track collapse state and auto-collapse when processing completes
+  useEffect(() => {
+    const currentState = collapseStateMap.get(searchId) || 'initial'
+
+    if (currentState === 'initial' && hasUrlStatuses) {
+      // Start processing → enter processing state
+      collapseStateMap.set(searchId, 'processing')
+    } else if (currentState === 'processing' && !isProcessing) {
+      // All fetches complete → collapse and enter collapsed state
+      collapseStateMap.set(searchId, 'collapsed')
+      setIsExpanded(false)
+    }
+  }, [searchId, hasUrlStatuses, isProcessing])
+
   // Check if search is still in progress (no total_results yet)
   const isSearching =
     searchResult.total_results === null || searchResult.total_results === undefined
 
-  // Auto-expand when search results arrive
+  // Auto-expand when search results arrive (only if not already collapsed)
   useEffect(() => {
-    if (!isSearching && searchResult.total_results && searchResult.total_results > 0) {
+    if (
+      !alreadyCollapsed &&
+      !isSearching &&
+      searchResult.total_results &&
+      searchResult.total_results > 0
+    ) {
       setIsExpanded(true)
     }
-  }, [isSearching, searchResult.total_results])
+  }, [alreadyCollapsed, isSearching, searchResult.total_results])
 
   // Count of fetched URLs - triggers reload when each one completes
   const fetchedCount = urlStatuses
@@ -101,39 +128,48 @@ export function SearchResultPreview({
   // Determine if expandable (has URL statuses or results)
   const canExpand = !isSearching && (resultCount > 0 || hasUrlStatuses)
 
+  // Dynamic container styles based on state
+  const containerClass = isExpanded
+    ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
+    : isSearching
+      ? 'w-fit rounded border border-muted/40 bg-muted/30 overflow-hidden'
+      : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
-      {/* Header row - similar style to FetchResultPreview */}
+    <div className={containerClass}>
+      {/* Header row */}
       <button
         onClick={() => canExpand && setIsExpanded(!isExpanded)}
-        className={`flex items-center gap-2.5 w-full px-3 py-2.5 text-left transition-colors ${canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'}`}
+        className={`flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'}`}
       >
         <Search
-          className={`h-4 w-4 text-muted-foreground flex-shrink-0 ${isSearching ? 'animate-pulse' : ''}`}
+          className={`h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 ${isSearching ? 'animate-pulse' : ''}`}
         />
 
         {isSearching ? (
-          <span className="flex-1 text-sm text-muted-foreground">
-            Searching with {getSearchEngineName(searchResult.engine)}...
+          <span className="text-xs text-muted-foreground">
+            Searching {getSearchEngineName(searchResult.engine)}...
           </span>
         ) : (
           <>
-            <span className="flex-1 text-sm truncate">{searchResult.query}</span>
+            <span className="text-xs text-muted-foreground truncate max-w-xs">
+              {searchResult.query}
+            </span>
 
-            <span className="text-xs text-muted-foreground/70 flex-shrink-0">
+            <span className="text-xs text-muted-foreground/60 flex-shrink-0">
               {getSearchEngineName(searchResult.engine)}
             </span>
 
-            <span className="text-sm text-muted-foreground flex-shrink-0 flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground/60 flex-shrink-0 flex items-center gap-1">
               {loading ? (
                 'Loading...'
               ) : (
                 <>
                   {`${resultCount} results`}
                   {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
+                    <ChevronUp className="h-3.5 w-3.5" />
                   ) : (
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="h-3.5 w-3.5" />
                   )}
                 </>
               )}
@@ -144,7 +180,7 @@ export function SearchResultPreview({
 
       {/* Expandable results list */}
       {isExpanded && canExpand && (
-        <div className="border-t border-muted divide-y divide-muted">
+        <div className="border-t border-muted/50 divide-y divide-muted/50">
           {/* Show URLs with their status (during processing) */}
           {hasUrlStatuses &&
             Object.entries(urlStatuses).map(([url, status]) => {
@@ -166,11 +202,13 @@ export function SearchResultPreview({
             ))}
           {/* Loading state when no URL statuses and no results */}
           {!hasUrlStatuses && fetchResults.length === 0 && loading && (
-            <p className="text-sm text-muted-foreground px-3 py-2">Loading search results...</p>
+            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">
+              Loading search results...
+            </p>
           )}
           {/* Empty state */}
           {!hasUrlStatuses && fetchResults.length === 0 && !loading && (
-            <p className="text-sm text-muted-foreground px-3 py-2">No results fetched yet.</p>
+            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">No results fetched.</p>
           )}
         </div>
       )}
@@ -182,42 +220,53 @@ export function SearchResultPreview({
 export function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
+  // Dynamic container styles based on state
+  const containerClass = isExpanded
+    ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
+    : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
+    <div className={containerClass}>
       {/* Header row */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
+        className="flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         {decision.search_needed ? (
-          <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500/80 flex-shrink-0" />
         ) : (
-          <XCircle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+          <XCircle className="h-3.5 w-3.5 text-yellow-500/80 flex-shrink-0" />
         )}
 
-        <span className="flex-1 text-sm truncate">
+        <span className="text-xs text-muted-foreground truncate">
           {decision.search_needed ? 'Search needed' : 'No search needed'}
         </span>
 
-        <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
-          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
+          {isExpanded ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
         </span>
       </button>
 
       {/* Expandable reasoning */}
       {isExpanded && (
-        <div className="border-t border-muted px-3 py-3 space-y-3">
+        <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
           {/* Reasoning */}
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Reasoning</p>
-            <p className="text-sm text-foreground/80 leading-relaxed">{decision.reasoning}</p>
+            <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Reasoning</p>
+            <p className="text-xs text-foreground/70 leading-relaxed">{decision.reasoning}</p>
           </div>
 
           {/* Search query if search was needed */}
           {decision.search_needed && decision.search_query && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Search Query</p>
-              <p className="text-sm text-foreground/80 leading-relaxed">{decision.search_query}</p>
+              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                Search Query
+              </p>
+              <p className="text-xs text-foreground/70 leading-relaxed">{decision.search_query}</p>
             </div>
           )}
         </div>
@@ -229,12 +278,10 @@ export function SearchDecisionPreview({ decision }: { decision: SearchDecision }
 // Pending SearchDecision preview - shown while AI is deciding
 export function PendingSearchDecisionPreview() {
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
-      <div className="flex items-center gap-2.5 w-full px-3 py-2.5">
-        <CircleQuestionMark className="h-4 w-4 text-muted-foreground flex-shrink-0 animate-pulse" />
-        <span className="flex-1 text-sm text-muted-foreground">
-          Deciding if web search is needed...
-        </span>
+    <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <CircleQuestionMark className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-pulse" />
+        <span className="text-xs text-muted-foreground">Deciding if search needed...</span>
       </div>
     </div>
   )

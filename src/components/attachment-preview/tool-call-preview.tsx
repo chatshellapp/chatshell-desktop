@@ -27,15 +27,15 @@ function formatJson(jsonString: string | undefined): string {
 // Get status icon based on tool call status
 function StatusIcon({ status, isStreaming }: { status: string; isStreaming?: boolean }) {
   if (isStreaming || status === 'running' || status === 'pending') {
-    return <Loader2 className="h-4 w-4 text-blue-500 flex-shrink-0 animate-spin" />
+    return <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
   }
   if (status === 'success') {
-    return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+    return <CheckCircle2 className="h-3.5 w-3.5 text-green-500/80 flex-shrink-0" />
   }
   if (status === 'error') {
-    return <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+    return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
   }
-  return <Wrench className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+  return <Wrench className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 }
 
 // Get status text for display
@@ -73,38 +73,49 @@ export function ToolCallPreview({
   // Determine if this is still in progress
   const isInProgress = isStreaming || status === 'running' || status === 'pending'
 
+  // Dynamic container styles based on state
+  const containerClass = isExpanded
+    ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
+    : isInProgress
+      ? 'w-fit rounded border border-muted/40 bg-muted/30 overflow-hidden'
+      : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
+    <div className={containerClass}>
       {/* Header row */}
       <button
         onClick={() => canExpand && setIsExpanded(!isExpanded)}
-        className={`flex items-center gap-2.5 w-full px-3 py-2.5 text-left transition-colors ${
+        className={`flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
           canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
         }`}
       >
         <StatusIcon status={status} isStreaming={isInProgress} />
 
-        <span className="flex-1 text-sm truncate font-mono">{toolName}</span>
+        <span className="text-xs text-muted-foreground truncate font-mono">{toolName}</span>
 
-        <span className="text-xs text-muted-foreground/70 flex-shrink-0">
+        <span className="text-xs text-muted-foreground/60 flex-shrink-0">
           {getStatusText(status, isInProgress)}
         </span>
 
         {canExpand && (
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
+            {isExpanded ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
           </span>
         )}
       </button>
 
       {/* Expandable content */}
       {isExpanded && canExpand && (
-        <div className="border-t border-muted px-3 py-3 space-y-3">
+        <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
           {/* Input */}
           {hasInput && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Input</p>
-              <pre className="text-xs text-foreground/80 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
+              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Input</p>
+              <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
                 {formatJson(toolInput)}
               </pre>
             </div>
@@ -113,8 +124,8 @@ export function ToolCallPreview({
           {/* Output */}
           {hasOutput && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Output</p>
-              <pre className="text-xs text-foreground/80 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
+              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Output</p>
+              <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
                 {formatJson(toolOutput)}
               </pre>
             </div>
@@ -123,8 +134,8 @@ export function ToolCallPreview({
           {/* Error */}
           {hasError && (
             <div className="space-y-1">
-              <p className="text-xs text-red-500 uppercase tracking-wider">Error</p>
-              <pre className="text-xs text-red-400 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
+              <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
+              <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
                 {error}
               </pre>
             </div>
@@ -133,8 +144,8 @@ export function ToolCallPreview({
           {/* Loading state for output */}
           {isInProgress && !hasOutput && !hasError && (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Output</p>
-              <p className="text-sm text-muted-foreground/60 italic">Waiting for result...</p>
+              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Output</p>
+              <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
             </div>
           )}
         </div>
@@ -146,11 +157,11 @@ export function ToolCallPreview({
 // Pending tool call preview - shown while waiting for tool to start
 export function PendingToolCallPreview({ toolName }: { toolName: string }) {
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
-      <div className="flex items-center gap-2.5 w-full px-3 py-2.5">
-        <Loader2 className="h-4 w-4 text-blue-500 flex-shrink-0 animate-spin" />
-        <span className="flex-1 text-sm text-muted-foreground font-mono">{toolName}</span>
-        <span className="text-xs text-muted-foreground/70">Calling...</span>
+    <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
+        <span className="text-xs text-muted-foreground font-mono">{toolName}</span>
+        <span className="text-xs text-muted-foreground/60">Calling...</span>
       </div>
     </div>
   )

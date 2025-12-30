@@ -52,25 +52,25 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
       <>
         <button
           onClick={() => setIsDialogOpen(true)}
-          className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+          className="flex items-center gap-2 w-fit px-2.5 py-1.5 rounded bg-muted/20 text-left hover:bg-muted/30 transition-colors cursor-pointer"
         >
           {faviconUrl && !faviconError ? (
             <img
               src={faviconUrl}
               alt=""
-              className="h-4 w-4 rounded-sm flex-shrink-0"
+              className="h-3.5 w-3.5 rounded-sm flex-shrink-0"
               onError={() => setFaviconError(true)}
             />
           ) : (
-            <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <Globe className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
           )}
 
-          <span className="flex-1 text-sm truncate">
-            <span>Failed to fetch</span>
-            <span className="text-muted-foreground ml-1">{fetchResult.url}</span>
+          <span className="text-xs text-muted-foreground truncate max-w-xs">
+            <span className="text-destructive/80">Failed</span>
+            <span className="ml-1">{domain}</span>
           </span>
 
-          <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+          <AlertTriangle className="h-3.5 w-3.5 text-destructive/70 flex-shrink-0" />
         </button>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -116,25 +116,25 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
     <>
       <button
         onClick={() => setIsDialogOpen(true)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+        className="flex items-center gap-2 w-fit px-2.5 py-1.5 rounded bg-muted/20 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         {faviconUrl && !faviconError ? (
           <img
             src={faviconUrl}
             alt=""
-            className="h-4 w-4 rounded-sm flex-shrink-0"
+            className="h-3.5 w-3.5 rounded-sm flex-shrink-0"
             onError={() => setFaviconError(true)}
           />
         ) : (
-          <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <Globe className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
         )}
 
-        <span className="flex-1 text-sm truncate">
+        <span className="text-xs text-muted-foreground truncate max-w-xs">
           <span>Fetched</span>
-          <span className="text-muted-foreground ml-1">{title}</span>
+          <span className="ml-1">{title}</span>
         </span>
 
-        <span className="text-sm text-muted-foreground flex-shrink-0">{domain}</span>
+        <span className="text-xs text-muted-foreground/60 flex-shrink-0">{domain}</span>
       </button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -217,36 +217,36 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
           e.stopPropagation()
           setIsDialogOpen(true)
         }}
-        className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors"
       >
         {faviconUrl && !faviconError ? (
           <img
             src={faviconUrl}
             alt=""
-            className="h-4 w-4 rounded-sm flex-shrink-0"
+            className="h-3.5 w-3.5 rounded-sm flex-shrink-0"
             onError={() => setFaviconError(true)}
           />
         ) : (
-          <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <Globe className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
         )}
 
-        <span className="flex-1 text-sm truncate">
+        <span className="flex-1 text-xs text-muted-foreground truncate">
           {isFailed ? (
             <>
-              <span className="text-destructive">Failed</span>
-              <span className="text-muted-foreground ml-1">{title}</span>
+              <span className="text-destructive/80">Failed</span>
+              <span className="ml-1">{title}</span>
             </>
           ) : (
             <>
               <span>Fetched</span>
-              <span className="text-muted-foreground ml-1">{title}</span>
+              <span className="ml-1">{title}</span>
             </>
           )}
         </span>
 
-        <span className="text-sm text-muted-foreground flex-shrink-0">{domain}</span>
+        <span className="text-xs text-muted-foreground/60 flex-shrink-0">{domain}</span>
 
-        {isFailed && <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />}
+        {isFailed && <AlertTriangle className="h-3.5 w-3.5 text-destructive/70 flex-shrink-0" />}
       </button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -304,9 +304,9 @@ export function ProcessingUrlItem({ url }: { url: string }) {
   const domain = getDomain(url)
 
   return (
-    <div className="flex items-center gap-2.5 w-full px-3 py-2 text-left">
-      <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0 animate-pulse" />
-      <span className="flex-1 text-sm text-muted-foreground truncate">Fetching from {domain}</span>
+    <div className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left">
+      <Globe className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-pulse" />
+      <span className="flex-1 text-xs text-muted-foreground/70 truncate">Fetching {domain}</span>
     </div>
   )
 }

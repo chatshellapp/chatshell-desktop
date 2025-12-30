@@ -84,23 +84,34 @@ export function ThinkingPreview({
     }
   }, [])
 
+  // Dynamic container styles based on state
+  const containerClass = isExpanded
+    ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
+    : isStreaming
+      ? 'w-fit rounded border border-muted/40 bg-muted/30 overflow-hidden'
+      : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+
   return (
-    <div className="w-full rounded-lg border border-muted overflow-hidden">
+    <div className={containerClass}>
       {/* Header row */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
+        className="flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         <Lightbulb
-          className={`h-4 w-4 text-muted-foreground flex-shrink-0 ${isStreaming ? 'animate-pulse' : ''}`}
+          className={`h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 ${isStreaming ? 'animate-pulse' : ''}`}
         />
 
-        <span className="flex-1 text-sm truncate">
+        <span className="text-xs text-muted-foreground truncate">
           {isStreaming ? 'Thinking...' : 'Thought process'}
         </span>
 
-        <span className="flex items-center gap-1.5 text-sm text-muted-foreground flex-shrink-0">
-          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
+          {isExpanded ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
         </span>
       </button>
 
@@ -109,13 +120,13 @@ export function ThinkingPreview({
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="border-t border-muted px-3 py-3 max-h-80 overflow-y-auto"
+          className="border-t border-muted/50 px-2.5 py-2.5 max-h-80 overflow-y-auto"
         >
-          <div className="text-sm text-foreground/80 leading-relaxed">
+          <div className="text-xs text-foreground/70 leading-relaxed">
             {content ? (
-              <MarkdownContent content={content} className="text-sm" />
+              <MarkdownContent content={content} className="text-xs" />
             ) : isStreaming ? (
-              <span className="text-muted-foreground/60 italic">Processing...</span>
+              <span className="text-muted-foreground/50 italic">Processing...</span>
             ) : null}
           </div>
           {/* Scroll anchor */}
