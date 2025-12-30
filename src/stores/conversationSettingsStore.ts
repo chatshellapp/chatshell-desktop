@@ -9,6 +9,7 @@ import type {
   UpdateConversationSettingsRequest,
 } from '@/types'
 import { fromBackendSettings, toBackendRequest, createDefaultConversationSettings } from '@/types'
+import { useMcpStore } from './mcpStore'
 import { logger } from '@/lib/logger'
 
 interface ConversationSettingsState {
@@ -89,6 +90,17 @@ interface ConversationSettingsActions {
 
 type ConversationSettingsStore = ConversationSettingsState & ConversationSettingsActions
 
+// Helper to get globally enabled MCP server IDs
+function getGlobalEnabledMcpServerIds(): string[] {
+  const mcpStore = useMcpStore.getState()
+  return mcpStore.servers.filter((server) => server.is_enabled).map((server) => server.id)
+}
+
+// Helper to create default settings with inherited global MCP servers
+function createDefaultSettings(conversationId: string): ConversationSettings {
+  return createDefaultConversationSettings(conversationId, getGlobalEnabledMcpServerIds())
+}
+
 // Helper to update settings in the backend
 async function updateSettingsInBackend(
   conversationId: string,
@@ -110,7 +122,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       // Check if already loading
       if (get().loading[conversationId]) {
         // Return cached or default
-        return get().settings[conversationId] || createDefaultConversationSettings(conversationId)
+        return get().settings[conversationId] || createDefaultSettings(conversationId)
       }
 
       set((draft) => {
@@ -133,7 +145,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to load settings:', error)
         // Store default settings on error so UI still works
-        const defaultSettings = createDefaultConversationSettings(conversationId)
+        const defaultSettings = createDefaultSettings(conversationId)
         set((draft) => {
           draft.settings[conversationId] = defaultSettings
           draft.error = String(error)
@@ -402,7 +414,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       try {
         await invoke('delete_conversation_settings', { conversationId })
         set((draft) => {
-          draft.settings[conversationId] = createDefaultConversationSettings(conversationId)
+          draft.settings[conversationId] = createDefaultSettings(conversationId)
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to reset settings:', error)

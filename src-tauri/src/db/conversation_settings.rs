@@ -2,7 +2,7 @@ use anyhow::Result;
 use sqlx::Row;
 
 use super::Database;
-use crate::models::{ConversationSettings, PromptMode, UpdateConversationSettingsRequest};
+use crate::models::{ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest};
 
 impl Database {
     /// Get settings for a conversation. Returns default settings if none exist.
@@ -25,10 +25,29 @@ impl Database {
         match row {
             Some(row) => Ok(self.row_to_conversation_settings(&row)),
             None => {
-                // Return default settings if none exist
-                Ok(ConversationSettings::default_for_conversation(
-                    conversation_id.to_string(),
-                ))
+                // Return default settings if none exist, inheriting globally enabled MCP servers
+                let enabled_mcp_server_ids: Vec<String> = self
+                    .list_enabled_tools_by_type("mcp")
+                    .await?
+                    .into_iter()
+                    .map(|tool| tool.id)
+                    .collect();
+
+                Ok(ConversationSettings {
+                    conversation_id: conversation_id.to_string(),
+                    use_provider_defaults: true,
+                    use_custom_parameters: false,
+                    parameter_overrides: ModelParameterOverrides::default(),
+                    context_message_count: None,
+                    selected_preset_id: None,
+                    system_prompt_mode: PromptMode::None,
+                    selected_system_prompt_id: None,
+                    custom_system_prompt: None,
+                    user_prompt_mode: PromptMode::None,
+                    selected_user_prompt_id: None,
+                    custom_user_prompt: None,
+                    enabled_mcp_server_ids,
+                })
             }
         }
     }
