@@ -23,9 +23,9 @@ const mockInvoke = vi.mocked(invoke)
 const createMockProvider = (id: string, name: string): Provider => ({
   id,
   name,
-  type: 'openai',
+  provider_type: 'openai',
   base_url: 'https://api.openai.com/v1',
-  is_default: false,
+  is_enabled: true,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 })
@@ -93,7 +93,7 @@ describe('useProviderStore', () => {
 
       const req: CreateProviderRequest = {
         name: 'New Provider',
-        type: 'openai',
+        provider_type: 'openai',
         base_url: 'https://api.example.com',
       }
       const result = await useProviderStore.getState().createProvider(req)
@@ -109,7 +109,7 @@ describe('useProviderStore', () => {
 
       const req: CreateProviderRequest = {
         name: 'Test',
-        type: 'openai',
+        provider_type: 'openai',
         base_url: 'https://test.com',
       }
       await expect(useProviderStore.getState().createProvider(req)).rejects.toThrow()
@@ -128,7 +128,7 @@ describe('useProviderStore', () => {
 
       const req: CreateProviderRequest = {
         name: 'New Name',
-        type: 'openai',
+        provider_type: 'openai',
         base_url: 'https://api.example.com',
       }
       const result = await useProviderStore.getState().updateProvider('provider-1', req)
@@ -147,7 +147,7 @@ describe('useProviderStore', () => {
 
       const req: CreateProviderRequest = {
         name: 'New Name',
-        type: 'openai',
+        provider_type: 'openai',
         base_url: 'https://test.com',
       }
       await expect(

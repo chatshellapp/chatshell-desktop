@@ -59,8 +59,8 @@ describe('useSettingsStore', () => {
   describe('loadSettings', () => {
     it('should populate settings on successful load', async () => {
       const mockSettings: Setting[] = [
-        { key: 'theme', value: 'dark' },
-        { key: 'language', value: 'en' },
+        { key: 'theme', value: 'dark', updated_at: '2024-01-01T00:00:00Z' },
+        { key: 'language', value: 'en', updated_at: '2024-01-01T00:00:00Z' },
       ]
       mockInvoke.mockResolvedValue(mockSettings)
 
@@ -190,8 +190,8 @@ describe('useSettingsStore', () => {
   describe('loadSearchProviders', () => {
     it('should load search providers', async () => {
       const mockProviders: SearchProvider[] = [
-        { id: 'duckduckgo', name: 'DuckDuckGo', is_available: true },
-        { id: 'google', name: 'Google', is_available: true },
+        { id: 'duckduckgo', name: 'DuckDuckGo' },
+        { id: 'yahoo', name: 'Yahoo' },
       ]
       mockInvoke.mockResolvedValue(mockProviders)
 
@@ -204,11 +204,11 @@ describe('useSettingsStore', () => {
 
   describe('getSearchProvider', () => {
     it('should return saved search provider', async () => {
-      mockInvoke.mockResolvedValue('google')
+      mockInvoke.mockResolvedValue('yahoo')
 
       const provider = await useSettingsStore.getState().getSearchProvider()
 
-      expect(provider).toBe('google')
+      expect(provider).toBe('yahoo')
     })
 
     it('should return duckduckgo as default', async () => {
@@ -224,11 +224,11 @@ describe('useSettingsStore', () => {
     it('should save search provider', async () => {
       mockInvoke.mockResolvedValue(undefined)
 
-      await useSettingsStore.getState().setSearchProvider('google')
+      await useSettingsStore.getState().setSearchProvider('yahoo')
 
       expect(mockInvoke).toHaveBeenCalledWith('set_setting', {
         key: 'search_provider',
-        value: 'google',
+        value: 'yahoo',
       })
     })
   })

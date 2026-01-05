@@ -6,7 +6,6 @@ import {
   Globe,
   Square,
   Settings2,
-  Search,
   SlidersHorizontal,
   MessageSquare,
   Sparkles,
@@ -21,7 +20,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
-import { Switch } from '@/components/ui/switch'
 import { ModelSelectorDropdown } from './ModelSelectorDropdown'
 import type { Model } from '@/types'
 import type { Assistant } from '@/types/assistant'
@@ -32,9 +30,6 @@ interface InputToolbarProps {
   onImageSelect: () => void
   onWebPageSelect: () => void
   onUserPromptSelect: () => void
-  // Settings
-  webSearchEnabled: boolean
-  onWebSearchEnabledChange: (enabled: boolean) => void
   // Model selector
   isModelMenuOpen: boolean
   onModelMenuOpenChange: (open: boolean) => void
@@ -69,8 +64,6 @@ export function InputToolbar({
   onImageSelect,
   onWebPageSelect,
   onUserPromptSelect,
-  webSearchEnabled,
-  onWebSearchEnabledChange,
   isModelMenuOpen,
   onModelMenuOpenChange,
   activeTab,

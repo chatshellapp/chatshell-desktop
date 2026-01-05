@@ -36,7 +36,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // State
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'models' | 'assistants'>('models')
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isWebPageDialogOpen, setIsWebPageDialogOpen] = useState(false)
   const [isModelParametersDialogOpen, setIsModelParametersDialogOpen] = useState(false)
@@ -79,7 +78,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
     setInput,
     attachments,
     clearAttachments,
-    webSearchEnabled,
+    webSearchEnabled: false,
   })
 
   // Keyboard handling hook
@@ -423,8 +422,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
               ensurePromptsLoaded()
               setIsUserPromptDialogOpen(true)
             }}
-            webSearchEnabled={webSearchEnabled}
-            onWebSearchEnabledChange={setWebSearchEnabled}
             isModelMenuOpen={isModelMenuOpen}
             onModelMenuOpenChange={setIsModelMenuOpen}
             activeTab={activeTab}

@@ -25,8 +25,10 @@ const createMockAssistant = (id: string, name: string): Assistant => ({
   name,
   model_id: 'model-1',
   system_prompt: 'You are a helpful assistant',
-  emoji: '🤖',
-  color: '#00E5FF',
+  avatar_type: 'text',
+  avatar_text: '🤖',
+  avatar_bg: '#00E5FF',
+  is_starred: false,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 })
@@ -124,6 +126,7 @@ describe('useAssistantStore', () => {
       const req: CreateAssistantRequest = {
         name: 'New Helper',
         model_id: 'model-special',
+        system_prompt: 'You are helpful',
       }
       await useAssistantStore.getState().createAssistant(req)
 
@@ -137,6 +140,7 @@ describe('useAssistantStore', () => {
       const req: CreateAssistantRequest = {
         name: 'Test',
         model_id: 'model-1',
+        system_prompt: 'You are helpful',
       }
       await expect(useAssistantStore.getState().createAssistant(req)).rejects.toThrow()
 
@@ -155,6 +159,7 @@ describe('useAssistantStore', () => {
       const req: CreateAssistantRequest = {
         name: 'New Name',
         model_id: 'model-1',
+        system_prompt: 'You are helpful',
       }
       const result = await useAssistantStore.getState().updateAssistant('assistant-1', req)
 
@@ -176,6 +181,7 @@ describe('useAssistantStore', () => {
       const req: CreateAssistantRequest = {
         name: 'New Name',
         model_id: 'model-1',
+        system_prompt: 'You are helpful',
       }
       await useAssistantStore.getState().updateAssistant('assistant-1', req)
 
@@ -192,6 +198,7 @@ describe('useAssistantStore', () => {
       const req: CreateAssistantRequest = {
         name: 'New Name',
         model_id: 'model-1',
+        system_prompt: 'You are helpful',
       }
       await expect(
         useAssistantStore.getState().updateAssistant('assistant-1', req)

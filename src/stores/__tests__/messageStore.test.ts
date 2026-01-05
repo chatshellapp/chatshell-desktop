@@ -23,13 +23,12 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
-const createMockMessage = (id: string, content: string, role: string = 'user'): Message => ({
+const createMockMessage = (id: string, content: string, sender_type: string = 'user'): Message => ({
   id,
   conversation_id: 'conv-1',
-  role,
+  sender_type,
   content,
   created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
 })
 
 describe('useMessageStore', () => {

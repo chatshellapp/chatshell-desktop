@@ -4,14 +4,14 @@ import type { FetchResult } from '@/types'
 
 const createMockFetchResult = (overrides: Partial<FetchResult> = {}): FetchResult => ({
   id: 'fetch-1',
-  message_id: 'msg-1',
   url: 'https://example.com/page',
   title: 'Example Page',
-  content: 'Page content',
-  source_type: 'web',
+  source_type: 'user_link',
   storage_path: 'fetch/abc123.md',
-  content_hash: 'abc123',
+  content_type: 'text/markdown',
+  status: 'success',
   created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
   ...overrides,
 })
 
