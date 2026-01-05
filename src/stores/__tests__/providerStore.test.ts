@@ -150,9 +150,7 @@ describe('useProviderStore', () => {
         provider_type: 'openai',
         base_url: 'https://test.com',
       }
-      await expect(
-        useProviderStore.getState().updateProvider('provider-1', req)
-      ).rejects.toThrow()
+      await expect(useProviderStore.getState().updateProvider('provider-1', req)).rejects.toThrow()
 
       expect(useProviderStore.getState().error).toContain(errorMessage)
     })
@@ -212,4 +210,3 @@ describe('useProviderStore', () => {
     })
   })
 })
-

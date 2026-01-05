@@ -106,4 +106,3 @@ describe('assistant-utils', () => {
     })
   })
 })
-

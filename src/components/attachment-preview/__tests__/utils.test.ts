@@ -119,4 +119,3 @@ describe('attachment-preview utils', () => {
     })
   })
 })
-

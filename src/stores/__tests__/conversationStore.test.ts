@@ -144,9 +144,7 @@ describe('useConversationStore', () => {
       const errorMessage = 'Failed to create conversation'
       mockInvoke.mockRejectedValue(new Error(errorMessage))
 
-      await expect(
-        useConversationStore.getState().createConversation('Test')
-      ).rejects.toThrow()
+      await expect(useConversationStore.getState().createConversation('Test')).rejects.toThrow()
 
       expect(useConversationStore.getState().error).toContain(errorMessage)
     })
@@ -303,4 +301,3 @@ describe('useConversationStore', () => {
     })
   })
 })
-

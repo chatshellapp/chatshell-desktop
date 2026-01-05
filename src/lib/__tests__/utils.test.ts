@@ -125,4 +125,3 @@ describe('formatConversationTimestamp', () => {
     expect(formatConversationTimestamp(threeDaysAgo)).toBe('3 days ago')
   })
 })
-

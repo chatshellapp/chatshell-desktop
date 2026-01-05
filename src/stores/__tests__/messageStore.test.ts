@@ -316,10 +316,9 @@ describe('useMessageStore', () => {
 
   describe('URL status actions', () => {
     it('should set URL statuses', () => {
-      useMessageStore.getState().setUrlStatuses('conv-1', 'msg-1', [
-        'https://example.com',
-        'https://test.org',
-      ])
+      useMessageStore
+        .getState()
+        .setUrlStatuses('conv-1', 'msg-1', ['https://example.com', 'https://test.org'])
 
       const state = useMessageStore.getState().getConversationState('conv-1')
       expect(state.urlStatuses['msg-1']['https://example.com']).toBe('fetching')
@@ -362,12 +361,9 @@ describe('useMessageStore', () => {
 
   describe('Tool call streaming actions', () => {
     it('should add streaming tool call', () => {
-      useMessageStore.getState().addStreamingToolCall(
-        'conv-1',
-        'tool-call-1',
-        'web_search',
-        '{"query": "test"}'
-      )
+      useMessageStore
+        .getState()
+        .addStreamingToolCall('conv-1', 'tool-call-1', 'web_search', '{"query": "test"}')
 
       const state = useMessageStore.getState().getConversationState('conv-1')
       expect(state.streamingToolCalls['tool-call-1']).toBeDefined()
@@ -376,17 +372,10 @@ describe('useMessageStore', () => {
     })
 
     it('should update streaming tool call with output', () => {
-      useMessageStore.getState().addStreamingToolCall(
-        'conv-1',
-        'tool-call-1',
-        'web_search',
-        '{}'
-      )
-      useMessageStore.getState().updateStreamingToolCall(
-        'conv-1',
-        'tool-call-1',
-        'Search results here'
-      )
+      useMessageStore.getState().addStreamingToolCall('conv-1', 'tool-call-1', 'web_search', '{}')
+      useMessageStore
+        .getState()
+        .updateStreamingToolCall('conv-1', 'tool-call-1', 'Search results here')
 
       const state = useMessageStore.getState().getConversationState('conv-1')
       expect(state.streamingToolCalls['tool-call-1'].tool_output).toBe('Search results here')
@@ -408,16 +397,10 @@ describe('useMessageStore', () => {
       useMessageStore.getState().setStreamingContent('conv-1', 'Previous content')
 
       // Add tool call
-      useMessageStore.getState().addStreamingToolCall(
-        'conv-1',
-        'tool-call-1',
-        'web_search',
-        '{}'
-      )
+      useMessageStore.getState().addStreamingToolCall('conv-1', 'tool-call-1', 'web_search', '{}')
 
       const state = useMessageStore.getState().getConversationState('conv-1')
       expect(state.streamingToolCalls['tool-call-1'].contentBefore).toBe('Previous content')
     })
   })
 })
-

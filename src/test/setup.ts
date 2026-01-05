@@ -36,4 +36,3 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
 afterEach(() => {
   cleanup()
 })
-

@@ -192,33 +192,72 @@ mod tests {
 
     #[test]
     fn test_mime_to_image_media_type() {
-        assert_eq!(mime_to_image_media_type("image/jpeg"), Some(ImageMediaType::JPEG));
-        assert_eq!(mime_to_image_media_type("image/jpg"), Some(ImageMediaType::JPEG));
-        assert_eq!(mime_to_image_media_type("image/png"), Some(ImageMediaType::PNG));
-        assert_eq!(mime_to_image_media_type("image/gif"), Some(ImageMediaType::GIF));
-        assert_eq!(mime_to_image_media_type("image/webp"), Some(ImageMediaType::WEBP));
+        assert_eq!(
+            mime_to_image_media_type("image/jpeg"),
+            Some(ImageMediaType::JPEG)
+        );
+        assert_eq!(
+            mime_to_image_media_type("image/jpg"),
+            Some(ImageMediaType::JPEG)
+        );
+        assert_eq!(
+            mime_to_image_media_type("image/png"),
+            Some(ImageMediaType::PNG)
+        );
+        assert_eq!(
+            mime_to_image_media_type("image/gif"),
+            Some(ImageMediaType::GIF)
+        );
+        assert_eq!(
+            mime_to_image_media_type("image/webp"),
+            Some(ImageMediaType::WEBP)
+        );
         assert_eq!(mime_to_image_media_type("image/bmp"), None);
         assert_eq!(mime_to_image_media_type("text/plain"), None);
     }
 
     #[test]
     fn test_mime_to_image_media_type_case_insensitive() {
-        assert_eq!(mime_to_image_media_type("IMAGE/JPEG"), Some(ImageMediaType::JPEG));
-        assert_eq!(mime_to_image_media_type("Image/Png"), Some(ImageMediaType::PNG));
+        assert_eq!(
+            mime_to_image_media_type("IMAGE/JPEG"),
+            Some(ImageMediaType::JPEG)
+        );
+        assert_eq!(
+            mime_to_image_media_type("Image/Png"),
+            Some(ImageMediaType::PNG)
+        );
     }
 
     #[test]
     fn test_mime_to_document_media_type() {
-        assert_eq!(mime_to_document_media_type("text/plain"), Some(DocumentMediaType::TXT));
+        assert_eq!(
+            mime_to_document_media_type("text/plain"),
+            Some(DocumentMediaType::TXT)
+        );
         assert_eq!(
             mime_to_document_media_type("text/markdown"),
             Some(DocumentMediaType::MARKDOWN)
         );
-        assert_eq!(mime_to_document_media_type("text/html"), Some(DocumentMediaType::HTML));
-        assert_eq!(mime_to_document_media_type("text/css"), Some(DocumentMediaType::CSS));
-        assert_eq!(mime_to_document_media_type("text/csv"), Some(DocumentMediaType::CSV));
-        assert_eq!(mime_to_document_media_type("application/xml"), Some(DocumentMediaType::XML));
-        assert_eq!(mime_to_document_media_type("text/xml"), Some(DocumentMediaType::XML));
+        assert_eq!(
+            mime_to_document_media_type("text/html"),
+            Some(DocumentMediaType::HTML)
+        );
+        assert_eq!(
+            mime_to_document_media_type("text/css"),
+            Some(DocumentMediaType::CSS)
+        );
+        assert_eq!(
+            mime_to_document_media_type("text/csv"),
+            Some(DocumentMediaType::CSV)
+        );
+        assert_eq!(
+            mime_to_document_media_type("application/xml"),
+            Some(DocumentMediaType::XML)
+        );
+        assert_eq!(
+            mime_to_document_media_type("text/xml"),
+            Some(DocumentMediaType::XML)
+        );
         assert_eq!(
             mime_to_document_media_type("text/javascript"),
             Some(DocumentMediaType::Javascript)
@@ -259,7 +298,10 @@ mod tests {
     #[test]
     fn test_format_model_display_name_with_version() {
         assert_eq!(format_model_display_name("gpt-3.5-turbo"), "GPT 3.5 Turbo");
-        assert_eq!(format_model_display_name("gpt-4.1-preview"), "GPT 4.1 Preview");
+        assert_eq!(
+            format_model_display_name("gpt-4.1-preview"),
+            "GPT 4.1 Preview"
+        );
     }
 
     #[test]
@@ -268,7 +310,10 @@ mod tests {
         // "gemma3" starts with 'g' so it becomes "Gemma3", not "Gemma 3"
         assert_eq!(format_model_display_name("gemma3:4b"), "Gemma3 4B");
         assert_eq!(format_model_display_name("llama2:7b"), "Llama2 7B");
-        assert_eq!(format_model_display_name("mistral:latest"), "Mistral LATEST");
+        assert_eq!(
+            format_model_display_name("mistral:latest"),
+            "Mistral LATEST"
+        );
     }
 
     #[test]

@@ -61,11 +61,7 @@ describe('chat-view utils', () => {
     })
 
     it('should handle different ISO formats', () => {
-      const dates = [
-        '2024-01-01T00:00:00Z',
-        '2024-12-31T23:59:59Z',
-        '2024-06-15T12:00:00.000Z',
-      ]
+      const dates = ['2024-01-01T00:00:00Z', '2024-12-31T23:59:59Z', '2024-06-15T12:00:00.000Z']
 
       dates.forEach((isoString) => {
         const result = formatTimestamp(isoString)
@@ -83,4 +79,3 @@ describe('chat-view utils', () => {
     })
   })
 })
-
