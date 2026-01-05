@@ -67,15 +67,14 @@ pub(crate) async fn handle_agent_streaming(
     let mcp_tools_config =
         load_mcp_tools_for_conversation(&state_clone, &conversation_id_clone).await;
 
-    if let Some((tools, client)) = mcp_tools_config {
-        if !tools.is_empty() {
+    if let Some((tools, client)) = mcp_tools_config
+        && !tools.is_empty() {
             tracing::info!(
                 "🔌 [agent_streaming] Loaded {} MCP tools for conversation",
                 tools.len()
             );
             config = config.with_mcp_tools(tools, client);
         }
-    }
 
     // Create the agent
     let agent = match create_provider_agent(
@@ -208,8 +207,8 @@ pub(crate) async fn handle_agent_streaming(
                         .swap(true, std::sync::atomic::Ordering::SeqCst)
                     {
                         // First reasoning chunk - flush any pending content block
-                        if let Ok(mut current_block) = current_content_for_callback.try_write() {
-                            if !current_block.trim().is_empty() {
+                        if let Ok(mut current_block) = current_content_for_callback.try_write()
+                            && !current_block.trim().is_empty() {
                                 let order = display_order_for_callback
                                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                                 if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
@@ -217,7 +216,6 @@ pub(crate) async fn handle_agent_streaming(
                                 }
                                 current_block.clear();
                             }
-                        }
 
                         // Set current reasoning order
                         let order = display_order_for_callback
@@ -249,25 +247,23 @@ pub(crate) async fn handle_agent_streaming(
                 }
                 StreamChunkType::ToolCall(tool_info) => {
                     // Flush any pending reasoning block before tool call
-                    if let Ok(mut current_reasoning) = current_reasoning_for_callback.try_write() {
-                        if !current_reasoning.trim().is_empty() {
+                    if let Ok(mut current_reasoning) = current_reasoning_for_callback.try_write()
+                        && !current_reasoning.trim().is_empty() {
                             let order = current_reasoning_order_for_callback
                                 .load(std::sync::atomic::Ordering::SeqCst);
-                            if order >= 0 {
-                                if let Ok(mut blocks) = reasoning_blocks_for_callback.try_write() {
+                            if order >= 0
+                                && let Ok(mut blocks) = reasoning_blocks_for_callback.try_write() {
                                     blocks.push((order, current_reasoning.clone()));
                                 }
-                            }
                             current_reasoning.clear();
                         }
-                    }
                     // Reset reasoning started for next round
                     reasoning_started_for_callback
                         .store(false, std::sync::atomic::Ordering::SeqCst);
 
                     // Flush any pending content block before tool call
-                    if let Ok(mut current_block) = current_content_for_callback.try_write() {
-                        if !current_block.trim().is_empty() {
+                    if let Ok(mut current_block) = current_content_for_callback.try_write()
+                        && !current_block.trim().is_empty() {
                             let order = display_order_for_callback
                                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
@@ -275,7 +271,6 @@ pub(crate) async fn handle_agent_streaming(
                             }
                             current_block.clear();
                         }
-                    }
 
                     // Get display order for this tool call
                     let tool_order = display_order_for_callback
@@ -305,8 +300,8 @@ pub(crate) async fn handle_agent_streaming(
                 }
                 StreamChunkType::ToolResult(result_info) => {
                     // Update tool call with result
-                    if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
-                        if let Some((_, name, input, output)) = tool_calls.get_mut(&result_info.id)
+                    if let Ok(mut tool_calls) = tool_calls_for_callback.try_write()
+                        && let Some((_, name, input, output)) = tool_calls.get_mut(&result_info.id)
                         {
                             *output = Some(result_info.tool_output.clone());
 
@@ -320,7 +315,6 @@ pub(crate) async fn handle_agent_streaming(
                             });
                             let _ = app_for_stream.emit("tool-call-completed", payload);
                         }
-                    }
                 }
             }
 
@@ -537,8 +531,8 @@ pub(crate) async fn handle_agent_streaming(
     drop(reasoning_data);
 
     // Fallback: if no ordered reasoning blocks but we have thinking content, save it
-    if reasoning_blocks.read().await.is_empty() {
-        if let Some(thinking_content) = response.thinking_content
+    if reasoning_blocks.read().await.is_empty()
+        && let Some(thinking_content) = response.thinking_content
             && !thinking_content.is_empty()
         {
             match state_clone
@@ -559,7 +553,6 @@ pub(crate) async fn handle_agent_streaming(
                 }
             }
         }
-    }
 
     // Save tool calls to database with proper display order
     let tool_calls_data = tool_calls_map.read().await;

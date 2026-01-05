@@ -262,7 +262,7 @@ fn build_agent<M: CompletionModel>(
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
-        .map_or(false, |m| !m.tools.is_empty());
+        .is_some_and(|m| !m.tools.is_empty());
 
     if has_native_tools || has_mcp_tools {
         // Add native tools first (this transitions to AgentBuilderSimple)
