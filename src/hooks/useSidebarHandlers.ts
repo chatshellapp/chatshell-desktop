@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -58,7 +59,9 @@ export function useSidebarHandlers() {
         setSelectedModel(realModel)
       } catch (error) {
         logger.error('Failed to handle model click:', error)
-        alert(`Failed to select model: ${error instanceof Error ? error.message : String(error)}`)
+        toast.error('Failed to select model', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [conversations, getModelById, createConversation, setSelectedModel, selectConversation]
@@ -95,9 +98,9 @@ export function useSidebarHandlers() {
         setSelectedAssistant(realAssistant)
       } catch (error) {
         logger.error('Failed to handle assistant click:', error)
-        alert(
-          `Failed to select assistant: ${error instanceof Error ? error.message : String(error)}`
-        )
+        toast.error('Failed to select assistant', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [conversations, assistants, createConversation, setSelectedAssistant, selectConversation]
@@ -157,7 +160,9 @@ export function useSidebarHandlers() {
         await deleteModel(realModel.id)
       } catch (error) {
         logger.error('Failed to delete model:', error)
-        alert(`Failed to delete model: ${error instanceof Error ? error.message : String(error)}`)
+        toast.error('Failed to delete model', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [getModelById, deleteModel]
@@ -175,9 +180,9 @@ export function useSidebarHandlers() {
         await deleteAssistant(realAssistant.id)
       } catch (error) {
         logger.error('Failed to delete assistant:', error)
-        alert(
-          `Failed to delete assistant: ${error instanceof Error ? error.message : String(error)}`
-        )
+        toast.error('Failed to delete assistant', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [assistants, deleteAssistant]
@@ -195,7 +200,9 @@ export function useSidebarHandlers() {
         await deletePrompt(realPrompt.id)
       } catch (error) {
         logger.error('Failed to delete prompt:', error)
-        alert(`Failed to delete prompt: ${error instanceof Error ? error.message : String(error)}`)
+        toast.error('Failed to delete prompt', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [prompts, deletePrompt]
@@ -234,9 +241,9 @@ export function useSidebarHandlers() {
       await selectConversation(newConversation.id)
     } catch (error) {
       logger.error('Failed to create new conversation:', error)
-      alert(
-        `Failed to create conversation: ${error instanceof Error ? error.message : String(error)}`
-      )
+      toast.error('Failed to create conversation', {
+        description: error instanceof Error ? error.message : String(error),
+      })
     }
   }, [conversations, createConversation, selectConversation])
 
@@ -249,7 +256,9 @@ export function useSidebarHandlers() {
         await updateConversation(conversationId, newTitle)
       } catch (error) {
         logger.error('Failed to generate title:', error)
-        alert(`Failed to generate title: ${error instanceof Error ? error.message : String(error)}`)
+        toast.error('Failed to generate title', {
+          description: error instanceof Error ? error.message : String(error),
+        })
       }
     },
     [updateConversation]

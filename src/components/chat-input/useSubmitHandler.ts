@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
@@ -63,7 +64,7 @@ export function useSubmitHandler({
 
     // Check if we have either a model or assistant selected
     if (!selectedModel && !selectedAssistant) {
-      alert('Please select a model or assistant first')
+      toast.error('Please select a model or assistant first')
       return
     }
 
@@ -75,14 +76,14 @@ export function useSubmitHandler({
       modelToUse = getModelById(selectedAssistant.model_id)
       if (!modelToUse) {
         logger.error('Model not found for assistant:', selectedAssistant.model_id)
-        alert('Error: Model configuration not found for assistant')
+        toast.error('Error: Model configuration not found for assistant')
         return
       }
     } else if (selectedModel) {
       // Use selected model directly
       modelToUse = selectedModel
     } else {
-      alert('Please select a model or assistant first')
+      toast.error('Please select a model or assistant first')
       return
     }
 
@@ -90,7 +91,7 @@ export function useSubmitHandler({
     const provider = getProviderById(modelToUse.provider_id)
     if (!provider) {
       logger.error('Provider not found for model:', modelToUse.provider_id)
-      alert('Error: Provider configuration not found')
+      toast.error('Error: Provider configuration not found')
       return
     }
 
@@ -227,7 +228,9 @@ export function useSubmitHandler({
       logger.info('Message sent successfully')
     } catch (error) {
       logger.error('Failed to send message:', error)
-      alert(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
+      toast.error('Failed to send message', {
+        description: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
