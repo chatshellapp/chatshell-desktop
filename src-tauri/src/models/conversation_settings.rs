@@ -140,3 +140,85 @@ pub struct UpdateConversationSettingsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled_mcp_server_ids: Option<Vec<String>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prompt_mode_default() {
+        assert_eq!(PromptMode::default(), PromptMode::None);
+    }
+
+    #[test]
+    fn test_prompt_mode_from_str() {
+        assert_eq!(PromptMode::from("none"), PromptMode::None);
+        assert_eq!(PromptMode::from("existing"), PromptMode::Existing);
+        assert_eq!(PromptMode::from("custom"), PromptMode::Custom);
+        assert_eq!(PromptMode::from("unknown"), PromptMode::None);
+        assert_eq!(PromptMode::from(""), PromptMode::None);
+    }
+
+    #[test]
+    fn test_prompt_mode_to_string() {
+        assert_eq!(String::from(PromptMode::None), "none");
+        assert_eq!(String::from(PromptMode::Existing), "existing");
+        assert_eq!(String::from(PromptMode::Custom), "custom");
+    }
+
+    #[test]
+    fn test_model_parameter_overrides_default() {
+        let overrides = ModelParameterOverrides::default();
+        assert!(overrides.temperature.is_none());
+        assert!(overrides.max_tokens.is_none());
+        assert!(overrides.top_p.is_none());
+        assert!(overrides.frequency_penalty.is_none());
+        assert!(overrides.presence_penalty.is_none());
+    }
+
+    #[test]
+    fn test_conversation_settings_default_for_conversation() {
+        let settings = ConversationSettings::default_for_conversation("conv-123".to_string());
+
+        assert_eq!(settings.conversation_id, "conv-123");
+        assert!(settings.use_provider_defaults);
+        assert!(!settings.use_custom_parameters);
+        assert!(settings.context_message_count.is_none());
+        assert!(settings.selected_preset_id.is_none());
+        assert_eq!(settings.system_prompt_mode, PromptMode::None);
+        assert!(settings.selected_system_prompt_id.is_none());
+        assert!(settings.custom_system_prompt.is_none());
+        assert_eq!(settings.user_prompt_mode, PromptMode::None);
+        assert!(settings.selected_user_prompt_id.is_none());
+        assert!(settings.custom_user_prompt.is_none());
+        assert!(settings.enabled_mcp_server_ids.is_empty());
+    }
+
+    #[test]
+    fn test_conversation_settings_serialization() {
+        let settings = ConversationSettings::default_for_conversation("conv-456".to_string());
+        let json = serde_json::to_string(&settings).unwrap();
+
+        assert!(json.contains(r#""conversation_id":"conv-456""#));
+        assert!(json.contains(r#""use_provider_defaults":true"#));
+    }
+
+    #[test]
+    fn test_model_parameter_overrides_serialization() {
+        let overrides = ModelParameterOverrides {
+            temperature: Some(0.7),
+            max_tokens: Some(4096),
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+        };
+        let json = serde_json::to_string(&overrides).unwrap();
+
+        // Should include set values
+        assert!(json.contains(r#""temperature":0.7"#));
+        assert!(json.contains(r#""max_tokens":4096"#));
+        // Should skip None values
+        assert!(!json.contains("top_p"));
+        assert!(!json.contains("frequency_penalty"));
+    }
+}

@@ -185,3 +185,159 @@ pub fn build_user_content(
         OneOrMany::many(contents).unwrap_or_else(|_| OneOrMany::one(UserContent::Text(text.into())))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mime_to_image_media_type() {
+        assert_eq!(mime_to_image_media_type("image/jpeg"), Some(ImageMediaType::JPEG));
+        assert_eq!(mime_to_image_media_type("image/jpg"), Some(ImageMediaType::JPEG));
+        assert_eq!(mime_to_image_media_type("image/png"), Some(ImageMediaType::PNG));
+        assert_eq!(mime_to_image_media_type("image/gif"), Some(ImageMediaType::GIF));
+        assert_eq!(mime_to_image_media_type("image/webp"), Some(ImageMediaType::WEBP));
+        assert_eq!(mime_to_image_media_type("image/bmp"), None);
+        assert_eq!(mime_to_image_media_type("text/plain"), None);
+    }
+
+    #[test]
+    fn test_mime_to_image_media_type_case_insensitive() {
+        assert_eq!(mime_to_image_media_type("IMAGE/JPEG"), Some(ImageMediaType::JPEG));
+        assert_eq!(mime_to_image_media_type("Image/Png"), Some(ImageMediaType::PNG));
+    }
+
+    #[test]
+    fn test_mime_to_document_media_type() {
+        assert_eq!(mime_to_document_media_type("text/plain"), Some(DocumentMediaType::TXT));
+        assert_eq!(
+            mime_to_document_media_type("text/markdown"),
+            Some(DocumentMediaType::MARKDOWN)
+        );
+        assert_eq!(mime_to_document_media_type("text/html"), Some(DocumentMediaType::HTML));
+        assert_eq!(mime_to_document_media_type("text/css"), Some(DocumentMediaType::CSS));
+        assert_eq!(mime_to_document_media_type("text/csv"), Some(DocumentMediaType::CSV));
+        assert_eq!(mime_to_document_media_type("application/xml"), Some(DocumentMediaType::XML));
+        assert_eq!(mime_to_document_media_type("text/xml"), Some(DocumentMediaType::XML));
+        assert_eq!(
+            mime_to_document_media_type("text/javascript"),
+            Some(DocumentMediaType::Javascript)
+        );
+        assert_eq!(
+            mime_to_document_media_type("application/javascript"),
+            Some(DocumentMediaType::Javascript)
+        );
+        assert_eq!(
+            mime_to_document_media_type("text/x-python"),
+            Some(DocumentMediaType::Python)
+        );
+        assert_eq!(
+            mime_to_document_media_type("application/pdf"),
+            Some(DocumentMediaType::PDF)
+        );
+    }
+
+    #[test]
+    fn test_mime_to_document_media_type_unknown_defaults_to_txt() {
+        assert_eq!(
+            mime_to_document_media_type("application/octet-stream"),
+            Some(DocumentMediaType::TXT)
+        );
+        assert_eq!(
+            mime_to_document_media_type("unknown/type"),
+            Some(DocumentMediaType::TXT)
+        );
+    }
+
+    #[test]
+    fn test_format_model_display_name_simple() {
+        assert_eq!(format_model_display_name("gpt-4"), "GPT 4");
+        assert_eq!(format_model_display_name("gpt-4o-mini"), "GPT 4o Mini");
+        assert_eq!(format_model_display_name("claude-3-opus"), "Claude 3 Opus");
+    }
+
+    #[test]
+    fn test_format_model_display_name_with_version() {
+        assert_eq!(format_model_display_name("gpt-3.5-turbo"), "GPT 3.5 Turbo");
+        assert_eq!(format_model_display_name("gpt-4.1-preview"), "GPT 4.1 Preview");
+    }
+
+    #[test]
+    fn test_format_model_display_name_with_colon() {
+        // Note: The function only splits digits when the part starts with a digit
+        // "gemma3" starts with 'g' so it becomes "Gemma3", not "Gemma 3"
+        assert_eq!(format_model_display_name("gemma3:4b"), "Gemma3 4B");
+        assert_eq!(format_model_display_name("llama2:7b"), "Llama2 7B");
+        assert_eq!(format_model_display_name("mistral:latest"), "Mistral LATEST");
+    }
+
+    #[test]
+    fn test_format_model_display_name_acronyms() {
+        assert_eq!(format_model_display_name("gpt-4o"), "GPT 4o");
+        assert_eq!(format_model_display_name("oss-model"), "OSS Model");
+    }
+
+    #[test]
+    fn test_format_model_display_name_mixed_numbers() {
+        // Note: The function only adds space before digits when the part starts with a digit
+        // Parts like "gemma3" start with a letter, so they just get capitalized
+        assert_eq!(format_model_display_name("gemma3"), "Gemma3");
+        assert_eq!(format_model_display_name("llama2-chat"), "Llama2 Chat");
+        // Parts that start with digits get processed
+        assert_eq!(format_model_display_name("3b-model"), "3b Model");
+    }
+
+    #[test]
+    fn test_tool_call_info_creation() {
+        let info = ToolCallInfo {
+            id: "call-123".to_string(),
+            tool_name: "web_search".to_string(),
+            tool_input: r#"{"query": "test"}"#.to_string(),
+        };
+        assert_eq!(info.id, "call-123");
+        assert_eq!(info.tool_name, "web_search");
+    }
+
+    #[test]
+    fn test_tool_result_info_creation() {
+        let info = ToolResultInfo {
+            id: "call-123".to_string(),
+            tool_output: "Search results...".to_string(),
+        };
+        assert_eq!(info.id, "call-123");
+        assert_eq!(info.tool_output, "Search results...");
+    }
+
+    #[test]
+    fn test_stream_chunk_type_variants() {
+        let text_chunk = StreamChunkType::Text;
+        let reasoning_chunk = StreamChunkType::Reasoning;
+        let tool_call_chunk = StreamChunkType::ToolCall(ToolCallInfo {
+            id: "1".to_string(),
+            tool_name: "test".to_string(),
+            tool_input: "{}".to_string(),
+        });
+        let tool_result_chunk = StreamChunkType::ToolResult(ToolResultInfo {
+            id: "1".to_string(),
+            tool_output: "result".to_string(),
+        });
+
+        // Just verify they can be constructed
+        match text_chunk {
+            StreamChunkType::Text => {}
+            _ => panic!("Expected Text variant"),
+        }
+        match reasoning_chunk {
+            StreamChunkType::Reasoning => {}
+            _ => panic!("Expected Reasoning variant"),
+        }
+        match tool_call_chunk {
+            StreamChunkType::ToolCall(_) => {}
+            _ => panic!("Expected ToolCall variant"),
+        }
+        match tool_result_chunk {
+            StreamChunkType::ToolResult(_) => {}
+            _ => panic!("Expected ToolResult variant"),
+        }
+    }
+}

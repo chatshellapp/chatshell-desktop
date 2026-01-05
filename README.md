@@ -104,6 +104,14 @@ pnpm tauri dev
 
 The app will be available at `http://localhost:1420`
 
+### Testing
+
+```bash
+pnpm test                    # Run frontend tests
+pnpm test:watch              # Watch mode
+cd src-tauri && cargo test   # Run backend tests
+```
+
 For detailed commands and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Build

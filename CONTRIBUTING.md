@@ -229,11 +229,17 @@ chatshell-desktop/
 All tests must pass before merging:
 
 ```bash
-# Frontend
-pnpm check
+# Frontend unit tests
+pnpm test                # Run all tests once
+pnpm test:watch          # Watch mode for development
+pnpm test:coverage       # Generate coverage report
+
+# Frontend linting & type checks
+pnpm check               # type-check + lint + format
 
 # Backend
-pnpm check:rust
+pnpm check:rust          # Rust format check + clippy
+cd src-tauri && cargo test   # Run Rust tests
 ```
 
 ### Available Commands
@@ -250,6 +256,9 @@ pnpm type-check       # TypeScript type checking
 pnpm check            # Full check: type-check + lint + format
 pnpm check:rust       # Rust format check + clippy
 pnpm format:all       # Format TypeScript + Rust
+pnpm test             # Run frontend unit tests
+pnpm test:watch       # Run tests in watch mode
+pnpm test:coverage    # Run tests with coverage report
 pnpm tauri dev        # Start development app
 pnpm tauri build      # Build release bundle
 ```

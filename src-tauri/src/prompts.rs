@@ -95,3 +95,44 @@ pub fn build_title_generation_user_prompt(user_message: &str, assistant_message:
         user_message, assistant_message
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_title_generation_user_prompt_format() {
+        let result = build_title_generation_user_prompt("Hello world", "Hi!");
+
+        assert_eq!(
+            result,
+            "<input_dialogue>\n<user>Hello world</user>\n<assistant>Hi!</assistant>\n</input_dialogue>"
+        );
+    }
+
+    #[test]
+    fn test_build_title_generation_user_prompt_multiline() {
+        let user_msg = "Line 1\nLine 2";
+        let assistant_msg = "Response\nwith\nnewlines";
+        let result = build_title_generation_user_prompt(user_msg, assistant_msg);
+
+        assert!(result.contains("Line 1\nLine 2"));
+        assert!(result.contains("Response\nwith\nnewlines"));
+    }
+
+    #[test]
+    fn test_build_title_generation_user_prompt_empty_inputs() {
+        let result = build_title_generation_user_prompt("", "");
+        assert_eq!(
+            result,
+            "<input_dialogue>\n<user></user>\n<assistant></assistant>\n</input_dialogue>"
+        );
+    }
+
+    #[test]
+    fn test_prompts_are_not_empty() {
+        assert!(!TITLE_GENERATION_SYSTEM_PROMPT.is_empty());
+        assert!(!DEFAULT_ASSISTANT_SYSTEM_PROMPT.is_empty());
+        assert!(!SEARCH_DECISION_SYSTEM_PROMPT.is_empty());
+    }
+}
