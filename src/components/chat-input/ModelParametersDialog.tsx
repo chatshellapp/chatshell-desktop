@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ModelParameterPreset, ModelParameterOverrides } from '@/types'
 import { PARAMETER_LIMITS } from '@/types'
 import { cn } from '@/lib/utils'
+import { logger } from '@/lib/logger'
 
 interface ModelParametersDialogProps {
   isOpen: boolean
@@ -117,7 +118,7 @@ export function ModelParametersDialog({
         })
         setPresets(sorted)
       } catch (error) {
-        console.error('Failed to load presets:', error)
+        logger.error('Failed to load presets:', error)
       }
     }
     if (isOpen) {
