@@ -178,10 +178,7 @@ export function StreamingMessage({
               <div key={toolCall.id} className="space-y-2">
                 {/* Reasoning before this tool call */}
                 {reasoningSegment && reasoningSegment.trim() && searchDecisionResolved && (
-                  <ThinkingPreview
-                    content={reasoningSegment}
-                    isStreaming={false}
-                  />
+                  <ThinkingPreview content={reasoningSegment} isStreaming={false} />
                 )}
                 {/* Content before this tool call */}
                 {contentSegment && contentSegment.trim() && (

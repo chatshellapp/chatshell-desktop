@@ -20,6 +20,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
+use crate::db::tools::{BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
 
 /// Handle streaming using the agent-based approach
 /// This provides built-in support for preamble, temperature, max_tokens, etc.
@@ -48,6 +49,18 @@ pub(crate) async fn handle_agent_streaming(
     let mut config = AgentConfig::new().with_model_params(model_params);
     if let Some(prompt) = system_prompt.clone() {
         config = config.with_system_prompt(prompt);
+    }
+
+    // Load builtin tools for this conversation
+    let builtin_tools =
+        load_builtin_tools_for_conversation(&state_clone, &conversation_id_clone).await;
+    if builtin_tools.web_search {
+        tracing::info!("🔍 [agent_streaming] Enabling web_search tool for conversation");
+        config = config.with_web_search();
+    }
+    if builtin_tools.web_fetch {
+        tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool for conversation");
+        config = config.with_web_fetch();
     }
 
     // Load MCP tools for this conversation
@@ -635,10 +648,7 @@ pub(crate) async fn handle_agent_streaming(
                     );
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "❌ [agent_streaming] Failed to save content block: {}",
-                        e
-                    );
+                    tracing::error!("❌ [agent_streaming] Failed to save content block: {}", e);
                 }
             }
         }
@@ -764,4 +774,40 @@ async fn load_mcp_tools_for_conversation(
     }
 
     first_client.map(|client| (all_tools, client))
+}
+
+/// Builtin tools configuration for a conversation
+struct BuiltinToolsConfig {
+    web_search: bool,
+    web_fetch: bool,
+}
+
+/// Load builtin tools configuration for a conversation
+/// Returns which builtin tools are enabled
+async fn load_builtin_tools_for_conversation(
+    state: &AppState,
+    conversation_id: &str,
+) -> BuiltinToolsConfig {
+    // Get conversation settings to find enabled tool IDs
+    let settings = match state.db.get_conversation_settings(conversation_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                "⚠️ [builtin_tools] Failed to get conversation settings: {}",
+                e
+            );
+            return BuiltinToolsConfig {
+                web_search: false,
+                web_fetch: false,
+            };
+        }
+    };
+
+    // Check if builtin tool IDs are in the enabled list
+    let enabled_ids = &settings.enabled_mcp_server_ids;
+
+    BuiltinToolsConfig {
+        web_search: enabled_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string()),
+        web_fetch: enabled_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string()),
+    }
 }

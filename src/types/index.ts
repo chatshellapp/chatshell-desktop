@@ -19,7 +19,7 @@ export type { KnowledgeBase, CreateKnowledgeBaseRequest } from './knowledge-base
 
 // Tool types
 export type { Tool, CreateToolRequest, McpServerConfig, McpTransportType } from './tool'
-export { parseMcpConfig, getTransportType } from './tool'
+export { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool } from './tool'
 
 // User types
 export type {

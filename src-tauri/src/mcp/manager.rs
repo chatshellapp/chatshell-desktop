@@ -5,10 +5,10 @@
 use anyhow::{Context, Result};
 use rmcp::model::{ClientCapabilities, ClientInfo, Implementation, Tool as McpTool};
 use rmcp::service::{Peer, RunningService};
+use rmcp::transport::TokioChildProcess;
 use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransport, StreamableHttpClientTransportConfig,
 };
-use rmcp::transport::TokioChildProcess;
 use rmcp::{RoleClient, ServiceExt};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -105,8 +105,8 @@ impl McpConnectionManager {
 
         // Parse the command string - it may contain the executable and arguments
         // e.g., "npx -y @modelcontextprotocol/server-everything"
-        let parsed_parts: Vec<String> = shell_words::split(command_str)
-            .unwrap_or_else(|_| vec![command_str.to_string()]);
+        let parsed_parts: Vec<String> =
+            shell_words::split(command_str).unwrap_or_else(|_| vec![command_str.to_string()]);
 
         let (executable, command_args): (String, Vec<String>) = if parsed_parts.len() > 1 {
             // Command string contains arguments
@@ -163,7 +163,10 @@ impl McpConnectionManager {
         }
         if let Some(env_vars) = &config.env {
             cmd.envs(env_vars);
-            tracing::debug!("  Custom env vars: {:?}", env_vars.keys().collect::<Vec<_>>());
+            tracing::debug!(
+                "  Custom env vars: {:?}",
+                env_vars.keys().collect::<Vec<_>>()
+            );
         }
 
         // Create STDIO transport from the command
@@ -209,8 +212,8 @@ impl McpConnectionManager {
                 self.connect_http(endpoint).await?
             }
             McpTransportType::Stdio => {
-                let mcp_config = config
-                    .ok_or_else(|| anyhow::anyhow!("STDIO transport requires a config"))?;
+                let mcp_config =
+                    config.ok_or_else(|| anyhow::anyhow!("STDIO transport requires a config"))?;
                 self.connect_stdio(&mcp_config).await?
             }
         };

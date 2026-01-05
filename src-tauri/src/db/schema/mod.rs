@@ -127,6 +127,8 @@ async fn migrate_v3_to_v4(pool: &SqlitePool) -> Result<()> {
     // Re-run create_steps_table which uses CREATE TABLE IF NOT EXISTS
     // This will create any missing tables (like content_blocks) without affecting existing ones
     steps::create_steps_table(pool).await?;
-    tracing::info!("Ensured all step-related tables exist (thinking_steps, search_decisions, tool_calls, code_executions, content_blocks)");
+    tracing::info!(
+        "Ensured all step-related tables exist (thinking_steps, search_decisions, tool_calls, code_executions, content_blocks)"
+    );
     Ok(())
 }

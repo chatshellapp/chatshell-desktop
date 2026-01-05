@@ -2,7 +2,9 @@ use anyhow::Result;
 use sqlx::Row;
 
 use super::Database;
-use crate::models::{ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest};
+use crate::models::{
+    ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest,
+};
 
 impl Database {
     /// Get settings for a conversation. Returns default settings if none exist.
@@ -25,13 +27,17 @@ impl Database {
         match row {
             Some(row) => Ok(self.row_to_conversation_settings(&row)),
             None => {
-                // Return default settings if none exist, inheriting globally enabled MCP servers
-                let enabled_mcp_server_ids: Vec<String> = self
-                    .list_enabled_tools_by_type("mcp")
-                    .await?
-                    .into_iter()
-                    .map(|tool| tool.id)
-                    .collect();
+                // Return default settings if none exist, inheriting globally enabled tools
+                // This includes both MCP servers and builtin tools
+                let mut enabled_tool_ids: Vec<String> = Vec::new();
+
+                // Add enabled MCP servers
+                let mcp_tools = self.list_enabled_tools_by_type("mcp").await?;
+                enabled_tool_ids.extend(mcp_tools.into_iter().map(|tool| tool.id));
+
+                // Add enabled builtin tools
+                let builtin_tools = self.list_enabled_tools_by_type("builtin").await?;
+                enabled_tool_ids.extend(builtin_tools.into_iter().map(|tool| tool.id));
 
                 Ok(ConversationSettings {
                     conversation_id: conversation_id.to_string(),
@@ -46,7 +52,7 @@ impl Database {
                     user_prompt_mode: PromptMode::None,
                     selected_user_prompt_id: None,
                     custom_user_prompt: None,
-                    enabled_mcp_server_ids,
+                    enabled_mcp_server_ids: enabled_tool_ids,
                 })
             }
         }

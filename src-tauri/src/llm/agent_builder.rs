@@ -19,6 +19,7 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
+use crate::llm::tools::{WebFetchTool, WebSearchTool};
 use crate::llm::{
     ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider,
 };
@@ -47,6 +48,10 @@ pub struct AgentConfig {
     pub enabled_tools: Option<Vec<String>>,
     /// Optional MCP tools configuration
     pub mcp_tools: Option<McpToolsConfig>,
+    /// Enable built-in web search tool
+    pub enable_web_search: bool,
+    /// Enable built-in web fetch tool
+    pub enable_web_fetch: bool,
 }
 
 impl AgentConfig {
@@ -96,6 +101,25 @@ impl AgentConfig {
 
     pub fn with_mcp_tools(mut self, tools: Vec<McpTool>, client: Peer<RoleClient>) -> Self {
         self.mcp_tools = Some(McpToolsConfig { tools, client });
+        self
+    }
+
+    /// Enable the built-in web search tool
+    pub fn with_web_search(mut self) -> Self {
+        self.enable_web_search = true;
+        self
+    }
+
+    /// Enable the built-in web fetch tool
+    pub fn with_web_fetch(mut self) -> Self {
+        self.enable_web_fetch = true;
+        self
+    }
+
+    /// Enable all built-in tools (web_search and web_fetch)
+    pub fn with_builtin_tools(mut self) -> Self {
+        self.enable_web_search = true;
+        self.enable_web_fetch = true;
         self
     }
 }
@@ -231,18 +255,101 @@ fn build_agent<M: CompletionModel>(
         }
     }
 
-    // Apply MCP tools if configured
-    // Note: rmcp_tools returns a different builder type (AgentBuilderSimple),
-    // so we need to build immediately after adding MCP tools
-    if let Some(ref mcp_config) = config.mcp_tools {
-        if !mcp_config.tools.is_empty() {
-            tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
-            return builder
+    // Check if we need to add any native tools or MCP tools
+    // Note: .tool() transforms AgentBuilder into AgentBuilderSimple,
+    // so we need to handle the transition carefully
+    let has_native_tools = config.enable_web_search || config.enable_web_fetch;
+    let has_mcp_tools = config
+        .mcp_tools
+        .as_ref()
+        .map_or(false, |m| !m.tools.is_empty());
+
+    if has_native_tools || has_mcp_tools {
+        // Add native tools first (this transitions to AgentBuilderSimple)
+        return build_agent_with_tools(builder, config);
+    }
+
+    builder.build()
+}
+
+/// Build agent with native tools and/or MCP tools
+/// This is a separate function because .tool() changes the builder type
+fn build_agent_with_tools<M: CompletionModel>(
+    builder: rig::agent::AgentBuilder<M>,
+    config: &AgentConfig,
+) -> Agent<M> {
+    // Count tools for logging
+    let mut native_tool_count = 0;
+
+    // Start by adding the first native tool (which transitions to AgentBuilderSimple)
+    // Then chain additional tools
+    if config.enable_web_search {
+        tracing::info!("🔍 Adding web_search tool to agent");
+        native_tool_count += 1;
+
+        let mut simple_builder = builder.tool(WebSearchTool::new());
+
+        // Add web_fetch if enabled
+        if config.enable_web_fetch {
+            tracing::info!("🌐 Adding web_fetch tool to agent");
+            native_tool_count += 1;
+            simple_builder = simple_builder.tool(WebFetchTool::new());
+        }
+
+        // Add MCP tools if configured
+        if let Some(ref mcp_config) = config.mcp_tools
+            && !mcp_config.tools.is_empty()
+        {
+            tracing::info!(
+                "🔌 Adding {} MCP tool(s) to agent (total: {} native + {} MCP)",
+                mcp_config.tools.len(),
+                native_tool_count,
+                mcp_config.tools.len()
+            );
+            return simple_builder
                 .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
                 .build();
         }
+
+        return simple_builder.build();
     }
 
+    // Only web_fetch is enabled (no web_search)
+    if config.enable_web_fetch {
+        tracing::info!("🌐 Adding web_fetch tool to agent");
+        native_tool_count += 1;
+
+        let simple_builder = builder.tool(WebFetchTool::new());
+
+        // Add MCP tools if configured
+        if let Some(ref mcp_config) = config.mcp_tools
+            && !mcp_config.tools.is_empty()
+        {
+            tracing::info!(
+                "🔌 Adding {} MCP tool(s) to agent (total: {} native + {} MCP)",
+                mcp_config.tools.len(),
+                native_tool_count,
+                mcp_config.tools.len()
+            );
+            return simple_builder
+                .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
+                .build();
+        }
+
+        return simple_builder.build();
+    }
+
+    // Only MCP tools (no native tools)
+    if let Some(ref mcp_config) = config.mcp_tools
+        && !mcp_config.tools.is_empty()
+    {
+        tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
+        return builder
+            .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
+            .build();
+    }
+
+    // Fallback (shouldn't reach here based on calling logic)
     builder.build()
 }
 

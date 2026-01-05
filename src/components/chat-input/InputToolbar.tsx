@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   MessageSquare,
   Sparkles,
-  Plug,
+  Wrench,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -131,13 +131,13 @@ export function InputToolbar({
           </InputGroupButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem] min-w-[200px]">
-          <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
+          {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Search className="size-4" />
-              <span>Web Search</span>
+              <span>Pre Web Search</span>
             </div>
             <Switch checked={webSearchEnabled} onCheckedChange={onWebSearchEnabledChange} />
-          </DropdownMenuItem>
+          </DropdownMenuItem> */}
           {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Package className="size-4" />
@@ -145,7 +145,7 @@ export function InputToolbar({
             </div>
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
           </DropdownMenuItem> */}
-          <DropdownMenuSeparator />
+          {/* <DropdownMenuSeparator /> */}
           {systemPromptDisabled ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -189,8 +189,8 @@ export function InputToolbar({
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onMcpServersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
-              <Plug className="size-4" />
-              <span>MCP Servers</span>
+              <Wrench className="size-4" />
+              <span>Tools & MCP</span>
             </div>
             <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
           </DropdownMenuItem>

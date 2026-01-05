@@ -387,7 +387,10 @@ impl Database {
     }
 
     // Content Block operations
-    pub async fn create_content_block(&self, req: CreateContentBlockRequest) -> Result<ContentBlock> {
+    pub async fn create_content_block(
+        &self,
+        req: CreateContentBlockRequest,
+    ) -> Result<ContentBlock> {
         let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 

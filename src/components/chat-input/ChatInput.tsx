@@ -210,16 +210,16 @@ export function ChatInput(/* _props: ChatInputProps */) {
     return null
   }, [conversationSettings, prompts])
 
-  // Compute MCP servers label
+  // Compute tools label (includes both builtin and MCP tools)
   const mcpServersLabel = useMemo(() => {
     if (!conversationSettings) return 'None'
     const enabledCount = conversationSettings.enabledMcpServerIds?.length || 0
     if (enabledCount === 0) return 'None'
     if (enabledCount === 1) {
-      const server = mcpServers.find((s) => s.id === conversationSettings.enabledMcpServerIds[0])
-      return server?.name || '1 server'
+      const tool = mcpServers.find((s) => s.id === conversationSettings.enabledMcpServerIds[0])
+      return tool?.name || '1'
     }
-    return `${enabledCount} servers`
+    return `${enabledCount}`
   }, [conversationSettings, mcpServers])
 
   // Handler to change enabled MCP server IDs

@@ -10,6 +10,7 @@ pub use types::{FetchedWebResource, STEALTH_JS};
 
 // Re-export public functions
 pub use fetcher::{
-    FetchConfig, FetchMode, LocalMethod, build_llm_content_with_attachments, fetch_urls_with_config,
+    FetchConfig, FetchMode, LocalMethod, build_llm_content_with_attachments,
+    fetch_urls_with_config, fetch_web_resource_with_config,
 };
 pub use headless::create_new_browser;

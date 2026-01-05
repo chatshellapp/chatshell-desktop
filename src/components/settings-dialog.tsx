@@ -8,7 +8,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
-  // Globe,
+  Globe,
   Heading,
   // Home,
   // Keyboard,
@@ -25,6 +25,7 @@ import {
   // Settings,
   Trash2,
   // Video,
+  Wrench,
 } from 'lucide-react'
 
 import {
@@ -67,7 +68,7 @@ import type {
   McpTransportType,
   McpServerConfig,
 } from '@/types'
-import { parseMcpConfig, getTransportType } from '@/types'
+import { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool } from '@/types'
 import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
@@ -76,6 +77,7 @@ import { Switch } from '@/components/ui/switch'
 const data = {
   nav: [
     { name: 'LLM Provider', icon: Bot },
+    { name: 'Built-in Tools', icon: Wrench },
     { name: 'MCP Servers', icon: Plug },
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
@@ -459,9 +461,61 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
   const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
+  // Separate builtin tools and MCP servers
+  const builtinTools = mcpServers.filter((s) => isBuiltinTool(s))
+  const mcpServersOnly = mcpServers.filter((s) => isMcpTool(s))
+
   const renderContent = () => {
     if (activeSection === 'LLM Provider') {
       return <LLMProviderSettings open={open} />
+    }
+
+    if (activeSection === 'Built-in Tools') {
+      return (
+        <div className="grid gap-6">
+          <div className="grid gap-2">
+            <p className="text-sm text-muted-foreground max-w-md">
+              Built-in tools provide core capabilities that enhance your AI assistant. Enable the
+              tools you want to use globally, then configure them per conversation.
+            </p>
+          </div>
+
+          {builtinTools.length > 0 ? (
+            <div className="grid gap-4 max-w-lg">
+              {builtinTools.map((tool) => (
+                <div
+                  key={tool.id}
+                  className="flex items-start justify-between gap-4 rounded-lg border p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    {tool.id === 'builtin-web-search' ? (
+                      <Search className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    ) : tool.id === 'builtin-web-fetch' ? (
+                      <Globe className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    ) : (
+                      <Wrench className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    )}
+                    <div className="grid gap-1">
+                      <span className="font-medium">{tool.name}</span>
+                      {tool.description && (
+                        <p className="text-xs text-muted-foreground">{tool.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={tool.is_enabled}
+                    onCheckedChange={() => handleToggleMcpServer(tool.id)}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {mcpLoading ? 'Loading built-in tools...' : 'No built-in tools available.'}
+            </div>
+          )}
+        </div>
+      )
     }
 
     if (activeSection === 'MCP Servers') {
@@ -649,10 +703,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
 
           {/* List of existing MCP servers */}
-          {mcpServers.length > 0 && (
+          {mcpServersOnly.length > 0 && (
             <div className="grid gap-3">
               <h4 className="text-sm font-medium">Configured Servers</h4>
-              {mcpServers.map((server) => {
+              {mcpServersOnly.map((server) => {
                 const serverTransport = getTransportType(server)
                 const serverConfig = parseMcpConfig(server.config)
 
@@ -839,7 +893,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
           )}
 
-          {mcpServers.length === 0 && !mcpLoading && (
+          {mcpServersOnly.length === 0 && !mcpLoading && (
             <div className="text-sm text-muted-foreground">
               No MCP servers configured yet. Add one above to get started.
             </div>

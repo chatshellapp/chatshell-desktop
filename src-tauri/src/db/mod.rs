@@ -14,7 +14,7 @@ mod search_results;
 mod seed;
 mod settings;
 mod steps;
-mod tools;
+pub mod tools;
 mod users;
 
 use anyhow::Result;
@@ -47,6 +47,9 @@ impl Database {
 
         // Ensure default parameter presets exist
         db.ensure_default_presets().await?;
+
+        // Ensure builtin tools exist (web_search, web_fetch)
+        db.ensure_builtin_tools().await?;
 
         Ok(db)
     }

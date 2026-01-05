@@ -158,7 +158,9 @@ export function MessageItem({
   // Build headerContent for non-interleaved assistant messages
   // (steps, contexts, thinking shown between header and content)
   const headerContent =
-    isAssistantMessage && !hasInterleavedContent && (hasAssistantResources || hasThinkingContent) ? (
+    isAssistantMessage &&
+    !hasInterleavedContent &&
+    (hasAssistantResources || hasThinkingContent) ? (
       <div className="space-y-1.5 mb-2">
         {/* Search decisions first */}
         {searchDecisionSteps.map((step) => (

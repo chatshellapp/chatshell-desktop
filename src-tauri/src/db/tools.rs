@@ -1,4 +1,4 @@
-//! Database operations for tools (including MCP servers)
+//! Database operations for tools (including MCP servers and builtin tools)
 
 use anyhow::Result;
 use chrono::Utc;
@@ -7,6 +7,14 @@ use uuid::Uuid;
 
 use super::Database;
 use crate::models::{CreateToolRequest, Tool};
+
+/// Tool type constants
+pub const TOOL_TYPE_MCP: &str = "mcp";
+pub const TOOL_TYPE_BUILTIN: &str = "builtin";
+
+/// Builtin tool IDs (fixed UUIDs for consistency)
+pub const BUILTIN_WEB_SEARCH_ID: &str = "builtin-web-search";
+pub const BUILTIN_WEB_FETCH_ID: &str = "builtin-web-fetch";
 
 impl Database {
     /// Create a new tool
@@ -170,5 +178,73 @@ impl Database {
             updated_at: row.get("updated_at"),
         }
     }
-}
 
+    /// Ensure builtin tools exist in the database
+    /// These are native tools that can be enabled per conversation
+    pub async fn ensure_builtin_tools(&self) -> Result<()> {
+        let builtin_tools = [
+            (
+                BUILTIN_WEB_SEARCH_ID,
+                "Web Search",
+                "Search the web for information using a search engine. Returns relevant search results with titles, URLs, and snippets.",
+            ),
+            (
+                BUILTIN_WEB_FETCH_ID,
+                "Web Fetch",
+                "Fetch and extract content from web pages. Returns cleaned text content suitable for reading articles and documentation.",
+            ),
+        ];
+
+        for (id, name, description) in builtin_tools {
+            // Check if tool already exists
+            let exists = sqlx::query("SELECT 1 FROM tools WHERE id = ?")
+                .bind(id)
+                .fetch_optional(self.pool.as_ref())
+                .await?
+                .is_some();
+
+            if !exists {
+                let now = Utc::now().to_rfc3339();
+                sqlx::query(
+                    "INSERT INTO tools (id, name, type, endpoint, config, description, is_enabled, created_at, updated_at)
+                     VALUES (?, ?, ?, NULL, NULL, ?, 1, ?, ?)",
+                )
+                .bind(id)
+                .bind(name)
+                .bind(TOOL_TYPE_BUILTIN)
+                .bind(description)
+                .bind(&now)
+                .bind(&now)
+                .execute(self.pool.as_ref())
+                .await?;
+
+                tracing::info!("✅ [db] Created builtin tool: {}", name);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get enabled builtin tool IDs from a list of tool IDs
+    pub async fn get_enabled_builtin_tool_ids(&self, ids: &[String]) -> Result<Vec<String>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Filter to only builtin tools
+        let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+        let query = format!(
+            "SELECT id FROM tools WHERE id IN ({}) AND type = ? AND is_enabled = 1",
+            placeholders.join(", ")
+        );
+
+        let mut query_builder = sqlx::query_scalar::<_, String>(&query);
+        for id in ids {
+            query_builder = query_builder.bind(id);
+        }
+        query_builder = query_builder.bind(TOOL_TYPE_BUILTIN);
+
+        let rows = query_builder.fetch_all(self.pool.as_ref()).await?;
+        Ok(rows)
+    }
+}

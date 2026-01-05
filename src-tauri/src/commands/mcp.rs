@@ -111,14 +111,13 @@ pub async fn create_mcp_server(
     state.db.create_tool(req).await.map_err(|e| e.to_string())
 }
 
-/// List all MCP servers
+/// List all MCP servers and builtin tools
+/// Returns both MCP servers (type='mcp') and builtin tools (type='builtin')
+/// for use in the tools selection dialog
 #[tauri::command]
 pub async fn list_mcp_servers(state: State<'_, AppState>) -> Result<Vec<Tool>, String> {
-    state
-        .db
-        .list_tools_by_type("mcp")
-        .await
-        .map_err(|e| e.to_string())
+    // Return all tools (MCP + builtin) so the UI can display both
+    state.db.list_tools().await.map_err(|e| e.to_string())
 }
 
 /// Get a specific MCP server

@@ -6,6 +6,7 @@ pub mod ollama;
 pub mod openai;
 pub mod openrouter;
 pub mod tool_registry;
+pub mod tools;
 
 pub use common::StreamChunkType;
 
@@ -13,6 +14,11 @@ pub use common::StreamChunkType;
 // These are currently unused internally but are part of the public API
 #[allow(unused_imports)]
 pub use tool_registry::{ToolDefinition, ToolParameter, ToolRegistry};
+
+// Re-export native tools for public API
+// These are currently unused internally but are part of the public API
+#[allow(unused_imports)]
+pub use tools::{WebFetchTool, WebSearchTool};
 
 use agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
