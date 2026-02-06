@@ -136,7 +136,8 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
 // Default conversation settings
 export const createDefaultConversationSettings = (
   conversationId: string,
-  enabledMcpServerIds: string[] = []
+  enabledMcpServerIds: string[] = [],
+  enabledSkillIds: string[] = []
 ): ConversationSettings => ({
   conversationId,
   useProviderDefaults: true, // Default: use provider's default settings
@@ -152,7 +153,7 @@ export const createDefaultConversationSettings = (
   selectedUserPromptId: null,
   customUserPrompt: null,
   enabledMcpServerIds,
-  enabledSkillIds: [],
+  enabledSkillIds,
 })
 
 // Parameter limits for validation

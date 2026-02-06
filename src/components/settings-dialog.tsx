@@ -20,6 +20,7 @@ import {
   // Paintbrush,
   Plug,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   // Settings,
@@ -27,6 +28,7 @@ import {
   Trash2,
   // Video,
   Wrench,
+  Zap,
 } from 'lucide-react'
 
 import {
@@ -60,16 +62,18 @@ import {
 import { useMcpStore } from '@/stores/mcpStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useSkillStore } from '@/stores/skillStore'
 import type {
   SearchProviderId,
   WebFetchMode,
   WebFetchLocalMethod,
   LogLevel,
   Tool,
+  Skill,
   McpTransportType,
   McpServerConfig,
 } from '@/types'
-import { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool } from '@/types'
+import { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool, isBuiltinSkill, isUserSkill } from '@/types'
 import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
@@ -80,6 +84,7 @@ const data = {
     { name: 'LLM Provider', icon: Bot },
     { name: 'Built-in Tools', icon: Wrench },
     { name: 'MCP Servers', icon: Plug },
+    { name: 'Skills', icon: Zap },
     { name: 'Conversation Title', icon: Heading },
     { name: 'Web Fetch', icon: FileDown },
     { name: 'Web Search', icon: Search },
@@ -161,6 +166,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const getLogLevelTypeScript = useSettingsStore((state) => state.getLogLevelTypeScript)
   const saveLogLevelTypeScript = useSettingsStore((state) => state.setLogLevelTypeScript)
 
+  // Skill store methods
+  const skills = useSkillStore((state) => state.skills)
+  const skillsLoading = useSkillStore((state) => state.isLoading)
+  const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
+  const scanSkills = useSkillStore((state) => state.scanSkills)
+  const toggleSkill = useSkillStore((state) => state.toggleSkill)
+
   // MCP store methods
   const mcpServers = useMcpStore((state) => state.servers)
   const mcpLoading = useMcpStore((state) => state.isLoading)
@@ -178,6 +190,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       loadModels()
       loadSearchProviders()
       loadMcpServers()
+      ensureSkillsLoaded()
       const loadSettings = async () => {
         const summaryModelValue = await getSetting('conversation_summary_model_id')
         if (summaryModelValue) setSummaryModelId(summaryModelValue)
@@ -211,6 +224,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     loadModels,
     loadSearchProviders,
     loadMcpServers,
+    ensureSkillsLoaded,
     getSetting,
     getWebFetchMode,
     getWebFetchLocalMethod,
@@ -465,6 +479,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Separate builtin tools and MCP servers
   const builtinTools = mcpServers.filter((s) => isBuiltinTool(s))
   const mcpServersOnly = mcpServers.filter((s) => isMcpTool(s))
+
+  // Separate builtin and user skills
+  const builtinSkills = skills.filter((s: Skill) => isBuiltinSkill(s))
+  const userSkills = skills.filter((s: Skill) => isUserSkill(s))
+
+  const handleToggleSkill = async (id: string) => {
+    try {
+      await toggleSkill(id)
+    } catch (error) {
+      logger.error('Failed to toggle skill:', error)
+    }
+  }
 
   const renderContent = () => {
     if (activeSection === 'LLM Provider') {
@@ -846,18 +872,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         <div className="grid gap-1 min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">{server.name}</span>
-                            <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                               {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
                             </span>
-                            {server.is_enabled ? (
-                              <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                                Enabled
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                Disabled
-                              </span>
-                            )}
                           </div>
                           <span className="text-xs text-muted-foreground truncate font-mono">
                             {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
@@ -899,6 +916,86 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {mcpServersOnly.length === 0 && !mcpLoading && (
             <div className="text-sm text-muted-foreground">
               No MCP servers configured yet. Add one above to get started.
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    if (activeSection === 'Skills') {
+      const hasSkills = builtinSkills.length > 0 || userSkills.length > 0
+
+      const renderSkillItem = (skill: Skill) => (
+        <div
+          key={skill.id}
+          className="flex items-start justify-between gap-4 rounded-lg border p-4"
+        >
+          <div className="grid gap-1">
+            <span className="font-medium">{skill.name}</span>
+            {skill.description && (
+              <p className="text-xs text-muted-foreground">{skill.description}</p>
+            )}
+            {skill.required_tool_ids.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Requires {skill.required_tool_ids.length} tool(s)
+              </p>
+            )}
+          </div>
+          <Switch
+            checked={skill.is_enabled}
+            onCheckedChange={() => handleToggleSkill(skill.id)}
+          />
+        </div>
+      )
+
+      return (
+        <div className="grid gap-6">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-muted-foreground max-w-md">
+              Skills are prompt instruction bundles that enhance your AI assistant with specialized
+              capabilities. Enable or disable them globally here, then fine-tune per conversation.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={scanSkills}
+              disabled={skillsLoading}
+              className="shrink-0"
+            >
+              {skillsLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Rescan
+            </Button>
+          </div>
+
+          {hasSkills ? (
+            <div className="grid gap-6 max-w-lg">
+              {builtinSkills.length > 0 && (
+                <div className="grid gap-3">
+                  <h4 className="text-sm font-medium">Built-in Skills</h4>
+                  <div className="grid gap-3">
+                    {builtinSkills.map(renderSkillItem)}
+                  </div>
+                </div>
+              )}
+
+              {userSkills.length > 0 && (
+                <div className="grid gap-3">
+                  <h4 className="text-sm font-medium">User Skills</h4>
+                  <div className="grid gap-3">
+                    {userSkills.map(renderSkillItem)}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {skillsLoading
+                ? 'Loading skills...'
+                : 'No skills available. Place SKILL.md files in ~/.chatshell/skills/ to add custom skills.'}
             </div>
           )}
         </div>

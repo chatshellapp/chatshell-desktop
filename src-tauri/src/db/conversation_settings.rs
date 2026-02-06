@@ -39,6 +39,14 @@ impl Database {
                 let builtin_tools = self.list_enabled_tools_by_type("builtin").await?;
                 enabled_tool_ids.extend(builtin_tools.into_iter().map(|tool| tool.id));
 
+                // Add globally enabled skills
+                let all_skills = self.list_skills().await?;
+                let enabled_skill_ids: Vec<String> = all_skills
+                    .into_iter()
+                    .filter(|s| s.is_enabled)
+                    .map(|s| s.id)
+                    .collect();
+
                 Ok(ConversationSettings {
                     conversation_id: conversation_id.to_string(),
                     use_provider_defaults: true,
@@ -53,7 +61,7 @@ impl Database {
                     selected_user_prompt_id: None,
                     custom_user_prompt: None,
                     enabled_mcp_server_ids: enabled_tool_ids,
-                    enabled_skill_ids: Vec::new(),
+                    enabled_skill_ids,
                 })
             }
         }

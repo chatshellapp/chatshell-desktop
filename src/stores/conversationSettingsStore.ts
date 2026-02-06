@@ -10,6 +10,7 @@ import type {
 } from '@/types'
 import { fromBackendSettings, toBackendRequest, createDefaultConversationSettings } from '@/types'
 import { useMcpStore } from './mcpStore'
+import { useSkillStore } from './skillStore'
 import { logger } from '@/lib/logger'
 
 interface ConversationSettingsState {
@@ -99,9 +100,19 @@ function getGlobalEnabledMcpServerIds(): string[] {
   return mcpStore.servers.filter((server) => server.is_enabled).map((server) => server.id)
 }
 
-// Helper to create default settings with inherited global MCP servers
+// Helper to get globally enabled skill IDs
+function getGlobalEnabledSkillIds(): string[] {
+  const skillStore = useSkillStore.getState()
+  return skillStore.skills.filter((skill) => skill.is_enabled).map((skill) => skill.id)
+}
+
+// Helper to create default settings with inherited global MCP servers and skills
 function createDefaultSettings(conversationId: string): ConversationSettings {
-  return createDefaultConversationSettings(conversationId, getGlobalEnabledMcpServerIds())
+  return createDefaultConversationSettings(
+    conversationId,
+    getGlobalEnabledMcpServerIds(),
+    getGlobalEnabledSkillIds()
+  )
 }
 
 // Helper to update settings in the backend
