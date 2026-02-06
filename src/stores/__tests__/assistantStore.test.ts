@@ -28,6 +28,7 @@ const createMockAssistant = (id: string, name: string): Assistant => ({
   avatar_type: 'text',
   avatar_text: '🤖',
   avatar_bg: '#00E5FF',
+  tool_ids: [],
   is_starred: false,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',

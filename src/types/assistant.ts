@@ -1,7 +1,7 @@
 import type { ModelParameterPreset } from './model-parameter-preset'
 
 // ==========================================================================
-// ASSISTANT - Model + System Prompt + Parameter Preset packaged together
+// ASSISTANT - Model + System Prompt + Parameter Preset + Tools packaged together
 // ==========================================================================
 
 // Assistant types
@@ -19,6 +19,10 @@ export interface Assistant {
 
   // The full preset data (populated via JOIN)
   preset?: ModelParameterPreset
+
+  // Tool IDs associated with this assistant (builtin tools + MCP servers)
+  // Populated from assistant_tools junction table
+  tool_ids: string[]
 
   // Avatar
   avatar_type: string // "text" or "image"
@@ -43,6 +47,9 @@ export interface CreateAssistantRequest {
 
   // Reference to parameter preset (optional - will use default if not specified)
   model_parameter_preset_id?: string
+
+  // Tool IDs to associate (builtin tools + MCP servers)
+  tool_ids?: string[]
 
   // Avatar
   avatar_type?: string

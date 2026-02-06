@@ -48,6 +48,11 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
 
+        // Sync assistant_tools junction table
+        if let Some(tool_ids) = &req.tool_ids {
+            self.sync_assistant_tools(&id, tool_ids).await?;
+        }
+
         self.get_assistant(&id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created assistant"))
@@ -73,35 +78,15 @@ impl Database {
 
         match row {
             Some(row) => {
+                let assistant_id: String = row.get("id");
                 let is_starred: i32 = row.get("is_starred");
-                let preset_id: Option<String> = row.get("preset_id");
+                let preset = Self::extract_preset_from_row(&row);
 
-                let preset = if preset_id.is_some() {
-                    let additional_params_str: Option<String> = row.get("additional_params");
-                    let additional_params =
-                        additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
-
-                    Some(ModelParameterPreset {
-                        id: row.get("preset_id"),
-                        name: row.get("preset_name"),
-                        description: row.get("preset_description"),
-                        temperature: row.get("temperature"),
-                        max_tokens: row.get("max_tokens"),
-                        top_p: row.get("top_p"),
-                        frequency_penalty: row.get("frequency_penalty"),
-                        presence_penalty: row.get("presence_penalty"),
-                        additional_params,
-                        is_system: row.get::<i32, _>("preset_is_system") != 0,
-                        is_default: row.get::<i32, _>("preset_is_default") != 0,
-                        created_at: row.get("preset_created_at"),
-                        updated_at: row.get("preset_updated_at"),
-                    })
-                } else {
-                    None
-                };
+                // Load tool_ids from junction table
+                let tool_ids = self.get_assistant_tool_ids(&assistant_id).await?;
 
                 Ok(Some(Assistant {
-                    id: row.get("id"),
+                    id: assistant_id,
                     name: row.get("name"),
                     role: row.get("role"),
                     description: row.get("description"),
@@ -110,6 +95,7 @@ impl Database {
                     model_id: row.get("model_id"),
                     model_parameter_preset_id: row.get("model_parameter_preset_id"),
                     preset,
+                    tool_ids,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -142,38 +128,24 @@ impl Database {
         .fetch_all(self.pool.as_ref())
         .await?;
 
+        // Batch load all assistant tool_ids to avoid N+1 queries
+        let all_tool_mappings = self.get_all_assistant_tool_ids().await?;
+
         let assistants = rows
             .iter()
             .map(|row| {
+                let assistant_id: String = row.get("id");
                 let is_starred: i32 = row.get("is_starred");
-                let preset_id: Option<String> = row.get("preset_id");
+                let preset = Self::extract_preset_from_row(row);
 
-                let preset = if preset_id.is_some() {
-                    let additional_params_str: Option<String> = row.get("additional_params");
-                    let additional_params =
-                        additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
-
-                    Some(ModelParameterPreset {
-                        id: row.get("preset_id"),
-                        name: row.get("preset_name"),
-                        description: row.get("preset_description"),
-                        temperature: row.get("temperature"),
-                        max_tokens: row.get("max_tokens"),
-                        top_p: row.get("top_p"),
-                        frequency_penalty: row.get("frequency_penalty"),
-                        presence_penalty: row.get("presence_penalty"),
-                        additional_params,
-                        is_system: row.get::<i32, _>("preset_is_system") != 0,
-                        is_default: row.get::<i32, _>("preset_is_default") != 0,
-                        created_at: row.get("preset_created_at"),
-                        updated_at: row.get("preset_updated_at"),
-                    })
-                } else {
-                    None
-                };
+                // Get tool_ids for this assistant from the batch result
+                let tool_ids = all_tool_mappings
+                    .get(&assistant_id)
+                    .cloned()
+                    .unwrap_or_default();
 
                 Assistant {
-                    id: row.get("id"),
+                    id: assistant_id,
                     name: row.get("name"),
                     role: row.get("role"),
                     description: row.get("description"),
@@ -182,6 +154,7 @@ impl Database {
                     model_id: row.get("model_id"),
                     model_parameter_preset_id: row.get("model_parameter_preset_id"),
                     preset,
+                    tool_ids,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -233,16 +206,117 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
 
+        // Sync assistant_tools junction table
+        if let Some(tool_ids) = &req.tool_ids {
+            self.sync_assistant_tools(id, tool_ids).await?;
+        }
+
         self.get_assistant(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Assistant not found"))
     }
 
     pub async fn delete_assistant(&self, id: &str) -> Result<()> {
+        // assistant_tools are cascade-deleted via FK constraint
         sqlx::query("DELETE FROM assistants WHERE id = ?")
             .bind(id)
             .execute(self.pool.as_ref())
             .await?;
         Ok(())
+    }
+
+    // ========================================================================
+    // Assistant-Tool junction operations
+    // ========================================================================
+
+    /// Sync the assistant_tools junction table: delete all existing and insert new ones
+    async fn sync_assistant_tools(&self, assistant_id: &str, tool_ids: &[String]) -> Result<()> {
+        // Delete existing associations
+        sqlx::query("DELETE FROM assistant_tools WHERE assistant_id = ?")
+            .bind(assistant_id)
+            .execute(self.pool.as_ref())
+            .await?;
+
+        // Insert new associations
+        let now = Utc::now().to_rfc3339();
+        for tool_id in tool_ids {
+            let id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO assistant_tools (id, assistant_id, tool_id, created_at)
+                 VALUES (?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(assistant_id)
+            .bind(tool_id)
+            .bind(&now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Get tool IDs associated with an assistant
+    pub async fn get_assistant_tool_ids(&self, assistant_id: &str) -> Result<Vec<String>> {
+        let tool_ids = sqlx::query_scalar::<_, String>(
+            "SELECT tool_id FROM assistant_tools WHERE assistant_id = ? ORDER BY created_at ASC",
+        )
+        .bind(assistant_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(tool_ids)
+    }
+
+    /// Batch load all assistant -> tool_id mappings (avoids N+1 in list_assistants)
+    async fn get_all_assistant_tool_ids(
+        &self,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let rows = sqlx::query(
+            "SELECT assistant_id, tool_id FROM assistant_tools ORDER BY created_at ASC",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        let mut map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let assistant_id: String = row.get("assistant_id");
+            let tool_id: String = row.get("tool_id");
+            map.entry(assistant_id).or_default().push(tool_id);
+        }
+
+        Ok(map)
+    }
+
+    // ========================================================================
+    // Helper: extract preset from joined row
+    // ========================================================================
+
+    fn extract_preset_from_row(row: &sqlx::sqlite::SqliteRow) -> Option<ModelParameterPreset> {
+        let preset_id: Option<String> = row.get("preset_id");
+        if preset_id.is_some() {
+            let additional_params_str: Option<String> = row.get("additional_params");
+            let additional_params =
+                additional_params_str.and_then(|s| serde_json::from_str(&s).ok());
+
+            Some(ModelParameterPreset {
+                id: row.get("preset_id"),
+                name: row.get("preset_name"),
+                description: row.get("preset_description"),
+                temperature: row.get("temperature"),
+                max_tokens: row.get("max_tokens"),
+                top_p: row.get("top_p"),
+                frequency_penalty: row.get("frequency_penalty"),
+                presence_penalty: row.get("presence_penalty"),
+                additional_params,
+                is_system: row.get::<i32, _>("preset_is_system") != 0,
+                is_default: row.get::<i32, _>("preset_is_default") != 0,
+                created_at: row.get("preset_created_at"),
+                updated_at: row.get("preset_updated_at"),
+            })
+        } else {
+            None
+        }
     }
 }

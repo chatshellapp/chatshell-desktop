@@ -19,6 +19,11 @@ pub struct Assistant {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset: Option<ModelParameterPreset>,
 
+    /// Tool IDs associated with this assistant (builtin tools + MCP servers)
+    /// Populated from assistant_tools junction table
+    #[serde(default)]
+    pub tool_ids: Vec<String>,
+
     // Avatar fields
     pub avatar_type: String,
     pub avatar_bg: Option<String>,
@@ -43,6 +48,9 @@ pub struct CreateAssistantRequest {
 
     /// Reference to parameter preset (optional - will use default if not specified)
     pub model_parameter_preset_id: Option<String>,
+
+    /// Tool IDs to associate (builtin tools + MCP servers)
+    pub tool_ids: Option<Vec<String>>,
 
     pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,

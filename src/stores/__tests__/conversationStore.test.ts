@@ -268,6 +268,7 @@ describe('useConversationStore', () => {
         model_id: 'model-1',
         system_prompt: 'You are helpful',
         avatar_type: 'text',
+        tool_ids: [],
         is_starred: false,
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',

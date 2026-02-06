@@ -47,12 +47,18 @@ import {
   Bot,
   Check,
   ChevronsUpDown,
+  Wrench,
+  Plug,
 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
+import { isBuiltinTool, isMcpTool } from '@/types/tool'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useMcpStore } from '@/stores/mcpStore'
 import { useConversationStore } from '@/stores/conversation'
 import { getRandomPresetColor, getRandomNameAndEmoji } from '@/lib/assistant-utils'
 import { logger } from '@/lib/logger'
@@ -74,6 +80,7 @@ export function AssistantDialog({
   const { assistants, createAssistant, updateAssistant, lastCreatedModelId } = useAssistantStore()
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
   const { selectedModel, selectedAssistant } = useConversationStore()
+  const { servers: allTools, loadServers: loadTools } = useMcpStore()
 
   // Form state
   const [name, setName] = useState('')
@@ -86,6 +93,7 @@ export function AssistantDialog({
   const [avatarBg, setAvatarBg] = useState('#3b82f6')
   const [groupName, setGroupName] = useState('')
   const [isStarred, setIsStarred] = useState(false)
+  const [toolIds, setToolIds] = useState<string[]>([])
 
   // System Prompt mode state
   const [systemPromptMode, setSystemPromptMode] = useState<'existing' | 'custom'>('existing')
@@ -105,15 +113,26 @@ export function AssistantDialog({
   const [groupComboboxOpen, setGroupComboboxOpen] = useState(false)
   const [groupInputValue, setGroupInputValue] = useState('')
 
-  // Load models and prompts on mount
+  // Load models, prompts, and tools on mount
   useEffect(() => {
     if (open) {
       if (models.length === 0) {
         loadModels()
       }
       ensurePromptsLoaded()
+      loadTools()
     }
-  }, [open, models.length, loadModels, ensurePromptsLoaded])
+  }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools])
+
+  // Separate builtin tools and MCP servers for the Tools tab
+  const builtinTools = useMemo(
+    () => allTools.filter((t) => isBuiltinTool(t) && t.is_enabled),
+    [allTools]
+  )
+  const mcpServers = useMemo(
+    () => allTools.filter((t) => isMcpTool(t) && t.is_enabled),
+    [allTools]
+  )
 
   // Get unique group names from existing assistants
   const existingGroups = useMemo(() => {
@@ -221,6 +240,7 @@ export function AssistantDialog({
         setGroupName(assistant.group_name || '')
         setGroupInputValue('')
         setIsStarred(assistant.is_starred)
+        setToolIds(assistant.tool_ids || [])
 
         // Check if system prompt matches an existing system prompt (is_system === true)
         const matchingSystemPrompt = prompts.find(
@@ -289,6 +309,7 @@ export function AssistantDialog({
         setGroupName('')
         setGroupInputValue('')
         setIsStarred(false)
+        setToolIds([])
         setSystemPromptMode('existing')
         setSelectedSystemPromptId('')
         setSystemPromptSearchQuery('')
@@ -322,6 +343,7 @@ export function AssistantDialog({
         system_prompt: systemPrompt,
         user_prompt: userPrompt.trim() || undefined,
         model_id: selectedModelId,
+        tool_ids: toolIds,
         avatar_type: 'text',
         avatar_bg: avatarBg,
         avatar_text: avatarText || '🧑‍💼',
@@ -352,7 +374,16 @@ export function AssistantDialog({
     { name: 'Basic', icon: User },
     { name: 'Prompts', icon: Sparkles },
     { name: 'Models', icon: Bot },
+    { name: 'Tools', icon: Wrench },
   ]
+
+  const handleToggleTool = (toolId: string, checked: boolean) => {
+    if (checked) {
+      setToolIds((prev) => [...prev, toolId])
+    } else {
+      setToolIds((prev) => prev.filter((id) => id !== toolId))
+    }
+  }
 
   const renderContent = () => {
     if (activeSection === 'Basic') {
@@ -824,6 +855,104 @@ export function AssistantDialog({
               Select the AI model that will power this assistant
             </p>
           </div>
+        </div>
+      )
+    }
+
+    if (activeSection === 'Tools') {
+      const hasNoTools = builtinTools.length === 0 && mcpServers.length === 0
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Select which tools and MCP servers this assistant can use. These tools will be
+            available when using this assistant in conversations.
+          </p>
+
+          {hasNoTools ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Wrench className="h-8 w-8 text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">
+                No tools available. Enable built-in tools or configure MCP servers in Settings.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Builtin Tools Section */}
+              {builtinTools.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Wrench className="h-4 w-4" />
+                    Built-in Tools
+                  </h4>
+                  {builtinTools.map((tool) => (
+                    <div key={tool.id} className="flex items-center justify-between py-2 pl-2">
+                      <div className="grid gap-1">
+                        <label htmlFor={`tool-${tool.id}`} className="text-sm font-medium leading-none cursor-pointer">
+                          {tool.name}
+                        </label>
+                        {tool.description && (
+                          <p className="text-xs text-muted-foreground max-w-[380px]">
+                            {tool.description}
+                          </p>
+                        )}
+                      </div>
+                      <Switch
+                        id={`tool-${tool.id}`}
+                        checked={toolIds.includes(tool.id)}
+                        onCheckedChange={(checked) =>
+                          handleToggleTool(tool.id, checked === true)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Separator between sections */}
+              {builtinTools.length > 0 && mcpServers.length > 0 && <Separator />}
+
+              {/* MCP Servers Section */}
+              {mcpServers.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Plug className="h-4 w-4" />
+                    MCP Servers
+                  </h4>
+                  {mcpServers.map((server) => (
+                    <div key={server.id} className="flex items-center justify-between py-2 pl-2">
+                      <div className="grid gap-1.5">
+                        <label
+                          htmlFor={`tool-${server.id}`}
+                          className="text-sm font-medium leading-none cursor-pointer"
+                        >
+                          {server.name}
+                        </label>
+                        {server.description && (
+                          <p className="text-xs text-muted-foreground">{server.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground truncate max-w-[380px]">
+                          {server.endpoint}
+                        </p>
+                      </div>
+                      <Switch
+                        id={`tool-${server.id}`}
+                        checked={toolIds.includes(server.id)}
+                        onCheckedChange={(checked) =>
+                          handleToggleTool(server.id, checked === true)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {toolIds.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {toolIds.length} tool{toolIds.length !== 1 ? 's' : ''} selected
+            </p>
+          )}
         </div>
       )
     }

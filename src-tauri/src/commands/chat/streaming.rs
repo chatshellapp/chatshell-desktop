@@ -51,30 +51,87 @@ pub(crate) async fn handle_agent_streaming(
         config = config.with_system_prompt(prompt);
     }
 
-    // Load builtin tools for this conversation
-    let builtin_tools =
-        load_builtin_tools_for_conversation(&state_clone, &conversation_id_clone).await;
-    if builtin_tools.web_search {
-        tracing::info!("🔍 [agent_streaming] Enabling web_search tool for conversation");
+    // Collect all enabled tool IDs from:
+    // 1. Conversation settings (per-conversation overrides)
+    // 2. Assistant's configured tools (if using an assistant)
+    let mut all_enabled_tool_ids: Vec<String> = Vec::new();
+
+    // Load assistant's configured tools
+    if let Some(ref assistant_id) = assistant_db_id {
+        match state_clone.db.get_assistant_tool_ids(assistant_id).await {
+            Ok(ids) => {
+                if !ids.is_empty() {
+                    tracing::info!(
+                        "🛠️ [agent_streaming] Assistant has {} configured tool(s)",
+                        ids.len()
+                    );
+                    all_enabled_tool_ids.extend(ids);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "⚠️ [agent_streaming] Failed to load assistant tools: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    // Load conversation-level tool overrides (these are additive)
+    let conv_settings = state_clone
+        .db
+        .get_conversation_settings(&conversation_id_clone)
+        .await
+        .ok();
+
+    if let Some(ref settings) = conv_settings {
+        for id in &settings.enabled_mcp_server_ids {
+            if !all_enabled_tool_ids.contains(id) {
+                all_enabled_tool_ids.push(id.clone());
+            }
+        }
+    }
+
+    // Determine which builtin tools are enabled
+    let web_search_enabled =
+        all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
+    let web_fetch_enabled =
+        all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
+
+    if web_search_enabled {
+        tracing::info!("🔍 [agent_streaming] Enabling web_search tool");
         config = config.with_web_search();
     }
-    if builtin_tools.web_fetch {
-        tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool for conversation");
+    if web_fetch_enabled {
+        tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool");
         config = config.with_web_fetch();
     }
 
-    // Load MCP tools for this conversation
-    let mcp_tools_config =
-        load_mcp_tools_for_conversation(&state_clone, &conversation_id_clone).await;
+    // Collect MCP server IDs (non-builtin tools)
+    let mcp_server_ids: Vec<String> = all_enabled_tool_ids
+        .iter()
+        .filter(|id| {
+            *id != &BUILTIN_WEB_SEARCH_ID.to_string()
+                && *id != &BUILTIN_WEB_FETCH_ID.to_string()
+        })
+        .cloned()
+        .collect();
 
-    if let Some((tools, client)) = mcp_tools_config
-        && !tools.is_empty() {
+    // Load MCP tools from enabled servers
+    if !mcp_server_ids.is_empty() {
+        let mcp_tools_config =
+            load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
+
+        if let Some((tools, client)) = mcp_tools_config
+            && !tools.is_empty()
+        {
             tracing::info!(
-                "🔌 [agent_streaming] Loaded {} MCP tools for conversation",
+                "🔌 [agent_streaming] Loaded {} MCP tools",
                 tools.len()
             );
             config = config.with_mcp_tools(tools, client);
         }
+    }
 
     // Create the agent
     let agent = match create_provider_agent(
@@ -693,36 +750,23 @@ pub(crate) async fn handle_agent_streaming(
     });
 }
 
-/// Load MCP tools for a conversation
-/// Returns (tools, client) if MCP servers are configured, None otherwise
-async fn load_mcp_tools_for_conversation(
+/// Load MCP tools by their tool IDs
+/// Returns (tools, client) if MCP servers are found, None otherwise
+async fn load_mcp_tools_by_ids(
     state: &AppState,
-    conversation_id: &str,
+    tool_ids: &[String],
 ) -> Option<(Vec<McpTool>, Peer<RoleClient>)> {
-    // Get conversation settings to find enabled MCP servers
-    let settings = match state.db.get_conversation_settings(conversation_id).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("⚠️ [mcp] Failed to get conversation settings: {}", e);
-            return None;
-        }
-    };
-
-    if settings.enabled_mcp_server_ids.is_empty() {
+    if tool_ids.is_empty() {
         return None;
     }
 
     tracing::info!(
-        "🔌 [mcp] Loading {} MCP server(s) for conversation",
-        settings.enabled_mcp_server_ids.len()
+        "🔌 [mcp] Loading {} MCP server(s) by IDs",
+        tool_ids.len()
     );
 
     // Get the tool configurations from DB
-    let tools = match state
-        .db
-        .get_tools_by_ids(&settings.enabled_mcp_server_ids)
-        .await
-    {
+    let tools = match state.db.get_tools_by_ids(tool_ids).await {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!("⚠️ [mcp] Failed to get MCP server configs: {}", e);
@@ -767,40 +811,4 @@ async fn load_mcp_tools_for_conversation(
     }
 
     first_client.map(|client| (all_tools, client))
-}
-
-/// Builtin tools configuration for a conversation
-struct BuiltinToolsConfig {
-    web_search: bool,
-    web_fetch: bool,
-}
-
-/// Load builtin tools configuration for a conversation
-/// Returns which builtin tools are enabled
-async fn load_builtin_tools_for_conversation(
-    state: &AppState,
-    conversation_id: &str,
-) -> BuiltinToolsConfig {
-    // Get conversation settings to find enabled tool IDs
-    let settings = match state.db.get_conversation_settings(conversation_id).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(
-                "⚠️ [builtin_tools] Failed to get conversation settings: {}",
-                e
-            );
-            return BuiltinToolsConfig {
-                web_search: false,
-                web_fetch: false,
-            };
-        }
-    };
-
-    // Check if builtin tool IDs are in the enabled list
-    let enabled_ids = &settings.enabled_mcp_server_ids;
-
-    BuiltinToolsConfig {
-        web_search: enabled_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string()),
-        web_fetch: enabled_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string()),
-    }
 }
