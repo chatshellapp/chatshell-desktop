@@ -39,5 +39,4 @@ export {
   getAttachmentIcon,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   SUPPORTED_IMAGE_EXTENSIONS,
-  URL_REGEX,
 } from './types'

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
-import { type Attachment, getMimeType, getImageMimeType, getFileType, URL_REGEX } from '../types'
+import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
 
 export interface UsePasteHandlerReturn {
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<void>
@@ -111,31 +111,6 @@ export function usePasteHandler(
         }
 
         return // Don't process as text if we handled files
-      }
-
-      // Handle text paste (URL detection)
-      const pastedText = clipboardData.getData('text')
-      const urls = pastedText.match(URL_REGEX)
-
-      if (urls && urls.length > 0) {
-        const newAttachments: Attachment[] = []
-        urls.forEach((url) => {
-          const isDuplicate =
-            attachments.some((att) => att.type === 'webpage' && att.name === url) ||
-            newAttachments.some((att) => att.name === url)
-
-          if (!isDuplicate) {
-            newAttachments.push({
-              id: `webpage-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              type: 'webpage',
-              name: url,
-            })
-          }
-        })
-
-        if (newAttachments.length > 0) {
-          setAttachments((prev) => [...prev, ...newAttachments])
-        }
       }
     },
     [attachments, setAttachments]
