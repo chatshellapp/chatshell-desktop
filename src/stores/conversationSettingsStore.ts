@@ -86,6 +86,9 @@ interface ConversationSettingsActions {
 
   // MCP server settings
   setEnabledMcpServerIds: (conversationId: string, serverIds: string[]) => Promise<void>
+
+  // Skill settings
+  setEnabledSkillIds: (conversationId: string, skillIds: string[]) => Promise<void>
 }
 
 type ConversationSettingsStore = ConversationSettingsState & ConversationSettingsActions
@@ -438,6 +441,19 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to update enabledMcpServerIds:', error)
+      }
+    },
+
+    setEnabledSkillIds: async (conversationId: string, skillIds: string[]) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          enabledSkillIds: skillIds,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error('[conversationSettingsStore] Failed to update enabledSkillIds:', error)
       }
     },
   }))

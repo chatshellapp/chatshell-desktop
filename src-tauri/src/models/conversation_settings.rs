@@ -89,6 +89,10 @@ pub struct ConversationSettings {
     /// Enabled MCP server IDs for this conversation (JSON array)
     #[serde(default)]
     pub enabled_mcp_server_ids: Vec<String>,
+
+    /// Enabled skill IDs for this conversation (JSON array)
+    #[serde(default)]
+    pub enabled_skill_ids: Vec<String>,
 }
 
 impl ConversationSettings {
@@ -108,6 +112,7 @@ impl ConversationSettings {
             selected_user_prompt_id: None,
             custom_user_prompt: None,
             enabled_mcp_server_ids: Vec::new(),
+            enabled_skill_ids: Vec::new(),
         }
     }
 }
@@ -139,6 +144,8 @@ pub struct UpdateConversationSettingsRequest {
     pub custom_user_prompt: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled_mcp_server_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled_skill_ids: Option<Vec<String>>,
 }
 
 #[cfg(test)]
@@ -192,6 +199,7 @@ mod tests {
         assert!(settings.selected_user_prompt_id.is_none());
         assert!(settings.custom_user_prompt.is_none());
         assert!(settings.enabled_mcp_server_ids.is_empty());
+        assert!(settings.enabled_skill_ids.is_empty());
     }
 
     #[test]

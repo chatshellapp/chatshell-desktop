@@ -15,7 +15,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 5;
+const CURRENT_SCHEMA_VERSION: i32 = 6;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -75,6 +75,15 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         set_user_version(pool, 5).await?;
         tracing::info!("Migration to v5 completed");
     }
+
+    if current_version < 6 {
+        set_user_version(pool, 6).await?;
+        tracing::info!("Migration to v6 completed");
+    }
+
+    // Ensure enabled_skill_ids column exists (idempotent, fixes databases
+    // that were bumped to v6 before the column was actually added)
+    ensure_enabled_skill_ids_column(pool).await?;
 
     Ok(())
 }
@@ -145,6 +154,25 @@ async fn migrate_v3_to_v4(pool: &SqlitePool) -> Result<()> {
 async fn migrate_v4_to_v5(pool: &SqlitePool) -> Result<()> {
     skills::create_skills_table(pool).await?;
     tracing::info!("Created skills and assistant_skills tables");
+    Ok(())
+}
+
+/// Ensure enabled_skill_ids column exists in conversation_settings (idempotent)
+async fn ensure_enabled_skill_ids_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('conversation_settings')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "enabled_skill_ids");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE conversation_settings ADD COLUMN enabled_skill_ids TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added enabled_skill_ids column to conversation_settings table");
+    }
+
     Ok(())
 }
 

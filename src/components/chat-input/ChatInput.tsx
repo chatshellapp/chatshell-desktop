@@ -22,10 +22,12 @@ import { ContextCountDialog } from './ContextCountDialog'
 import { SystemPromptDialog } from './SystemPromptDialog'
 import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
 import { McpServersDialog } from './McpServersDialog'
+import { SkillsDialog } from './SkillsDialog'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
 import { useMcpStore } from '@/stores/mcpStore'
+import { useSkillStore } from '@/stores/skillStore'
 import { CONTEXT_COUNT_OPTIONS } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
@@ -43,6 +45,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const [isSystemPromptDialogOpen, setIsSystemPromptDialogOpen] = useState(false)
   const [isUserPromptDialogOpen, setIsUserPromptDialogOpen] = useState(false)
   const [isMcpServersDialogOpen, setIsMcpServersDialogOpen] = useState(false)
+  const [isSkillsDialogOpen, setIsSkillsDialogOpen] = useState(false)
   // Preview state for attachments
   const [previewingFileId, setPreviewingFileId] = useState<string | null>(null)
   const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null)
@@ -106,6 +109,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const setEnabledMcpServerIds = useConversationSettingsStore(
     (state) => state.setEnabledMcpServerIds
   )
+  const setEnabledSkillIds = useConversationSettingsStore((state) => state.setEnabledSkillIds)
 
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
@@ -113,6 +117,10 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // MCP store for getting server names
   const mcpServers = useMcpStore((state) => state.servers)
   const ensureMcpServersLoaded = useMcpStore((state) => state.ensureLoaded)
+
+  // Skill store for getting skill names
+  const allSkills = useSkillStore((state) => state.skills)
+  const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
 
   // Get message count from message store to determine if system prompt can be changed
   const conversationState = useMessageStore((state) =>
@@ -220,6 +228,25 @@ export function ChatInput(/* _props: ChatInputProps */) {
     }
     return `${enabledCount}`
   }, [conversationSettings, mcpServers])
+
+  // Compute skills label
+  const skillsLabel = useMemo(() => {
+    if (!conversationSettings) return 'None'
+    const enabledCount = conversationSettings.enabledSkillIds?.length || 0
+    if (enabledCount === 0) return 'None'
+    if (enabledCount === 1) {
+      const skill = allSkills.find((s) => s.id === conversationSettings.enabledSkillIds[0])
+      return skill?.name || '1'
+    }
+    return `${enabledCount}`
+  }, [conversationSettings, allSkills])
+
+  // Handler to change enabled skill IDs
+  const handleSkillIdsChange = (skillIds: string[]) => {
+    if (currentConversation) {
+      setEnabledSkillIds(currentConversation.id, skillIds)
+    }
+  }
 
   // Handler to change enabled MCP server IDs
   const handleMcpServerIdsChange = (serverIds: string[]) => {
@@ -468,6 +495,14 @@ export function ChatInput(/* _props: ChatInputProps */) {
               setIsMcpServersDialogOpen(true)
             }}
             mcpServersLabel={mcpServersLabel}
+            onSkillsClick={() => {
+              if (currentConversation) {
+                getSettings(currentConversation.id)
+                ensureSkillsLoaded()
+              }
+              setIsSkillsDialogOpen(true)
+            }}
+            skillsLabel={skillsLabel}
           />
         </InputGroup>
       </div>
@@ -528,6 +563,14 @@ export function ChatInput(/* _props: ChatInputProps */) {
         onOpenChange={setIsMcpServersDialogOpen}
         enabledServerIds={conversationSettings?.enabledMcpServerIds ?? []}
         onServerIdsChange={handleMcpServerIdsChange}
+      />
+
+      {/* Skills Dialog */}
+      <SkillsDialog
+        open={isSkillsDialogOpen}
+        onOpenChange={setIsSkillsDialogOpen}
+        enabledSkillIds={conversationSettings?.enabledSkillIds ?? []}
+        onSkillIdsChange={handleSkillIdsChange}
       />
     </div>
   )

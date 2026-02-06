@@ -114,10 +114,6 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
-    if !effective_system_prompt.is_empty() {
-        config = config.with_system_prompt(effective_system_prompt);
-    }
-
     // Collect all enabled tool IDs from:
     // 1. Assistant's configured tools
     // 2. Skill-required tools
@@ -190,6 +186,66 @@ pub(crate) async fn handle_agent_streaming(
                 all_enabled_tool_ids.push(id.clone());
             }
         }
+
+        // Load conversation-level skills and inject instructions into system prompt
+        if !settings.enabled_skill_ids.is_empty() {
+            tracing::info!(
+                "📋 [agent_streaming] Conversation has {} enabled skill(s)",
+                settings.enabled_skill_ids.len()
+            );
+            for skill_id in &settings.enabled_skill_ids {
+                match state_clone.db.get_skill(skill_id).await {
+                    Ok(Some(skill)) => {
+                        if skill.is_enabled {
+                            if let Some(ref instructions) = skill.cached_instructions {
+                                if !instructions.is_empty() {
+                                    effective_system_prompt.push_str("\n\n");
+                                    effective_system_prompt.push_str(&format!(
+                                        "## Skill: {}\n\n{}",
+                                        skill.name, instructions
+                                    ));
+                                    tracing::info!(
+                                        "📋 [agent_streaming] Injected conversation skill '{}' ({} chars)",
+                                        skill.name,
+                                        instructions.len()
+                                    );
+                                }
+                            }
+
+                            // Auto-enable required tools from conversation skills
+                            for tool_id in &skill.required_tool_ids {
+                                if !all_enabled_tool_ids.contains(tool_id) {
+                                    tracing::info!(
+                                        "🔧 [agent_streaming] Auto-enabling tool '{}' required by conversation skill '{}'",
+                                        tool_id,
+                                        skill.name
+                                    );
+                                    all_enabled_tool_ids.push(tool_id.clone());
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::warn!(
+                            "⚠️ [agent_streaming] Conversation skill '{}' not found",
+                            skill_id
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "⚠️ [agent_streaming] Failed to load conversation skill '{}': {}",
+                            skill_id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Set the effective system prompt (after all skills have been injected)
+    if !effective_system_prompt.is_empty() {
+        config = config.with_system_prompt(effective_system_prompt);
     }
 
     // Determine which builtin tools are enabled

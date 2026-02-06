@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Sparkles,
   Wrench,
+  Zap,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -57,6 +58,9 @@ interface InputToolbarProps {
   // MCP Servers
   onMcpServersClick: () => void
   mcpServersLabel: string
+  // Skills
+  onSkillsClick: () => void
+  skillsLabel: string
 }
 
 export function InputToolbar({
@@ -85,6 +89,8 @@ export function InputToolbar({
   systemPromptDisabled = false,
   onMcpServersClick,
   mcpServersLabel,
+  onSkillsClick,
+  skillsLabel,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -186,6 +192,13 @@ export function InputToolbar({
               <span>Tools & MCP</span>
             </div>
             <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onSkillsClick} className="gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="size-4" />
+              <span>Skills</span>
+            </div>
+            <span className="text-xs text-muted-foreground">{skillsLabel}</span>
           </DropdownMenuItem>
           {/* <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
             <BookOpen className="size-4" />
