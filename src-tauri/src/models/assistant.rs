@@ -24,6 +24,11 @@ pub struct Assistant {
     #[serde(default)]
     pub tool_ids: Vec<String>,
 
+    /// Skill IDs associated with this assistant
+    /// Populated from assistant_skills junction table
+    #[serde(default)]
+    pub skill_ids: Vec<String>,
+
     // Avatar fields
     pub avatar_type: String,
     pub avatar_bg: Option<String>,
@@ -51,6 +56,9 @@ pub struct CreateAssistantRequest {
 
     /// Tool IDs to associate (builtin tools + MCP servers)
     pub tool_ids: Option<Vec<String>>,
+
+    /// Skill IDs to associate
+    pub skill_ids: Option<Vec<String>>,
 
     pub avatar_type: Option<String>,
     pub avatar_bg: Option<String>,

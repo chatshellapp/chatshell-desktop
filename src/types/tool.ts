@@ -5,6 +5,7 @@ export const TOOL_TYPE_BUILTIN = 'builtin'
 // Builtin tool IDs (must match backend constants)
 export const BUILTIN_WEB_SEARCH_ID = 'builtin-web-search'
 export const BUILTIN_WEB_FETCH_ID = 'builtin-web-fetch'
+export const BUILTIN_BASH_ID = 'builtin-bash'
 
 // Tool types
 export interface Tool {

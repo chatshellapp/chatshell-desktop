@@ -24,6 +24,10 @@ export interface Assistant {
   // Populated from assistant_tools junction table
   tool_ids: string[]
 
+  // Skill IDs associated with this assistant
+  // Populated from assistant_skills junction table
+  skill_ids: string[]
+
   // Avatar
   avatar_type: string // "text" or "image"
   avatar_bg?: string
@@ -50,6 +54,9 @@ export interface CreateAssistantRequest {
 
   // Tool IDs to associate (builtin tools + MCP servers)
   tool_ids?: string[]
+
+  // Skill IDs to associate
+  skill_ids?: string[]
 
   // Avatar
   avatar_type?: string

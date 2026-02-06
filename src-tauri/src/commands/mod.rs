@@ -14,6 +14,7 @@ mod prompts;
 mod providers;
 mod resources;
 mod settings;
+mod skills;
 mod steps;
 mod users;
 
@@ -54,5 +55,6 @@ pub use prompts::*;
 pub use providers::*;
 pub use resources::*;
 pub use settings::*;
+pub use skills::*;
 pub use steps::*;
 pub use users::*;

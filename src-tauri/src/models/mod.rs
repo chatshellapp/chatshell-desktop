@@ -12,6 +12,7 @@ mod process_step;
 mod prompt;
 mod provider;
 mod setting;
+mod skill;
 mod tool;
 mod user;
 
@@ -73,6 +74,9 @@ pub use message_resources::MessageResources;
 
 // Prompt
 pub use prompt::{CreatePromptRequest, Prompt};
+
+// Skill
+pub use skill::{CreateSkillRequest, Skill};
 
 // Setting
 pub use setting::Setting;

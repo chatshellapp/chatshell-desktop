@@ -53,6 +53,11 @@ impl Database {
             self.sync_assistant_tools(&id, tool_ids).await?;
         }
 
+        // Sync assistant_skills junction table
+        if let Some(skill_ids) = &req.skill_ids {
+            self.sync_assistant_skills(&id, skill_ids).await?;
+        }
+
         self.get_assistant(&id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve created assistant"))
@@ -82,8 +87,9 @@ impl Database {
                 let is_starred: i32 = row.get("is_starred");
                 let preset = Self::extract_preset_from_row(&row);
 
-                // Load tool_ids from junction table
+                // Load tool_ids and skill_ids from junction tables
                 let tool_ids = self.get_assistant_tool_ids(&assistant_id).await?;
+                let skill_ids = self.get_assistant_skill_ids(&assistant_id).await?;
 
                 Ok(Some(Assistant {
                     id: assistant_id,
@@ -96,6 +102,7 @@ impl Database {
                     model_parameter_preset_id: row.get("model_parameter_preset_id"),
                     preset,
                     tool_ids,
+                    skill_ids,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -128,8 +135,9 @@ impl Database {
         .fetch_all(self.pool.as_ref())
         .await?;
 
-        // Batch load all assistant tool_ids to avoid N+1 queries
+        // Batch load all assistant tool_ids and skill_ids to avoid N+1 queries
         let all_tool_mappings = self.get_all_assistant_tool_ids().await?;
+        let all_skill_mappings = self.get_all_assistant_skill_ids().await?;
 
         let assistants = rows
             .iter()
@@ -138,8 +146,12 @@ impl Database {
                 let is_starred: i32 = row.get("is_starred");
                 let preset = Self::extract_preset_from_row(row);
 
-                // Get tool_ids for this assistant from the batch result
+                // Get tool_ids and skill_ids for this assistant from the batch results
                 let tool_ids = all_tool_mappings
+                    .get(&assistant_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let skill_ids = all_skill_mappings
                     .get(&assistant_id)
                     .cloned()
                     .unwrap_or_default();
@@ -155,6 +167,7 @@ impl Database {
                     model_parameter_preset_id: row.get("model_parameter_preset_id"),
                     preset,
                     tool_ids,
+                    skill_ids,
                     avatar_type: row.get("avatar_type"),
                     avatar_bg: row.get("avatar_bg"),
                     avatar_text: row.get("avatar_text"),
@@ -211,13 +224,18 @@ impl Database {
             self.sync_assistant_tools(id, tool_ids).await?;
         }
 
+        // Sync assistant_skills junction table
+        if let Some(skill_ids) = &req.skill_ids {
+            self.sync_assistant_skills(id, skill_ids).await?;
+        }
+
         self.get_assistant(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Assistant not found"))
     }
 
     pub async fn delete_assistant(&self, id: &str) -> Result<()> {
-        // assistant_tools are cascade-deleted via FK constraint
+        // assistant_tools and assistant_skills are cascade-deleted via FK constraint
         sqlx::query("DELETE FROM assistants WHERE id = ?")
             .bind(id)
             .execute(self.pool.as_ref())

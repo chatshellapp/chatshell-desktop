@@ -10,11 +10,12 @@ mod model_parameter_presets;
 mod prompts;
 mod providers;
 mod settings;
+mod skills;
 mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 4;
+const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -69,6 +70,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v4 completed");
     }
 
+    if current_version < 5 {
+        migrate_v4_to_v5(pool).await?;
+        set_user_version(pool, 5).await?;
+        tracing::info!("Migration to v5 completed");
+    }
+
     Ok(())
 }
 
@@ -82,6 +89,7 @@ async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     conversations::create_conversations_table(pool).await?;
     knowledge::create_knowledge_bases_table(pool).await?;
     knowledge::create_tools_table(pool).await?;
+    skills::create_skills_table(pool).await?;
     messages::create_messages_table(pool).await?;
     messages::create_files_table(pool).await?;
     messages::create_contexts_table(pool).await?;
@@ -132,3 +140,11 @@ async fn migrate_v3_to_v4(pool: &SqlitePool) -> Result<()> {
     );
     Ok(())
 }
+
+/// Migration v4 -> v5: Add skills and assistant_skills tables
+async fn migrate_v4_to_v5(pool: &SqlitePool) -> Result<()> {
+    skills::create_skills_table(pool).await?;
+    tracing::info!("Created skills and assistant_skills tables");
+    Ok(())
+}
+

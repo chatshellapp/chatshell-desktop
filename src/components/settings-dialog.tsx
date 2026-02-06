@@ -23,6 +23,7 @@ import {
   Search,
   Settings,
   // Settings,
+  TerminalSquare,
   Trash2,
   // Video,
   Wrench,
@@ -492,6 +493,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       <Search className="h-5 w-5 text-muted-foreground mt-0.5" />
                     ) : tool.id === 'builtin-web-fetch' ? (
                       <Globe className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    ) : tool.id === 'builtin-bash' ? (
+                      <TerminalSquare className="h-5 w-5 text-muted-foreground mt-0.5" />
                     ) : (
                       <Wrench className="h-5 w-5 text-muted-foreground mt-0.5" />
                     )}

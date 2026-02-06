@@ -2,7 +2,7 @@
 //!
 //! This module provides tool implementations that can be used by rig agents.
 //! Unlike MCP tools which are external, these are built-in tools that wrap
-//! existing functionality (web_search, web_fetch).
+//! existing functionality (web_search, web_fetch, bash).
 //!
 //! ## Usage
 //!
@@ -11,7 +11,8 @@
 //! ```rust,ignore
 //! let config = AgentConfig::new()
 //!     .with_web_search()
-//!     .with_web_fetch();
+//!     .with_web_fetch()
+//!     .with_bash();
 //! ```
 //!
 //! Or enable all built-in tools at once:
@@ -21,8 +22,10 @@
 //!     .with_builtin_tools();
 //! ```
 
+mod bash;
 mod web_fetch;
 mod web_search;
 
+pub use bash::BashTool;
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;

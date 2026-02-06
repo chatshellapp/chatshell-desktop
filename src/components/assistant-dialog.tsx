@@ -49,6 +49,7 @@ import {
   ChevronsUpDown,
   Wrench,
   Plug,
+  Zap,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
@@ -59,6 +60,7 @@ import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMcpStore } from '@/stores/mcpStore'
+import { useSkillStore } from '@/stores/skillStore'
 import { useConversationStore } from '@/stores/conversation'
 import { getRandomPresetColor, getRandomNameAndEmoji } from '@/lib/assistant-utils'
 import { logger } from '@/lib/logger'
@@ -81,6 +83,7 @@ export function AssistantDialog({
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
   const { selectedModel, selectedAssistant } = useConversationStore()
   const { servers: allTools, loadServers: loadTools } = useMcpStore()
+  const { skills: allSkills, ensureLoaded: ensureSkillsLoaded } = useSkillStore()
 
   // Form state
   const [name, setName] = useState('')
@@ -94,6 +97,7 @@ export function AssistantDialog({
   const [groupName, setGroupName] = useState('')
   const [isStarred, setIsStarred] = useState(false)
   const [toolIds, setToolIds] = useState<string[]>([])
+  const [skillIds, setSkillIds] = useState<string[]>([])
 
   // System Prompt mode state
   const [systemPromptMode, setSystemPromptMode] = useState<'existing' | 'custom'>('existing')
@@ -113,7 +117,7 @@ export function AssistantDialog({
   const [groupComboboxOpen, setGroupComboboxOpen] = useState(false)
   const [groupInputValue, setGroupInputValue] = useState('')
 
-  // Load models, prompts, and tools on mount
+  // Load models, prompts, tools, and skills on mount
   useEffect(() => {
     if (open) {
       if (models.length === 0) {
@@ -121,8 +125,9 @@ export function AssistantDialog({
       }
       ensurePromptsLoaded()
       loadTools()
+      ensureSkillsLoaded()
     }
-  }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools])
+  }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools, ensureSkillsLoaded])
 
   // Separate builtin tools and MCP servers for the Tools tab
   const builtinTools = useMemo(
@@ -133,6 +138,9 @@ export function AssistantDialog({
     () => allTools.filter((t) => isMcpTool(t) && t.is_enabled),
     [allTools]
   )
+
+  // Filter enabled skills for the Skills tab
+  const enabledSkills = useMemo(() => allSkills.filter((s) => s.is_enabled), [allSkills])
 
   // Get unique group names from existing assistants
   const existingGroups = useMemo(() => {
@@ -241,6 +249,7 @@ export function AssistantDialog({
         setGroupInputValue('')
         setIsStarred(assistant.is_starred)
         setToolIds(assistant.tool_ids || [])
+        setSkillIds(assistant.skill_ids || [])
 
         // Check if system prompt matches an existing system prompt (is_system === true)
         const matchingSystemPrompt = prompts.find(
@@ -310,6 +319,7 @@ export function AssistantDialog({
         setGroupInputValue('')
         setIsStarred(false)
         setToolIds([])
+        setSkillIds([])
         setSystemPromptMode('existing')
         setSelectedSystemPromptId('')
         setSystemPromptSearchQuery('')
@@ -344,6 +354,7 @@ export function AssistantDialog({
         user_prompt: userPrompt.trim() || undefined,
         model_id: selectedModelId,
         tool_ids: toolIds,
+        skill_ids: skillIds,
         avatar_type: 'text',
         avatar_bg: avatarBg,
         avatar_text: avatarText || '🧑‍💼',
@@ -375,6 +386,7 @@ export function AssistantDialog({
     { name: 'Prompts', icon: Sparkles },
     { name: 'Models', icon: Bot },
     { name: 'Tools', icon: Wrench },
+    { name: 'Skills', icon: Zap },
   ]
 
   const handleToggleTool = (toolId: string, checked: boolean) => {
@@ -382,6 +394,14 @@ export function AssistantDialog({
       setToolIds((prev) => [...prev, toolId])
     } else {
       setToolIds((prev) => prev.filter((id) => id !== toolId))
+    }
+  }
+
+  const handleToggleSkill = (skillId: string, checked: boolean) => {
+    if (checked) {
+      setSkillIds((prev) => [...prev, skillId])
+    } else {
+      setSkillIds((prev) => prev.filter((id) => id !== skillId))
     }
   }
 
@@ -951,6 +971,68 @@ export function AssistantDialog({
           {toolIds.length > 0 && (
             <p className="text-xs text-muted-foreground">
               {toolIds.length} tool{toolIds.length !== 1 ? 's' : ''} selected
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    if (activeSection === 'Skills') {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Select which skills this assistant should have. Skills add specialized instructions and
+            may require specific tools to function. Place SKILL.md files in{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">~/.chatshell/skills/</code> to
+            create custom skills.
+          </p>
+
+          {enabledSkills.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Zap className="h-8 w-8 text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">
+                No skills available yet. Create a directory under{' '}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">~/.chatshell/skills/</code>{' '}
+                with a SKILL.md file to get started.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {enabledSkills.map((skill) => (
+                <div key={skill.id} className="flex items-center justify-between py-2 pl-2">
+                  <div className="grid gap-1">
+                    <label
+                      htmlFor={`skill-${skill.id}`}
+                      className="text-sm font-medium leading-none cursor-pointer"
+                    >
+                      {skill.icon && <span className="mr-1.5">{skill.icon}</span>}
+                      {skill.name}
+                    </label>
+                    {skill.description && (
+                      <p className="text-xs text-muted-foreground max-w-[380px]">
+                        {skill.description}
+                      </p>
+                    )}
+                    {skill.required_tool_ids.length > 0 && (
+                      <p className="text-xs text-muted-foreground/60">
+                        Requires {skill.required_tool_ids.length} tool
+                        {skill.required_tool_ids.length !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+                  <Switch
+                    id={`skill-${skill.id}`}
+                    checked={skillIds.includes(skill.id)}
+                    onCheckedChange={(checked) => handleToggleSkill(skill.id, checked === true)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {skillIds.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {skillIds.length} skill{skillIds.length !== 1 ? 's' : ''} selected
             </p>
           )}
         </div>

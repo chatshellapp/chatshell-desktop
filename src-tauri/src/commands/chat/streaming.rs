@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
-use crate::db::tools::{BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
+use crate::db::tools::{BUILTIN_BASH_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
 
 /// Handle streaming using the agent-based approach
 /// This provides built-in support for preamble, temperature, max_tokens, etc.
@@ -47,16 +47,84 @@ pub(crate) async fn handle_agent_streaming(
 
     // Build agent config from system prompt and model parameters
     let mut config = AgentConfig::new().with_model_params(model_params);
-    if let Some(prompt) = system_prompt.clone() {
-        config = config.with_system_prompt(prompt);
+
+    // Start with the base system prompt, then augment with skill instructions
+    let mut effective_system_prompt = system_prompt.clone().unwrap_or_default();
+
+    // Load assistant's configured skills and inject instructions into system prompt
+    if let Some(ref assistant_id) = assistant_db_id {
+        match state_clone
+            .db
+            .get_assistant_skill_ids(assistant_id)
+            .await
+        {
+            Ok(skill_ids) => {
+                if !skill_ids.is_empty() {
+                    tracing::info!(
+                        "📋 [agent_streaming] Assistant has {} configured skill(s)",
+                        skill_ids.len()
+                    );
+                    // Load skill details and inject instructions
+                    for skill_id in &skill_ids {
+                        match state_clone.db.get_skill(skill_id).await {
+                            Ok(Some(skill)) => {
+                                if skill.is_enabled {
+                                    if let Some(ref instructions) = skill.cached_instructions {
+                                        if !instructions.is_empty() {
+                                            effective_system_prompt.push_str("\n\n");
+                                            effective_system_prompt.push_str(&format!(
+                                                "## Skill: {}\n\n{}",
+                                                skill.name, instructions
+                                            ));
+                                            tracing::info!(
+                                                "📋 [agent_streaming] Injected skill '{}' ({} chars)",
+                                                skill.name,
+                                                instructions.len()
+                                            );
+                                        }
+                                    }
+
+                                    // Auto-enable required tools from skills
+                                    // (These will be merged with assistant/conversation tools below)
+                                }
+                            }
+                            Ok(None) => {
+                                tracing::warn!(
+                                    "⚠️ [agent_streaming] Skill '{}' not found",
+                                    skill_id
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "⚠️ [agent_streaming] Failed to load skill '{}': {}",
+                                    skill_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "⚠️ [agent_streaming] Failed to load assistant skills: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    if !effective_system_prompt.is_empty() {
+        config = config.with_system_prompt(effective_system_prompt);
     }
 
     // Collect all enabled tool IDs from:
-    // 1. Conversation settings (per-conversation overrides)
-    // 2. Assistant's configured tools (if using an assistant)
+    // 1. Assistant's configured tools
+    // 2. Skill-required tools
+    // 3. Conversation settings (per-conversation overrides)
     let mut all_enabled_tool_ids: Vec<String> = Vec::new();
 
-    // Load assistant's configured tools
+    // Load assistant's configured tools and skill-required tools
     if let Some(ref assistant_id) = assistant_db_id {
         match state_clone.db.get_assistant_tool_ids(assistant_id).await {
             Ok(ids) => {
@@ -71,6 +139,38 @@ pub(crate) async fn handle_agent_streaming(
             Err(e) => {
                 tracing::warn!(
                     "⚠️ [agent_streaming] Failed to load assistant tools: {}",
+                    e
+                );
+            }
+        }
+
+        // Add required tools from assistant skills
+        match state_clone
+            .db
+            .get_assistant_skill_ids(assistant_id)
+            .await
+        {
+            Ok(skill_ids) => {
+                for skill_id in &skill_ids {
+                    if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await {
+                        if skill.is_enabled {
+                            for tool_id in &skill.required_tool_ids {
+                                if !all_enabled_tool_ids.contains(tool_id) {
+                                    tracing::info!(
+                                        "🔧 [agent_streaming] Auto-enabling tool '{}' required by skill '{}'",
+                                        tool_id,
+                                        skill.name
+                                    );
+                                    all_enabled_tool_ids.push(tool_id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "⚠️ [agent_streaming] Failed to load skill tool requirements: {}",
                     e
                 );
             }
@@ -97,6 +197,8 @@ pub(crate) async fn handle_agent_streaming(
         all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
     let web_fetch_enabled =
         all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
+    let bash_enabled =
+        all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
 
     if web_search_enabled {
         tracing::info!("🔍 [agent_streaming] Enabling web_search tool");
@@ -106,6 +208,10 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool");
         config = config.with_web_fetch();
     }
+    if bash_enabled {
+        tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
+        config = config.with_bash();
+    }
 
     // Collect MCP server IDs (non-builtin tools)
     let mcp_server_ids: Vec<String> = all_enabled_tool_ids
@@ -113,6 +219,7 @@ pub(crate) async fn handle_agent_streaming(
         .filter(|id| {
             *id != &BUILTIN_WEB_SEARCH_ID.to_string()
                 && *id != &BUILTIN_WEB_FETCH_ID.to_string()
+                && *id != &BUILTIN_BASH_ID.to_string()
         })
         .cloned()
         .collect();

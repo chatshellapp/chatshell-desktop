@@ -7,6 +7,7 @@ mod logger;
 pub mod mcp;
 pub mod models;
 mod prompts;
+pub mod skills;
 pub mod storage;
 mod thinking_parser;
 mod web_fetch;
@@ -217,6 +218,15 @@ pub fn run() {
             commands::test_mcp_stdio_connection,
             commands::list_mcp_server_tools,
             commands::get_conversation_mcp_servers,
+            // Skill commands
+            commands::list_skills,
+            commands::get_skill,
+            commands::create_skill,
+            commands::update_skill,
+            commands::delete_skill,
+            commands::toggle_skill,
+            commands::scan_skills,
+            commands::read_skill_content,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

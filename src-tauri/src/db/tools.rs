@@ -12,9 +12,10 @@ use crate::models::{CreateToolRequest, Tool};
 pub const TOOL_TYPE_MCP: &str = "mcp";
 pub const TOOL_TYPE_BUILTIN: &str = "builtin";
 
-/// Builtin tool IDs (fixed UUIDs for consistency)
+/// Builtin tool IDs (fixed IDs for consistency)
 pub const BUILTIN_WEB_SEARCH_ID: &str = "builtin-web-search";
 pub const BUILTIN_WEB_FETCH_ID: &str = "builtin-web-fetch";
+pub const BUILTIN_BASH_ID: &str = "builtin-bash";
 
 impl Database {
     /// Create a new tool
@@ -192,6 +193,11 @@ impl Database {
                 BUILTIN_WEB_FETCH_ID,
                 "Web Fetch",
                 "Fetch and extract content from web pages. Returns cleaned text content suitable for reading articles and documentation.",
+            ),
+            (
+                BUILTIN_BASH_ID,
+                "Bash",
+                "Execute bash commands on the user's system. Enables CLI tools, scripts, and shell operations for skills that require command-line access.",
             ),
         ];
 

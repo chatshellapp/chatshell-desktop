@@ -13,6 +13,7 @@ mod schema;
 mod search_results;
 mod seed;
 mod settings;
+pub mod skills;
 mod steps;
 pub mod tools;
 mod users;
