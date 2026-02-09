@@ -123,11 +123,6 @@ export function InputToolbar({
             <Image className="size-4" />
             <span>Image</span>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
-            <FolderOpen className="size-4" />
-            <span>Working Directory</span>
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -213,6 +208,11 @@ export function InputToolbar({
             <BookOpen className="size-4" />
             <span>Knowledge</span>
           </DropdownMenuItem> */}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
+            <FolderOpen className="size-4" />
+            <span>Working Directory</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
