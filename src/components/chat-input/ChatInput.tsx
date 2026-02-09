@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import { InputGroup, InputGroupTextarea } from '@/components/ui/input-group'
 import {
   ImageLightbox,
@@ -8,7 +9,7 @@ import {
 } from '@/components/attachment-preview'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { X, Sparkles } from 'lucide-react'
+import { X, Sparkles, FolderOpen } from 'lucide-react'
 
 import { useAttachments } from './useAttachments'
 import { useKeyboardHandlers } from './useKeyboardHandlers'
@@ -110,6 +111,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
     (state) => state.setEnabledMcpServerIds
   )
   const setEnabledSkillIds = useConversationSettingsStore((state) => state.setEnabledSkillIds)
+  const setWorkingDirectory = useConversationSettingsStore((state) => state.setWorkingDirectory)
 
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
@@ -273,6 +275,31 @@ export function ChatInput(/* _props: ChatInputProps */) {
     }
   }
 
+  // Handler to select working directory via native folder picker
+  const handleWorkingDirectorySelect = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Working Directory',
+      })
+
+      if (selected && currentConversation) {
+        logger.info('Working directory selected:', selected)
+        setWorkingDirectory(currentConversation.id, selected as string)
+      }
+    } catch (error) {
+      logger.error('Failed to select working directory:', error)
+    }
+  }
+
+  // Handler to clear working directory
+  const handleClearWorkingDirectory = () => {
+    if (currentConversation) {
+      setWorkingDirectory(currentConversation.id, null)
+    }
+  }
+
   // Auto-focus textarea when conversation changes
   useEffect(() => {
     if (currentConversation && textareaRef.current) {
@@ -369,59 +396,90 @@ export function ChatInput(/* _props: ChatInputProps */) {
       )}
 
       <div className="flex flex-col gap-2">
-        {/* System Prompt Tag */}
-        {activeSystemPromptInfo && (
-          <div className="flex items-center gap-2">
-            {hasMessages ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge
-                    variant="outline"
-                    className="text-muted-foreground gap-1.5 cursor-not-allowed opacity-70"
-                  >
-                    <Sparkles className="size-3" />
-                    <span className="max-w-[200px] truncate">
-                      {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
-                      {activeSystemPromptInfo.name}
-                    </span>
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  System prompt can only be changed when conversation is empty
-                </TooltipContent>
-              </Tooltip>
-            ) : (
+        {/* Tags row: System Prompt + Working Directory */}
+        {(activeSystemPromptInfo || conversationSettings?.workingDirectory) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Working Directory Tag */}
+            {conversationSettings?.workingDirectory && (
               <Badge
                 variant="outline"
                 className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
               >
                 <button
                   type="button"
-                  onClick={handleClearSystemPrompt}
+                  onClick={handleClearWorkingDirectory}
                   className="hover:text-destructive transition-colors -ml-0.5"
-                  title="Clear system prompt"
+                  title="Clear working directory"
                 >
                   <X className="size-3" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (currentConversation) {
-                      getSettings(currentConversation.id)
-                      ensurePromptsLoaded()
-                    }
-                    setIsSystemPromptDialogOpen(true)
-                  }}
+                  onClick={handleWorkingDirectorySelect}
                   className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
+                  title={conversationSettings.workingDirectory}
                 >
-                  <Sparkles className="size-3" />
+                  <FolderOpen className="size-3" />
                   <span className="max-w-[200px] truncate">
-                    {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
-                    {activeSystemPromptInfo.name}
+                    {conversationSettings.workingDirectory.split('/').pop() ||
+                      conversationSettings.workingDirectory}
                   </span>
                 </button>
               </Badge>
             )}
+
+            {/* System Prompt Tag */}
+            {activeSystemPromptInfo &&
+              (hasMessages ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="text-muted-foreground gap-1.5 cursor-not-allowed opacity-70"
+                    >
+                      <Sparkles className="size-3" />
+                      <span className="max-w-[200px] truncate">
+                        {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                        {activeSystemPromptInfo.name}
+                      </span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    System prompt can only be changed when conversation is empty
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
+                >
+                  <button
+                    type="button"
+                    onClick={handleClearSystemPrompt}
+                    className="hover:text-destructive transition-colors -ml-0.5"
+                    title="Clear system prompt"
+                  >
+                    <X className="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentConversation) {
+                        getSettings(currentConversation.id)
+                        ensurePromptsLoaded()
+                      }
+                      setIsSystemPromptDialogOpen(true)
+                    }}
+                    className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
+                  >
+                    <Sparkles className="size-3" />
+                    <span className="max-w-[200px] truncate">
+                      {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                      {activeSystemPromptInfo.name}
+                    </span>
+                  </button>
+                </Badge>
+              ))}
           </div>
         )}
 
@@ -503,6 +561,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
               setIsSkillsDialogOpen(true)
             }}
             skillsLabel={skillsLabel}
+            onWorkingDirectorySelect={handleWorkingDirectorySelect}
           />
         </InputGroup>
       </div>

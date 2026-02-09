@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Prompt mode for system/user prompts
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -31,6 +31,22 @@ impl From<PromptMode> for String {
             PromptMode::Custom => "custom".to_string(),
         }
     }
+}
+
+/// Custom deserializer for `Option<Option<T>>` fields in update requests.
+///
+/// By default, serde treats JSON `null` as `None` for the outer Option (= "field not provided"),
+/// making it impossible to distinguish between "field absent" and "field explicitly set to null".
+/// This deserializer ensures:
+/// - Field absent in JSON → `None` (via `#[serde(default)]`)
+/// - Field present with `null` → `Some(None)` (= "clear the value")
+/// - Field present with value → `Some(Some(value))` (= "set to this value")
+fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Some(Option::deserialize(deserializer)?))
 }
 
 /// Model parameter overrides for a conversation
@@ -93,6 +109,10 @@ pub struct ConversationSettings {
     /// Enabled skill IDs for this conversation (JSON array)
     #[serde(default)]
     pub enabled_skill_ids: Vec<String>,
+
+    /// Working directory for bash tool (overrides default home directory)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
 }
 
 impl ConversationSettings {
@@ -113,6 +133,7 @@ impl ConversationSettings {
             custom_user_prompt: None,
             enabled_mcp_server_ids: Vec::new(),
             enabled_skill_ids: Vec::new(),
+            working_directory: None,
         }
     }
 }
@@ -146,6 +167,12 @@ pub struct UpdateConversationSettingsRequest {
     pub enabled_mcp_server_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled_skill_ids: Option<Vec<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
+    pub working_directory: Option<Option<String>>,
 }
 
 #[cfg(test)]
@@ -200,6 +227,7 @@ mod tests {
         assert!(settings.custom_user_prompt.is_none());
         assert!(settings.enabled_mcp_server_ids.is_empty());
         assert!(settings.enabled_skill_ids.is_empty());
+        assert!(settings.working_directory.is_none());
     }
 
     #[test]
@@ -209,6 +237,31 @@ mod tests {
 
         assert!(json.contains(r#""conversation_id":"conv-456""#));
         assert!(json.contains(r#""use_provider_defaults":true"#));
+    }
+
+    #[test]
+    fn test_working_directory_deserialization_null_clears_value() {
+        // When frontend sends { "working_directory": null }, it should deserialize as Some(None)
+        // meaning "clear the value", NOT None meaning "field not provided"
+        let json = r#"{"working_directory": null}"#;
+        let req: UpdateConversationSettingsRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.working_directory, Some(None));
+    }
+
+    #[test]
+    fn test_working_directory_deserialization_absent_means_not_provided() {
+        // When field is absent, it should be None (don't change)
+        let json = r#"{}"#;
+        let req: UpdateConversationSettingsRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.working_directory, None);
+    }
+
+    #[test]
+    fn test_working_directory_deserialization_value_sets_value() {
+        // When field has a string value, it should be Some(Some("path"))
+        let json = r#"{"working_directory": "/tmp/test"}"#;
+        let req: UpdateConversationSettingsRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.working_directory, Some(Some("/tmp/test".to_string())));
     }
 
     #[test]

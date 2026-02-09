@@ -18,6 +18,7 @@ pub async fn create_conversation_settings_table(pool: &SqlitePool) -> Result<()>
             custom_user_prompt TEXT,
             enabled_mcp_server_ids TEXT,
             enabled_skill_ids TEXT,
+            working_directory TEXT,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
             FOREIGN KEY (selected_preset_id) REFERENCES model_parameter_presets(id) ON DELETE SET NULL,
             FOREIGN KEY (selected_system_prompt_id) REFERENCES prompts(id) ON DELETE SET NULL,

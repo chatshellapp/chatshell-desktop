@@ -77,13 +77,15 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     }
 
     if current_version < 6 {
+        migrate_v5_to_v6(pool).await?;
         set_user_version(pool, 6).await?;
         tracing::info!("Migration to v6 completed");
     }
 
-    // Ensure enabled_skill_ids column exists (idempotent, fixes databases
-    // that were bumped to v6 before the column was actually added)
+    // Ensure columns exist (idempotent, fixes databases
+    // that were bumped to v6 before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
+    ensure_working_directory_column(pool).await?;
 
     Ok(())
 }
@@ -157,6 +159,13 @@ async fn migrate_v4_to_v5(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+/// Migration v5 -> v6: Add enabled_skill_ids and working_directory columns to conversation_settings
+async fn migrate_v5_to_v6(pool: &SqlitePool) -> Result<()> {
+    ensure_enabled_skill_ids_column(pool).await?;
+    ensure_working_directory_column(pool).await?;
+    Ok(())
+}
+
 /// Ensure enabled_skill_ids column exists in conversation_settings (idempotent)
 async fn ensure_enabled_skill_ids_column(pool: &SqlitePool) -> Result<()> {
     let columns: Vec<(String,)> =
@@ -176,3 +185,21 @@ async fn ensure_enabled_skill_ids_column(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+/// Ensure working_directory column exists in conversation_settings (idempotent)
+async fn ensure_working_directory_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('conversation_settings')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "working_directory");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE conversation_settings ADD COLUMN working_directory TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added working_directory column to conversation_settings table");
+    }
+
+    Ok(())
+}

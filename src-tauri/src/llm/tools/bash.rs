@@ -43,11 +43,23 @@ pub struct BashError(String);
 /// - A timeout is enforced to prevent runaway processes
 /// - Output is truncated to prevent context overflow
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct BashTool;
+pub struct BashTool {
+    /// Default working directory for commands when not specified by the LLM.
+    /// If None, falls back to the user's home directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_cwd: Option<String>,
+}
 
 impl BashTool {
     pub fn new() -> Self {
-        Self
+        Self { default_cwd: None }
+    }
+
+    /// Create a BashTool with a configured default working directory
+    pub fn with_working_directory(cwd: String) -> Self {
+        Self {
+            default_cwd: Some(cwd),
+        }
     }
 }
 
@@ -59,6 +71,15 @@ impl Tool for BashTool {
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let cwd_description = if let Some(ref default_dir) = self.default_cwd {
+            format!(
+                "Working directory for the command (defaults to: {})",
+                default_dir
+            )
+        } else {
+            "Working directory for the command (defaults to user's home directory)".to_string()
+        };
+
         ToolDefinition {
             name: "bash".to_string(),
             description: "Execute a bash command on the user's system. \
@@ -76,7 +97,7 @@ impl Tool for BashTool {
                     },
                     "cwd": {
                         "type": "string",
-                        "description": "Working directory for the command (defaults to user's home directory)"
+                        "description": cwd_description
                     },
                     "timeout": {
                         "type": "number",
@@ -96,17 +117,19 @@ impl Tool for BashTool {
             args.timeout
         );
 
-        // Determine working directory (default to home)
+        // Determine working directory:
+        // 1. LLM-specified cwd (from tool call args)
+        // 2. Configured default_cwd (from conversation settings)
+        // 3. User's home directory
+        // 4. Current directory as last resort
         let cwd = args
             .cwd
+            .or_else(|| self.default_cwd.clone())
             .or_else(|| dirs::home_dir().map(|p| p.to_string_lossy().to_string()))
             .unwrap_or_else(|| ".".to_string());
 
         // Clamp timeout between 1 and 300 seconds
-        let timeout_secs = args
-            .timeout
-            .unwrap_or(DEFAULT_TIMEOUT_SECS)
-            .clamp(1, 300);
+        let timeout_secs = args.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS).clamp(1, 300);
 
         // Build the command
         let mut cmd = Command::new("bash");
@@ -119,11 +142,8 @@ impl Tool for BashTool {
             .stdin(Stdio::null());
 
         // Execute with timeout
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            cmd.output(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output()).await;
 
         match result {
             Ok(Ok(output)) => {
@@ -219,10 +239,8 @@ mod tests {
 
     #[test]
     fn test_bash_args_with_all_fields() {
-        let args: BashArgs = serde_json::from_str(
-            r#"{"command": "ls -la", "cwd": "/tmp", "timeout": 10}"#,
-        )
-        .unwrap();
+        let args: BashArgs =
+            serde_json::from_str(r#"{"command": "ls -la", "cwd": "/tmp", "timeout": 10}"#).unwrap();
         assert_eq!(args.command, "ls -la");
         assert_eq!(args.cwd, Some("/tmp".to_string()));
         assert_eq!(args.timeout, Some(10));

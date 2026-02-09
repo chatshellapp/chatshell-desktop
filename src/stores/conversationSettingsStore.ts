@@ -90,6 +90,9 @@ interface ConversationSettingsActions {
 
   // Skill settings
   setEnabledSkillIds: (conversationId: string, skillIds: string[]) => Promise<void>
+
+  // Working directory for bash tool
+  setWorkingDirectory: (conversationId: string, directory: string | null) => Promise<void>
 }
 
 type ConversationSettingsStore = ConversationSettingsState & ConversationSettingsActions
@@ -465,6 +468,19 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to update enabledSkillIds:', error)
+      }
+    },
+
+    setWorkingDirectory: async (conversationId: string, directory: string | null) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          workingDirectory: directory,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error('[conversationSettingsStore] Failed to update workingDirectory:', error)
       }
     },
   }))

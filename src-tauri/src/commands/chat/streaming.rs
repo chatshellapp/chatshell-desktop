@@ -53,11 +53,7 @@ pub(crate) async fn handle_agent_streaming(
 
     // Load assistant's configured skills and inject instructions into system prompt
     if let Some(ref assistant_id) = assistant_db_id {
-        match state_clone
-            .db
-            .get_assistant_skill_ids(assistant_id)
-            .await
-        {
+        match state_clone.db.get_assistant_skill_ids(assistant_id).await {
             Ok(skill_ids) => {
                 if !skill_ids.is_empty() {
                     tracing::info!(
@@ -133,19 +129,12 @@ pub(crate) async fn handle_agent_streaming(
                 }
             }
             Err(e) => {
-                tracing::warn!(
-                    "⚠️ [agent_streaming] Failed to load assistant tools: {}",
-                    e
-                );
+                tracing::warn!("⚠️ [agent_streaming] Failed to load assistant tools: {}", e);
             }
         }
 
         // Add required tools from assistant skills
-        match state_clone
-            .db
-            .get_assistant_skill_ids(assistant_id)
-            .await
-        {
+        match state_clone.db.get_assistant_skill_ids(assistant_id).await {
             Ok(skill_ids) => {
                 for skill_id in &skill_ids {
                     if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await {
@@ -249,12 +238,9 @@ pub(crate) async fn handle_agent_streaming(
     }
 
     // Determine which builtin tools are enabled
-    let web_search_enabled =
-        all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
-    let web_fetch_enabled =
-        all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
-    let bash_enabled =
-        all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
+    let web_search_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
+    let web_fetch_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
+    let bash_enabled = all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
 
     if web_search_enabled {
         tracing::info!("🔍 [agent_streaming] Enabling web_search tool");
@@ -267,6 +253,17 @@ pub(crate) async fn handle_agent_streaming(
     if bash_enabled {
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
         config = config.with_bash();
+
+        // Set working directory from conversation settings if configured
+        if let Some(ref settings) = conv_settings {
+            if let Some(ref working_dir) = settings.working_directory {
+                tracing::info!(
+                    "📂 [agent_streaming] Setting bash working directory: {}",
+                    working_dir
+                );
+                config = config.with_bash_working_directory(working_dir.clone());
+            }
+        }
     }
 
     // Collect MCP server IDs (non-builtin tools)
@@ -282,16 +279,12 @@ pub(crate) async fn handle_agent_streaming(
 
     // Load MCP tools from enabled servers
     if !mcp_server_ids.is_empty() {
-        let mcp_tools_config =
-            load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
+        let mcp_tools_config = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
 
         if let Some((tools, client)) = mcp_tools_config
             && !tools.is_empty()
         {
-            tracing::info!(
-                "🔌 [agent_streaming] Loaded {} MCP tools",
-                tools.len()
-            );
+            tracing::info!("🔌 [agent_streaming] Loaded {} MCP tools", tools.len());
             config = config.with_mcp_tools(tools, client);
         }
     }
@@ -428,14 +421,15 @@ pub(crate) async fn handle_agent_streaming(
                     {
                         // First reasoning chunk - flush any pending content block
                         if let Ok(mut current_block) = current_content_for_callback.try_write()
-                            && !current_block.trim().is_empty() {
-                                let order = display_order_for_callback
-                                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                                if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
-                                    blocks.push((order, current_block.clone()));
-                                }
-                                current_block.clear();
+                            && !current_block.trim().is_empty()
+                        {
+                            let order = display_order_for_callback
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
+                                blocks.push((order, current_block.clone()));
                             }
+                            current_block.clear();
+                        }
 
                         // Set current reasoning order
                         let order = display_order_for_callback
@@ -468,29 +462,32 @@ pub(crate) async fn handle_agent_streaming(
                 StreamChunkType::ToolCall(tool_info) => {
                     // Flush any pending reasoning block before tool call
                     if let Ok(mut current_reasoning) = current_reasoning_for_callback.try_write()
-                        && !current_reasoning.trim().is_empty() {
-                            let order = current_reasoning_order_for_callback
-                                .load(std::sync::atomic::Ordering::SeqCst);
-                            if order >= 0
-                                && let Ok(mut blocks) = reasoning_blocks_for_callback.try_write() {
-                                    blocks.push((order, current_reasoning.clone()));
-                                }
-                            current_reasoning.clear();
+                        && !current_reasoning.trim().is_empty()
+                    {
+                        let order = current_reasoning_order_for_callback
+                            .load(std::sync::atomic::Ordering::SeqCst);
+                        if order >= 0
+                            && let Ok(mut blocks) = reasoning_blocks_for_callback.try_write()
+                        {
+                            blocks.push((order, current_reasoning.clone()));
                         }
+                        current_reasoning.clear();
+                    }
                     // Reset reasoning started for next round
                     reasoning_started_for_callback
                         .store(false, std::sync::atomic::Ordering::SeqCst);
 
                     // Flush any pending content block before tool call
                     if let Ok(mut current_block) = current_content_for_callback.try_write()
-                        && !current_block.trim().is_empty() {
-                            let order = display_order_for_callback
-                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
-                                blocks.push((order, current_block.clone()));
-                            }
-                            current_block.clear();
+                        && !current_block.trim().is_empty()
+                    {
+                        let order = display_order_for_callback
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if let Ok(mut blocks) = content_blocks_for_callback.try_write() {
+                            blocks.push((order, current_block.clone()));
                         }
+                        current_block.clear();
+                    }
 
                     // Get display order for this tool call
                     let tool_order = display_order_for_callback
@@ -522,19 +519,19 @@ pub(crate) async fn handle_agent_streaming(
                     // Update tool call with result
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write()
                         && let Some((_, name, input, output)) = tool_calls.get_mut(&result_info.id)
-                        {
-                            *output = Some(result_info.tool_output.clone());
+                    {
+                        *output = Some(result_info.tool_output.clone());
 
-                            // Emit tool result event to frontend
-                            let payload = serde_json::json!({
-                                "conversation_id": conversation_id_for_stream,
-                                "tool_call_id": result_info.id,
-                                "tool_name": name.clone(),
-                                "tool_input": input.clone(),
-                                "tool_output": result_info.tool_output,
-                            });
-                            let _ = app_for_stream.emit("tool-call-completed", payload);
-                        }
+                        // Emit tool result event to frontend
+                        let payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                            "tool_call_id": result_info.id,
+                            "tool_name": name.clone(),
+                            "tool_input": input.clone(),
+                            "tool_output": result_info.tool_output,
+                        });
+                        let _ = app_for_stream.emit("tool-call-completed", payload);
+                    }
                 }
             }
 
@@ -753,26 +750,26 @@ pub(crate) async fn handle_agent_streaming(
     // Fallback: if no ordered reasoning blocks but we have thinking content, save it
     if reasoning_blocks.read().await.is_empty()
         && let Some(thinking_content) = response.thinking_content
-            && !thinking_content.is_empty()
+        && !thinking_content.is_empty()
+    {
+        match state_clone
+            .db
+            .create_thinking_step(CreateThinkingStepRequest {
+                message_id: assistant_message.id.clone(),
+                content: thinking_content,
+                source: Some("llm".to_string()),
+                display_order: Some(0),
+            })
+            .await
         {
-            match state_clone
-                .db
-                .create_thinking_step(CreateThinkingStepRequest {
-                    message_id: assistant_message.id.clone(),
-                    content: thinking_content,
-                    source: Some("llm".to_string()),
-                    display_order: Some(0),
-                })
-                .await
-            {
-                Ok(_thinking_step) => {
-                    // ThinkingStep is now directly linked via message_id FK
-                }
-                Err(e) => {
-                    tracing::error!("Failed to save thinking step: {}", e);
-                }
+            Ok(_thinking_step) => {
+                // ThinkingStep is now directly linked via message_id FK
+            }
+            Err(e) => {
+                tracing::error!("Failed to save thinking step: {}", e);
             }
         }
+    }
 
     // Save tool calls to database with proper display order
     let tool_calls_data = tool_calls_map.read().await;
@@ -923,10 +920,7 @@ async fn load_mcp_tools_by_ids(
         return None;
     }
 
-    tracing::info!(
-        "🔌 [mcp] Loading {} MCP server(s) by IDs",
-        tool_ids.len()
-    );
+    tracing::info!("🔌 [mcp] Loading {} MCP server(s) by IDs", tool_ids.len());
 
     // Get the tool configurations from DB
     let tools = match state.db.get_tools_by_ids(tool_ids).await {

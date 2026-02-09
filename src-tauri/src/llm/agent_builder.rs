@@ -54,6 +54,8 @@ pub struct AgentConfig {
     pub enable_web_fetch: bool,
     /// Enable built-in bash tool
     pub enable_bash: bool,
+    /// Default working directory for bash tool
+    pub bash_working_directory: Option<String>,
 }
 
 impl AgentConfig {
@@ -121,6 +123,12 @@ impl AgentConfig {
     /// Enable the built-in bash tool
     pub fn with_bash(mut self) -> Self {
         self.enable_bash = true;
+        self
+    }
+
+    /// Set the default working directory for bash tool
+    pub fn with_bash_working_directory(mut self, dir: String) -> Self {
+        self.bash_working_directory = Some(dir);
         self
     }
 
@@ -267,7 +275,8 @@ fn build_agent<M: CompletionModel>(
     // Check if we need to add any native tools or MCP tools
     // Note: .tool() transforms AgentBuilder into AgentBuilderSimple,
     // so we need to handle the transition carefully
-    let has_native_tools = config.enable_web_search || config.enable_web_fetch || config.enable_bash;
+    let has_native_tools =
+        config.enable_web_search || config.enable_web_fetch || config.enable_bash;
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
@@ -324,6 +333,16 @@ fn build_agent_with_tools<M: CompletionModel>(
     let enable_web_fetch = config.enable_web_fetch;
     let enable_bash = config.enable_bash;
 
+    // Helper to create BashTool with optional working directory
+    let create_bash_tool = || -> BashTool {
+        if let Some(ref dir) = config.bash_working_directory {
+            tracing::info!("🖥️ Bash tool configured with working directory: {}", dir);
+            BashTool::with_working_directory(dir.clone())
+        } else {
+            BashTool::new()
+        }
+    };
+
     // The first `.tool()` call transitions the builder type.
     // After that, we can chain additional `.tool()` calls freely.
     if enable_web_search {
@@ -339,7 +358,7 @@ fn build_agent_with_tools<M: CompletionModel>(
         if enable_bash {
             tracing::info!("🖥️ Adding bash tool to agent");
             native_tool_count += 1;
-            simple_builder = simple_builder.tool(BashTool::new());
+            simple_builder = simple_builder.tool(create_bash_tool());
         }
 
         finish_with_simple_builder!(simple_builder);
@@ -353,7 +372,7 @@ fn build_agent_with_tools<M: CompletionModel>(
         if enable_bash {
             tracing::info!("🖥️ Adding bash tool to agent");
             native_tool_count += 1;
-            simple_builder = simple_builder.tool(BashTool::new());
+            simple_builder = simple_builder.tool(create_bash_tool());
         }
 
         finish_with_simple_builder!(simple_builder);
@@ -362,7 +381,7 @@ fn build_agent_with_tools<M: CompletionModel>(
     if enable_bash {
         tracing::info!("🖥️ Adding bash tool to agent");
         native_tool_count += 1;
-        let simple_builder = builder.tool(BashTool::new());
+        let simple_builder = builder.tool(create_bash_tool());
 
         finish_with_simple_builder!(simple_builder);
     }

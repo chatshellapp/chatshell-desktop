@@ -18,11 +18,7 @@ pub async fn create_skill(
     state: State<'_, AppState>,
     req: CreateSkillRequest,
 ) -> Result<Skill, String> {
-    state
-        .db
-        .create_skill(req)
-        .await
-        .map_err(|e| e.to_string())
+    state.db.create_skill(req).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -40,20 +36,12 @@ pub async fn update_skill(
 
 #[tauri::command]
 pub async fn delete_skill(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state
-        .db
-        .delete_skill(&id)
-        .await
-        .map_err(|e| e.to_string())
+    state.db.delete_skill(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn toggle_skill(state: State<'_, AppState>, id: String) -> Result<Skill, String> {
-    state
-        .db
-        .toggle_skill(&id)
-        .await
-        .map_err(|e| e.to_string())
+    state.db.toggle_skill(&id).await.map_err(|e| e.to_string())
 }
 
 /// Scan the filesystem for SKILL.md files and sync them into the database
@@ -89,7 +77,11 @@ pub async fn scan_skills(
 
     // Upsert each discovered skill
     for skill in &discovered {
-        if let Err(e) = state.db.upsert_skill_by_name(skill.to_create_request()).await {
+        if let Err(e) = state
+            .db
+            .upsert_skill_by_name(skill.to_create_request())
+            .await
+        {
             tracing::warn!(
                 "⚠️ [scan_skills] Failed to upsert skill '{}': {}",
                 skill.name,

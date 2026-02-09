@@ -17,7 +17,7 @@ impl Database {
              parameter_overrides, context_message_count, selected_preset_id,
              system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
              user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-             enabled_mcp_server_ids, enabled_skill_ids
+             enabled_mcp_server_ids, enabled_skill_ids, working_directory
              FROM conversation_settings WHERE conversation_id = ?",
         )
         .bind(conversation_id)
@@ -62,6 +62,7 @@ impl Database {
                     custom_user_prompt: None,
                     enabled_mcp_server_ids: enabled_tool_ids,
                     enabled_skill_ids,
+                    working_directory: None,
                 })
             }
         }
@@ -111,9 +112,8 @@ impl Database {
         let enabled_mcp_server_ids = req
             .enabled_mcp_server_ids
             .unwrap_or(existing.enabled_mcp_server_ids);
-        let enabled_skill_ids = req
-            .enabled_skill_ids
-            .unwrap_or(existing.enabled_skill_ids);
+        let enabled_skill_ids = req.enabled_skill_ids.unwrap_or(existing.enabled_skill_ids);
+        let working_directory = req.working_directory.unwrap_or(existing.working_directory);
 
         // Serialize parameter overrides to JSON
         let parameter_overrides_json = serde_json::to_string(&parameter_overrides)?;
@@ -129,8 +129,8 @@ impl Database {
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
                 user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-                enabled_mcp_server_ids, enabled_skill_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
@@ -144,7 +144,8 @@ impl Database {
                 selected_user_prompt_id = excluded.selected_user_prompt_id,
                 custom_user_prompt = excluded.custom_user_prompt,
                 enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
-                enabled_skill_ids = excluded.enabled_skill_ids",
+                enabled_skill_ids = excluded.enabled_skill_ids,
+                working_directory = excluded.working_directory",
         )
         .bind(conversation_id)
         .bind(use_provider_defaults as i32)
@@ -160,6 +161,7 @@ impl Database {
         .bind(&custom_user_prompt)
         .bind(&enabled_mcp_server_ids_json)
         .bind(&enabled_skill_ids_json)
+        .bind(&working_directory)
         .execute(self.pool.as_ref())
         .await?;
 
@@ -211,6 +213,7 @@ impl Database {
             custom_user_prompt: row.get("custom_user_prompt"),
             enabled_mcp_server_ids,
             enabled_skill_ids,
+            working_directory: row.get("working_directory"),
         }
     }
 }

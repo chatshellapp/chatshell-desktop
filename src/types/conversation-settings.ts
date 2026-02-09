@@ -53,6 +53,9 @@ export interface ConversationSettings {
 
   // Skill IDs enabled for this conversation
   enabledSkillIds: string[]
+
+  // Working directory for bash tool (overrides default home directory)
+  workingDirectory: string | null
 }
 
 // Request to update conversation settings (all fields optional for partial updates)
@@ -70,6 +73,7 @@ export interface UpdateConversationSettingsRequest {
   customUserPrompt?: string | null
   enabledMcpServerIds?: string[]
   enabledSkillIds?: string[]
+  workingDirectory?: string | null
 }
 
 // Backend response format (snake_case)
@@ -88,6 +92,7 @@ export interface ConversationSettingsResponse {
   custom_user_prompt: string | null
   enabled_mcp_server_ids: string[]
   enabled_skill_ids: string[]
+  working_directory: string | null
 }
 
 // Convert backend response to frontend format
@@ -107,6 +112,7 @@ export function fromBackendSettings(response: ConversationSettingsResponse): Con
     customUserPrompt: response.custom_user_prompt,
     enabledMcpServerIds: response.enabled_mcp_server_ids ?? [],
     enabledSkillIds: response.enabled_skill_ids ?? [],
+    workingDirectory: response.working_directory ?? null,
   }
 }
 
@@ -129,6 +135,7 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
   if (req.customUserPrompt !== undefined) result.custom_user_prompt = req.customUserPrompt
   if (req.enabledMcpServerIds !== undefined) result.enabled_mcp_server_ids = req.enabledMcpServerIds
   if (req.enabledSkillIds !== undefined) result.enabled_skill_ids = req.enabledSkillIds
+  if (req.workingDirectory !== undefined) result.working_directory = req.workingDirectory
 
   return result
 }
@@ -154,6 +161,7 @@ export const createDefaultConversationSettings = (
   customUserPrompt: null,
   enabledMcpServerIds,
   enabledSkillIds,
+  workingDirectory: null,
 })
 
 // Parameter limits for validation

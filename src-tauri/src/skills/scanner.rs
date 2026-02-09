@@ -111,11 +111,7 @@ impl SkillScanner {
     }
 
     /// Scan a single directory for SKILL.md files
-    async fn scan_directory(
-        &self,
-        dir: &Path,
-        source: &str,
-    ) -> Result<Vec<DiscoveredSkill>> {
+    async fn scan_directory(&self, dir: &Path, source: &str) -> Result<Vec<DiscoveredSkill>> {
         let mut skills = Vec::new();
 
         if !dir.exists() {
@@ -156,11 +152,7 @@ impl SkillScanner {
                         skills.push(skill);
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "⚠️ [skill_scanner] Failed to parse {:?}: {}",
-                            skill_md,
-                            e
-                        );
+                        tracing::warn!("⚠️ [skill_scanner] Failed to parse {:?}: {}", skill_md, e);
                     }
                 }
             }
@@ -170,11 +162,7 @@ impl SkillScanner {
     }
 
     /// Parse a SKILL.md file with optional YAML frontmatter
-    async fn parse_skill_md(
-        &self,
-        path: &Path,
-        source: &str,
-    ) -> Result<DiscoveredSkill> {
+    async fn parse_skill_md(&self, path: &Path, source: &str) -> Result<DiscoveredSkill> {
         let content = tokio::fs::read_to_string(path).await?;
         let content_hash = crate::storage::hash_content(&content);
         let (frontmatter, instructions) = parse_frontmatter(&content);
@@ -192,11 +180,7 @@ impl SkillScanner {
             name,
             description: frontmatter.description,
             source: source.to_string(),
-            path: path
-                .parent()
-                .unwrap_or(path)
-                .to_string_lossy()
-                .to_string(),
+            path: path.parent().unwrap_or(path).to_string_lossy().to_string(),
             icon: frontmatter.icon,
             required_tool_ids: frontmatter.required_tools.unwrap_or_default(),
             allow_model_invocation: !frontmatter.disable_model_invocation.unwrap_or(false),
@@ -276,12 +260,8 @@ fn parse_yaml_frontmatter(yaml: &str) -> SkillFrontmatter {
                 "name" => fm.name = Some(value.to_string()),
                 "description" => fm.description = Some(value.to_string()),
                 "icon" => fm.icon = Some(value.to_string()),
-                "disable_model_invocation" => {
-                    fm.disable_model_invocation = Some(value == "true")
-                }
-                "disable_user_invocation" => {
-                    fm.disable_user_invocation = Some(value == "true")
-                }
+                "disable_model_invocation" => fm.disable_model_invocation = Some(value == "true"),
+                "disable_user_invocation" => fm.disable_user_invocation = Some(value == "true"),
                 _ => {}
             }
         }

@@ -11,6 +11,7 @@ import {
   Sparkles,
   Wrench,
   Zap,
+  FolderOpen,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -61,6 +62,8 @@ interface InputToolbarProps {
   // Skills
   onSkillsClick: () => void
   skillsLabel: string
+  // Working Directory
+  onWorkingDirectorySelect: () => void
 }
 
 export function InputToolbar({
@@ -91,6 +94,7 @@ export function InputToolbar({
   mcpServersLabel,
   onSkillsClick,
   skillsLabel,
+  onWorkingDirectorySelect,
 }: InputToolbarProps) {
   return (
     <InputGroupAddon align="block-end">
@@ -118,6 +122,11 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onImageSelect} className="gap-2">
             <Image className="size-4" />
             <span>Image</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
+            <FolderOpen className="size-4" />
+            <span>Working Directory</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
