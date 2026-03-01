@@ -113,9 +113,7 @@ impl Tool for GrepTool {
         let result = run_ripgrep(&args.pattern, &search_path, &args).await;
         match result {
             Ok(output) => Ok(output),
-            Err(_) => {
-                run_system_grep(&args.pattern, &search_path, &args).await
-            }
+            Err(_) => run_system_grep(&args.pattern, &search_path, &args).await,
         }
     }
 }
@@ -172,10 +170,7 @@ async fn run_ripgrep(
         result.push_str("\n\n... (output truncated)");
     }
 
-    tracing::info!(
-        "🔧 [tool-result] grep: {} chars of results",
-        result.len()
-    );
+    tracing::info!("🔧 [tool-result] grep: {} chars of results", result.len());
 
     Ok(result)
 }

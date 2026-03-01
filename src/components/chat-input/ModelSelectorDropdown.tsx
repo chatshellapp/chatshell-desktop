@@ -102,11 +102,7 @@ export function ModelSelectorDropdown({
     if (currentConversation) {
       await useConversationSettingsStore
         .getState()
-        .initSettingsFromAssistant(
-          currentConversation.id,
-          assistant.tool_ids,
-          assistant.skill_ids
-        )
+        .initSettingsFromAssistant(currentConversation.id, assistant.tool_ids, assistant.skill_ids)
     }
   }
 

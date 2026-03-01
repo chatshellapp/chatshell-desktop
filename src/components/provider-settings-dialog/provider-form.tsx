@@ -81,11 +81,7 @@ export function ProviderForm({
           {compatibilityType === 'openai' && (
             <div className="space-y-2">
               <Label>API Style</Label>
-              <RadioGroup
-                value={apiStyle}
-                onValueChange={onApiStyleChange}
-                className="flex gap-4"
-              >
+              <RadioGroup value={apiStyle} onValueChange={onApiStyleChange} className="flex gap-4">
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="chat_completions" id="api-style-cc" />
                   <Label htmlFor="api-style-cc" className="font-normal cursor-pointer">

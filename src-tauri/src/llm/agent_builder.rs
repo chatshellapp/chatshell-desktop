@@ -691,10 +691,7 @@ fn build_agent_with_tools<M: CompletionModel>(
             if let Some(ref mcp_config) = config.mcp_tools
                 && !mcp_config.tools.is_empty()
             {
-                tracing::info!(
-                    "🔌 Adding {} MCP tool(s) to agent",
-                    mcp_config.tools.len()
-                );
+                tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
                 return sb
                     .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
                     .build();

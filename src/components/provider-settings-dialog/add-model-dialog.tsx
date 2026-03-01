@@ -56,9 +56,7 @@ export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialo
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogTitle>Add Model Manually</DialogTitle>
-        <DialogDescription>
-          Enter the model identifier used for API calls.
-        </DialogDescription>
+        <DialogDescription>Enter the model identifier used for API calls.</DialogDescription>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="model-id">Model ID</Label>

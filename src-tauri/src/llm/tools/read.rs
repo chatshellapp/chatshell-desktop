@@ -107,10 +107,7 @@ impl Tool for ReadTool {
         let content = match String::from_utf8(raw_bytes) {
             Ok(s) => s,
             Err(_) => {
-                return Err(ReadError(format!(
-                    "File is not valid UTF-8: {}",
-                    args.path
-                )));
+                return Err(ReadError(format!("File is not valid UTF-8: {}", args.path)));
             }
         };
 

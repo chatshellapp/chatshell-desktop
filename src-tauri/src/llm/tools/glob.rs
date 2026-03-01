@@ -87,11 +87,7 @@ impl Tool for GlobTool {
         let full_pattern = if args.pattern.starts_with('/') {
             args.pattern.clone()
         } else {
-            format!(
-                "{}/{}",
-                base_dir.trim_end_matches('/'),
-                args.pattern
-            )
+            format!("{}/{}", base_dir.trim_end_matches('/'), args.pattern)
         };
 
         let options = glob::MatchOptions {
@@ -126,15 +122,15 @@ impl Tool for GlobTool {
         let mut output = results.join("\n");
 
         if truncated {
-            output.push_str(&format!("\n\n... (results capped at {} files)", MAX_RESULTS));
+            output.push_str(&format!(
+                "\n\n... (results capped at {} files)",
+                MAX_RESULTS
+            ));
         } else {
             output.push_str(&format!("\n\n({} files found)", results.len()));
         }
 
-        tracing::info!(
-            "🔧 [tool-result] glob: found {} files",
-            results.len()
-        );
+        tracing::info!("🔧 [tool-result] glob: found {} files", results.len());
 
         Ok(output)
     }

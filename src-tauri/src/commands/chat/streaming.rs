@@ -211,10 +211,7 @@ pub(crate) async fn handle_agent_streaming(
              its full instructions before proceeding.\n\n",
         );
         for entry in &skill_entries {
-            let desc = entry
-                .description
-                .as_deref()
-                .unwrap_or("No description");
+            let desc = entry.description.as_deref().unwrap_or("No description");
             effective_system_prompt.push_str(&format!(
                 "- **{}** - {} (path: {})\n",
                 entry.name, desc, entry.path

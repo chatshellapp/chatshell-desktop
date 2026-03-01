@@ -18,10 +18,7 @@ import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
 import { AddModelDialog } from '@/components/provider-settings-dialog/add-model-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
-import {
-  BUILTIN_PROVIDERS,
-  CUSTOM_PROVIDER,
-} from '@/components/provider-settings-dialog/constants'
+import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER } from '@/components/provider-settings-dialog/constants'
 import { ProviderLogo } from '@/components/provider-settings-dialog/provider-logo'
 import { isCustomProvider, isCustomProviderType } from '@/components/provider-settings-dialog/types'
 
