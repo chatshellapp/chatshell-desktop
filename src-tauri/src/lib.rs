@@ -158,6 +158,7 @@ pub fn run() {
             // Conversation Settings commands
             commands::get_conversation_settings,
             commands::update_conversation_settings,
+            commands::reset_conversation_tools_to_global,
             commands::delete_conversation_settings,
             // Message commands
             commands::create_message,

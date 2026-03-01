@@ -47,6 +47,22 @@ pub async fn update_conversation_settings(
 }
 
 #[tauri::command]
+pub async fn reset_conversation_tools_to_global(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<ConversationSettings, String> {
+    info!(
+        "[conversation_settings] reset_conversation_tools_to_global called: {}",
+        conversation_id
+    );
+    state
+        .db
+        .reset_tools_and_skills_to_global(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_conversation_settings(
     state: State<'_, AppState>,
     conversation_id: String,

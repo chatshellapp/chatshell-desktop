@@ -495,27 +495,21 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
           draft.settings[conversationId] = fromBackendSettings(response)
         })
       } catch (error) {
-        logger.error(
-          '[conversationSettingsStore] Failed to init settings from assistant:',
-          error
-        )
+        logger.error('[conversationSettingsStore] Failed to init settings from assistant:', error)
       }
     },
 
     resetToolsAndSkillsToGlobal: async (conversationId: string) => {
       try {
-        const response = await updateSettingsInBackend(conversationId, {
-          enabledMcpServerIds: getGlobalEnabledMcpServerIds(),
-          enabledSkillIds: getGlobalEnabledSkillIds(),
-        })
+        const response = await invoke<ConversationSettingsResponse>(
+          'reset_conversation_tools_to_global',
+          { conversationId }
+        )
         set((draft) => {
           draft.settings[conversationId] = fromBackendSettings(response)
         })
       } catch (error) {
-        logger.error(
-          '[conversationSettingsStore] Failed to reset tools/skills to global:',
-          error
-        )
+        logger.error('[conversationSettingsStore] Failed to reset tools/skills to global:', error)
       }
     },
 

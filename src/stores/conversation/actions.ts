@@ -210,6 +210,12 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
             logger.info('[conversationStore] No model/assistant found, cleared selection')
           }
         }
+
+        // When no model/assistant is selected, reset tools/skills to global defaults
+        // to prevent stale assistant-specific settings from persisting after restart
+        if (!get().selectedModel && !get().selectedAssistant) {
+          await useConversationSettingsStore.getState().resetToolsAndSkillsToGlobal(id)
+        }
       } else {
         set((draft) => {
           draft.currentConversation = null

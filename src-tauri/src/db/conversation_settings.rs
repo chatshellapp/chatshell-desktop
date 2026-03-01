@@ -168,6 +168,36 @@ impl Database {
         self.get_conversation_settings(conversation_id).await
     }
 
+    /// Reset only the tools and skills in conversation settings to global defaults.
+    /// Preserves all other settings (system prompt, parameters, etc.).
+    pub async fn reset_tools_and_skills_to_global(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ConversationSettings> {
+        let mut enabled_tool_ids: Vec<String> = Vec::new();
+        let mcp_tools = self.list_enabled_tools_by_type("mcp").await?;
+        enabled_tool_ids.extend(mcp_tools.into_iter().map(|tool| tool.id));
+        let builtin_tools = self.list_enabled_tools_by_type("builtin").await?;
+        enabled_tool_ids.extend(builtin_tools.into_iter().map(|tool| tool.id));
+
+        let all_skills = self.list_skills().await?;
+        let enabled_skill_ids: Vec<String> = all_skills
+            .into_iter()
+            .filter(|s| s.is_enabled)
+            .map(|s| s.id)
+            .collect();
+
+        self.update_conversation_settings(
+            conversation_id,
+            UpdateConversationSettingsRequest {
+                enabled_mcp_server_ids: Some(enabled_tool_ids),
+                enabled_skill_ids: Some(enabled_skill_ids),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
     /// Delete settings for a conversation
     pub async fn delete_conversation_settings(&self, conversation_id: &str) -> Result<()> {
         sqlx::query("DELETE FROM conversation_settings WHERE conversation_id = ?")

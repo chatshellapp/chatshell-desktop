@@ -139,7 +139,7 @@ impl ConversationSettings {
 }
 
 /// Request to update conversation settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateConversationSettingsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_provider_defaults: Option<bool>,
