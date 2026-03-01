@@ -200,6 +200,7 @@ pub fn run() {
             commands::fetch_openai_models,
             commands::fetch_openrouter_models,
             commands::fetch_ollama_models,
+            commands::fetch_provider_models,
             // Chat commands
             commands::send_message,
             commands::stop_generation,

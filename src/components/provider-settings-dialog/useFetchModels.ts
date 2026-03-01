@@ -21,8 +21,13 @@ interface UseFetchModelsParams {
   apiBaseUrl: string
 }
 
+// Providers that use the original dedicated fetch commands
+const DEDICATED_FETCH_PROVIDERS = new Set(['openai', 'openrouter', 'ollama'])
+
 /**
- * Handles fetching models from external APIs (OpenAI, OpenRouter, Ollama)
+ * Handles fetching models from provider APIs.
+ * Uses dedicated commands for OpenAI/OpenRouter/Ollama,
+ * and a generic OpenAI-compatible command for all other providers.
  */
 export function useFetchModels({
   selectedProvider,
@@ -59,6 +64,21 @@ export function useFetchModels({
       } else if (providerId === 'ollama') {
         const baseUrl = apiBaseUrl || 'http://localhost:11434'
         fetchedModels = await invoke<ModelInfo[]>('fetch_ollama_models', { baseUrl })
+      } else if (!DEDICATED_FETCH_PROVIDERS.has(providerId)) {
+        if (!apiKey) {
+          throw new Error(
+            `${selectedProvider.name} API key is required. Please enter your API key above.`
+          )
+        }
+        const baseUrl = apiBaseUrl || selectedProvider.baseUrl
+        if (!baseUrl) {
+          throw new Error(`Base URL is required for ${selectedProvider.name}.`)
+        }
+        fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
+          providerType: providerId,
+          apiKey,
+          baseUrl,
+        })
       } else {
         throw new Error(
           `Model fetching is not yet supported for ${selectedProvider.name}. Please add models manually.`

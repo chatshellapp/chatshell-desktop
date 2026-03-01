@@ -1,12 +1,26 @@
 pub mod agent_builder;
 pub mod agent_streaming;
+pub mod anthropic;
+pub mod azure;
+pub mod cohere;
 pub mod common;
+pub mod deepseek;
+pub mod galadriel;
+pub mod gemini;
+pub mod groq;
+pub mod hyperbolic;
+pub mod mira;
+pub mod mistral;
 pub mod models;
+pub mod moonshot;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
+pub mod perplexity;
+pub mod together;
 pub mod tool_registry;
 pub mod tools;
+pub mod xai;
 
 pub use common::StreamChunkType;
 

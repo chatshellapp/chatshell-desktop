@@ -9,7 +9,10 @@ use rig::agent::Agent;
 use rig::client::{CompletionClient, Nothing};
 use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
-use rig::providers::{ollama, openai, openrouter};
+use rig::providers::{
+    anthropic, azure, cohere, deepseek, galadriel, gemini, groq, hyperbolic, mira, mistral,
+    moonshot, ollama, openai, openrouter, perplexity, together, xai,
+};
 use rmcp::RoleClient;
 use rmcp::model::Tool as McpTool;
 use rmcp::service::Peer;
@@ -21,7 +24,12 @@ use crate::llm::common::{StreamChunkType, build_user_content, create_http_client
 use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::tools::{BashTool, WebFetchTool, WebSearchTool};
 use crate::llm::{
-    ollama as ollama_provider, openai as openai_provider, openrouter as openrouter_provider,
+    anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
+    deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
+    groq as groq_provider, hyperbolic as hyperbolic_provider, mira as mira_provider,
+    mistral as mistral_provider, moonshot as moonshot_provider, ollama as ollama_provider,
+    openai as openai_provider, openrouter as openrouter_provider,
+    perplexity as perplexity_provider, together as together_provider, xai as xai_provider,
 };
 use crate::models::ModelParameters;
 
@@ -142,17 +150,45 @@ impl AgentConfig {
 }
 
 // Type aliases for the completion model types used by each provider
+type AnthropicCompletionModel = anthropic::completion::CompletionModel;
+type AzureCompletionModel = azure::CompletionModel;
+type CohereCompletionModel = cohere::CompletionModel;
+type DeepSeekCompletionModel = deepseek::CompletionModel;
+type GaladrielCompletionModel = galadriel::CompletionModel;
+type GeminiCompletionModel = gemini::completion::CompletionModel;
+type GroqCompletionModel = groq::CompletionModel;
+type HyperbolicCompletionModel = hyperbolic::CompletionModel;
+type MiraCompletionModel = mira::CompletionModel;
+type MistralCompletionModel = mistral::CompletionModel;
+type MoonshotCompletionModel = moonshot::CompletionModel;
+type OllamaCompletionModel = ollama::CompletionModel;
 // OpenAI uses ResponsesCompletionModel by default for agent()
 type OpenAICompletionModel = openai::responses_api::ResponsesCompletionModel;
 type OpenRouterCompletionModel = openrouter::CompletionModel;
-type OllamaCompletionModel = ollama::CompletionModel;
+type PerplexityCompletionModel = perplexity::CompletionModel;
+type TogetherCompletionModel = together::CompletionModel;
+type XAICompletionModel = xai::completion::CompletionModel;
 
-/// Enum to hold different provider agent types
-/// This allows us to handle all providers uniformly while maintaining type safety
+/// Enum to hold different provider agent types.
+/// This allows us to handle all providers uniformly while maintaining type safety.
 pub enum ProviderAgent {
+    Anthropic(Agent<AnthropicCompletionModel>),
+    Azure(Agent<AzureCompletionModel>),
+    Cohere(Agent<CohereCompletionModel>),
+    DeepSeek(Agent<DeepSeekCompletionModel>),
+    Galadriel(Agent<GaladrielCompletionModel>),
+    Gemini(Agent<GeminiCompletionModel>),
+    Groq(Agent<GroqCompletionModel>),
+    Hyperbolic(Agent<HyperbolicCompletionModel>),
+    Mira(Agent<MiraCompletionModel>),
+    Mistral(Agent<MistralCompletionModel>),
+    Moonshot(Agent<MoonshotCompletionModel>),
+    Ollama(Agent<OllamaCompletionModel>),
     OpenAI(Agent<OpenAICompletionModel>),
     OpenRouter(Agent<OpenRouterCompletionModel>),
-    Ollama(Agent<OllamaCompletionModel>),
+    Perplexity(Agent<PerplexityCompletionModel>),
+    Together(Agent<TogetherCompletionModel>),
+    XAI(Agent<XAICompletionModel>),
 }
 
 /// Create an OpenAI agent with full configuration
@@ -218,6 +254,249 @@ pub fn create_ollama_agent(
     let client = ollama::Client::<reqwest::Client>::builder()
         .api_key(Nothing)
         .base_url(base_url.unwrap_or(ollama_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create an Anthropic agent with full configuration
+pub fn create_anthropic_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<AnthropicCompletionModel>> {
+    let http_client = create_http_client();
+    let client = anthropic::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(anthropic_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create an Azure OpenAI agent with full configuration.
+/// The base_url is used as the Azure endpoint.
+pub fn create_azure_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<AzureCompletionModel>> {
+    let http_client = create_http_client();
+    let endpoint = base_url.ok_or_else(|| {
+        anyhow::anyhow!("Azure OpenAI requires an endpoint URL (set as base URL)")
+    })?;
+    let client = azure::Client::<reqwest::Client>::builder()
+        .api_key(azure::AzureOpenAIAuth::ApiKey(api_key.to_string()))
+        .azure_endpoint(endpoint.to_string())
+        .api_version(azure_provider::DEFAULT_API_VERSION)
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Cohere agent with full configuration
+pub fn create_cohere_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<CohereCompletionModel>> {
+    let http_client = create_http_client();
+    let client = cohere::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(cohere_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a DeepSeek agent with full configuration
+pub fn create_deepseek_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<DeepSeekCompletionModel>> {
+    let http_client = create_http_client();
+    let client = deepseek::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(deepseek_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Galadriel agent with full configuration
+pub fn create_galadriel_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<GaladrielCompletionModel>> {
+    let http_client = create_http_client();
+    let client = galadriel::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(galadriel_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Google Gemini agent with full configuration
+pub fn create_gemini_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<GeminiCompletionModel>> {
+    let http_client = create_http_client();
+    let client = gemini::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(gemini_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Groq agent with full configuration
+pub fn create_groq_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<GroqCompletionModel>> {
+    let http_client = create_http_client();
+    let client = groq::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(groq_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Hyperbolic agent with full configuration
+pub fn create_hyperbolic_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<HyperbolicCompletionModel>> {
+    let http_client = create_http_client();
+    let client = hyperbolic::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(hyperbolic_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Mira agent with full configuration
+pub fn create_mira_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MiraCompletionModel>> {
+    let http_client = create_http_client();
+    let client = mira::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(mira_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Mistral agent with full configuration
+pub fn create_mistral_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MistralCompletionModel>> {
+    let http_client = create_http_client();
+    let client = mistral::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(mistral_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Moonshot agent with full configuration
+pub fn create_moonshot_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MoonshotCompletionModel>> {
+    let http_client = create_http_client();
+    let client = moonshot::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(moonshot_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Perplexity agent with full configuration
+pub fn create_perplexity_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<PerplexityCompletionModel>> {
+    let http_client = create_http_client();
+    let client = perplexity::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(perplexity_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a Together AI agent with full configuration
+pub fn create_together_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<TogetherCompletionModel>> {
+    let http_client = create_http_client();
+    let client = together::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(together_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create an xAI agent with full configuration
+pub fn create_xai_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<XAICompletionModel>> {
+    let http_client = create_http_client();
+    let client = xai::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(xai_provider::DEFAULT_BASE_URL))
         .http_client(http_client)
         .build()?;
 
@@ -408,31 +687,118 @@ pub fn create_provider_agent(
     base_url: Option<&str>,
     config: &AgentConfig,
 ) -> Result<ProviderAgent> {
+    macro_rules! require_key {
+        ($name:expr) => {
+            api_key.ok_or_else(|| anyhow::anyhow!("{} API key required", $name))?
+        };
+    }
+
     match provider_type {
-        "openai" => {
-            let api_key = api_key.ok_or_else(|| anyhow::anyhow!("OpenAI API key required"))?;
-            Ok(ProviderAgent::OpenAI(create_openai_agent(
-                api_key, base_url, model_id, config,
-            )?))
-        }
-        "openrouter" => {
-            let api_key = api_key.ok_or_else(|| anyhow::anyhow!("OpenRouter API key required"))?;
-            Ok(ProviderAgent::OpenRouter(create_openrouter_agent(
-                api_key, base_url, model_id, config,
-            )?))
-        }
+        "anthropic" => Ok(ProviderAgent::Anthropic(create_anthropic_agent(
+            require_key!("Anthropic"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "azure" => Ok(ProviderAgent::Azure(create_azure_agent(
+            require_key!("Azure OpenAI"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "cohere" => Ok(ProviderAgent::Cohere(create_cohere_agent(
+            require_key!("Cohere"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "deepseek" => Ok(ProviderAgent::DeepSeek(create_deepseek_agent(
+            require_key!("DeepSeek"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "galadriel" => Ok(ProviderAgent::Galadriel(create_galadriel_agent(
+            require_key!("Galadriel"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "gemini" => Ok(ProviderAgent::Gemini(create_gemini_agent(
+            require_key!("Google Gemini"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "groq" => Ok(ProviderAgent::Groq(create_groq_agent(
+            require_key!("Groq"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "hyperbolic" => Ok(ProviderAgent::Hyperbolic(create_hyperbolic_agent(
+            require_key!("Hyperbolic"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "mira" => Ok(ProviderAgent::Mira(create_mira_agent(
+            require_key!("Mira"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "mistral" => Ok(ProviderAgent::Mistral(create_mistral_agent(
+            require_key!("Mistral"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "moonshot" => Ok(ProviderAgent::Moonshot(create_moonshot_agent(
+            require_key!("Moonshot"),
+            base_url,
+            model_id,
+            config,
+        )?)),
         "ollama" => Ok(ProviderAgent::Ollama(create_ollama_agent(
             base_url, model_id, config,
         )?)),
-        _ => Err(anyhow::anyhow!(
-            "Unknown provider: {}. Use openai, openrouter, or ollama",
-            provider_type
-        )),
+        "openai" => Ok(ProviderAgent::OpenAI(create_openai_agent(
+            require_key!("OpenAI"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "openrouter" => Ok(ProviderAgent::OpenRouter(create_openrouter_agent(
+            require_key!("OpenRouter"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "perplexity" => Ok(ProviderAgent::Perplexity(create_perplexity_agent(
+            require_key!("Perplexity"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "together" => Ok(ProviderAgent::Together(create_together_agent(
+            require_key!("Together AI"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "xai" => Ok(ProviderAgent::XAI(create_xai_agent(
+            require_key!("xAI"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        _ => Err(anyhow::anyhow!("Unknown provider: {}", provider_type)),
     }
 }
 
-/// Stream chat with an agent, handling all provider types uniformly
-/// Returns the complete response after streaming
+/// Stream chat with an agent, handling all provider types uniformly.
+/// Returns the complete response after streaming.
 pub async fn stream_chat_with_agent(
     agent: ProviderAgent,
     prompt: Message,
@@ -441,40 +807,38 @@ pub async fn stream_chat_with_agent(
     callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     log_prefix: &str,
 ) -> Result<ChatResponse> {
+    macro_rules! stream {
+        ($agent:expr) => {
+            agent_streaming::stream_agent(
+                $agent,
+                prompt,
+                chat_history,
+                cancel_token,
+                callback,
+                log_prefix,
+            )
+            .await
+        };
+    }
+
     match agent {
-        ProviderAgent::OpenAI(agent) => {
-            agent_streaming::stream_agent(
-                agent,
-                prompt,
-                chat_history,
-                cancel_token,
-                callback,
-                log_prefix,
-            )
-            .await
-        }
-        ProviderAgent::OpenRouter(agent) => {
-            agent_streaming::stream_agent(
-                agent,
-                prompt,
-                chat_history,
-                cancel_token,
-                callback,
-                log_prefix,
-            )
-            .await
-        }
-        ProviderAgent::Ollama(agent) => {
-            agent_streaming::stream_agent(
-                agent,
-                prompt,
-                chat_history,
-                cancel_token,
-                callback,
-                log_prefix,
-            )
-            .await
-        }
+        ProviderAgent::Anthropic(a) => stream!(a),
+        ProviderAgent::Azure(a) => stream!(a),
+        ProviderAgent::Cohere(a) => stream!(a),
+        ProviderAgent::DeepSeek(a) => stream!(a),
+        ProviderAgent::Galadriel(a) => stream!(a),
+        ProviderAgent::Gemini(a) => stream!(a),
+        ProviderAgent::Groq(a) => stream!(a),
+        ProviderAgent::Hyperbolic(a) => stream!(a),
+        ProviderAgent::Mira(a) => stream!(a),
+        ProviderAgent::Mistral(a) => stream!(a),
+        ProviderAgent::Moonshot(a) => stream!(a),
+        ProviderAgent::Ollama(a) => stream!(a),
+        ProviderAgent::OpenAI(a) => stream!(a),
+        ProviderAgent::OpenRouter(a) => stream!(a),
+        ProviderAgent::Perplexity(a) => stream!(a),
+        ProviderAgent::Together(a) => stream!(a),
+        ProviderAgent::XAI(a) => stream!(a),
     }
 }
 

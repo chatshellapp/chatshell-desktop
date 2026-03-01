@@ -12,6 +12,7 @@ import {
 import type { Provider } from '@/types'
 import type { LLMProvider } from './types'
 import { LLM_PROVIDERS } from './constants'
+import { ProviderLogo } from './provider-logo'
 
 interface ProviderSidebarProps {
   selectedProvider: LLMProvider
@@ -38,7 +39,7 @@ export function ProviderSidebar({
                       onClick={() => onSelectProvider(provider)}
                       isActive={provider.id === selectedProvider.id}
                     >
-                      <img src={provider.logo} alt={provider.name} className="size-4 rounded" />
+                      <ProviderLogo providerType={provider.id} />
                       <span>{provider.name}</span>
                       {hasExisting && (
                         <span className="ml-auto text-xs text-muted-foreground">●</span>

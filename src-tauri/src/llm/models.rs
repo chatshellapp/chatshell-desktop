@@ -108,6 +108,59 @@ pub async fn fetch_openai_models(
     Ok(models)
 }
 
+/// Generic fetch for providers with OpenAI-compatible /models endpoint (Bearer auth).
+/// Used by DeepSeek, Groq, Together, xAI, Moonshot, Perplexity, Hyperbolic, Mistral, etc.
+pub async fn fetch_openai_compatible_models(
+    api_key: String,
+    base_url: String,
+    provider_name: &str,
+) -> Result<Vec<ModelInfo>> {
+    let client = create_http_client();
+
+    let url = if base_url.ends_with('/') {
+        format!("{}models", base_url)
+    } else {
+        format!("{}/models", base_url)
+    };
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "Failed to fetch {} models (HTTP {}): {}",
+            provider_name,
+            status,
+            body
+        ));
+    }
+
+    let data: OpenAIModelsResponse = response.json().await?;
+
+    let models: Vec<ModelInfo> = data
+        .data
+        .into_iter()
+        .filter(|m| !is_embedding_model(&m.id))
+        .map(|m| {
+            let display_name = format_model_display_name(&m.id);
+            ModelInfo {
+                id: m.id.clone(),
+                name: display_name,
+                description: None,
+                context_length: None,
+                pricing: None,
+            }
+        })
+        .collect();
+
+    Ok(models)
+}
+
 /// Fetch available models from OpenRouter
 pub async fn fetch_openrouter_models(
     api_key: String,

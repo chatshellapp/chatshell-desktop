@@ -35,7 +35,6 @@ export interface ModelInfo {
 export interface LLMProvider {
   id: string
   name: string
-  logo: string
   baseUrl: string
 }
 

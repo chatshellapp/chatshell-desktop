@@ -11,7 +11,8 @@ export type {
   UseModelFilteringReturn,
   UseProviderSaveReturn,
 } from './types'
-export { LLM_PROVIDERS, SUPPORTED_FETCH_PROVIDERS, isSupportedFetchProvider } from './constants'
+export { LLM_PROVIDERS, isSupportedFetchProvider } from './constants'
+export { ProviderLogo, getProviderLogo, getProviderDisplayName } from './provider-logo'
 
 // Export individual hooks for testing and reuse
 export { useProviderFormState } from './useProviderFormState'

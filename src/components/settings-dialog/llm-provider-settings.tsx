@@ -17,6 +17,7 @@ import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
 import { LLM_PROVIDERS } from '@/components/provider-settings-dialog/constants'
+import { ProviderLogo } from '@/components/provider-settings-dialog/provider-logo'
 
 interface LLMProviderSettingsProps {
   open: boolean
@@ -81,7 +82,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
                         onClick={() => setSelectedProvider(provider)}
                         isActive={provider.id === selectedProvider.id}
                       >
-                        <img src={provider.logo} alt={provider.name} className="size-4 rounded" />
+                        <ProviderLogo providerType={provider.id} />
                         <span>{provider.name}</span>
                         {hasExisting && (
                           <span className="ml-auto text-xs text-muted-foreground">●</span>
