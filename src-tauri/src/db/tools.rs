@@ -16,6 +16,9 @@ pub const TOOL_TYPE_BUILTIN: &str = "builtin";
 pub const BUILTIN_WEB_SEARCH_ID: &str = "builtin-web-search";
 pub const BUILTIN_WEB_FETCH_ID: &str = "builtin-web-fetch";
 pub const BUILTIN_BASH_ID: &str = "builtin-bash";
+pub const BUILTIN_READ_ID: &str = "builtin-read";
+pub const BUILTIN_GREP_ID: &str = "builtin-grep";
+pub const BUILTIN_GLOB_ID: &str = "builtin-glob";
 
 impl Database {
     /// Create a new tool
@@ -198,6 +201,21 @@ impl Database {
                 BUILTIN_BASH_ID,
                 "Bash",
                 "Execute bash commands on the user's system. Enables CLI tools, scripts, and shell operations for skills that require command-line access.",
+            ),
+            (
+                BUILTIN_READ_ID,
+                "Read",
+                "Read the contents of text files from the filesystem. Supports reading specific line ranges for large files.",
+            ),
+            (
+                BUILTIN_GREP_ID,
+                "Grep",
+                "Search file contents using regular expressions. Returns matching lines with file paths and line numbers.",
+            ),
+            (
+                BUILTIN_GLOB_ID,
+                "Glob",
+                "Find files matching a glob pattern. Returns a list of matching file paths from a directory tree.",
             ),
         ];
 

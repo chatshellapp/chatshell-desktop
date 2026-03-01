@@ -6,6 +6,9 @@ export const TOOL_TYPE_BUILTIN = 'builtin'
 export const BUILTIN_WEB_SEARCH_ID = 'builtin-web-search'
 export const BUILTIN_WEB_FETCH_ID = 'builtin-web-fetch'
 export const BUILTIN_BASH_ID = 'builtin-bash'
+export const BUILTIN_READ_ID = 'builtin-read'
+export const BUILTIN_GREP_ID = 'builtin-grep'
+export const BUILTIN_GLOB_ID = 'builtin-glob'
 
 // Tool types
 export interface Tool {

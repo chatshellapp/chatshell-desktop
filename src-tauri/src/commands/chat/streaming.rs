@@ -20,7 +20,10 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
-use crate::db::tools::{BUILTIN_BASH_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
+use crate::db::tools::{
+    BUILTIN_BASH_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID,
+    BUILTIN_WEB_SEARCH_ID,
+};
 
 /// Handle streaming using the agent-based approach
 /// This provides built-in support for preamble, temperature, max_tokens, etc.
@@ -49,67 +52,8 @@ pub(crate) async fn handle_agent_streaming(
     // Build agent config from system prompt and model parameters
     let mut config = AgentConfig::new().with_model_params(model_params);
 
-    // Start with the base system prompt, then augment with skill instructions
+    // Start with the base system prompt
     let mut effective_system_prompt = system_prompt.clone().unwrap_or_default();
-
-    // Load assistant's configured skills and inject instructions into system prompt
-    if let Some(ref assistant_id) = assistant_db_id {
-        match state_clone.db.get_assistant_skill_ids(assistant_id).await {
-            Ok(skill_ids) => {
-                if !skill_ids.is_empty() {
-                    tracing::info!(
-                        "📋 [agent_streaming] Assistant has {} configured skill(s)",
-                        skill_ids.len()
-                    );
-                    // Load skill details and inject instructions
-                    for skill_id in &skill_ids {
-                        match state_clone.db.get_skill(skill_id).await {
-                            Ok(Some(skill)) => {
-                                if skill.is_enabled {
-                                    if let Some(ref instructions) = skill.cached_instructions {
-                                        if !instructions.is_empty() {
-                                            effective_system_prompt.push_str("\n\n");
-                                            effective_system_prompt.push_str(&format!(
-                                                "## Skill: {}\n\n{}",
-                                                skill.name, instructions
-                                            ));
-                                            tracing::info!(
-                                                "📋 [agent_streaming] Injected skill '{}' ({} chars)",
-                                                skill.name,
-                                                instructions.len()
-                                            );
-                                        }
-                                    }
-
-                                    // Auto-enable required tools from skills
-                                    // (These will be merged with assistant/conversation tools below)
-                                }
-                            }
-                            Ok(None) => {
-                                tracing::warn!(
-                                    "⚠️ [agent_streaming] Skill '{}' not found",
-                                    skill_id
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "⚠️ [agent_streaming] Failed to load skill '{}': {}",
-                                    skill_id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "⚠️ [agent_streaming] Failed to load assistant skills: {}",
-                    e
-                );
-            }
-        }
-    }
 
     // Collect all enabled tool IDs from:
     // 1. Assistant's configured tools
@@ -117,7 +61,17 @@ pub(crate) async fn handle_agent_streaming(
     // 3. Conversation settings (per-conversation overrides)
     let mut all_enabled_tool_ids: Vec<String> = Vec::new();
 
-    // Load assistant's configured tools and skill-required tools
+    // Collect enabled skills for the catalog (assistant + conversation level)
+    // Instead of injecting full instructions, we build a compact catalog
+    // and let the LLM use the `read` tool to load SKILL.md on demand.
+    struct SkillEntry {
+        name: String,
+        description: Option<String>,
+        path: String,
+    }
+    let mut skill_entries: Vec<SkillEntry> = Vec::new();
+
+    // Load assistant's configured tools and skills
     if let Some(ref assistant_id) = assistant_db_id {
         match state_clone.db.get_assistant_tool_ids(assistant_id).await {
             Ok(ids) => {
@@ -134,21 +88,39 @@ pub(crate) async fn handle_agent_streaming(
             }
         }
 
-        // Add required tools from assistant skills
+        // Load assistant skills: collect catalog entries + auto-enable required tools
         match state_clone.db.get_assistant_skill_ids(assistant_id).await {
             Ok(skill_ids) => {
+                if !skill_ids.is_empty() {
+                    tracing::info!(
+                        "📋 [agent_streaming] Assistant has {} configured skill(s)",
+                        skill_ids.len()
+                    );
+                }
                 for skill_id in &skill_ids {
-                    if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await {
-                        if skill.is_enabled {
-                            for tool_id in &skill.required_tool_ids {
-                                if !all_enabled_tool_ids.contains(tool_id) {
-                                    tracing::info!(
-                                        "🔧 [agent_streaming] Auto-enabling tool '{}' required by skill '{}'",
-                                        tool_id,
-                                        skill.name
-                                    );
-                                    all_enabled_tool_ids.push(tool_id.clone());
-                                }
+                    if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await
+                        && skill.is_enabled
+                    {
+                        let skill_md_path =
+                            format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+                        tracing::info!(
+                            "📋 [agent_streaming] Adding skill '{}' to catalog (path: {})",
+                            skill.name,
+                            skill_md_path
+                        );
+                        skill_entries.push(SkillEntry {
+                            name: skill.name.clone(),
+                            description: skill.description.clone(),
+                            path: skill_md_path,
+                        });
+                        for tool_id in &skill.required_tool_ids {
+                            if !all_enabled_tool_ids.contains(tool_id) {
+                                tracing::info!(
+                                    "🔧 [agent_streaming] Auto-enabling tool '{}' required by skill '{}'",
+                                    tool_id,
+                                    skill.name
+                                );
+                                all_enabled_tool_ids.push(tool_id.clone());
                             }
                         }
                     }
@@ -156,14 +128,14 @@ pub(crate) async fn handle_agent_streaming(
             }
             Err(e) => {
                 tracing::warn!(
-                    "⚠️ [agent_streaming] Failed to load skill tool requirements: {}",
+                    "⚠️ [agent_streaming] Failed to load assistant skills: {}",
                     e
                 );
             }
         }
     }
 
-    // Load conversation-level tool overrides (these are additive)
+    // Load conversation-level tool overrides (additive)
     let conv_settings = state_clone
         .db
         .get_conversation_settings(&conversation_id_clone)
@@ -177,7 +149,7 @@ pub(crate) async fn handle_agent_streaming(
             }
         }
 
-        // Load conversation-level skills and inject instructions into system prompt
+        // Load conversation-level skills into catalog
         if !settings.enabled_skill_ids.is_empty() {
             tracing::info!(
                 "📋 [agent_streaming] Conversation has {} enabled skill(s)",
@@ -187,22 +159,20 @@ pub(crate) async fn handle_agent_streaming(
                 match state_clone.db.get_skill(skill_id).await {
                     Ok(Some(skill)) => {
                         if skill.is_enabled {
-                            if let Some(ref instructions) = skill.cached_instructions {
-                                if !instructions.is_empty() {
-                                    effective_system_prompt.push_str("\n\n");
-                                    effective_system_prompt.push_str(&format!(
-                                        "## Skill: {}\n\n{}",
-                                        skill.name, instructions
-                                    ));
-                                    tracing::info!(
-                                        "📋 [agent_streaming] Injected conversation skill '{}' ({} chars)",
-                                        skill.name,
-                                        instructions.len()
-                                    );
-                                }
+                            let skill_md_path =
+                                format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+                            // Avoid duplicates (skill may already be in catalog from assistant)
+                            if !skill_entries.iter().any(|e| e.path == skill_md_path) {
+                                tracing::info!(
+                                    "📋 [agent_streaming] Adding conversation skill '{}' to catalog",
+                                    skill.name
+                                );
+                                skill_entries.push(SkillEntry {
+                                    name: skill.name.clone(),
+                                    description: skill.description.clone(),
+                                    path: skill_md_path,
+                                });
                             }
-
-                            // Auto-enable required tools from conversation skills
                             for tool_id in &skill.required_tool_ids {
                                 if !all_enabled_tool_ids.contains(tool_id) {
                                     tracing::info!(
@@ -233,7 +203,35 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
-    // Set the effective system prompt (after all skills have been injected)
+    // Build skill catalog and inject into system prompt (lazy-load approach)
+    if !skill_entries.is_empty() {
+        effective_system_prompt.push_str("\n\n## Available Skills\n\n");
+        effective_system_prompt.push_str(
+            "When a task matches one of the skills below, use the `read` tool to load \
+             its full instructions before proceeding.\n\n",
+        );
+        for entry in &skill_entries {
+            let desc = entry
+                .description
+                .as_deref()
+                .unwrap_or("No description");
+            effective_system_prompt.push_str(&format!(
+                "- **{}** - {} (path: {})\n",
+                entry.name, desc, entry.path
+            ));
+        }
+
+        // Auto-enable the `read` tool so the LLM can load skill files
+        if !all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string()) {
+            tracing::info!(
+                "📖 [agent_streaming] Auto-enabling read tool for {} skill(s)",
+                skill_entries.len()
+            );
+            all_enabled_tool_ids.push(BUILTIN_READ_ID.to_string());
+        }
+    }
+
+    // Set the effective system prompt
     if !effective_system_prompt.is_empty() {
         config = config.with_system_prompt(effective_system_prompt);
     }
@@ -242,6 +240,9 @@ pub(crate) async fn handle_agent_streaming(
     let web_search_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
     let web_fetch_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
     let bash_enabled = all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
+    let read_enabled = all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string());
+    let grep_enabled = all_enabled_tool_ids.contains(&BUILTIN_GREP_ID.to_string());
+    let glob_enabled = all_enabled_tool_ids.contains(&BUILTIN_GLOB_ID.to_string());
 
     if web_search_enabled {
         tracing::info!("🔍 [agent_streaming] Enabling web_search tool");
@@ -255,16 +256,27 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
         config = config.with_bash();
 
-        // Set working directory from conversation settings if configured
-        if let Some(ref settings) = conv_settings {
-            if let Some(ref working_dir) = settings.working_directory {
-                tracing::info!(
-                    "📂 [agent_streaming] Setting bash working directory: {}",
-                    working_dir
-                );
-                config = config.with_bash_working_directory(working_dir.clone());
-            }
+        if let Some(ref settings) = conv_settings
+            && let Some(ref working_dir) = settings.working_directory
+        {
+            tracing::info!(
+                "📂 [agent_streaming] Setting bash working directory: {}",
+                working_dir
+            );
+            config = config.with_bash_working_directory(working_dir.clone());
         }
+    }
+    if read_enabled {
+        tracing::info!("📖 [agent_streaming] Enabling read tool");
+        config = config.with_read();
+    }
+    if grep_enabled {
+        tracing::info!("🔎 [agent_streaming] Enabling grep tool");
+        config = config.with_grep();
+    }
+    if glob_enabled {
+        tracing::info!("📂 [agent_streaming] Enabling glob tool");
+        config = config.with_glob();
     }
 
     // Collect MCP server IDs (non-builtin tools)

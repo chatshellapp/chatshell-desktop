@@ -22,7 +22,7 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
-use crate::llm::tools::{BashTool, WebFetchTool, WebSearchTool};
+use crate::llm::tools::{BashTool, GlobTool, GrepTool, ReadTool, WebFetchTool, WebSearchTool};
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
     deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
@@ -65,6 +65,12 @@ pub struct AgentConfig {
     pub enable_bash: bool,
     /// Default working directory for bash tool
     pub bash_working_directory: Option<String>,
+    /// Enable built-in file read tool
+    pub enable_read: bool,
+    /// Enable built-in grep (content search) tool
+    pub enable_grep: bool,
+    /// Enable built-in glob (file pattern matching) tool
+    pub enable_glob: bool,
 }
 
 impl AgentConfig {
@@ -141,11 +147,32 @@ impl AgentConfig {
         self
     }
 
-    /// Enable all built-in tools (web_search, web_fetch, and bash)
+    /// Enable the built-in file read tool
+    pub fn with_read(mut self) -> Self {
+        self.enable_read = true;
+        self
+    }
+
+    /// Enable the built-in grep (content search) tool
+    pub fn with_grep(mut self) -> Self {
+        self.enable_grep = true;
+        self
+    }
+
+    /// Enable the built-in glob (file pattern matching) tool
+    pub fn with_glob(mut self) -> Self {
+        self.enable_glob = true;
+        self
+    }
+
+    /// Enable all built-in tools
     pub fn with_builtin_tools(mut self) -> Self {
         self.enable_web_search = true;
         self.enable_web_fetch = true;
         self.enable_bash = true;
+        self.enable_read = true;
+        self.enable_grep = true;
+        self.enable_glob = true;
         self
     }
 }
@@ -619,48 +646,53 @@ fn build_agent<M: CompletionModel>(
     // Check if we need to add any native tools or MCP tools
     // Note: .tool() transforms AgentBuilder into AgentBuilderSimple,
     // so we need to handle the transition carefully
-    let has_native_tools =
-        config.enable_web_search || config.enable_web_fetch || config.enable_bash;
+    let has_native_tools = config.enable_web_search
+        || config.enable_web_fetch
+        || config.enable_bash
+        || config.enable_read
+        || config.enable_grep
+        || config.enable_glob;
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
         .is_some_and(|m| !m.tools.is_empty());
 
     if has_native_tools || has_mcp_tools {
-        // Add native tools first (this transitions to AgentBuilderSimple)
         return build_agent_with_tools(builder, config);
     }
 
     builder.build()
 }
 
-/// Build agent with native tools and/or MCP tools
-/// This is a separate function because .tool() changes the builder type.
+/// Build agent with native tools and/or MCP tools.
 ///
-/// The first `.tool()` call transitions `AgentBuilder` into `AgentBuilderSimple`,
-/// so we use a helper macro to avoid exponential branching across native tools.
+/// The first `.tool()` call transitions `AgentBuilder` into `AgentBuilderSimple`.
+/// We find the first enabled tool to perform that transition, then chain all
+/// remaining enabled tools onto the simple builder.
 fn build_agent_with_tools<M: CompletionModel>(
     builder: rig::agent::AgentBuilder<M>,
     config: &AgentConfig,
 ) -> Agent<M> {
-    // Collect which native tools are enabled
-    let mut native_tool_count = 0u32;
+    let create_bash_tool = || -> BashTool {
+        if let Some(ref dir) = config.bash_working_directory {
+            tracing::info!("🖥️ Bash tool configured with working directory: {}", dir);
+            BashTool::with_working_directory(dir.clone())
+        } else {
+            BashTool::new()
+        }
+    };
 
-    // We need to add the first native tool to transition the builder type,
-    // then chain the remaining native tools and MCP tools.
-    // Use a macro to avoid repeating the "add remaining tools + MCP + build" logic.
+    // Once we have a simple builder (after the first .tool() call), this macro
+    // chains all remaining enabled tools, adds MCP tools if any, and builds.
     macro_rules! finish_with_simple_builder {
         ($simple_builder:expr) => {{
             let sb = $simple_builder;
 
-            // Add MCP tools if configured
             if let Some(ref mcp_config) = config.mcp_tools
                 && !mcp_config.tools.is_empty()
             {
                 tracing::info!(
-                    "🔌 Adding {} MCP tool(s) to agent (total: {} native + {} MCP)",
-                    mcp_config.tools.len(),
-                    native_tool_count,
+                    "🔌 Adding {} MCP tool(s) to agent",
                     mcp_config.tools.len()
                 );
                 return sb
@@ -672,62 +704,105 @@ fn build_agent_with_tools<M: CompletionModel>(
         }};
     }
 
-    // Determine which native tools to add
-    let enable_web_search = config.enable_web_search;
-    let enable_web_fetch = config.enable_web_fetch;
-    let enable_bash = config.enable_bash;
+    // Each block below is an entry point for the first enabled tool.
+    // Once we enter a block, all tools listed before it are disabled (otherwise
+    // we would have entered their block first). So we only need to add the tools
+    // that come AFTER the current one in this ordered list.
 
-    // Helper to create BashTool with optional working directory
-    let create_bash_tool = || -> BashTool {
-        if let Some(ref dir) = config.bash_working_directory {
-            tracing::info!("🖥️ Bash tool configured with working directory: {}", dir);
-            BashTool::with_working_directory(dir.clone())
-        } else {
-            BashTool::new()
-        }
-    };
-
-    // The first `.tool()` call transitions the builder type.
-    // After that, we can chain additional `.tool()` calls freely.
-    if enable_web_search {
+    if config.enable_web_search {
         tracing::info!("🔍 Adding web_search tool to agent");
-        native_tool_count += 1;
-        let mut simple_builder = builder.tool(WebSearchTool::new());
-
-        if enable_web_fetch {
+        let mut sb = builder.tool(WebSearchTool::new());
+        if config.enable_web_fetch {
             tracing::info!("🌐 Adding web_fetch tool to agent");
-            native_tool_count += 1;
-            simple_builder = simple_builder.tool(WebFetchTool::new());
+            sb = sb.tool(WebFetchTool::new());
         }
-        if enable_bash {
+        if config.enable_bash {
             tracing::info!("🖥️ Adding bash tool to agent");
-            native_tool_count += 1;
-            simple_builder = simple_builder.tool(create_bash_tool());
+            sb = sb.tool(create_bash_tool());
         }
-
-        finish_with_simple_builder!(simple_builder);
+        if config.enable_read {
+            tracing::info!("📖 Adding read tool to agent");
+            sb = sb.tool(ReadTool::new());
+        }
+        if config.enable_grep {
+            tracing::info!("🔎 Adding grep tool to agent");
+            sb = sb.tool(GrepTool::new());
+        }
+        if config.enable_glob {
+            tracing::info!("📂 Adding glob tool to agent");
+            sb = sb.tool(GlobTool::new());
+        }
+        finish_with_simple_builder!(sb);
     }
 
-    if enable_web_fetch {
+    if config.enable_web_fetch {
         tracing::info!("🌐 Adding web_fetch tool to agent");
-        native_tool_count += 1;
-        let mut simple_builder = builder.tool(WebFetchTool::new());
-
-        if enable_bash {
+        let mut sb = builder.tool(WebFetchTool::new());
+        if config.enable_bash {
             tracing::info!("🖥️ Adding bash tool to agent");
-            native_tool_count += 1;
-            simple_builder = simple_builder.tool(create_bash_tool());
+            sb = sb.tool(create_bash_tool());
         }
-
-        finish_with_simple_builder!(simple_builder);
+        if config.enable_read {
+            tracing::info!("📖 Adding read tool to agent");
+            sb = sb.tool(ReadTool::new());
+        }
+        if config.enable_grep {
+            tracing::info!("🔎 Adding grep tool to agent");
+            sb = sb.tool(GrepTool::new());
+        }
+        if config.enable_glob {
+            tracing::info!("📂 Adding glob tool to agent");
+            sb = sb.tool(GlobTool::new());
+        }
+        finish_with_simple_builder!(sb);
     }
 
-    if enable_bash {
+    if config.enable_bash {
         tracing::info!("🖥️ Adding bash tool to agent");
-        native_tool_count += 1;
-        let simple_builder = builder.tool(create_bash_tool());
+        let mut sb = builder.tool(create_bash_tool());
+        if config.enable_read {
+            tracing::info!("📖 Adding read tool to agent");
+            sb = sb.tool(ReadTool::new());
+        }
+        if config.enable_grep {
+            tracing::info!("🔎 Adding grep tool to agent");
+            sb = sb.tool(GrepTool::new());
+        }
+        if config.enable_glob {
+            tracing::info!("📂 Adding glob tool to agent");
+            sb = sb.tool(GlobTool::new());
+        }
+        finish_with_simple_builder!(sb);
+    }
 
-        finish_with_simple_builder!(simple_builder);
+    if config.enable_read {
+        tracing::info!("📖 Adding read tool to agent");
+        let mut sb = builder.tool(ReadTool::new());
+        if config.enable_grep {
+            tracing::info!("🔎 Adding grep tool to agent");
+            sb = sb.tool(GrepTool::new());
+        }
+        if config.enable_glob {
+            tracing::info!("📂 Adding glob tool to agent");
+            sb = sb.tool(GlobTool::new());
+        }
+        finish_with_simple_builder!(sb);
+    }
+
+    if config.enable_grep {
+        tracing::info!("🔎 Adding grep tool to agent");
+        let mut sb = builder.tool(GrepTool::new());
+        if config.enable_glob {
+            tracing::info!("📂 Adding glob tool to agent");
+            sb = sb.tool(GlobTool::new());
+        }
+        finish_with_simple_builder!(sb);
+    }
+
+    if config.enable_glob {
+        tracing::info!("📂 Adding glob tool to agent");
+        let sb = builder.tool(GlobTool::new());
+        finish_with_simple_builder!(sb);
     }
 
     // Only MCP tools (no native tools)
@@ -740,7 +815,6 @@ fn build_agent_with_tools<M: CompletionModel>(
             .build();
     }
 
-    // Fallback (shouldn't reach here based on calling logic)
     builder.build()
 }
 
