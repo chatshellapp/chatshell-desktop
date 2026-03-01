@@ -26,10 +26,11 @@ use crate::llm::tools::{BashTool, WebFetchTool, WebSearchTool};
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
     deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
-    groq as groq_provider, hyperbolic as hyperbolic_provider, mira as mira_provider,
-    mistral as mistral_provider, moonshot as moonshot_provider, ollama as ollama_provider,
-    openai as openai_provider, openrouter as openrouter_provider,
-    perplexity as perplexity_provider, together as together_provider, xai as xai_provider,
+    groq as groq_provider, hyperbolic as hyperbolic_provider, minimax as minimax_provider,
+    minimax_cn as minimax_cn_provider, mira as mira_provider, mistral as mistral_provider,
+    moonshot as moonshot_provider, ollama as ollama_provider, openai as openai_provider,
+    openrouter as openrouter_provider, perplexity as perplexity_provider,
+    together as together_provider, xai as xai_provider,
 };
 use crate::models::ModelParameters;
 
@@ -158,6 +159,8 @@ type GaladrielCompletionModel = galadriel::CompletionModel;
 type GeminiCompletionModel = gemini::completion::CompletionModel;
 type GroqCompletionModel = groq::CompletionModel;
 type HyperbolicCompletionModel = hyperbolic::CompletionModel;
+// MiniMax uses OpenAI-compatible API; reuse moonshot's CompletionModel
+type MiniMaxCompletionModel = moonshot::CompletionModel;
 type MiraCompletionModel = mira::CompletionModel;
 type MistralCompletionModel = mistral::CompletionModel;
 type MoonshotCompletionModel = moonshot::CompletionModel;
@@ -180,6 +183,8 @@ pub enum ProviderAgent {
     Gemini(Agent<GeminiCompletionModel>),
     Groq(Agent<GroqCompletionModel>),
     Hyperbolic(Agent<HyperbolicCompletionModel>),
+    MiniMax(Agent<MiniMaxCompletionModel>),
+    MiniMaxCn(Agent<MiniMaxCompletionModel>),
     Mira(Agent<MiraCompletionModel>),
     Mistral(Agent<MistralCompletionModel>),
     Moonshot(Agent<MoonshotCompletionModel>),
@@ -395,6 +400,42 @@ pub fn create_hyperbolic_agent(
     let client = hyperbolic::Client::<reqwest::Client>::builder()
         .api_key(api_key)
         .base_url(base_url.unwrap_or(hyperbolic_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a MiniMax agent with full configuration (international version)
+/// MiniMax uses OpenAI-compatible API, so we reuse moonshot's client.
+pub fn create_minimax_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MiniMaxCompletionModel>> {
+    let http_client = create_http_client();
+    let client = moonshot::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(minimax_provider::DEFAULT_BASE_URL))
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Create a MiniMax CN agent with full configuration (China version)
+/// MiniMax CN uses OpenAI-compatible API, so we reuse moonshot's client.
+pub fn create_minimax_cn_agent(
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MiniMaxCompletionModel>> {
+    let http_client = create_http_client();
+    let client = moonshot::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url.unwrap_or(minimax_cn_provider::DEFAULT_BASE_URL))
         .http_client(http_client)
         .build()?;
 
@@ -742,6 +783,18 @@ pub fn create_provider_agent(
             model_id,
             config,
         )?)),
+        "minimax" => Ok(ProviderAgent::MiniMax(create_minimax_agent(
+            require_key!("MiniMax"),
+            base_url,
+            model_id,
+            config,
+        )?)),
+        "minimax_cn" => Ok(ProviderAgent::MiniMaxCn(create_minimax_cn_agent(
+            require_key!("MiniMax CN"),
+            base_url,
+            model_id,
+            config,
+        )?)),
         "mira" => Ok(ProviderAgent::Mira(create_mira_agent(
             require_key!("Mira"),
             base_url,
@@ -830,6 +883,8 @@ pub async fn stream_chat_with_agent(
         ProviderAgent::Gemini(a) => stream!(a),
         ProviderAgent::Groq(a) => stream!(a),
         ProviderAgent::Hyperbolic(a) => stream!(a),
+        ProviderAgent::MiniMax(a) => stream!(a),
+        ProviderAgent::MiniMaxCn(a) => stream!(a),
         ProviderAgent::Mira(a) => stream!(a),
         ProviderAgent::Mistral(a) => stream!(a),
         ProviderAgent::Moonshot(a) => stream!(a),

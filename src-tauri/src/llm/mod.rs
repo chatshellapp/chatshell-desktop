@@ -9,6 +9,8 @@ pub mod galadriel;
 pub mod gemini;
 pub mod groq;
 pub mod hyperbolic;
+pub mod minimax;
+pub mod minimax_cn;
 pub mod mira;
 pub mod mistral;
 pub mod models;

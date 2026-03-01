@@ -20,6 +20,8 @@ export const LLM_PROVIDERS: LLMProvider[] = [
   { id: 'moonshot', name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1' },
   { id: 'hyperbolic', name: 'Hyperbolic', baseUrl: 'https://api.hyperbolic.xyz' },
   { id: 'galadriel', name: 'Galadriel', baseUrl: 'https://api.galadriel.com/v1/verified' },
+  { id: 'minimax', name: 'MiniMax', baseUrl: 'https://api.minimax.io/v1' },
+  { id: 'minimax_cn', name: 'MiniMax CN', baseUrl: 'https://api.minimaxi.com/v1' },
   { id: 'mira', name: 'Mira', baseUrl: 'https://api.mira.network' },
   { id: 'ollama', name: 'Ollama', baseUrl: 'http://localhost:11434' },
 ]
@@ -37,6 +39,8 @@ const FETCH_SUPPORTED_PROVIDERS = new Set([
   'perplexity',
   'hyperbolic',
   'mistral',
+  'minimax',
+  'minimax_cn',
   'mira',
   'galadriel',
   'cohere',

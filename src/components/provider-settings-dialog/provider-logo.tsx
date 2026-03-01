@@ -30,6 +30,8 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   galadriel: 'Galadriel',
   groq: 'Groq',
   hyperbolic: 'Hyperbolic',
+  minimax: 'MiniMax',
+  minimax_cn: 'MiniMax CN',
   mira: 'Mira',
   mistral: 'Mistral',
   moonshot: 'Moonshot',
