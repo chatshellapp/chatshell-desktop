@@ -5,9 +5,10 @@ use sqlx::FromRow;
 pub struct Provider {
     pub id: String,
     pub name: String,          // Display name, e.g., "Ollama Local", "OpenAI"
-    pub provider_type: String, // Type: ollama, openai, openrouter
+    pub provider_type: String, // Type: ollama, openai, openrouter, custom_openai, custom_anthropic
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    pub api_style: Option<String>, // "responses" | "chat_completions" (only for custom_openai)
     pub description: Option<String>,
     pub is_enabled: bool,
     pub created_at: String,
@@ -20,6 +21,7 @@ pub struct CreateProviderRequest {
     pub provider_type: String,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    pub api_style: Option<String>,
     pub description: Option<String>,
     pub is_enabled: Option<bool>,
 }

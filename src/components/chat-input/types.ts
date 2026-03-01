@@ -124,4 +124,3 @@ export function getAttachmentIcon(type: AttachmentType): React.ReactNode {
       return React.createElement(Plug, { className: 'size-3' })
   }
 }
-

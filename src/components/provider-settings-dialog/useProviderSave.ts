@@ -2,6 +2,7 @@ import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
+import { isCustomProvider } from './types'
 import { logger } from '@/lib/logger'
 
 export interface UseProviderSaveReturn {
@@ -16,6 +17,9 @@ interface UseProviderSaveParams {
   existingProvider: Provider | null
   apiKey: string
   apiBaseUrl: string
+  providerName: string
+  apiStyle: string
+  compatibilityType: string
   selectedProvider: LLMProvider
   loadExistingData: () => void
   onOpenChange: (open: boolean) => void
@@ -31,6 +35,9 @@ export function useProviderSave({
   existingProvider,
   apiKey,
   apiBaseUrl,
+  providerName,
+  apiStyle,
+  compatibilityType,
   selectedProvider,
   loadExistingData,
   onOpenChange,
@@ -38,10 +45,7 @@ export function useProviderSave({
   const [isSaving, setIsSaving] = React.useState(false)
 
   const handleSave = React.useCallback(async () => {
-    // Filter for new models only
     const newModels = models.filter((m) => !m.isExisting)
-
-    // Find existing models with changed names
     const modifiedModels = models.filter(
       (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
     )
@@ -60,30 +64,45 @@ export function useProviderSave({
     setIsSaving(true)
     try {
       let providerId: string
+      const isCustom = isCustomProvider(selectedProvider)
+      const effectiveName = isCustom ? providerName || selectedProvider.name : selectedProvider.name
+      const effectiveProviderType = isCustom
+        ? compatibilityType === 'anthropic'
+          ? 'custom_anthropic'
+          : 'custom_openai'
+        : selectedProvider.id
+      const effectiveApiStyle = compatibilityType === 'openai' && isCustom ? apiStyle : undefined
 
       if (existingProvider) {
-        // Update existing provider's API key and base URL if changed
-        if (existingProvider.api_key !== apiKey || existingProvider.base_url !== apiBaseUrl) {
+        const needsUpdate =
+          existingProvider.api_key !== apiKey ||
+          existingProvider.base_url !== apiBaseUrl ||
+          existingProvider.name !== effectiveName ||
+          existingProvider.provider_type !== effectiveProviderType ||
+          existingProvider.api_style !== effectiveApiStyle
+
+        if (needsUpdate) {
           await invoke('update_provider', {
             id: existingProvider.id,
             req: {
-              name: existingProvider.name,
-              provider_type: existingProvider.provider_type,
+              name: effectiveName,
+              provider_type: effectiveProviderType,
               api_key: apiKey || undefined,
               base_url: apiBaseUrl || undefined,
+              api_style: effectiveApiStyle,
               is_enabled: existingProvider.is_enabled,
             },
           })
-          logger.info('Updated provider:', existingProvider.name)
+          logger.info('Updated provider:', effectiveName)
         }
         providerId = existingProvider.id
       } else {
-        // Create new provider
         const providerReq: CreateProviderRequest = {
-          name: selectedProvider.name,
-          provider_type: selectedProvider.id,
+          name: effectiveName,
+          provider_type: effectiveProviderType,
           api_key: apiKey || undefined,
           base_url: apiBaseUrl || undefined,
+          api_style: effectiveApiStyle,
           is_enabled: true,
         }
 
@@ -92,13 +111,11 @@ export function useProviderSave({
         providerId = provider.id
       }
 
-      // Soft delete removed models
       for (const modelId of modelsToDelete) {
         await invoke('soft_delete_model', { id: modelId })
         logger.info('Soft deleted model:', modelId)
       }
 
-      // Update existing models with changed names
       for (const model of modifiedModels) {
         const modelReq: CreateModelRequest = {
           name: model.displayName,
@@ -110,7 +127,6 @@ export function useProviderSave({
         logger.info('Updated model', { id: model.id, newName: model.displayName })
       }
 
-      // Create only new models
       for (const model of newModels) {
         const modelReq: CreateModelRequest = {
           name: model.displayName,
@@ -122,13 +138,10 @@ export function useProviderSave({
         logger.info('Created model', { name: model.displayName, id: model.modelId })
       }
 
-      // Refresh the model store to show new models in sidebar
       loadExistingData()
-
       onOpenChange(false)
     } catch (error) {
       logger.error('Failed to save provider:', error)
-      // TODO: Show error toast
     } finally {
       setIsSaving(false)
     }
@@ -139,6 +152,9 @@ export function useProviderSave({
     existingProvider,
     apiKey,
     apiBaseUrl,
+    providerName,
+    apiStyle,
+    compatibilityType,
     selectedProvider,
     loadExistingData,
     onOpenChange,

@@ -52,6 +52,7 @@ impl Database {
                     provider_type: "ollama".to_string(),
                     api_key: None,
                     base_url: Some("http://localhost:11434".to_string()),
+                    api_style: None,
                     description: Some("Local Ollama instance".to_string()),
                     is_enabled: Some(true),
                 })

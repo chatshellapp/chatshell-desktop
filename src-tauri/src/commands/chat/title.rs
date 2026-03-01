@@ -6,11 +6,21 @@ use crate::prompts;
 use anyhow::Result;
 use tauri::{Emitter, State};
 
-/// Helper to get provider info from conversation participants
+/// Helper to get provider info from conversation participants.
+/// Returns (provider_type, model_id, api_key, base_url, api_style).
 pub(crate) async fn get_conversation_provider_info(
     state: &AppState,
     conversation_id: &str,
-) -> Result<(String, String, Option<String>, Option<String>), String> {
+) -> Result<
+    (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ),
+    String,
+> {
     let participants = state
         .db
         .list_conversation_participants(conversation_id)
@@ -43,6 +53,7 @@ pub(crate) async fn get_conversation_provider_info(
                     model_info.model_id,
                     provider_info.api_key,
                     provider_info.base_url,
+                    provider_info.api_style,
                 ));
             } else {
                 let assistant = state
@@ -71,6 +82,7 @@ pub(crate) async fn get_conversation_provider_info(
                     model_info.model_id,
                     provider_info.api_key,
                     provider_info.base_url,
+                    provider_info.api_style,
                 ));
             }
         }
@@ -118,7 +130,7 @@ pub async fn generate_conversation_title_manually(
     }
 
     // Get provider info from conversation participants
-    let (provider, model, api_key, base_url) =
+    let (provider, model, api_key, base_url, api_style) =
         get_conversation_provider_info(&state, &conversation_id).await?;
 
     // Generate the title
@@ -131,6 +143,7 @@ pub async fn generate_conversation_title_manually(
         &model,
         api_key,
         base_url,
+        api_style,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -149,6 +162,7 @@ pub(crate) async fn generate_conversation_title(
     model: &str,
     api_key: Option<String>,
     base_url: Option<String>,
+    api_style: Option<String>,
 ) -> Result<String> {
     tracing::info!("🏷️ [generate_title] Starting title generation...");
 
@@ -160,62 +174,65 @@ pub(crate) async fn generate_conversation_title(
         .ok()
         .flatten();
 
-    let (summary_provider, summary_model, summary_api_key, summary_base_url) = if let Some(
-        model_id,
-    ) =
-        summary_model_id
-    {
-        // Get the custom model settings
-        match state.db.get_model(&model_id).await {
-            Ok(Some(m)) => {
-                // Get provider info
-                match state.db.get_provider(&m.provider_id).await {
-                    Ok(Some(p)) => {
-                        tracing::info!(
-                            "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
-                            m.model_id,
-                            p.provider_type
-                        );
-                        (
-                            p.provider_type.clone(),
-                            m.model_id.clone(),
-                            p.api_key.clone(),
-                            p.base_url.clone(),
-                        )
-                    }
-                    _ => {
-                        tracing::info!(
-                            "🏷️ [generate_title] Custom model provider not found, using current model"
-                        );
-                        (
-                            provider.to_string(),
-                            model.to_string(),
-                            api_key.clone(),
-                            base_url.clone(),
-                        )
+    let (summary_provider, summary_model, summary_api_key, summary_base_url, summary_api_style) =
+        if let Some(model_id) = summary_model_id {
+            // Get the custom model settings
+            match state.db.get_model(&model_id).await {
+                Ok(Some(m)) => {
+                    // Get provider info
+                    match state.db.get_provider(&m.provider_id).await {
+                        Ok(Some(p)) => {
+                            tracing::info!(
+                                "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
+                                m.model_id,
+                                p.provider_type
+                            );
+                            (
+                                p.provider_type.clone(),
+                                m.model_id.clone(),
+                                p.api_key.clone(),
+                                p.base_url.clone(),
+                                p.api_style.clone(),
+                            )
+                        }
+                        _ => {
+                            tracing::info!(
+                                "🏷️ [generate_title] Custom model provider not found, using current model"
+                            );
+                            (
+                                provider.to_string(),
+                                model.to_string(),
+                                api_key.clone(),
+                                base_url.clone(),
+                                api_style.clone(),
+                            )
+                        }
                     }
                 }
+                _ => {
+                    tracing::info!(
+                        "🏷️ [generate_title] Custom model not found, using current model"
+                    );
+                    (
+                        provider.to_string(),
+                        model.to_string(),
+                        api_key.clone(),
+                        base_url.clone(),
+                        api_style.clone(),
+                    )
+                }
             }
-            _ => {
-                tracing::info!("🏷️ [generate_title] Custom model not found, using current model");
-                (
-                    provider.to_string(),
-                    model.to_string(),
-                    api_key.clone(),
-                    base_url.clone(),
-                )
-            }
-        }
-    } else {
-        // Use the current conversation model by default
-        tracing::info!("🏷️ [generate_title] No custom summary model set, using current model");
-        (
-            provider.to_string(),
-            model.to_string(),
-            api_key.clone(),
-            base_url.clone(),
-        )
-    };
+        } else {
+            // Use the current conversation model by default
+            tracing::info!("🏷️ [generate_title] No custom summary model set, using current model");
+            (
+                provider.to_string(),
+                model.to_string(),
+                api_key.clone(),
+                base_url.clone(),
+                api_style.clone(),
+            )
+        };
 
     // Generate title using unified provider handler
     let response = llm::call_provider(
@@ -240,6 +257,7 @@ pub(crate) async fn generate_conversation_title(
         ],
         summary_api_key,
         summary_base_url,
+        summary_api_style,
     )
     .await?;
 
@@ -266,6 +284,7 @@ pub(crate) async fn auto_generate_title_if_needed(
     model: &str,
     api_key: Option<String>,
     base_url: Option<String>,
+    api_style: Option<String>,
 ) {
     if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await
         && conversation.title == "New Conversation"
@@ -280,6 +299,7 @@ pub(crate) async fn auto_generate_title_if_needed(
             model,
             api_key,
             base_url,
+            api_style,
         )
         .await
         {

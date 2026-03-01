@@ -38,6 +38,9 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   perplexity: 'Perplexity',
   together: 'Together AI',
   xai: 'xAI',
+  custom: 'Custom Provider',
+  custom_openai: 'OpenAI Compatible',
+  custom_anthropic: 'Anthropic Compatible',
 }
 
 /** Get the logo URL for a provider type. Returns undefined if no logo exists. */

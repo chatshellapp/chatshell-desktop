@@ -19,6 +19,7 @@ interface UseFetchModelsParams {
   selectedProvider: LLMProvider
   apiKey: string
   apiBaseUrl: string
+  compatibilityType: string
 }
 
 // Providers that use the original dedicated fetch commands
@@ -33,6 +34,7 @@ export function useFetchModels({
   selectedProvider,
   apiKey,
   apiBaseUrl,
+  compatibilityType,
 }: UseFetchModelsParams): UseFetchModelsReturn {
   const [availableModels, setAvailableModels] = React.useState<ModelInfo[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -64,6 +66,25 @@ export function useFetchModels({
       } else if (providerId === 'ollama') {
         const baseUrl = apiBaseUrl || 'http://localhost:11434'
         fetchedModels = await invoke<ModelInfo[]>('fetch_ollama_models', { baseUrl })
+      } else if (
+        providerId === 'custom_openai' ||
+        (providerId === 'custom' && compatibilityType === 'openai')
+      ) {
+        if (!apiKey) {
+          throw new Error('API key is required. Please enter your API key above.')
+        }
+        if (!apiBaseUrl) {
+          throw new Error('Base URL is required for custom providers.')
+        }
+        fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
+          providerType: 'openai',
+          apiKey,
+          baseUrl: apiBaseUrl,
+        })
+      } else if (providerId === 'custom_anthropic' || providerId === 'custom') {
+        throw new Error(
+          'Automatic model fetching is not supported for Anthropic-compatible providers. Please add models manually.'
+        )
       } else if (!DEDICATED_FETCH_PROVIDERS.has(providerId)) {
         if (!apiKey) {
           throw new Error(
@@ -92,7 +113,7 @@ export function useFetchModels({
     } finally {
       setIsLoading(false)
     }
-  }, [selectedProvider, apiKey, apiBaseUrl])
+  }, [selectedProvider, apiKey, apiBaseUrl, compatibilityType])
 
   const handleOpenFetchModal = React.useCallback(() => {
     setModelSearchQuery('')

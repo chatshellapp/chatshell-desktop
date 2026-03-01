@@ -1,12 +1,13 @@
 'use client'
 
-import { Loader2 } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -16,8 +17,12 @@ import { ProviderForm } from '@/components/provider-settings-dialog/provider-for
 import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
-import { LLM_PROVIDERS } from '@/components/provider-settings-dialog/constants'
+import {
+  BUILTIN_PROVIDERS,
+  CUSTOM_PROVIDER,
+} from '@/components/provider-settings-dialog/constants'
 import { ProviderLogo } from '@/components/provider-settings-dialog/provider-logo'
+import { isCustomProvider, isCustomProviderType } from '@/components/provider-settings-dialog/types'
 
 interface LLMProviderSettingsProps {
   open: boolean
@@ -33,6 +38,14 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     setShowApiKey,
     apiBaseUrl,
     setApiBaseUrl,
+    providerName,
+    setProviderName,
+    apiStyle,
+    setApiStyle,
+    compatibilityType,
+    setCompatibilityType,
+    editingCustomProviderId,
+    setEditingCustomProviderId,
     models,
     fetchModalOpen,
     setFetchModalOpen,
@@ -57,6 +70,17 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     groupedModels,
   } = useProviderSettings(open, () => {})
 
+  const isCustom = isCustomProvider(selectedProvider)
+  const displayName = existingProvider ? existingProvider.name : selectedProvider.name
+  const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
+
+  const effectiveProviderType = isCustom
+    ? compatibilityType === 'anthropic'
+      ? 'custom_anthropic'
+      : 'custom_openai'
+    : selectedProvider.id
+  const effectiveApiStyle = isCustom && compatibilityType === 'openai' ? apiStyle : undefined
+
   const hasChanges =
     models.filter((m) => !m.isExisting).length > 0 ||
     modelsToDelete.length > 0 ||
@@ -64,7 +88,12 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
       (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
     ).length > 0 ||
     (existingProvider &&
-      (existingProvider.api_key !== apiKey || existingProvider.base_url !== apiBaseUrl))
+      (existingProvider.api_key !== apiKey ||
+        existingProvider.base_url !== apiBaseUrl ||
+        existingProvider.name !== (isCustom ? providerName : selectedProvider.name) ||
+        existingProvider.provider_type !== effectiveProviderType ||
+        existingProvider.api_style !== effectiveApiStyle)) ||
+    (!existingProvider && isCustom)
 
   return (
     <div className="flex h-full">
@@ -74,13 +103,16 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {LLM_PROVIDERS.map((provider) => {
+                {BUILTIN_PROVIDERS.map((provider) => {
                   const hasExisting = storeProviders.some((p) => p.provider_type === provider.id)
                   return (
                     <SidebarMenuItem key={provider.id}>
                       <SidebarMenuButton
-                        onClick={() => setSelectedProvider(provider)}
-                        isActive={provider.id === selectedProvider.id}
+                        onClick={() => {
+                          setEditingCustomProviderId(null)
+                          setSelectedProvider(provider)
+                        }}
+                        isActive={provider.id === selectedProvider.id && !editingCustomProviderId}
                       >
                         <ProviderLogo providerType={provider.id} />
                         <span>{provider.name}</span>
@@ -94,6 +126,47 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Custom</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {customStoreProviders.map((cp) => (
+                  <SidebarMenuItem key={cp.id}>
+                    <SidebarMenuButton
+                      onClick={() => {
+                        setEditingCustomProviderId(cp.id)
+                        setSelectedProvider({
+                          id: cp.provider_type,
+                          name: cp.name,
+                          baseUrl: cp.base_url || '',
+                          isCustom: true,
+                        })
+                      }}
+                      isActive={editingCustomProviderId === cp.id}
+                    >
+                      <ProviderLogo providerType={cp.provider_type} name={cp.name} />
+                      <span className="truncate">{cp.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">●</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => {
+                      setEditingCustomProviderId(null)
+                      setSelectedProvider(CUSTOM_PROVIDER)
+                    }}
+                    isActive={selectedProvider.id === 'custom' && !editingCustomProviderId}
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Provider</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </SidebarContent>
       </Sidebar>
 
@@ -103,12 +176,14 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
           <div className="space-y-6">
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">
-                {existingProvider ? 'Edit' : 'Add'} {selectedProvider.name}
+                {existingProvider ? 'Edit' : 'Add'} {displayName}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {existingProvider
-                  ? `Select your ${selectedProvider.name} models`
-                  : `Configure your ${selectedProvider.name} API settings`}
+                  ? `Manage your ${displayName} configuration and models`
+                  : isCustom
+                    ? 'Configure a custom provider endpoint'
+                    : `Configure your ${displayName} API settings`}
               </p>
             </div>
 
@@ -122,6 +197,12 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
               apiBaseUrl={apiBaseUrl}
               onApiBaseUrlChange={setApiBaseUrl}
               selectedProvider={selectedProvider}
+              providerName={providerName}
+              onProviderNameChange={setProviderName}
+              apiStyle={apiStyle}
+              onApiStyleChange={setApiStyle}
+              compatibilityType={compatibilityType}
+              onCompatibilityTypeChange={setCompatibilityType}
             />
 
             <ModelsTable

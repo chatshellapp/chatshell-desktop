@@ -30,6 +30,7 @@ pub(crate) async fn handle_agent_streaming(
     chat_messages: Vec<ChatMessage>,
     api_key: Option<String>,
     base_url: Option<String>,
+    api_style: Option<String>,
     system_prompt: Option<String>,
     model_params: ModelParameters,
     cancel_token: CancellationToken,
@@ -295,6 +296,7 @@ pub(crate) async fn handle_agent_streaming(
         &model_id,
         api_key.as_deref(),
         base_url.as_deref(),
+        api_style.as_deref(),
         &config,
     ) {
         Ok(a) => a,
@@ -893,6 +895,7 @@ pub(crate) async fn handle_agent_streaming(
     let model_for_title = model_id.clone();
     let api_key_for_title = api_key.clone();
     let base_url_for_title = base_url.clone();
+    let api_style_for_title = api_style.clone();
 
     tokio::spawn(async move {
         auto_generate_title_if_needed(
@@ -905,6 +908,7 @@ pub(crate) async fn handle_agent_streaming(
             &model_for_title,
             api_key_for_title,
             base_url_for_title,
+            api_style_for_title,
         )
         .await;
     });

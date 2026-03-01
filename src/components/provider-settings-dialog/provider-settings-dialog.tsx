@@ -20,6 +20,7 @@ import {
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import type { ProviderSettingsDialogProps } from './types'
+import { isCustomProvider } from './types'
 import { useProviderSettings } from './useProviderSettings'
 import { ProviderSidebar } from './provider-sidebar'
 import { ProviderForm } from './provider-form'
@@ -36,6 +37,14 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     setShowApiKey,
     apiBaseUrl,
     setApiBaseUrl,
+    providerName,
+    setProviderName,
+    apiStyle,
+    setApiStyle,
+    compatibilityType,
+    setCompatibilityType,
+    editingCustomProviderId,
+    setEditingCustomProviderId,
     models,
     fetchModalOpen,
     setFetchModalOpen,
@@ -60,6 +69,16 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     groupedModels,
   } = useProviderSettings(open, onOpenChange)
 
+  const isCustom = isCustomProvider(selectedProvider)
+  const displayName = existingProvider ? existingProvider.name : selectedProvider.name
+
+  const effectiveProviderType = isCustom
+    ? compatibilityType === 'anthropic'
+      ? 'custom_anthropic'
+      : 'custom_openai'
+    : selectedProvider.id
+  const effectiveApiStyle = isCustom && compatibilityType === 'openai' ? apiStyle : undefined
+
   const hasChanges =
     models.filter((m) => !m.isExisting).length > 0 ||
     modelsToDelete.length > 0 ||
@@ -67,7 +86,27 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
     ).length > 0 ||
     (existingProvider &&
-      (existingProvider.api_key !== apiKey || existingProvider.base_url !== apiBaseUrl))
+      (existingProvider.api_key !== apiKey ||
+        existingProvider.base_url !== apiBaseUrl ||
+        existingProvider.name !== (isCustom ? providerName : selectedProvider.name) ||
+        existingProvider.provider_type !== effectiveProviderType ||
+        existingProvider.api_style !== effectiveApiStyle)) ||
+    (!existingProvider && isCustom)
+
+  const handleSidebarSelect = (provider: typeof selectedProvider) => {
+    setEditingCustomProviderId(null)
+    setSelectedProvider(provider)
+  }
+
+  const handleCustomProviderSelect = (provider: typeof selectedProvider) => {
+    const storeProvider = storeProviders.find(
+      (p) => p.provider_type === provider.id && p.name === provider.name
+    )
+    if (storeProvider) {
+      setEditingCustomProviderId(storeProvider.id)
+    }
+    setSelectedProvider(provider)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,8 +118,15 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         <SidebarProvider className="items-start">
           <ProviderSidebar
             selectedProvider={selectedProvider}
-            onSelectProvider={setSelectedProvider}
+            onSelectProvider={(p) => {
+              if (p.isCustom) {
+                handleCustomProviderSelect(p)
+              } else {
+                handleSidebarSelect(p)
+              }
+            }}
             storeProviders={storeProviders}
+            editingCustomProviderId={editingCustomProviderId}
           />
           <main className="flex h-[600px] flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
@@ -92,7 +138,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>{selectedProvider.name}</BreadcrumbPage>
+                      <BreadcrumbPage>{displayName}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
@@ -102,12 +148,14 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
               <div className="space-y-6">
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold">
-                    {existingProvider ? 'Edit' : 'Add'} {selectedProvider.name}
+                    {existingProvider ? 'Edit' : 'Add'} {displayName}
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {existingProvider
-                      ? `Select your ${selectedProvider.name} models`
-                      : `Configure your ${selectedProvider.name} API settings`}
+                      ? `Manage your ${displayName} configuration and models`
+                      : isCustom
+                        ? 'Configure a custom provider endpoint'
+                        : `Configure your ${displayName} API settings`}
                   </p>
                 </div>
 
@@ -121,6 +169,12 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   apiBaseUrl={apiBaseUrl}
                   onApiBaseUrlChange={setApiBaseUrl}
                   selectedProvider={selectedProvider}
+                  providerName={providerName}
+                  onProviderNameChange={setProviderName}
+                  apiStyle={apiStyle}
+                  onApiStyleChange={setApiStyle}
+                  compatibilityType={compatibilityType}
+                  onCompatibilityTypeChange={setCompatibilityType}
                 />
 
                 <ModelsTable

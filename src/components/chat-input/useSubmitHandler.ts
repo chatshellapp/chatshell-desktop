@@ -97,6 +97,7 @@ export function useSubmitHandler({
 
     const providerType = provider.provider_type
     const modelIdStr = modelToUse.model_id
+    const providerApiStyle = provider.api_style
 
     const content = input.trim()
     setInput('')
@@ -208,6 +209,7 @@ export function useSubmitHandler({
         modelIdStr,
         apiKey,
         baseUrl,
+        providerApiStyle,
         undefined, // includeHistory
         systemPrompt,
         userPrompt,

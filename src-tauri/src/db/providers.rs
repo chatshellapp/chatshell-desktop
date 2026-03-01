@@ -41,14 +41,15 @@ impl Database {
         };
 
         sqlx::query(
-            "INSERT INTO providers (id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO providers (id, name, provider_type, api_key, base_url, api_style, description, is_enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&req.name)
         .bind(&req.provider_type)
         .bind(&encrypted_api_key)
         .bind(&req.base_url)
+        .bind(&req.api_style)
         .bind(&req.description)
         .bind(is_enabled as i32)
         .bind(&now)
@@ -63,7 +64,7 @@ impl Database {
 
     pub async fn get_provider(&self, id: &str) -> Result<Option<Provider>> {
         let row = sqlx::query(
-            "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
+            "SELECT id, name, provider_type, api_key, base_url, api_style, description, is_enabled, created_at, updated_at
              FROM providers WHERE id = ?"
         )
         .bind(id)
@@ -98,6 +99,7 @@ impl Database {
                     provider_type: row.get("provider_type"),
                     api_key,
                     base_url: row.get("base_url"),
+                    api_style: row.get("api_style"),
                     description: row.get("description"),
                     is_enabled: is_enabled != 0,
                     created_at: row.get("created_at"),
@@ -110,7 +112,7 @@ impl Database {
 
     pub async fn list_providers(&self) -> Result<Vec<Provider>> {
         let rows = sqlx::query(
-            "SELECT id, name, provider_type, api_key, base_url, description, is_enabled, created_at, updated_at
+            "SELECT id, name, provider_type, api_key, base_url, api_style, description, is_enabled, created_at, updated_at
              FROM providers ORDER BY created_at ASC"
         )
         .fetch_all(self.pool.as_ref())
@@ -144,6 +146,7 @@ impl Database {
                 provider_type: row.get("provider_type"),
                 api_key,
                 base_url: row.get("base_url"),
+                api_style: row.get("api_style"),
                 description: row.get("description"),
                 is_enabled: is_enabled != 0,
                 created_at: row.get("created_at"),
@@ -194,12 +197,13 @@ impl Database {
         };
 
         sqlx::query(
-            "UPDATE providers SET name = ?, provider_type = ?, api_key = ?, base_url = ?, description = ?, is_enabled = ?, updated_at = ? WHERE id = ?"
+            "UPDATE providers SET name = ?, provider_type = ?, api_key = ?, base_url = ?, api_style = ?, description = ?, is_enabled = ?, updated_at = ? WHERE id = ?"
         )
         .bind(&req.name)
         .bind(&req.provider_type)
         .bind(&encrypted_api_key)
         .bind(&req.base_url)
+        .bind(&req.api_style)
         .bind(&req.description)
         .bind(is_enabled as i32)
         .bind(&now)
@@ -220,11 +224,12 @@ impl Database {
         is_enabled: bool,
     ) -> Result<Provider> {
         sqlx::query(
-            "UPDATE providers SET name = ?, provider_type = ?, base_url = ?, description = ?, is_enabled = ?, updated_at = ? WHERE id = ?"
+            "UPDATE providers SET name = ?, provider_type = ?, base_url = ?, api_style = ?, description = ?, is_enabled = ?, updated_at = ? WHERE id = ?"
         )
         .bind(&req.name)
         .bind(&req.provider_type)
         .bind(&req.base_url)
+        .bind(&req.api_style)
         .bind(&req.description)
         .bind(is_enabled as i32)
         .bind(now)

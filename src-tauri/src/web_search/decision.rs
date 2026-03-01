@@ -18,6 +18,7 @@ pub async fn decide_search_needed(
     model: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    api_style: Option<&str>,
 ) -> Result<SearchDecisionResult> {
     tracing::info!(
         "🤔 [search_decision] Asking AI if search is needed for: {}",
@@ -44,6 +45,7 @@ pub async fn decide_search_needed(
         ],
         api_key.map(|s| s.to_string()),
         base_url.map(|s| s.to_string()),
+        api_style.map(|s| s.to_string()),
     )
     .await?;
 

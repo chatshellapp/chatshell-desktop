@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import type { UseProviderSettingsReturn, ModelItem } from './types'
+import { isCustomProviderType } from './types'
 import { useProviderFormState } from './useProviderFormState'
 import { useProviderData } from './useProviderData'
 import { useModelList } from './useModelList'
@@ -22,6 +23,17 @@ export function useProviderSettings(
   // 1. Form state management
   const formState = useProviderFormState()
 
+  // Wrap setSelectedProvider to handle custom provider editing
+  const handleSelectProvider = React.useCallback(
+    (provider: typeof formState.selectedProvider) => {
+      if (isCustomProviderType(provider.id) && !provider.isCustom) {
+        formState.setEditingCustomProviderId(null)
+      }
+      formState.setSelectedProvider(provider)
+    },
+    [formState]
+  )
+
   // 2. Model list management
   const modelList = useModelList()
 
@@ -29,8 +41,12 @@ export function useProviderSettings(
   const providerData = useProviderData({
     open,
     selectedProvider: formState.selectedProvider,
+    editingCustomProviderId: formState.editingCustomProviderId,
     setApiKey: formState.setApiKey,
     setApiBaseUrl: formState.setApiBaseUrl,
+    setProviderName: formState.setProviderName,
+    setApiStyle: formState.setApiStyle,
+    setCompatibilityType: formState.setCompatibilityType,
     setModels: modelList.setModels,
     setOriginalModelNames: modelList.setOriginalModelNames,
     setModelsToDelete: modelList.setModelsToDelete,
@@ -41,6 +57,7 @@ export function useProviderSettings(
     selectedProvider: formState.selectedProvider,
     apiKey: formState.apiKey,
     apiBaseUrl: formState.apiBaseUrl,
+    compatibilityType: formState.compatibilityType,
   })
 
   // 5. Model filtering and grouping
@@ -58,21 +75,22 @@ export function useProviderSettings(
     existingProvider: providerData.existingProvider,
     apiKey: formState.apiKey,
     apiBaseUrl: formState.apiBaseUrl,
+    providerName: formState.providerName,
+    apiStyle: formState.apiStyle,
+    compatibilityType: formState.compatibilityType,
     selectedProvider: formState.selectedProvider,
     loadExistingData: providerData.loadExistingData,
     onOpenChange,
   })
 
-  // Additional handler for model settings (placeholder)
   const handleModelSettings = React.useCallback((model: ModelItem) => {
     logger.info('Model settings:', model)
-    // Add your model settings logic here
   }, [])
 
-  // Compose and return the complete API
   return {
     // Form state
     ...formState,
+    setSelectedProvider: handleSelectProvider,
 
     // Model list
     models: modelList.models,

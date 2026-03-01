@@ -117,6 +117,7 @@ export interface MessageStoreCrudActions {
     model: string,
     apiKey?: string,
     baseUrl?: string,
+    apiStyle?: string,
     includeHistory?: boolean,
     systemPrompt?: string,
     userPrompt?: string,

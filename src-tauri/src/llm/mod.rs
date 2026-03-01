@@ -93,6 +93,7 @@ pub async fn call_provider(
     messages: Vec<ChatMessage>,
     api_key: Option<String>,
     base_url: Option<String>,
+    api_style: Option<String>,
 ) -> Result<ChatResponse> {
     // Extract system prompt if present
     let system_prompt = messages
@@ -114,6 +115,7 @@ pub async fn call_provider(
         &model,
         api_key.as_deref(),
         base_url.as_deref(),
+        api_style.as_deref(),
         &config,
     )?;
 

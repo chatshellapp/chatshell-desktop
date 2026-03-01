@@ -28,6 +28,7 @@ pub(crate) async fn process_search_decision(
     model: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    api_style: Option<&str>,
     user_message_id: &str,
     conversation_id: &str,
     fallback_urls: Vec<String>,
@@ -44,20 +45,21 @@ pub(crate) async fn process_search_decision(
     );
 
     // Use AI to decide if search is truly needed
-    let decision =
-        match crate::web_search::decide_search_needed(content, provider, model, api_key, base_url)
-            .await
-        {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("⚠️ [search] Search decision failed, skipping search: {}", e);
-                crate::web_search::SearchDecisionResult {
-                    reasoning: format!("Decision failed: {}", e),
-                    search_needed: false,
-                    search_query: None,
-                }
+    let decision = match crate::web_search::decide_search_needed(
+        content, provider, model, api_key, base_url, api_style,
+    )
+    .await
+    {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("⚠️ [search] Search decision failed, skipping search: {}", e);
+            crate::web_search::SearchDecisionResult {
+                reasoning: format!("Decision failed: {}", e),
+                search_needed: false,
+                search_query: None,
             }
-        };
+        }
+    };
 
     // Store the search decision in database (as a process step)
     match state

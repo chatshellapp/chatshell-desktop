@@ -134,10 +134,7 @@ export function AssistantDialog({
     () => allTools.filter((t) => isBuiltinTool(t) && t.is_enabled),
     [allTools]
   )
-  const mcpServers = useMemo(
-    () => allTools.filter((t) => isMcpTool(t) && t.is_enabled),
-    [allTools]
-  )
+  const mcpServers = useMemo(() => allTools.filter((t) => isMcpTool(t) && t.is_enabled), [allTools])
 
   // Filter enabled skills for the Skills tab
   const enabledSkills = useMemo(() => allSkills.filter((s) => s.is_enabled), [allSkills])
@@ -884,8 +881,8 @@ export function AssistantDialog({
       return (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Select which tools and MCP servers this assistant can use. These tools will be
-            available when using this assistant in conversations.
+            Select which tools and MCP servers this assistant can use. These tools will be available
+            when using this assistant in conversations.
           </p>
 
           {hasNoTools ? (
@@ -907,7 +904,10 @@ export function AssistantDialog({
                   {builtinTools.map((tool) => (
                     <div key={tool.id} className="flex items-center justify-between py-2 pl-2">
                       <div className="grid gap-1">
-                        <label htmlFor={`tool-${tool.id}`} className="text-sm font-medium leading-none cursor-pointer">
+                        <label
+                          htmlFor={`tool-${tool.id}`}
+                          className="text-sm font-medium leading-none cursor-pointer"
+                        >
                           {tool.name}
                         </label>
                         {tool.description && (
@@ -919,9 +919,7 @@ export function AssistantDialog({
                       <Switch
                         id={`tool-${tool.id}`}
                         checked={toolIds.includes(tool.id)}
-                        onCheckedChange={(checked) =>
-                          handleToggleTool(tool.id, checked === true)
-                        }
+                        onCheckedChange={(checked) => handleToggleTool(tool.id, checked === true)}
                       />
                     </div>
                   ))}
@@ -957,9 +955,7 @@ export function AssistantDialog({
                       <Switch
                         id={`tool-${server.id}`}
                         checked={toolIds.includes(server.id)}
-                        onCheckedChange={(checked) =>
-                          handleToggleTool(server.id, checked === true)
-                        }
+                        onCheckedChange={(checked) => handleToggleTool(server.id, checked === true)}
                       />
                     </div>
                   ))}

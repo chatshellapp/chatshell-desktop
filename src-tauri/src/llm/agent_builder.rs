@@ -222,6 +222,24 @@ pub fn create_openai_agent(
     Ok(build_agent(client.agent(model_id), &openai_config))
 }
 
+/// Create an agent for custom OpenAI-compatible providers using the Chat Completions API.
+/// Reuses moonshot::Client which implements the standard OpenAI chat completions format.
+fn create_custom_openai_chat_completions_agent(
+    api_key: &str,
+    base_url: &str,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent<MoonshotCompletionModel>> {
+    let http_client = create_http_client();
+    let client = moonshot::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url)
+        .http_client(http_client)
+        .build()?;
+
+    Ok(build_agent(client.agent(model_id), config))
+}
+
 /// Create an OpenRouter agent with full configuration
 /// Uses the dedicated OpenRouter provider for better compatibility
 /// Adds default reasoning: {"effort": "medium"} parameter for extended thinking support
@@ -720,12 +738,14 @@ fn build_agent_with_tools<M: CompletionModel>(
     builder.build()
 }
 
-/// Create a provider agent based on provider type
+/// Create a provider agent based on provider type.
+/// `api_style` is only used for `custom_openai` to choose between Responses API and Chat Completions API.
 pub fn create_provider_agent(
     provider_type: &str,
     model_id: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    api_style: Option<&str>,
     config: &AgentConfig,
 ) -> Result<ProviderAgent> {
     macro_rules! require_key {
@@ -846,6 +866,38 @@ pub fn create_provider_agent(
             model_id,
             config,
         )?)),
+        "custom_openai" => {
+            let key = require_key!("Custom OpenAI-compatible");
+            let url = base_url.ok_or_else(|| {
+                anyhow::anyhow!("Base URL is required for custom OpenAI-compatible providers")
+            })?;
+            if api_style == Some("chat_completions") {
+                // Chat Completions API: reuse moonshot client (OpenAI-compatible)
+                Ok(ProviderAgent::Moonshot(
+                    create_custom_openai_chat_completions_agent(key, url, model_id, config)?,
+                ))
+            } else {
+                // Responses API (default)
+                Ok(ProviderAgent::OpenAI(create_openai_agent(
+                    key,
+                    Some(url),
+                    model_id,
+                    config,
+                )?))
+            }
+        }
+        "custom_anthropic" => {
+            let key = require_key!("Custom Anthropic-compatible");
+            let url = base_url.ok_or_else(|| {
+                anyhow::anyhow!("Base URL is required for custom Anthropic-compatible providers")
+            })?;
+            Ok(ProviderAgent::Anthropic(create_anthropic_agent(
+                key,
+                Some(url),
+                model_id,
+                config,
+            )?))
+        }
         _ => Err(anyhow::anyhow!("Unknown provider: {}", provider_type)),
     }
 }

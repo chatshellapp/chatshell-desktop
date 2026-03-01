@@ -44,7 +44,7 @@ export function SkillsDialog({
   // "Global default" = all globally enabled skills
   const globalEnabledIds = React.useMemo(
     () => [...builtinSkills, ...userSkills].map((s) => s.id),
-    [builtinSkills, userSkills],
+    [builtinSkills, userSkills]
   )
 
   const isDifferentFromGlobal = React.useMemo(() => {
@@ -85,8 +85,8 @@ export function SkillsDialog({
         <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 grid gap-4">
           {hasNoSkills ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No skills available. Add skill files to the skills directory or enable existing ones in
-              Settings.
+              No skills available. Add skill files to the skills directory or enable existing ones
+              in Settings.
             </p>
           ) : (
             <>
@@ -113,9 +113,7 @@ export function SkillsDialog({
                       <Switch
                         id={skill.id}
                         checked={enabledSkillIds.includes(skill.id)}
-                        onCheckedChange={(checked) =>
-                          handleToggleSkill(skill.id, checked === true)
-                        }
+                        onCheckedChange={(checked) => handleToggleSkill(skill.id, checked === true)}
                       />
                     </div>
                   ))}
@@ -148,9 +146,7 @@ export function SkillsDialog({
                       <Switch
                         id={skill.id}
                         checked={enabledSkillIds.includes(skill.id)}
-                        onCheckedChange={(checked) =>
-                          handleToggleSkill(skill.id, checked === true)
-                        }
+                        onCheckedChange={(checked) => handleToggleSkill(skill.id, checked === true)}
                       />
                     </div>
                   ))}

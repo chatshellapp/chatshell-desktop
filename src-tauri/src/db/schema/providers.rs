@@ -9,6 +9,7 @@ pub async fn create_providers_table(pool: &SqlitePool) -> Result<()> {
             provider_type TEXT NOT NULL,
             api_key TEXT,
             base_url TEXT,
+            api_style TEXT,
             description TEXT,
             is_enabled INTEGER DEFAULT 1,
             created_at TEXT NOT NULL,

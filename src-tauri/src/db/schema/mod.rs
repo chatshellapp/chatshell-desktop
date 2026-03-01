@@ -15,7 +15,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 6;
+const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -82,10 +82,17 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v6 completed");
     }
 
+    if current_version < 7 {
+        migrate_v6_to_v7(pool).await?;
+        set_user_version(pool, 7).await?;
+        tracing::info!("Migration to v7 completed");
+    }
+
     // Ensure columns exist (idempotent, fixes databases
-    // that were bumped to v6 before the columns were actually added)
+    // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
     ensure_working_directory_column(pool).await?;
+    ensure_api_style_column(pool).await?;
 
     Ok(())
 }
@@ -180,6 +187,31 @@ async fn ensure_enabled_skill_ids_column(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
         tracing::info!("Added enabled_skill_ids column to conversation_settings table");
+    }
+
+    Ok(())
+}
+
+/// Migration v6 -> v7: Add api_style column to providers for custom provider support
+async fn migrate_v6_to_v7(pool: &SqlitePool) -> Result<()> {
+    ensure_api_style_column(pool).await?;
+    Ok(())
+}
+
+/// Ensure api_style column exists in providers (idempotent)
+async fn ensure_api_style_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('providers')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "api_style");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE providers ADD COLUMN api_style TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added api_style column to providers table");
     }
 
     Ok(())

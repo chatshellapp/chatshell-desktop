@@ -73,7 +73,14 @@ import type {
   McpTransportType,
   McpServerConfig,
 } from '@/types'
-import { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool, isBuiltinSkill, isUserSkill } from '@/types'
+import {
+  parseMcpConfig,
+  getTransportType,
+  isBuiltinTool,
+  isMcpTool,
+  isBuiltinSkill,
+  isUserSkill,
+} from '@/types'
 import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
@@ -941,10 +948,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </p>
             )}
           </div>
-          <Switch
-            checked={skill.is_enabled}
-            onCheckedChange={() => handleToggleSkill(skill.id)}
-          />
+          <Switch checked={skill.is_enabled} onCheckedChange={() => handleToggleSkill(skill.id)} />
         </div>
       )
 
@@ -976,18 +980,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {builtinSkills.length > 0 && (
                 <div className="grid gap-3">
                   <h4 className="text-sm font-medium">Built-in Skills</h4>
-                  <div className="grid gap-3">
-                    {builtinSkills.map(renderSkillItem)}
-                  </div>
+                  <div className="grid gap-3">{builtinSkills.map(renderSkillItem)}</div>
                 </div>
               )}
 
               {userSkills.length > 0 && (
                 <div className="grid gap-3">
                   <h4 className="text-sm font-medium">User Skills</h4>
-                  <div className="grid gap-3">
-                    {userSkills.map(renderSkillItem)}
-                  </div>
+                  <div className="grid gap-3">{userSkills.map(renderSkillItem)}</div>
                 </div>
               )}
             </div>

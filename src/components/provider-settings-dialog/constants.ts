@@ -1,6 +1,13 @@
 import type { LLMProvider } from './types'
 
-export const LLM_PROVIDERS: LLMProvider[] = [
+export const CUSTOM_PROVIDER: LLMProvider = {
+  id: 'custom',
+  name: 'Custom Provider',
+  baseUrl: '',
+  isCustom: true,
+}
+
+export const BUILTIN_PROVIDERS: LLMProvider[] = [
   { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },
   {
@@ -26,6 +33,8 @@ export const LLM_PROVIDERS: LLMProvider[] = [
   { id: 'ollama', name: 'Ollama', baseUrl: 'http://localhost:11434' },
 ]
 
+export const LLM_PROVIDERS: LLMProvider[] = [...BUILTIN_PROVIDERS]
+
 // Providers that support auto-fetching models via API
 const FETCH_SUPPORTED_PROVIDERS = new Set([
   'openai',
@@ -44,6 +53,8 @@ const FETCH_SUPPORTED_PROVIDERS = new Set([
   'mira',
   'galadriel',
   'cohere',
+  'custom',
+  'custom_openai',
 ])
 
 export function isSupportedFetchProvider(id: string): boolean {

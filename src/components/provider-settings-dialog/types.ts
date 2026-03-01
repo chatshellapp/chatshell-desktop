@@ -36,6 +36,19 @@ export interface LLMProvider {
   id: string
   name: string
   baseUrl: string
+  isCustom?: boolean
+}
+
+export function isCustomProvider(provider: LLMProvider): boolean {
+  return provider.isCustom === true
+}
+
+export function isCustomProviderType(providerType: string): boolean {
+  return (
+    providerType === 'custom' ||
+    providerType === 'custom_openai' ||
+    providerType === 'custom_anthropic'
+  )
 }
 
 export interface UseProviderSettingsReturn {
@@ -48,6 +61,14 @@ export interface UseProviderSettingsReturn {
   setShowApiKey: (show: boolean) => void
   apiBaseUrl: string
   setApiBaseUrl: (url: string) => void
+  providerName: string
+  setProviderName: (name: string) => void
+  apiStyle: string
+  setApiStyle: (style: string) => void
+  compatibilityType: string
+  setCompatibilityType: (type: string) => void
+  editingCustomProviderId: string | null
+  setEditingCustomProviderId: (id: string | null) => void
   models: ModelItem[]
   setModels: React.Dispatch<React.SetStateAction<ModelItem[]>>
   fetchModalOpen: boolean
