@@ -91,6 +91,16 @@ interface ConversationSettingsActions {
   // Skill settings
   setEnabledSkillIds: (conversationId: string, skillIds: string[]) => Promise<void>
 
+  // Initialize settings from an assistant's configured tools and skills
+  initSettingsFromAssistant: (
+    conversationId: string,
+    toolIds: string[],
+    skillIds: string[]
+  ) => Promise<void>
+
+  // Reset tools and skills to global defaults (when switching away from an assistant)
+  resetToolsAndSkillsToGlobal: (conversationId: string) => Promise<void>
+
   // Working directory for bash tool
   setWorkingDirectory: (conversationId: string, directory: string | null) => Promise<void>
 }
@@ -468,6 +478,44 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to update enabledSkillIds:', error)
+      }
+    },
+
+    initSettingsFromAssistant: async (
+      conversationId: string,
+      toolIds: string[],
+      skillIds: string[]
+    ) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          enabledMcpServerIds: toolIds,
+          enabledSkillIds: skillIds,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error(
+          '[conversationSettingsStore] Failed to init settings from assistant:',
+          error
+        )
+      }
+    },
+
+    resetToolsAndSkillsToGlobal: async (conversationId: string) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          enabledMcpServerIds: getGlobalEnabledMcpServerIds(),
+          enabledSkillIds: getGlobalEnabledSkillIds(),
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error(
+          '[conversationSettingsStore] Failed to reset tools/skills to global:',
+          error
+        )
       }
     },
 

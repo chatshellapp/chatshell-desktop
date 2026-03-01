@@ -9,6 +9,7 @@ import { InputGroupButton } from '@/components/ui/input-group'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useConversationStore } from '@/stores/conversation'
+import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { ModelList, type ModelVendor, type Model as ModelListModel } from '@/components/model-list'
@@ -62,7 +63,7 @@ export function ModelSelectorDropdown({
     }
   }
 
-  const handleModelSelect = (modelId: string) => {
+  const handleModelSelect = async (modelId: string) => {
     logger.info('handleModelSelect called with modelId:', modelId)
     const model = getModelById(modelId)
     if (!model) {
@@ -70,12 +71,22 @@ export function ModelSelectorDropdown({
       return
     }
 
+    const wasPreviouslyAssistant = !!selectedAssistant
     setSelectedModel(model)
     logger.info('Selected model:', model.name)
     onOpenChange(false)
+
+    if (wasPreviouslyAssistant) {
+      const currentConversation = useConversationStore.getState().currentConversation
+      if (currentConversation) {
+        await useConversationSettingsStore
+          .getState()
+          .resetToolsAndSkillsToGlobal(currentConversation.id)
+      }
+    }
   }
 
-  const handleAssistantSelect = (assistantId: string) => {
+  const handleAssistantSelect = async (assistantId: string) => {
     logger.info('handleAssistantSelect called with assistantId:', assistantId)
     const assistant = assistants.find((a) => a.id === assistantId)
     if (!assistant) {
@@ -86,6 +97,17 @@ export function ModelSelectorDropdown({
     setSelectedAssistant(assistant)
     logger.info('Selected assistant:', assistant.name)
     onOpenChange(false)
+
+    const currentConversation = useConversationStore.getState().currentConversation
+    if (currentConversation) {
+      await useConversationSettingsStore
+        .getState()
+        .initSettingsFromAssistant(
+          currentConversation.id,
+          assistant.tool_ids,
+          assistant.skill_ids
+        )
+    }
   }
 
   const handleModelStarToggle = async (model: ModelListModel) => {

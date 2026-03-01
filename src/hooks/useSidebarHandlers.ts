@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useConversationStore } from '@/stores/conversation'
+import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
@@ -56,7 +57,16 @@ export function useSidebarHandlers() {
 
         // Use selectConversation to ensure settings are loaded
         await selectConversation(targetConversation.id)
+
+        const wasPreviouslyAssistant = !!useConversationStore.getState().selectedAssistant
         setSelectedModel(realModel)
+
+        // Reset tools/skills to global defaults when switching away from an assistant
+        if (wasPreviouslyAssistant) {
+          await useConversationSettingsStore
+            .getState()
+            .resetToolsAndSkillsToGlobal(targetConversation.id)
+        }
       } catch (error) {
         logger.error('Failed to handle model click:', error)
         toast.error('Failed to select model', {
@@ -96,6 +106,15 @@ export function useSidebarHandlers() {
         // Use selectConversation to ensure settings are loaded
         await selectConversation(targetConversation.id)
         setSelectedAssistant(realAssistant)
+
+        // Initialize conversation settings with the assistant's tools and skills
+        await useConversationSettingsStore
+          .getState()
+          .initSettingsFromAssistant(
+            targetConversation.id,
+            realAssistant.tool_ids,
+            realAssistant.skill_ids
+          )
       } catch (error) {
         logger.error('Failed to handle assistant click:', error)
         toast.error('Failed to select assistant', {
