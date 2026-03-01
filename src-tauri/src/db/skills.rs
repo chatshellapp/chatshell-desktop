@@ -124,6 +124,17 @@ impl Database {
         Ok(())
     }
 
+    pub async fn set_all_skills_enabled(&self, enabled: bool) -> Result<Vec<Skill>> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE skills SET is_enabled = ?, updated_at = ?")
+            .bind(enabled as i32)
+            .bind(&now)
+            .execute(self.pool.as_ref())
+            .await?;
+
+        self.list_skills().await
+    }
+
     pub async fn toggle_skill(&self, id: &str) -> Result<Skill> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(

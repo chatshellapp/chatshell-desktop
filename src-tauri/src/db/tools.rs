@@ -154,6 +154,19 @@ impl Database {
         Ok(())
     }
 
+    /// Set all tools of a given type to enabled or disabled
+    pub async fn set_all_tools_enabled(&self, tool_type: &str, enabled: bool) -> Result<Vec<Tool>> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tools SET is_enabled = ?, updated_at = ? WHERE type = ?")
+            .bind(enabled as i32)
+            .bind(&now)
+            .bind(tool_type)
+            .execute(self.pool.as_ref())
+            .await?;
+
+        self.list_tools_by_type(tool_type).await
+    }
+
     /// Toggle tool enabled status
     pub async fn toggle_tool_enabled(&self, id: &str) -> Result<Tool> {
         let now = Utc::now().to_rfc3339();

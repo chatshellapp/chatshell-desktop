@@ -215,6 +215,7 @@ pub fn run() {
             commands::update_mcp_server,
             commands::delete_mcp_server,
             commands::toggle_mcp_server,
+            commands::set_all_tools_enabled,
             commands::test_mcp_connection,
             commands::test_mcp_stdio_connection,
             commands::list_mcp_server_tools,
@@ -226,8 +227,10 @@ pub fn run() {
             commands::update_skill,
             commands::delete_skill,
             commands::toggle_skill,
+            commands::set_all_skills_enabled,
             commands::scan_skills,
             commands::read_skill_content,
+            commands::open_skills_directory,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

@@ -29,8 +29,12 @@ import {
   // Video,
   Wrench,
   Zap,
+  FolderOpen,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react'
 
+import { invoke } from '@tauri-apps/api/core'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -179,6 +183,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
   const scanSkills = useSkillStore((state) => state.scanSkills)
   const toggleSkill = useSkillStore((state) => state.toggleSkill)
+  const setAllSkillsEnabled = useSkillStore((state) => state.setAllEnabled)
 
   // MCP store methods
   const mcpServers = useMcpStore((state) => state.servers)
@@ -188,6 +193,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const updateMcpServer = useMcpStore((state) => state.updateServer)
   const deleteMcpServer = useMcpStore((state) => state.deleteServer)
   const toggleMcpServer = useMcpStore((state) => state.toggleServer)
+  const setAllToolsEnabled = useMcpStore((state) => state.setAllEnabled)
   const testHttpConnection = useMcpStore((state) => state.testHttpConnection)
   const testStdioConnection = useMcpStore((state) => state.testStdioConnection)
 
@@ -505,13 +511,38 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
 
     if (activeSection === 'Built-in Tools') {
+      const allBuiltinEnabled = builtinTools.length > 0 && builtinTools.every((t) => t.is_enabled)
+      const allBuiltinDisabled = builtinTools.length > 0 && builtinTools.every((t) => !t.is_enabled)
+
       return (
         <div className="grid gap-6">
-          <div className="grid gap-2">
-            <p className="text-sm text-muted-foreground max-w-md">
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
               Built-in tools provide core capabilities that enhance your AI assistant. Enable the
               tools you want to use globally, then configure them per conversation.
             </p>
+            {builtinTools.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllToolsEnabled('builtin', true)}
+                  disabled={allBuiltinEnabled}
+                >
+                  <ToggleRight className="mr-2 h-4 w-4" />
+                  Enable All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllToolsEnabled('builtin', false)}
+                  disabled={allBuiltinDisabled}
+                >
+                  <ToggleLeft className="mr-2 h-4 w-4" />
+                  Disable All
+                </Button>
+              </div>
+            )}
           </div>
 
           {builtinTools.length > 0 ? (
@@ -569,13 +600,38 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         ((editMcpTransport === 'http' && editMcpEndpoint.trim()) ||
           (editMcpTransport === 'stdio' && editMcpCommand.trim()))
 
+      const allMcpEnabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => s.is_enabled)
+      const allMcpDisabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => !s.is_enabled)
+
       return (
         <div className="grid gap-6">
-          <div className="grid gap-2">
-            <p className="text-sm text-muted-foreground max-w-md">
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
               Configure MCP (Model Context Protocol) servers to extend your AI assistant with
               external tools and capabilities. Supports both HTTP and STDIO transports.
             </p>
+            {mcpServersOnly.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllToolsEnabled('mcp', true)}
+                  disabled={allMcpEnabled}
+                >
+                  <ToggleRight className="mr-2 h-4 w-4" />
+                  Enable All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllToolsEnabled('mcp', false)}
+                  disabled={allMcpDisabled}
+                >
+                  <ToggleLeft className="mr-2 h-4 w-4" />
+                  Disable All
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Add new MCP server */}
@@ -931,6 +987,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
     if (activeSection === 'Skills') {
       const hasSkills = builtinSkills.length > 0 || userSkills.length > 0
+      const allSkillsArr = [...builtinSkills, ...userSkills]
+      const allSkillsEnabled = allSkillsArr.length > 0 && allSkillsArr.every((s) => s.is_enabled)
+      const allSkillsDisabled = allSkillsArr.length > 0 && allSkillsArr.every((s) => !s.is_enabled)
+
+      const handleOpenSkillsDirectory = async () => {
+        try {
+          await invoke('open_skills_directory')
+        } catch (error) {
+          logger.error('Failed to open skills directory:', error)
+        }
+      }
 
       const renderSkillItem = (skill: Skill) => (
         <div
@@ -954,25 +1021,47 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
       return (
         <div className="grid gap-6">
-          <div className="flex items-start justify-between gap-4">
-            <p className="text-sm text-muted-foreground max-w-md">
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
               Skills are prompt instruction bundles that enhance your AI assistant with specialized
               capabilities. Enable or disable them globally here, then fine-tune per conversation.
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={scanSkills}
-              disabled={skillsLoading}
-              className="shrink-0"
-            >
-              {skillsLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+            <div className="flex gap-2 flex-wrap">
+              {hasSkills && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllSkillsEnabled(true)}
+                    disabled={allSkillsEnabled}
+                  >
+                    <ToggleRight className="mr-2 h-4 w-4" />
+                    Enable All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllSkillsEnabled(false)}
+                    disabled={allSkillsDisabled}
+                  >
+                    <ToggleLeft className="mr-2 h-4 w-4" />
+                    Disable All
+                  </Button>
+                </>
               )}
-              Rescan
-            </Button>
+              <Button variant="outline" size="sm" onClick={handleOpenSkillsDirectory}>
+                <FolderOpen className="mr-2 h-4 w-4" />
+                Open Directory
+              </Button>
+              <Button variant="outline" size="sm" onClick={scanSkills} disabled={skillsLoading}>
+                {skillsLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Rescan
+              </Button>
+            </div>
           </div>
 
           {hasSkills ? (

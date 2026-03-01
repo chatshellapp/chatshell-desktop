@@ -40,6 +40,7 @@ interface McpState {
   ) => Promise<Tool>
   deleteServer: (id: string) => Promise<void>
   toggleServer: (id: string) => Promise<Tool>
+  setAllEnabled: (toolType: string, enabled: boolean) => Promise<void>
   testHttpConnection: (endpoint: string) => Promise<McpToolInfo[]>
   testStdioConnection: (config: McpServerConfig) => Promise<McpToolInfo[]>
   listServerTools: (id: string) => Promise<McpToolInfo[]>
@@ -204,6 +205,20 @@ export const useMcpStore = create<McpState>()(
           draft.error = String(error)
           draft.isLoading = false
         })
+        throw error
+      }
+    },
+
+    setAllEnabled: async (toolType: string, enabled: boolean) => {
+      try {
+        const tools = await invoke<Tool[]>('set_all_tools_enabled', { toolType, enabled })
+        logger.info('[mcpStore] Set all tools enabled:', { toolType, enabled, count: tools.length })
+        set((draft) => {
+          const otherTools = draft.servers.filter((s: Tool) => s.type !== toolType)
+          draft.servers = [...otherTools, ...tools]
+        })
+      } catch (error) {
+        logger.error('[mcpStore] Failed to set all tools enabled:', error)
         throw error
       }
     },

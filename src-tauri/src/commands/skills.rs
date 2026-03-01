@@ -44,6 +44,18 @@ pub async fn toggle_skill(state: State<'_, AppState>, id: String) -> Result<Skil
     state.db.toggle_skill(&id).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn set_all_skills_enabled(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Vec<Skill>, String> {
+    state
+        .db
+        .set_all_skills_enabled(enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Scan the filesystem for SKILL.md files and sync them into the database
 #[tauri::command]
 pub async fn scan_skills(
@@ -92,6 +104,27 @@ pub async fn scan_skills(
 
     // Return all skills from DB (includes both discovered and manually created)
     state.db.list_skills().await.map_err(|e| e.to_string())
+}
+
+/// Open the user skills directory in the system file manager
+#[tauri::command]
+pub async fn open_skills_directory(app: tauri::AppHandle) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let user_dir = dirs::home_dir()
+        .unwrap_or_else(|| app_data_dir)
+        .join(".chatshell")
+        .join("skills");
+
+    // Ensure the directory exists before opening
+    std::fs::create_dir_all(&user_dir)
+        .map_err(|e| format!("Failed to create skills directory: {}", e))?;
+
+    tauri_plugin_opener::open_path(user_dir, None::<&str>)
+        .map_err(|e| format!("Failed to open skills directory: {}", e))
 }
 
 /// Read the content of a skill's SKILL.md file

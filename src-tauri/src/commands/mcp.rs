@@ -214,6 +214,20 @@ pub async fn toggle_mcp_server(state: State<'_, AppState>, id: String) -> Result
         .map_err(|e| e.to_string())
 }
 
+/// Set all tools of a given type to enabled or disabled
+#[tauri::command]
+pub async fn set_all_tools_enabled(
+    state: State<'_, AppState>,
+    tool_type: String,
+    enabled: bool,
+) -> Result<Vec<Tool>, String> {
+    state
+        .db
+        .set_all_tools_enabled(&tool_type, enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Test connection to an MCP server via HTTP endpoint
 #[tauri::command]
 pub async fn test_mcp_connection(

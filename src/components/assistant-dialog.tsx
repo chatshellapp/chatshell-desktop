@@ -50,12 +50,17 @@ import {
   Wrench,
   Plug,
   Zap,
+  RotateCcw,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
 import { isBuiltinTool, isMcpTool } from '@/types/tool'
+import { isBuiltinSkill, isUserSkill } from '@/types/skill'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
@@ -129,15 +134,25 @@ export function AssistantDialog({
     }
   }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools, ensureSkillsLoaded])
 
-  // Separate builtin tools and MCP servers for the Tools tab
-  const builtinTools = useMemo(
-    () => allTools.filter((t) => isBuiltinTool(t) && t.is_enabled),
+  // Separate builtin tools and MCP servers for the Tools tab (show all, not just enabled)
+  const builtinTools = useMemo(() => allTools.filter((t) => isBuiltinTool(t)), [allTools])
+  const mcpServers = useMemo(() => allTools.filter((t) => isMcpTool(t)), [allTools])
+
+  // All globally enabled tool IDs
+  const globalEnabledToolIds = useMemo(
+    () => allTools.filter((t) => t.is_enabled).map((t) => t.id),
     [allTools]
   )
-  const mcpServers = useMemo(() => allTools.filter((t) => isMcpTool(t) && t.is_enabled), [allTools])
 
-  // Filter enabled skills for the Skills tab
-  const enabledSkills = useMemo(() => allSkills.filter((s) => s.is_enabled), [allSkills])
+  // All skills for the Skills tab (show all, not just enabled)
+  const builtinSkillsList = useMemo(() => allSkills.filter((s) => isBuiltinSkill(s)), [allSkills])
+  const userSkillsList = useMemo(() => allSkills.filter((s) => isUserSkill(s)), [allSkills])
+
+  // All globally enabled skill IDs
+  const globalEnabledSkillIds = useMemo(
+    () => allSkills.filter((s) => s.is_enabled).map((s) => s.id),
+    [allSkills]
+  )
 
   // Get unique group names from existing assistants
   const existingGroups = useMemo(() => {
@@ -878,12 +893,107 @@ export function AssistantDialog({
 
     if (activeSection === 'Tools') {
       const hasNoTools = builtinTools.length === 0 && mcpServers.length === 0
+      const allToolsEnabled =
+        globalEnabledToolIds.length > 0 &&
+        globalEnabledToolIds.every((id) => toolIds.includes(id))
+      const noToolsEnabled =
+        globalEnabledToolIds.length > 0 &&
+        !globalEnabledToolIds.some((id) => toolIds.includes(id))
+      const isToolsDifferentFromGlobal = (() => {
+        if (toolIds.length !== globalEnabledToolIds.length) return true
+        const sorted = [...toolIds].sort()
+        const sortedGlobal = [...globalEnabledToolIds].sort()
+        return !sorted.every((id, i) => id === sortedGlobal[i])
+      })()
+
+      const renderToolItem = (tool: (typeof allTools)[number]) => {
+        const isGloballyDisabled = !tool.is_enabled
+        return (
+          <div
+            key={tool.id}
+            className={`flex items-center justify-between py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
+          >
+            <div className="grid gap-1">
+              <label
+                htmlFor={`tool-${tool.id}`}
+                className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : 'cursor-pointer'}`}
+              >
+                {tool.name}
+              </label>
+              {tool.description && (
+                <p className="text-xs text-muted-foreground max-w-[380px]">{tool.description}</p>
+              )}
+              {isMcpTool(tool) && tool.endpoint && (
+                <p className="text-xs text-muted-foreground truncate max-w-[380px]">
+                  {tool.endpoint}
+                </p>
+              )}
+              {isGloballyDisabled && (
+                <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+              )}
+            </div>
+            {isGloballyDisabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Switch id={`tool-${tool.id}`} checked={false} disabled />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Enable this tool in Settings first</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Switch
+                id={`tool-${tool.id}`}
+                checked={toolIds.includes(tool.id)}
+                onCheckedChange={(checked) => handleToggleTool(tool.id, checked === true)}
+              />
+            )}
+          </div>
+        )
+      }
+
       return (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Select which tools and MCP servers this assistant can use. These tools will be available
             when using this assistant in conversations.
           </p>
+
+          {!hasNoTools && globalEnabledToolIds.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setToolIds(globalEnabledToolIds)}
+                disabled={allToolsEnabled}
+                className="gap-1.5"
+              >
+                <ToggleRight className="h-3.5 w-3.5" />
+                Enable All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setToolIds([])}
+                disabled={noToolsEnabled}
+                className="gap-1.5"
+              >
+                <ToggleLeft className="h-3.5 w-3.5" />
+                Disable All
+              </Button>
+              {isToolsDifferentFromGlobal && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setToolIds(globalEnabledToolIds)}
+                  className="gap-1.5"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reset to Global
+                </Button>
+              )}
+            </div>
+          )}
 
           {hasNoTools ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -894,71 +1004,25 @@ export function AssistantDialog({
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Builtin Tools Section */}
               {builtinTools.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Wrench className="h-4 w-4" />
                     Built-in Tools
                   </h4>
-                  {builtinTools.map((tool) => (
-                    <div key={tool.id} className="flex items-center justify-between py-2 pl-2">
-                      <div className="grid gap-1">
-                        <label
-                          htmlFor={`tool-${tool.id}`}
-                          className="text-sm font-medium leading-none cursor-pointer"
-                        >
-                          {tool.name}
-                        </label>
-                        {tool.description && (
-                          <p className="text-xs text-muted-foreground max-w-[380px]">
-                            {tool.description}
-                          </p>
-                        )}
-                      </div>
-                      <Switch
-                        id={`tool-${tool.id}`}
-                        checked={toolIds.includes(tool.id)}
-                        onCheckedChange={(checked) => handleToggleTool(tool.id, checked === true)}
-                      />
-                    </div>
-                  ))}
+                  {builtinTools.map(renderToolItem)}
                 </div>
               )}
 
-              {/* Separator between sections */}
               {builtinTools.length > 0 && mcpServers.length > 0 && <Separator />}
 
-              {/* MCP Servers Section */}
               {mcpServers.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Plug className="h-4 w-4" />
                     MCP Servers
                   </h4>
-                  {mcpServers.map((server) => (
-                    <div key={server.id} className="flex items-center justify-between py-2 pl-2">
-                      <div className="grid gap-1.5">
-                        <label
-                          htmlFor={`tool-${server.id}`}
-                          className="text-sm font-medium leading-none cursor-pointer"
-                        >
-                          {server.name}
-                        </label>
-                        {server.description && (
-                          <p className="text-xs text-muted-foreground">{server.description}</p>
-                        )}
-                        <p className="text-xs text-muted-foreground truncate max-w-[380px]">
-                          {server.endpoint}
-                        </p>
-                      </div>
-                      <Switch
-                        id={`tool-${server.id}`}
-                        checked={toolIds.includes(server.id)}
-                        onCheckedChange={(checked) => handleToggleTool(server.id, checked === true)}
-                      />
-                    </div>
-                  ))}
+                  {mcpServers.map(renderToolItem)}
                 </div>
               )}
             </div>
@@ -974,6 +1038,68 @@ export function AssistantDialog({
     }
 
     if (activeSection === 'Skills') {
+      const hasNoSkills = builtinSkillsList.length === 0 && userSkillsList.length === 0
+      const allSkillsEnabled =
+        globalEnabledSkillIds.length > 0 &&
+        globalEnabledSkillIds.every((id) => skillIds.includes(id))
+      const noSkillsEnabled =
+        globalEnabledSkillIds.length > 0 &&
+        !globalEnabledSkillIds.some((id) => skillIds.includes(id))
+      const isSkillsDifferentFromGlobal = (() => {
+        if (skillIds.length !== globalEnabledSkillIds.length) return true
+        const sorted = [...skillIds].sort()
+        const sortedGlobal = [...globalEnabledSkillIds].sort()
+        return !sorted.every((id, i) => id === sortedGlobal[i])
+      })()
+
+      const renderSkillItem = (skill: (typeof allSkills)[number]) => {
+        const isGloballyDisabled = !skill.is_enabled
+        return (
+          <div
+            key={skill.id}
+            className={`flex items-center justify-between py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
+          >
+            <div className="grid gap-1">
+              <label
+                htmlFor={`skill-${skill.id}`}
+                className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : 'cursor-pointer'}`}
+              >
+                {skill.icon && <span className="mr-1.5">{skill.icon}</span>}
+                {skill.name}
+              </label>
+              {skill.description && (
+                <p className="text-xs text-muted-foreground max-w-[380px]">{skill.description}</p>
+              )}
+              {skill.required_tool_ids.length > 0 && (
+                <p className="text-xs text-muted-foreground/60">
+                  Requires {skill.required_tool_ids.length} tool
+                  {skill.required_tool_ids.length !== 1 ? 's' : ''}
+                </p>
+              )}
+              {isGloballyDisabled && (
+                <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+              )}
+            </div>
+            {isGloballyDisabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Switch id={`skill-${skill.id}`} checked={false} disabled />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Enable this skill in Settings first</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Switch
+                id={`skill-${skill.id}`}
+                checked={skillIds.includes(skill.id)}
+                onCheckedChange={(checked) => handleToggleSkill(skill.id, checked === true)}
+              />
+            )}
+          </div>
+        )
+      }
+
       return (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -983,7 +1109,43 @@ export function AssistantDialog({
             create custom skills.
           </p>
 
-          {enabledSkills.length === 0 ? (
+          {!hasNoSkills && globalEnabledSkillIds.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSkillIds(globalEnabledSkillIds)}
+                disabled={allSkillsEnabled}
+                className="gap-1.5"
+              >
+                <ToggleRight className="h-3.5 w-3.5" />
+                Enable All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSkillIds([])}
+                disabled={noSkillsEnabled}
+                className="gap-1.5"
+              >
+                <ToggleLeft className="h-3.5 w-3.5" />
+                Disable All
+              </Button>
+              {isSkillsDifferentFromGlobal && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSkillIds(globalEnabledSkillIds)}
+                  className="gap-1.5"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reset to Global
+                </Button>
+              )}
+            </div>
+          )}
+
+          {hasNoSkills ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Zap className="h-8 w-8 text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
@@ -993,37 +1155,29 @@ export function AssistantDialog({
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {enabledSkills.map((skill) => (
-                <div key={skill.id} className="flex items-center justify-between py-2 pl-2">
-                  <div className="grid gap-1">
-                    <label
-                      htmlFor={`skill-${skill.id}`}
-                      className="text-sm font-medium leading-none cursor-pointer"
-                    >
-                      {skill.icon && <span className="mr-1.5">{skill.icon}</span>}
-                      {skill.name}
-                    </label>
-                    {skill.description && (
-                      <p className="text-xs text-muted-foreground max-w-[380px]">
-                        {skill.description}
-                      </p>
-                    )}
-                    {skill.required_tool_ids.length > 0 && (
-                      <p className="text-xs text-muted-foreground/60">
-                        Requires {skill.required_tool_ids.length} tool
-                        {skill.required_tool_ids.length !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                  </div>
-                  <Switch
-                    id={`skill-${skill.id}`}
-                    checked={skillIds.includes(skill.id)}
-                    onCheckedChange={(checked) => handleToggleSkill(skill.id, checked === true)}
-                  />
+            <>
+              {builtinSkillsList.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Built-in Skills
+                  </h4>
+                  {builtinSkillsList.map(renderSkillItem)}
                 </div>
-              ))}
-            </div>
+              )}
+
+              {builtinSkillsList.length > 0 && userSkillsList.length > 0 && <Separator />}
+
+              {userSkillsList.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    User Skills
+                  </h4>
+                  {userSkillsList.map(renderSkillItem)}
+                </div>
+              )}
+            </>
           )}
 
           {skillIds.length > 0 && (
