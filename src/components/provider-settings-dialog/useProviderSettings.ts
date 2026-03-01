@@ -83,6 +83,9 @@ export function useProviderSettings(
     onOpenChange,
   })
 
+  // 7. Manual add model dialog state
+  const [addModelDialogOpen, setAddModelDialogOpen] = React.useState(false)
+
   const handleModelSettings = React.useCallback((model: ModelItem) => {
     logger.info('Model settings:', model)
   }, [])
@@ -116,6 +119,10 @@ export function useProviderSettings(
     // Save
     isSaving: save.isSaving,
 
+    // Manual add model dialog
+    addModelDialogOpen,
+    setAddModelDialogOpen,
+
     // Handlers
     handleUpdateModelName: modelList.handleUpdateModelName,
     handleDeleteModel: modelList.handleDeleteModel,
@@ -123,6 +130,7 @@ export function useProviderSettings(
     handleFetchModels: fetchModels.handleFetchModels,
     handleOpenFetchModal: fetchModels.handleOpenFetchModal,
     handleToggleImportModel: modelList.handleToggleImportModel,
+    handleAddManualModel: modelList.handleAddManualModel,
     isModelImported: modelList.isModelImported,
     handleSave: save.handleSave,
 

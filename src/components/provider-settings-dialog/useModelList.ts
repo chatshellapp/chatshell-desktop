@@ -12,6 +12,7 @@ export interface UseModelListReturn {
   handleUpdateModelName: (id: string, newDisplayName: string) => void
   handleDeleteModel: (id: string) => void
   handleToggleImportModel: (model: ModelInfo) => void
+  handleAddManualModel: (modelId: string, displayName?: string) => boolean
   isModelImported: (rawModelId: string) => boolean
 }
 
@@ -85,6 +86,27 @@ export function useModelList(): UseModelListReturn {
     [modelsToDelete, storeModels]
   )
 
+  const handleAddManualModel = React.useCallback(
+    (modelId: string, displayName?: string): boolean => {
+      const trimmedId = modelId.trim()
+      if (!trimmedId) return false
+
+      const alreadyExists = models.some((m) => m.modelId === trimmedId)
+      if (alreadyExists) return false
+
+      setModels((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          displayName: displayName?.trim() || trimmedId,
+          modelId: trimmedId,
+        },
+      ])
+      return true
+    },
+    [models]
+  )
+
   const isModelImported = React.useCallback(
     (rawModelId: string) => {
       return models.some((m) => m.modelId === rawModelId)
@@ -102,6 +124,7 @@ export function useModelList(): UseModelListReturn {
     handleUpdateModelName,
     handleDeleteModel,
     handleToggleImportModel,
+    handleAddManualModel,
     isModelImported,
   }
 }

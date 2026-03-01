@@ -28,6 +28,7 @@ interface FetchModelsDialogProps {
   onToggleImportModel: (model: ModelInfo) => void
   isModelImported: (rawModelId: string) => boolean
   onRetry: () => void
+  onAddManually: () => void
 }
 
 export function FetchModelsDialog({
@@ -43,6 +44,7 @@ export function FetchModelsDialog({
   onToggleImportModel,
   isModelImported,
   onRetry,
+  onAddManually,
 }: FetchModelsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -74,10 +76,15 @@ export function FetchModelsDialog({
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
-              <p className="text-sm text-destructive mb-2">{fetchError}</p>
-              <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
+              <p className="text-sm text-destructive mb-3">{fetchError}</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onRetry}>
+                  Retry
+                </Button>
+                <Button variant="outline" size="sm" onClick={onAddManually}>
+                  Add Manually
+                </Button>
+              </div>
             </div>
           ) : availableModels.length > 0 ? (
             <div className="space-y-3">

@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal, ListChecks } from 'lucide-react'
+import { MoreHorizontal, ListChecks, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +26,7 @@ interface ModelsTableProps {
   selectedProvider: LLMProvider
   apiKey: string
   onOpenFetchModal: () => void
+  onOpenAddModelDialog: () => void
   onUpdateModelName: (id: string, newDisplayName: string) => void
   onDeleteModel: (id: string) => void
   onModelSettings: (model: ModelItem) => void
@@ -36,6 +37,7 @@ export function ModelsTable({
   selectedProvider,
   apiKey,
   onOpenFetchModal,
+  onOpenAddModelDialog,
   onUpdateModelName,
   onDeleteModel,
   onModelSettings,
@@ -44,19 +46,25 @@ export function ModelsTable({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>Models</Label>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onOpenFetchModal}
-          disabled={
-            !isSupportedFetchProvider(selectedProvider.id) ||
-            (selectedProvider.id !== 'ollama' && !apiKey)
-          }
-        >
-          <ListChecks className="size-4 mr-2" />
-          Manage Models
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onOpenAddModelDialog}>
+            <Plus className="size-4 mr-2" />
+            Add Model
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onOpenFetchModal}
+            disabled={
+              !isSupportedFetchProvider(selectedProvider.id) ||
+              (selectedProvider.id !== 'ollama' && !apiKey)
+            }
+          >
+            <ListChecks className="size-4 mr-2" />
+            Manage Models
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>

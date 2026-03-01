@@ -86,6 +86,10 @@ export interface UseProviderSettingsReturn {
   storeProviders: Provider[]
   isDataLoaded: boolean
 
+  // Manual add model dialog
+  addModelDialogOpen: boolean
+  setAddModelDialogOpen: (open: boolean) => void
+
   // Handlers
   handleUpdateModelName: (id: string, newDisplayName: string) => void
   handleDeleteModel: (id: string) => void
@@ -93,6 +97,7 @@ export interface UseProviderSettingsReturn {
   handleFetchModels: () => Promise<void>
   handleOpenFetchModal: () => void
   handleToggleImportModel: (model: ModelInfo) => void
+  handleAddManualModel: (modelId: string, displayName?: string) => boolean
   isModelImported: (rawModelId: string) => boolean
   handleSave: () => Promise<void>
 

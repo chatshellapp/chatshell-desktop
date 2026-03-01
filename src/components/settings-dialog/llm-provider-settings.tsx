@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { ProviderForm } from '@/components/provider-settings-dialog/provider-form'
 import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
+import { AddModelDialog } from '@/components/provider-settings-dialog/add-model-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
 import {
   BUILTIN_PROVIDERS,
@@ -59,12 +60,15 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     modelsToDelete,
     originalModelNames,
     storeProviders,
+    addModelDialogOpen,
+    setAddModelDialogOpen,
     handleUpdateModelName,
     handleDeleteModel,
     handleModelSettings,
     handleFetchModels,
     handleOpenFetchModal,
     handleToggleImportModel,
+    handleAddManualModel,
     isModelImported,
     handleSave,
     groupedModels,
@@ -210,6 +214,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
               selectedProvider={selectedProvider}
               apiKey={apiKey}
               onOpenFetchModal={handleOpenFetchModal}
+              onOpenAddModelDialog={() => setAddModelDialogOpen(true)}
               onUpdateModelName={handleUpdateModelName}
               onDeleteModel={handleDeleteModel}
               onModelSettings={handleModelSettings}
@@ -248,6 +253,17 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
         onToggleImportModel={handleToggleImportModel}
         isModelImported={isModelImported}
         onRetry={handleFetchModels}
+        onAddManually={() => {
+          setFetchModalOpen(false)
+          setAddModelDialogOpen(true)
+        }}
+      />
+
+      {/* Manual Add Model Dialog */}
+      <AddModelDialog
+        open={addModelDialogOpen}
+        onOpenChange={setAddModelDialogOpen}
+        onAddModel={handleAddManualModel}
       />
     </div>
   )

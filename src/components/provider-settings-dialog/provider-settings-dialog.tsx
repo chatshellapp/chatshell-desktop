@@ -26,6 +26,7 @@ import { ProviderSidebar } from './provider-sidebar'
 import { ProviderForm } from './provider-form'
 import { ModelsTable } from './models-table'
 import { FetchModelsDialog } from './fetch-models-dialog'
+import { AddModelDialog } from './add-model-dialog'
 
 export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
   const {
@@ -58,12 +59,15 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     modelsToDelete,
     originalModelNames,
     storeProviders,
+    addModelDialogOpen,
+    setAddModelDialogOpen,
     handleUpdateModelName,
     handleDeleteModel,
     handleModelSettings,
     handleFetchModels,
     handleOpenFetchModal,
     handleToggleImportModel,
+    handleAddManualModel,
     isModelImported,
     handleSave,
     groupedModels,
@@ -182,6 +186,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   selectedProvider={selectedProvider}
                   apiKey={apiKey}
                   onOpenFetchModal={handleOpenFetchModal}
+                  onOpenAddModelDialog={() => setAddModelDialogOpen(true)}
                   onUpdateModelName={handleUpdateModelName}
                   onDeleteModel={handleDeleteModel}
                   onModelSettings={handleModelSettings}
@@ -223,6 +228,17 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         onToggleImportModel={handleToggleImportModel}
         isModelImported={isModelImported}
         onRetry={handleFetchModels}
+        onAddManually={() => {
+          setFetchModalOpen(false)
+          setAddModelDialogOpen(true)
+        }}
+      />
+
+      {/* Manual Add Model Dialog */}
+      <AddModelDialog
+        open={addModelDialogOpen}
+        onOpenChange={setAddModelDialogOpen}
+        onAddModel={handleAddManualModel}
       />
     </Dialog>
   )
