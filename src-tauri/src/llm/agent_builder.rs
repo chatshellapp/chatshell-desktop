@@ -159,12 +159,13 @@ type GaladrielCompletionModel = galadriel::CompletionModel;
 type GeminiCompletionModel = gemini::completion::CompletionModel;
 type GroqCompletionModel = groq::CompletionModel;
 type HyperbolicCompletionModel = hyperbolic::CompletionModel;
-// MiniMax uses OpenAI-compatible API; reuse moonshot's CompletionModel
-type MiniMaxCompletionModel = moonshot::CompletionModel;
+// MiniMax uses OpenAI-compatible API with string content format
+type MiniMaxCompletionModel = crate::llm::openai_compat::CompletionModel;
 type MiraCompletionModel = mira::CompletionModel;
 type MistralCompletionModel = mistral::CompletionModel;
 type MoonshotCompletionModel = moonshot::CompletionModel;
 type OllamaCompletionModel = ollama::CompletionModel;
+type OpenAICompatCompletionModel = crate::llm::openai_compat::CompletionModel;
 // OpenAI uses ResponsesCompletionModel by default for agent()
 type OpenAICompletionModel = openai::responses_api::ResponsesCompletionModel;
 type OpenRouterCompletionModel = openrouter::CompletionModel;
@@ -186,6 +187,7 @@ pub enum ProviderAgent {
     MiniMax(Agent<MiniMaxCompletionModel>),
     MiniMaxCn(Agent<MiniMaxCompletionModel>),
     Mira(Agent<MiraCompletionModel>),
+    OpenAICompat(Agent<OpenAICompatCompletionModel>),
     Mistral(Agent<MistralCompletionModel>),
     Moonshot(Agent<MoonshotCompletionModel>),
     Ollama(Agent<OllamaCompletionModel>),
@@ -223,13 +225,14 @@ pub fn create_openai_agent(
 }
 
 /// Create an agent for custom OpenAI-compatible providers using the Chat Completions API.
-/// Reuses moonshot::Client which implements the standard OpenAI chat completions format.
+/// Uses openai_compat::CompletionModel which serializes content as plain strings for
+/// maximum compatibility with providers that don't support structured content arrays.
 fn create_custom_openai_chat_completions_agent(
     api_key: &str,
     base_url: &str,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<MoonshotCompletionModel>> {
+) -> Result<Agent<OpenAICompatCompletionModel>> {
     let http_client = create_http_client();
     let client = moonshot::Client::<reqwest::Client>::builder()
         .api_key(api_key)
@@ -237,7 +240,8 @@ fn create_custom_openai_chat_completions_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
+    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
 }
 
 /// Create an OpenRouter agent with full configuration
@@ -425,7 +429,7 @@ pub fn create_hyperbolic_agent(
 }
 
 /// Create a MiniMax agent with full configuration (international version)
-/// MiniMax uses OpenAI-compatible API, so we reuse moonshot's client.
+/// Uses openai_compat::CompletionModel for proper string content serialization.
 pub fn create_minimax_agent(
     api_key: &str,
     base_url: Option<&str>,
@@ -439,11 +443,12 @@ pub fn create_minimax_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
+    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
 }
 
 /// Create a MiniMax CN agent with full configuration (China version)
-/// MiniMax CN uses OpenAI-compatible API, so we reuse moonshot's client.
+/// Uses openai_compat::CompletionModel for proper string content serialization.
 pub fn create_minimax_cn_agent(
     api_key: &str,
     base_url: Option<&str>,
@@ -457,7 +462,8 @@ pub fn create_minimax_cn_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
+    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
 }
 
 /// Create a Mira agent with full configuration
@@ -872,8 +878,7 @@ pub fn create_provider_agent(
                 anyhow::anyhow!("Base URL is required for custom OpenAI-compatible providers")
             })?;
             if api_style == Some("chat_completions") {
-                // Chat Completions API: reuse moonshot client (OpenAI-compatible)
-                Ok(ProviderAgent::Moonshot(
+                Ok(ProviderAgent::OpenAICompat(
                     create_custom_openai_chat_completions_agent(key, url, model_id, config)?,
                 ))
             } else {
@@ -942,6 +947,7 @@ pub async fn stream_chat_with_agent(
         ProviderAgent::Moonshot(a) => stream!(a),
         ProviderAgent::Ollama(a) => stream!(a),
         ProviderAgent::OpenAI(a) => stream!(a),
+        ProviderAgent::OpenAICompat(a) => stream!(a),
         ProviderAgent::OpenRouter(a) => stream!(a),
         ProviderAgent::Perplexity(a) => stream!(a),
         ProviderAgent::Together(a) => stream!(a),

@@ -1,0 +1,390 @@
+//! OpenAI Chat Completions-compatible CompletionModel.
+//!
+//! Provides a universally compatible implementation that serializes message `content`
+//! as plain strings instead of rig's `OneOrMany<T>` arrays. This ensures compatibility
+//! with providers that only accept the simple string format (e.g. MiniMax CN).
+//!
+//! Uses `moonshot::Client` for HTTP transport and reuses OpenAI response types.
+
+use rig::completion::{self, CompletionError, CompletionRequest};
+use rig::http_client::{self, HttpClientExt};
+use rig::message::{self, AssistantContent, DocumentSourceKind, UserContent};
+use rig::providers::moonshot;
+use rig::providers::openai::{self, send_compatible_streaming_request};
+use rig::streaming::StreamingCompletionResponse;
+use serde::{Deserialize, Deserializer, Serialize};
+use tracing::{Instrument, info_span};
+
+fn deserialize_null_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let opt: Option<Vec<T>> = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
+
+/// Merge two JSON values (second overwrites first for conflicts).
+fn merge_json(base: serde_json::Value, overrides: serde_json::Value) -> serde_json::Value {
+    match (base, overrides) {
+        (serde_json::Value::Object(mut a), serde_json::Value::Object(b)) => {
+            for (k, v) in b {
+                a.insert(k, v);
+            }
+            serde_json::Value::Object(a)
+        }
+        (_, b) => b,
+    }
+}
+
+// ================================================================
+// Message types with string content (OpenAI-compatible)
+// ================================================================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum SimpleMessage {
+    System {
+        content: String,
+    },
+    User {
+        content: String,
+    },
+    Assistant {
+        content: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Vec::is_empty",
+            deserialize_with = "deserialize_null_or_vec"
+        )]
+        tool_calls: Vec<openai::ToolCall>,
+    },
+    #[serde(rename = "tool")]
+    ToolResult {
+        tool_call_id: String,
+        content: String,
+    },
+}
+
+impl SimpleMessage {
+    pub fn system(content: impl Into<String>) -> Self {
+        SimpleMessage::System {
+            content: content.into(),
+        }
+    }
+}
+
+/// Convert a rig `Message` into one or more `SimpleMessage`s.
+/// Tool results are split into separate messages (one per tool result).
+fn convert_message(msg: message::Message) -> Vec<SimpleMessage> {
+    match msg {
+        message::Message::User { content } => {
+            let (tool_results, other): (Vec<_>, Vec<_>) = content
+                .into_iter()
+                .partition(|c| matches!(c, UserContent::ToolResult(_)));
+
+            if !tool_results.is_empty() {
+                tool_results
+                    .into_iter()
+                    .filter_map(|c| {
+                        if let UserContent::ToolResult(tr) = c {
+                            let text = tr
+                                .content
+                                .iter()
+                                .filter_map(|tc| match tc {
+                                    message::ToolResultContent::Text(t) => Some(t.text.clone()),
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            Some(SimpleMessage::ToolResult {
+                                tool_call_id: tr.id,
+                                content: text,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            } else {
+                let text = other
+                    .iter()
+                    .filter_map(|c| match c {
+                        UserContent::Text(t) => Some(t.text.clone()),
+                        UserContent::Document(doc) => match &doc.data {
+                            DocumentSourceKind::String(s) | DocumentSourceKind::Base64(s) => {
+                                Some(s.clone())
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                vec![SimpleMessage::User { content: text }]
+            }
+        }
+        message::Message::Assistant { content, .. } => {
+            let (text_parts, tool_calls): (Vec<_>, Vec<_>) = content
+                .into_iter()
+                .partition(|c| !matches!(c, AssistantContent::ToolCall(_)));
+
+            let text = text_parts
+                .iter()
+                .filter_map(|c| match c {
+                    AssistantContent::Text(t) => Some(t.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("");
+
+            let tc: Vec<openai::ToolCall> = tool_calls
+                .into_iter()
+                .filter_map(|c| {
+                    if let AssistantContent::ToolCall(tc) = c {
+                        Some(tc.into())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            vec![SimpleMessage::Assistant {
+                content: text,
+                tool_calls: tc,
+            }]
+        }
+    }
+}
+
+// ================================================================
+// Request type
+// ================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CompatCompletionRequest {
+    model: String,
+    messages: Vec<SimpleMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<openai::ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<openai::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<serde_json::Value>,
+}
+
+impl TryFrom<(&str, CompletionRequest)> for CompatCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let mut partial_history = vec![];
+        if let Some(docs) = req.normalized_documents() {
+            partial_history.push(docs);
+        }
+        partial_history.extend(req.chat_history);
+
+        let mut full_history: Vec<SimpleMessage> = match &req.preamble {
+            Some(preamble) => vec![SimpleMessage::system(preamble)],
+            None => vec![],
+        };
+
+        for msg in partial_history {
+            full_history.extend(convert_message(msg));
+        }
+
+        let tool_choice = req
+            .tool_choice
+            .map(openai::ToolChoice::try_from)
+            .transpose()?;
+
+        Ok(Self {
+            model: model.to_string(),
+            messages: full_history,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+            tools: req
+                .tools
+                .into_iter()
+                .map(openai::ToolDefinition::from)
+                .collect(),
+            tool_choice,
+            additional_params: req.additional_params,
+        })
+    }
+}
+
+// ================================================================
+// Response parsing (reuse moonshot/openai types)
+// ================================================================
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorResponse {
+    error: CompatError,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompatError {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
+
+// ================================================================
+// CompletionModel implementation
+// ================================================================
+
+#[derive(Clone)]
+pub struct CompletionModel<T = reqwest::Client> {
+    client: moonshot::Client<T>,
+    pub model: String,
+}
+
+impl<T> CompletionModel<T> {
+    pub fn new(client: moonshot::Client<T>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    type Response = openai::CompletionResponse;
+    type StreamingResponse = openai::StreamingCompletionResponse;
+    type Client = moonshot::Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
+        let preamble = completion_request.preamble.clone();
+        let request = CompatCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+
+        tracing::trace!(
+            "OpenAI-compat API input: {request}",
+            request = serde_json::to_string_pretty(&request).unwrap()
+        );
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.system_instructions = preamble,
+                gen_ai.request.model = self.model,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        let body = serde_json::to_vec(&request)?;
+        let req = self
+            .client
+            .post("/chat/completions")?
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
+        let async_block = async move {
+            let response = self.client.send(req).await?;
+
+            let status = response.status();
+            let response_text = http_client::text(response).await?;
+
+            if status.is_success() {
+                match serde_json::from_str::<ApiResponse<openai::CompletionResponse>>(
+                    &response_text,
+                )? {
+                    ApiResponse::Ok(response) => {
+                        tracing::trace!(
+                            target: "rig::completions",
+                            "OpenAI-compat completion response: {}",
+                            serde_json::to_string_pretty(&response)?
+                        );
+                        response.try_into()
+                    }
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),
+                }
+            } else {
+                Err(CompletionError::ProviderError(format!(
+                    "Invalid status code {} with message: {}",
+                    status, response_text
+                )))
+            }
+        };
+
+        async_block.instrument(span).await
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let preamble = request.preamble.clone();
+        let mut request = CompatCompletionRequest::try_from((self.model.as_ref(), request))?;
+
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat",
+                gen_ai.system_instructions = preamble,
+                gen_ai.request.model = self.model,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
+        let params = merge_json(
+            request.additional_params.unwrap_or(serde_json::json!({})),
+            serde_json::json!({"stream": true}),
+        );
+        request.additional_params = Some(params);
+
+        tracing::info!(
+            "OpenAI-compat streaming request: {}",
+            serde_json::to_string_pretty(&request).unwrap_or_default()
+        );
+
+        let body = serde_json::to_vec(&request)?;
+        let mut req = self
+            .client
+            .post("/chat/completions")?
+            .body(body)
+            .map_err(http_client::Error::from)?;
+
+        // rig's send_compatible_streaming_request bypasses Client::send() which normally
+        // sets Content-Type. Some providers (e.g. MiniMax) require it to parse the body.
+        req.headers_mut().insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("application/json"),
+        );
+
+        send_compatible_streaming_request(self.client.http_client().clone(), req)
+            .instrument(span)
+            .await
+    }
+}

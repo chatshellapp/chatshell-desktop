@@ -200,10 +200,9 @@ async fn migrate_v6_to_v7(pool: &SqlitePool) -> Result<()> {
 
 /// Ensure api_style column exists in providers (idempotent)
 async fn ensure_api_style_column(pool: &SqlitePool) -> Result<()> {
-    let columns: Vec<(String,)> =
-        sqlx::query_as("SELECT name FROM pragma_table_info('providers')")
-            .fetch_all(pool)
-            .await?;
+    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('providers')")
+        .fetch_all(pool)
+        .await?;
 
     let has_column = columns.iter().any(|(name,)| name == "api_style");
 
