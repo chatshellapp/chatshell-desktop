@@ -133,6 +133,7 @@ export interface MessageStoreCrudActions {
   ) => Promise<void>
   stopGeneration: (conversationId: string) => Promise<void>
   clearMessages: (conversationId: string) => Promise<void>
+  deleteMessagesFrom: (conversationId: string, messageId: string) => Promise<void>
   addMessage: (conversationId: string, message: Message) => void
   setAttachmentStatus: (
     conversationId: string,

@@ -37,3 +37,16 @@ pub async fn clear_messages_by_conversation(
         .await
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn delete_messages_from(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+) -> Result<(), String> {
+    state
+        .db
+        .delete_messages_from(&conversation_id, &message_id)
+        .await
+        .map_err(|e| e.to_string())
+}

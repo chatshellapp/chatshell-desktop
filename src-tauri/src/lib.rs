@@ -165,6 +165,7 @@ pub fn run() {
             commands::create_message,
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
+            commands::delete_messages_from,
             // User Attachments (files)
             commands::get_message_attachments,
             commands::get_file_attachment,

@@ -22,8 +22,7 @@ interface MessageItemProps {
   urlStatuses: Record<string, Record<string, UrlStatus>>
   getMessageDisplayInfo: (message: Message) => DisplayInfo
   onCopy: () => void
-  onResend: () => void
-  onTranslate: () => void
+  onRevert: (messageId: string) => void
   onExportAll: () => void
   onExportConversation: () => void
   onExportMessage: (messageId: string) => void
@@ -37,8 +36,7 @@ export function MessageItem({
   urlStatuses,
   getMessageDisplayInfo,
   onCopy,
-  onResend,
-  onTranslate,
+  onRevert,
   onExportAll,
   onExportConversation,
   onExportMessage,
@@ -188,8 +186,7 @@ export function MessageItem({
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
         headerContent={headerContent}
         onCopy={onCopy}
-        onResend={onResend}
-        onTranslate={onTranslate}
+        onRevert={() => onRevert(message.id)}
         onExportAll={onExportAll}
         onExportConversation={onExportConversation}
         onExportMessage={() => onExportMessage(message.id)}

@@ -24,8 +24,6 @@ interface StreamingMessageProps {
   isReasoningActive: boolean
   getDisplayInfo: () => DisplayInfo
   onCopy: () => void
-  onResend: () => void
-  onTranslate: () => void
   onExportAll: () => void
   onExportConversation: () => void
   onExportMessage: () => void
@@ -44,8 +42,6 @@ export function StreamingMessage({
   isReasoningActive,
   getDisplayInfo,
   onCopy,
-  onResend,
-  onTranslate,
   onExportAll,
   onExportConversation,
   onExportMessage,
@@ -322,8 +318,6 @@ export function StreamingMessage({
       isStreaming={true}
       headerContent={streamingHeaderContent}
       onCopy={onCopy}
-      onResend={onResend}
-      onTranslate={onTranslate}
       onExportAll={onExportAll}
       onExportConversation={onExportConversation}
       onExportMessage={onExportMessage}

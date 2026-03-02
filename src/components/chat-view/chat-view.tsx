@@ -70,8 +70,7 @@ export function ChatView() {
 
   const {
     handleCopy,
-    handleResend,
-    handleTranslate,
+    handleRevert,
     handleExportAll,
     handleExportConversation,
     handleExportMessage,
@@ -114,8 +113,7 @@ export function ChatView() {
                 urlStatuses={urlStatuses}
                 getMessageDisplayInfo={getMessageDisplayInfo}
                 onCopy={handleCopy}
-                onResend={handleResend}
-                onTranslate={handleTranslate}
+                onRevert={handleRevert}
                 onExportAll={handleExportAll}
                 onExportConversation={handleExportConversation}
                 onExportMessage={handleExportMessage}
@@ -135,8 +133,6 @@ export function ChatView() {
                 isReasoningActive={isReasoningActive}
                 getDisplayInfo={getDisplayInfo}
                 onCopy={handleCopy}
-                onResend={handleResend}
-                onTranslate={handleTranslate}
                 onExportAll={handleExportAll}
                 onExportConversation={handleExportConversation}
                 onExportMessage={() => {}}

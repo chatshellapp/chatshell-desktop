@@ -228,6 +228,27 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     }
   },
 
+  deleteMessagesFrom: async (conversationId: string, messageId: string) => {
+    get().getConversationState(conversationId)
+
+    try {
+      await invoke('delete_messages_from', { conversationId, messageId })
+
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          const idx = convState.messages.findIndex((m: Message) => m.id === messageId)
+          if (idx >= 0) {
+            convState.messages = convState.messages.slice(0, idx)
+          }
+        }
+      })
+    } catch (error) {
+      logger.error('[messageStore] Failed to delete messages from:', error)
+      throw error
+    }
+  },
+
   addMessage: (conversationId: string, message: Message) => {
     logger.info('[messageStore] Adding message to conversation:', conversationId)
     get().getConversationState(conversationId) // Ensure state exists

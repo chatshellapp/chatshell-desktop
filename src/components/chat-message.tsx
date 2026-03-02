@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, Languages, Undo, Scan, Check } from 'lucide-react'
+import { Copy, Undo, Scan, Check } from 'lucide-react'
 import { useState, memo, useCallback } from 'react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { ModelAvatar } from '@/components/model-avatar'
@@ -76,8 +76,7 @@ interface ChatMessageProps {
    */
   headerContent?: React.ReactNode
   onCopy?: () => void
-  onResend?: () => void
-  onTranslate?: () => void
+  onRevert?: () => void
   onExportAll?: () => void
   onExportConversation?: () => void
   onExportMessage?: () => void
@@ -104,8 +103,7 @@ export const ChatMessage = memo(function ChatMessage({
   isStreaming = false,
   headerContent,
   onCopy,
-  onResend,
-  onTranslate,
+  onRevert,
   onExportAll,
   onExportConversation,
   onExportMessage,
@@ -197,12 +195,12 @@ export const ChatMessage = memo(function ChatMessage({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onResend}>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRevert}>
                   <Undo className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Revert</p>
+                <p>Resend</p>
               </TooltipContent>
             </Tooltip>
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
@@ -277,16 +275,6 @@ export const ChatMessage = memo(function ChatMessage({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{isCopied ? 'Copied!' : 'Copy'}</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onTranslate}>
-                  <Languages className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Translate</p>
               </TooltipContent>
             </Tooltip>
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
