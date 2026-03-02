@@ -71,6 +71,10 @@ pub struct AgentConfig {
     pub enable_grep: bool,
     /// Enable built-in glob (file pattern matching) tool
     pub enable_glob: bool,
+    /// Default working directory for grep tool
+    pub grep_working_directory: Option<String>,
+    /// Default working directory for glob tool
+    pub glob_working_directory: Option<String>,
 }
 
 impl AgentConfig {
@@ -162,6 +166,18 @@ impl AgentConfig {
     /// Enable the built-in glob (file pattern matching) tool
     pub fn with_glob(mut self) -> Self {
         self.enable_glob = true;
+        self
+    }
+
+    /// Set the default working directory for grep tool
+    pub fn with_grep_working_directory(mut self, dir: String) -> Self {
+        self.grep_working_directory = Some(dir);
+        self
+    }
+
+    /// Set the default working directory for glob tool
+    pub fn with_glob_working_directory(mut self, dir: String) -> Self {
+        self.glob_working_directory = Some(dir);
         self
     }
 
@@ -682,6 +698,24 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
     };
 
+    let create_grep_tool = || -> GrepTool {
+        if let Some(ref dir) = config.grep_working_directory {
+            tracing::info!("🔎 Grep tool configured with working directory: {}", dir);
+            GrepTool::with_working_directory(dir.clone())
+        } else {
+            GrepTool::new()
+        }
+    };
+
+    let create_glob_tool = || -> GlobTool {
+        if let Some(ref dir) = config.glob_working_directory {
+            tracing::info!("📂 Glob tool configured with working directory: {}", dir);
+            GlobTool::with_working_directory(dir.clone())
+        } else {
+            GlobTool::new()
+        }
+    };
+
     // Once we have a simple builder (after the first .tool() call), this macro
     // chains all remaining enabled tools, adds MCP tools if any, and builds.
     macro_rules! finish_with_simple_builder {
@@ -723,11 +757,11 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(GrepTool::new());
+            sb = sb.tool(create_grep_tool());
         }
         if config.enable_glob {
             tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(GlobTool::new());
+            sb = sb.tool(create_glob_tool());
         }
         finish_with_simple_builder!(sb);
     }
@@ -745,11 +779,11 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(GrepTool::new());
+            sb = sb.tool(create_grep_tool());
         }
         if config.enable_glob {
             tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(GlobTool::new());
+            sb = sb.tool(create_glob_tool());
         }
         finish_with_simple_builder!(sb);
     }
@@ -763,11 +797,11 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(GrepTool::new());
+            sb = sb.tool(create_grep_tool());
         }
         if config.enable_glob {
             tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(GlobTool::new());
+            sb = sb.tool(create_glob_tool());
         }
         finish_with_simple_builder!(sb);
     }
@@ -777,28 +811,28 @@ fn build_agent_with_tools<M: CompletionModel>(
         let mut sb = builder.tool(ReadTool::new());
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(GrepTool::new());
+            sb = sb.tool(create_grep_tool());
         }
         if config.enable_glob {
             tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(GlobTool::new());
+            sb = sb.tool(create_glob_tool());
         }
         finish_with_simple_builder!(sb);
     }
 
     if config.enable_grep {
         tracing::info!("🔎 Adding grep tool to agent");
-        let mut sb = builder.tool(GrepTool::new());
+        let mut sb = builder.tool(create_grep_tool());
         if config.enable_glob {
             tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(GlobTool::new());
+            sb = sb.tool(create_glob_tool());
         }
         finish_with_simple_builder!(sb);
     }
 
     if config.enable_glob {
         tracing::info!("📂 Adding glob tool to agent");
-        let sb = builder.tool(GlobTool::new());
+        let sb = builder.tool(create_glob_tool());
         finish_with_simple_builder!(sb);
     }
 

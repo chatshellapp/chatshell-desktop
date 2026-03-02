@@ -24,11 +24,20 @@ pub struct GlobArgs {
 pub struct GlobError(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct GlobTool;
+pub struct GlobTool {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_path: Option<String>,
+}
 
 impl GlobTool {
     pub fn new() -> Self {
-        Self
+        Self { default_path: None }
+    }
+
+    pub fn with_working_directory(path: String) -> Self {
+        Self {
+            default_path: Some(path),
+        }
     }
 }
 
@@ -40,6 +49,15 @@ impl Tool for GlobTool {
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let path_description = if let Some(ref default_dir) = self.default_path {
+            format!(
+                "Root directory to search from (defaults to: {})",
+                default_dir
+            )
+        } else {
+            "Root directory to search from (defaults to home directory)".to_string()
+        };
+
         ToolDefinition {
             name: "glob".to_string(),
             description: "Find files matching a glob pattern. \
@@ -57,7 +75,7 @@ impl Tool for GlobTool {
                     },
                     "path": {
                         "type": "string",
-                        "description": "Root directory to search from. Defaults to home directory."
+                        "description": path_description
                     }
                 },
                 "required": ["pattern"]
@@ -72,7 +90,7 @@ impl Tool for GlobTool {
             args.path
         );
 
-        let base_dir = args.path.unwrap_or_else(|| {
+        let base_dir = args.path.or(self.default_path.clone()).unwrap_or_else(|| {
             dirs::home_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| ".".to_string())

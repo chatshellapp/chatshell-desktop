@@ -10,6 +10,19 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 const MAX_OUTPUT_CHARS: usize = 50000;
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+const EXCLUDED_DIRS: &[&str] = &[
+    "target",
+    "node_modules",
+    ".git",
+    "build",
+    "dist",
+    ".next",
+    "__pycache__",
+    ".cache",
+    "vendor",
+];
 
 /// Arguments for the grep tool
 #[derive(Debug, Clone, Deserialize)]
@@ -38,11 +51,20 @@ pub struct GrepArgs {
 pub struct GrepError(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct GrepTool;
+pub struct GrepTool {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_path: Option<String>,
+}
 
 impl GrepTool {
     pub fn new() -> Self {
-        Self
+        Self { default_path: None }
+    }
+
+    pub fn with_working_directory(path: String) -> Self {
+        Self {
+            default_path: Some(path),
+        }
     }
 }
 
@@ -54,6 +76,15 @@ impl Tool for GrepTool {
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let path_description = if let Some(ref default_dir) = self.default_path {
+            format!(
+                "File or directory to search in (defaults to: {})",
+                default_dir
+            )
+        } else {
+            "File or directory to search in (defaults to home directory)".to_string()
+        };
+
         ToolDefinition {
             name: "grep".to_string(),
             description: "Search file contents using regular expressions. \
@@ -71,7 +102,7 @@ impl Tool for GrepTool {
                     },
                     "path": {
                         "type": "string",
-                        "description": "File or directory to search in. Defaults to home directory."
+                        "description": path_description
                     },
                     "glob": {
                         "type": "string",
@@ -103,19 +134,35 @@ impl Tool for GrepTool {
             args.glob
         );
 
-        let search_path = args.path.clone().unwrap_or_else(|| {
+        let search_path = args.path.clone().or(self.default_path.clone()).unwrap_or_else(|| {
             dirs::home_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| ".".to_string())
         });
 
-        // Try ripgrep first, fall back to grep
+        // Try ripgrep first (check multiple paths), fall back to system grep
         let result = run_ripgrep(&args.pattern, &search_path, &args).await;
         match result {
             Ok(output) => Ok(output),
-            Err(_) => run_system_grep(&args.pattern, &search_path, &args).await,
+            Err(rg_err) => {
+                tracing::info!("🔧 [grep] ripgrep unavailable ({}), falling back to system grep", rg_err);
+                run_system_grep(&args.pattern, &search_path, &args).await
+            }
         }
     }
+}
+
+/// Try to find the `rg` binary, checking common Homebrew paths on macOS
+fn find_rg_binary() -> String {
+    for path in &[
+        "/opt/homebrew/bin/rg",
+        "/usr/local/bin/rg",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+    "rg".to_string()
 }
 
 async fn run_ripgrep(
@@ -123,7 +170,8 @@ async fn run_ripgrep(
     search_path: &str,
     args: &GrepArgs,
 ) -> Result<String, GrepError> {
-    let mut cmd = Command::new("rg");
+    let rg_bin = find_rg_binary();
+    let mut cmd = Command::new(&rg_bin);
     cmd.arg("--line-number")
         .arg("--no-heading")
         .arg("--color=never");
@@ -148,10 +196,13 @@ async fn run_ripgrep(
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| GrepError(format!("Failed to execute rg: {}", e)))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+        cmd.output(),
+    )
+    .await
+    .map_err(|_| GrepError("ripgrep timed out".to_string()))?
+    .map_err(|e| GrepError(format!("Failed to execute rg: {}", e)))?;
 
     // rg exit code 1 = no matches (not an error), 2+ = actual error
     if output.status.code() == Some(2) {
@@ -183,6 +234,10 @@ async fn run_system_grep(
     let mut cmd = Command::new("grep");
     cmd.arg("-rn").arg("--color=never");
 
+    for dir in EXCLUDED_DIRS {
+        cmd.arg("--exclude-dir").arg(dir);
+    }
+
     if args.case_insensitive.unwrap_or(false) {
         cmd.arg("-i");
     }
@@ -203,10 +258,18 @@ async fn run_system_grep(
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| GrepError(format!("Failed to execute grep: {}", e)))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+        cmd.output(),
+    )
+    .await
+    .map_err(|_| {
+        GrepError(format!(
+            "grep timed out after {}s (search path may be too large)",
+            DEFAULT_TIMEOUT_SECS
+        ))
+    })?
+    .map_err(|e| GrepError(format!("Failed to execute grep: {}", e)))?;
 
     // grep exit code 1 = no matches
     let mut result = String::from_utf8_lossy(&output.stdout).to_string();

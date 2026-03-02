@@ -270,10 +270,30 @@ pub(crate) async fn handle_agent_streaming(
     if grep_enabled {
         tracing::info!("🔎 [agent_streaming] Enabling grep tool");
         config = config.with_grep();
+
+        if let Some(ref settings) = conv_settings
+            && let Some(ref working_dir) = settings.working_directory
+        {
+            tracing::info!(
+                "📂 [agent_streaming] Setting grep working directory: {}",
+                working_dir
+            );
+            config = config.with_grep_working_directory(working_dir.clone());
+        }
     }
     if glob_enabled {
         tracing::info!("📂 [agent_streaming] Enabling glob tool");
         config = config.with_glob();
+
+        if let Some(ref settings) = conv_settings
+            && let Some(ref working_dir) = settings.working_directory
+        {
+            tracing::info!(
+                "📂 [agent_streaming] Setting glob working directory: {}",
+                working_dir
+            );
+            config = config.with_glob_working_directory(working_dir.clone());
+        }
     }
 
     // Collect MCP server IDs (non-builtin tools)
@@ -283,6 +303,9 @@ pub(crate) async fn handle_agent_streaming(
             *id != &BUILTIN_WEB_SEARCH_ID.to_string()
                 && *id != &BUILTIN_WEB_FETCH_ID.to_string()
                 && *id != &BUILTIN_BASH_ID.to_string()
+                && *id != &BUILTIN_READ_ID.to_string()
+                && *id != &BUILTIN_GREP_ID.to_string()
+                && *id != &BUILTIN_GLOB_ID.to_string()
         })
         .cloned()
         .collect();
