@@ -66,6 +66,11 @@ interface ChatMessageProps {
   userMessageShowBackground?: boolean
   isLoading?: boolean
   /**
+   * Whether this message is part of an active streaming turn.
+   * When true, shows loading spinner at the bottom and hides action buttons.
+   */
+  isStreaming?: boolean
+  /**
    * Content to render after the header (avatar/name) but before the message content.
    * Used for assistant attachments like search_decision and search_result.
    */
@@ -96,6 +101,7 @@ export const ChatMessage = memo(function ChatMessage({
   userMessageAlign = 'right',
   userMessageShowBackground = true,
   isLoading = false,
+  isStreaming = false,
   headerContent,
   onCopy,
   onResend,
@@ -246,9 +252,17 @@ export const ChatMessage = memo(function ChatMessage({
             <MorphSpinner size={16} />
           </div>
         ) : (
-          <MarkdownContent content={content} />
+          <>
+            <MarkdownContent content={content} />
+            {isStreaming && (
+              <div className="flex items-center gap-2 py-2">
+                <MorphSpinner size={16} />
+              </div>
+            )}
+          </>
         )}
       </div>
+      {!isStreaming && (
       <TooltipProvider delayDuration={300}>
         <div
           className={`flex gap-1 transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -296,6 +310,7 @@ export const ChatMessage = memo(function ChatMessage({
           </DropdownMenu>
         </div>
       </TooltipProvider>
+      )}
     </div>
   )
 })

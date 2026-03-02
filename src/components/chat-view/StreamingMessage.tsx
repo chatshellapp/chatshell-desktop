@@ -315,6 +315,7 @@ export function StreamingMessage({
       userMessageAlign={CHAT_CONFIG.userMessageAlign}
       userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
       isLoading={isWaitingForAI || !searchDecisionResolved}
+      isStreaming={true}
       headerContent={streamingHeaderContent}
       onCopy={onCopy}
       onResend={onResend}
