@@ -1,5 +1,19 @@
 import { useState } from 'react'
-import { Wrench, ChevronDown, ChevronUp, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import {
+  Wrench,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  FileText,
+  Terminal,
+  Search,
+  FolderSearch,
+  Globe,
+  Plug,
+} from 'lucide-react'
 import type { ToolCall } from '@/types'
 
 // Re-export StreamingToolCall from store types for consistency
@@ -24,16 +38,38 @@ function formatJson(jsonString: string | undefined): string {
   }
 }
 
-// Get status icon based on tool call status
-function StatusIcon({ status, isStreaming }: { status: string; isStreaming?: boolean }) {
+const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
+  read: FileText,
+  bash: Terminal,
+  grep: Search,
+  glob: FolderSearch,
+  web_fetch: Globe,
+  web_search: Globe,
+}
+
+function getToolIcon(toolName?: string): LucideIcon {
+  if (!toolName) return CheckCircle2
+  return BUILTIN_TOOL_ICONS[toolName] ?? Plug
+}
+
+function StatusIcon({
+  status,
+  isStreaming,
+  toolName,
+}: {
+  status: string
+  isStreaming?: boolean
+  toolName?: string
+}) {
   if (isStreaming || status === 'running' || status === 'pending') {
     return <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
   }
-  if (status === 'success') {
-    return <CheckCircle2 className="h-3.5 w-3.5 text-green-500/80 flex-shrink-0" />
-  }
   if (status === 'error') {
     return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
+  }
+  if (status === 'success') {
+    const Icon = getToolIcon(toolName)
+    return <Icon className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
   }
   return <Wrench className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 }
@@ -89,7 +125,7 @@ export function ToolCallPreview({
           canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
         }`}
       >
-        <StatusIcon status={status} isStreaming={isInProgress} />
+        <StatusIcon status={status} isStreaming={isInProgress} toolName={toolName} />
 
         <span className="text-xs text-muted-foreground truncate font-mono">{toolName}</span>
 
