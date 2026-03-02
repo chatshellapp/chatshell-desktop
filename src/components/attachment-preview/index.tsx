@@ -17,6 +17,7 @@ export { ImageLightbox } from './image-lightbox'
 export { ThinkingPreview } from './thinking-preview'
 export { ToolCallPreview, PendingToolCallPreview } from './tool-call-preview'
 export type { StreamingToolCall } from './tool-call-preview'
+export { CollapsedToolGroup } from './collapsed-tool-group'
 
 // Re-export utilities
 export { getDomain, getFaviconUrl, formatFileSize, isMarkdownFile } from './utils'

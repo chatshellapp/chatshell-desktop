@@ -78,9 +78,8 @@ function StatusIcon({
 function getStatusText(status: string, isStreaming?: boolean): string {
   if (isStreaming || status === 'running') return 'Running...'
   if (status === 'pending') return 'Pending'
-  if (status === 'success') return 'Completed'
   if (status === 'error') return 'Failed'
-  return status
+  return ''
 }
 
 export function ToolCallPreview({
@@ -129,9 +128,11 @@ export function ToolCallPreview({
 
         <span className="text-xs text-muted-foreground truncate font-mono">{toolName}</span>
 
-        <span className="text-xs text-muted-foreground/60 flex-shrink-0">
-          {getStatusText(status, isInProgress)}
-        </span>
+        {getStatusText(status, isInProgress) && (
+          <span className="text-xs text-muted-foreground/60 flex-shrink-0">
+            {getStatusText(status, isInProgress)}
+          </span>
+        )}
 
         {canExpand && (
           <span className="flex items-center text-muted-foreground/60 flex-shrink-0">

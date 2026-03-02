@@ -4,10 +4,13 @@ import {
   ThinkingPreview,
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
+import { ToolCallPreview } from '@/components/attachment-preview/tool-call-preview'
+import { CollapsedToolGroup } from '@/components/attachment-preview/collapsed-tool-group'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
 import { isContentBlock, isThinkingStep, isToolCall, getDisplayOrder } from '@/types/process-step'
 import type { MessageResources } from '@/types/message-resources'
+import { groupOrderedSteps } from '@/lib/step-grouping'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
 
@@ -91,8 +94,7 @@ export function MessageItem({
   }
 
   // Check if we have content blocks for interleaved display
-  const contentBlocks = resources.steps.filter(isContentBlock)
-  const hasContentBlocks = contentBlocks.length > 0
+  const hasContentBlocks = resources.steps.some(isContentBlock)
 
   // Get steps that should be displayed in order (thinking, tool calls, content blocks)
   // At same display_order, thinking steps appear before content blocks
@@ -106,22 +108,15 @@ export function MessageItem({
       return 0
     })
 
-  // Check if we have any interleaved content (tool calls with content blocks)
-  const hasInterleavedContent = hasContentBlocks && orderedSteps.length > 1
+  // Group steps: attach thinking to tool calls, collapse consecutive completed tool calls
+  const groupedSteps = groupOrderedSteps(orderedSteps)
+  const hasGroupedSteps = groupedSteps.length > 0
+  const hasAssistantResources = contextsToShow.length > 0 || searchDecisionSteps.length > 0
 
-  // For non-interleaved display, use the old approach
-  const thinkingSteps = resources.steps.filter(isThinkingStep)
-  const toolCallSteps = resources.steps.filter(isToolCall)
-  const hasThinkingContent = isAssistantMessage && thinkingSteps.length > 0
-  const hasToolCalls = isAssistantMessage && toolCallSteps.length > 0
-  const hasAssistantResources =
-    contextsToShow.length > 0 || searchDecisionSteps.length > 0 || hasToolCalls
-
-  // Build interleaved content for assistant messages
-  // This shows steps and content blocks in the correct order based on display_order
-  const interleavedContent =
-    isAssistantMessage && hasInterleavedContent ? (
-      <div className="space-y-2">
+  // Unified header content for assistant messages
+  const headerContent =
+    isAssistantMessage && (hasAssistantResources || hasGroupedSteps) ? (
+      <div className="space-y-1.5 mb-2">
         {/* Search decisions first (from previous user message) */}
         {searchDecisionSteps.map((step) => (
           <AttachmentPreview key={step.id} step={step} />
@@ -139,61 +134,36 @@ export function MessageItem({
             messageId={prevUserMessageId ?? undefined}
           />
         ))}
-        {/* Interleaved steps and content blocks in display_order */}
-        {orderedSteps.map((step) => {
-          if (isThinkingStep(step)) {
-            return <ThinkingPreview key={step.id} content={step.content} />
+        {/* Grouped steps: tool calls (with merged thinking), collapsed groups, content blocks */}
+        {groupedSteps.map((item) => {
+          switch (item.kind) {
+            case 'tool':
+              return (
+                <div key={item.id} className="space-y-1.5">
+                  {item.data.thinkingContent && (
+                    <ThinkingPreview content={item.data.thinkingContent} />
+                  )}
+                  <ToolCallPreview toolCall={item.data.toolCall} />
+                  {item.data.trailingThinkingContent && (
+                    <ThinkingPreview content={item.data.trailingThinkingContent} />
+                  )}
+                </div>
+              )
+            case 'tool-group':
+              return <CollapsedToolGroup key={item.id} items={item.items} />
+            case 'content':
+              return (
+                <div
+                  key={item.id}
+                  className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
+                >
+                  <MarkdownContent content={item.content} />
+                </div>
+              )
+            case 'thinking':
+              return <ThinkingPreview key={item.id} content={item.content} />
           }
-          if (isToolCall(step)) {
-            return <AttachmentPreview key={step.id} step={step} />
-          }
-          if (isContentBlock(step)) {
-            return (
-              <div
-                key={step.id}
-                className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
-              >
-                <MarkdownContent content={step.content} />
-              </div>
-            )
-          }
-          return null
         })}
-      </div>
-    ) : null
-
-  // Build headerContent for non-interleaved assistant messages
-  // (steps, contexts, thinking shown between header and content)
-  const headerContent =
-    isAssistantMessage &&
-    !hasInterleavedContent &&
-    (hasAssistantResources || hasThinkingContent) ? (
-      <div className="space-y-1.5 mb-2">
-        {/* Search decisions first */}
-        {searchDecisionSteps.map((step) => (
-          <AttachmentPreview key={step.id} step={step} />
-        ))}
-        {/* Then search results */}
-        {contextsToShow.map((context) => (
-          <AttachmentPreview
-            key={context.id}
-            context={context}
-            urlStatuses={
-              context.type === 'search_result' && prevUserMessageId
-                ? urlStatuses[prevUserMessageId]
-                : undefined
-            }
-            messageId={prevUserMessageId ?? undefined}
-          />
-        ))}
-        {/* Thinking content */}
-        {thinkingSteps.map((step) => (
-          <ThinkingPreview key={step.id} content={step.content} />
-        ))}
-        {/* Tool calls (MCP) - shown below thinking */}
-        {toolCallSteps.map((step) => (
-          <AttachmentPreview key={step.id} step={step} />
-        ))}
       </div>
     ) : undefined
 
@@ -201,9 +171,7 @@ export function MessageItem({
     <div key={message.id}>
       <ChatMessage
         role={role}
-        // When we have interleaved content, don't show message.content separately
-        // as it's already included in the content blocks
-        content={hasInterleavedContent ? '' : message.content}
+        content={hasContentBlocks ? '' : message.content}
         timestamp={formatTimestamp(message.created_at)}
         displayName={info.displayName}
         senderType={info.senderType}
@@ -218,7 +186,7 @@ export function MessageItem({
         assistantModelId={info.assistantModelId}
         userMessageAlign={CHAT_CONFIG.userMessageAlign}
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
-        headerContent={hasInterleavedContent ? interleavedContent : headerContent}
+        headerContent={headerContent}
         onCopy={onCopy}
         onResend={onResend}
         onTranslate={onTranslate}
