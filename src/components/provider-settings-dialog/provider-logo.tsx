@@ -6,6 +6,8 @@ import ollamaLogo from '@/assets/avatars/providers/ollama.png'
 import azureLogo from '@/assets/avatars/providers/azure.png'
 import cohereLogo from '@/assets/avatars/providers/cohere.png'
 import xaiLogo from '@/assets/avatars/providers/xai.png'
+import minimaxLogo from '@/assets/avatars/models/minimax.png'
+import deepseekLogo from '@/assets/avatars/models/deepseek.png'
 
 const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -16,6 +18,9 @@ const PROVIDER_LOGOS: Record<string, string> = {
   azure: azureLogo,
   cohere: cohereLogo,
   xai: xaiLogo,
+  minimax: minimaxLogo,
+  minimax_cn: minimaxLogo,
+  deepseek: deepseekLogo,
 }
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
