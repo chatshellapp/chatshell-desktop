@@ -182,6 +182,7 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
         <TooltipProvider delayDuration={300}>
           <div
+            data-screenshot-exclude="true"
             className={`flex gap-1 justify-end transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
           >
             <Tooltip>
@@ -265,6 +266,7 @@ export const ChatMessage = memo(function ChatMessage({
       {!isStreaming && (
       <TooltipProvider delayDuration={300}>
         <div
+          data-screenshot-exclude="true"
           className={`flex gap-1 transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
         >
           <Tooltip>

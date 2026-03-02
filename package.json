@@ -47,6 +47,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "html-to-image": "^1.11.13",
     "immer": "^10.2.0",
     "katex": "^0.16.25",
     "lucide-react": "^0.555.0",

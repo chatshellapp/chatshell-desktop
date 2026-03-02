@@ -78,6 +78,7 @@ export function ChatView() {
     handleScrollToBottom,
   } = useMessageHandlers({
     messagesEndRef,
+    messagesContentRef,
     setIsAtBottom,
   })
 
@@ -138,7 +139,7 @@ export function ChatView() {
                 onTranslate={handleTranslate}
                 onExportAll={handleExportAll}
                 onExportConversation={handleExportConversation}
-                onExportMessage={handleExportMessage}
+                onExportMessage={() => {}}
               />
             )}
             {/* API Error display */}

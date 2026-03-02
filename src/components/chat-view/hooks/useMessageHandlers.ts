@@ -1,13 +1,19 @@
 import { useCallback, type RefObject } from 'react'
+import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { saveScreenshot, findMessageElement } from '@/lib/screenshot'
 
 interface UseMessageHandlersOptions {
   messagesEndRef: RefObject<HTMLDivElement | null>
+  messagesContentRef: RefObject<HTMLDivElement | null>
   setIsAtBottom: (value: boolean) => void
 }
 
-export function useMessageHandlers({ messagesEndRef, setIsAtBottom }: UseMessageHandlersOptions) {
-  // Handler functions (placeholders for future implementation)
+export function useMessageHandlers({
+  messagesEndRef,
+  messagesContentRef,
+  setIsAtBottom,
+}: UseMessageHandlersOptions) {
   const handleCopy = useCallback(() => {
     logger.info('Message copied')
   }, [])
@@ -21,15 +27,36 @@ export function useMessageHandlers({ messagesEndRef, setIsAtBottom }: UseMessage
   }, [])
 
   const handleExportAll = useCallback(() => {
-    logger.info('Export all messages')
-  }, [])
+    const el = messagesContentRef.current
+    if (!el) {
+      toast.error('No messages to capture')
+      return
+    }
+    saveScreenshot(el).then((ok) => {
+      if (ok) toast.success('Screenshot saved')
+    })
+  }, [messagesContentRef])
 
   const handleExportConversation = useCallback(() => {
-    logger.info('Export current conversation')
-  }, [])
+    const el = messagesContentRef.current
+    if (!el) {
+      toast.error('No messages to capture')
+      return
+    }
+    saveScreenshot(el).then((ok) => {
+      if (ok) toast.success('Screenshot saved')
+    })
+  }, [messagesContentRef])
 
-  const handleExportMessage = useCallback(() => {
-    logger.info('Export current message')
+  const handleExportMessage = useCallback((messageId: string) => {
+    const el = findMessageElement(messageId)
+    if (!el) {
+      toast.error('Could not find message element')
+      return
+    }
+    saveScreenshot(el).then((ok) => {
+      if (ok) toast.success('Screenshot saved')
+    })
   }, [])
 
   const handleScrollToBottom = useCallback(() => {

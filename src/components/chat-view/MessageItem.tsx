@@ -26,7 +26,7 @@ interface MessageItemProps {
   onTranslate: () => void
   onExportAll: () => void
   onExportConversation: () => void
-  onExportMessage: () => void
+  onExportMessage: (messageId: string) => void
 }
 
 export function MessageItem({
@@ -168,7 +168,7 @@ export function MessageItem({
     ) : undefined
 
   return (
-    <div key={message.id}>
+    <div key={message.id} data-message-id={message.id}>
       <ChatMessage
         role={role}
         content={hasContentBlocks ? '' : message.content}
@@ -192,7 +192,7 @@ export function MessageItem({
         onTranslate={onTranslate}
         onExportAll={onExportAll}
         onExportConversation={onExportConversation}
-        onExportMessage={onExportMessage}
+        onExportMessage={() => onExportMessage(message.id)}
       />
 
       {/* User attachments - rendered right-aligned after user message */}
