@@ -27,11 +27,15 @@ interface ToolCallPreviewProps {
   isStreaming?: boolean
 }
 
-// Format JSON for display with proper indentation
+// Format JSON for display with proper indentation.
+// Built-in tool outputs are JSON-encoded by rig (e.g. strings get wrapped in quotes
+// with escaped newlines), so we parse them. If the parsed result is a plain string,
+// return it directly to preserve real newlines. Only re-serialize objects/arrays.
 function formatJson(jsonString: string | undefined): string {
   if (!jsonString) return ''
   try {
     const parsed = JSON.parse(jsonString)
+    if (typeof parsed === 'string') return parsed
     return JSON.stringify(parsed, null, 2)
   } catch {
     return jsonString
