@@ -141,13 +141,11 @@ export function StreamingMessage({
           ))}
           {/* Interleaved tool calls with reasoning and content between them */}
           {sortedToolCalls.map((toolCall, index) => {
-            // Calculate reasoning segment to show before this tool call
+            // Calculate API reasoning segment (from reasoning_content field)
             let reasoningSegment = ''
             if (index === 0) {
-              // First tool call - show all reasoning that came before it
               reasoningSegment = toolCall.reasoningBefore || ''
             } else {
-              // Calculate reasoning between previous tool call and this one
               const prevToolCall = sortedToolCalls[index - 1]
               const prevReasoningLength = prevToolCall.reasoningBefore?.length || 0
               const currentReasoningLength = toolCall.reasoningBefore?.length || 0
@@ -156,29 +154,28 @@ export function StreamingMessage({
               }
             }
 
-            // Calculate content segment to show before this tool call
+            // Calculate content segment and extract XML thinking from <think> tags
             let contentSegment = ''
-            if (index === 0) {
-              // First tool call - content before it (typically empty or minimal)
-              // Skip as we show reasoning separately
-            } else {
-              // Calculate content between previous tool call and this one
-              const prevToolCall = sortedToolCalls[index - 1]
-              const prevContentLength = prevToolCall.contentBefore?.length || 0
-              const currentContentLength = toolCall.contentBefore?.length || 0
-              if (currentContentLength > prevContentLength) {
-                // Parse the content segment (remove thinking tags if present)
-                const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
-                const parsed = parseThinkingContent(rawSegment)
-                contentSegment = parsed.content
-              }
+            let xmlThinkingSegment: string | null = null
+            const prevContentLength =
+              index === 0 ? 0 : sortedToolCalls[index - 1].contentBefore?.length || 0
+            const currentContentLength = toolCall.contentBefore?.length || 0
+            if (currentContentLength > prevContentLength) {
+              const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
+              const parsed = parseThinkingContent(rawSegment)
+              contentSegment = parsed.content
+              xmlThinkingSegment = parsed.thinkingContent
             }
 
             return (
               <div key={toolCall.id} className="space-y-2">
-                {/* Reasoning before this tool call */}
+                {/* API reasoning before this tool call */}
                 {reasoningSegment && reasoningSegment.trim() && searchDecisionResolved && (
                   <ThinkingPreview content={reasoningSegment} isStreaming={false} />
+                )}
+                {/* XML <think> tag thinking from content before this tool call */}
+                {xmlThinkingSegment && xmlThinkingSegment.trim() && searchDecisionResolved && (
+                  <ThinkingPreview content={xmlThinkingSegment} isStreaming={false} />
                 )}
                 {/* Content before this tool call */}
                 {contentSegment && contentSegment.trim() && (
@@ -194,23 +191,43 @@ export function StreamingMessage({
               </div>
             )
           })}
-          {/* Show remaining reasoning after last tool call (if streaming is still active) */}
+          {/* Show remaining reasoning/thinking after last tool call */}
           {(() => {
             const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+            const elements: React.ReactNode[] = []
+
+            // Remaining API reasoning
             const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
-            const currentReasoningLength = streamingReasoningContent.length
-            if (currentReasoningLength > lastReasoningLength) {
+            if (streamingReasoningContent.length > lastReasoningLength) {
               const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
               if (remainingReasoning.trim() && searchDecisionResolved) {
-                return (
+                elements.push(
                   <ThinkingPreview
+                    key="remaining-api-reasoning"
                     content={remainingReasoning}
                     isStreaming={isThinkingInProgress}
                   />
                 )
               }
             }
-            return null
+
+            // Remaining XML thinking from content after last tool call
+            const lastContentLength = lastToolCall?.contentBefore?.length || 0
+            if (streamingContent.length > lastContentLength) {
+              const rawSegment = streamingContent.slice(lastContentLength)
+              const parsed = parseThinkingContent(rawSegment)
+              if (parsed.thinkingContent && parsed.thinkingContent.trim() && searchDecisionResolved) {
+                elements.push(
+                  <ThinkingPreview
+                    key="remaining-xml-thinking"
+                    content={parsed.thinkingContent}
+                    isStreaming={parsed.isThinkingInProgress}
+                  />
+                )
+              }
+            }
+
+            return elements.length > 0 ? <>{elements}</> : null
           })()}
         </div>
       )

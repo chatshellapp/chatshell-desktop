@@ -76,4 +76,6 @@ htmd = "0.5"
 url = "2"
 readability = "0.3"
 headless_chrome = "1"
+async-stream = "0.3.6"
+http = "1"
 

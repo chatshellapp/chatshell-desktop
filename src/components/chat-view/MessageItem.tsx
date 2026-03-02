@@ -95,9 +95,16 @@ export function MessageItem({
   const hasContentBlocks = contentBlocks.length > 0
 
   // Get steps that should be displayed in order (thinking, tool calls, content blocks)
+  // At same display_order, thinking steps appear before content blocks
   const orderedSteps = resources.steps
     .filter((s) => isThinkingStep(s) || isToolCall(s) || isContentBlock(s))
-    .sort((a, b) => getDisplayOrder(a) - getDisplayOrder(b))
+    .sort((a, b) => {
+      const orderDiff = getDisplayOrder(a) - getDisplayOrder(b)
+      if (orderDiff !== 0) return orderDiff
+      if (isThinkingStep(a) && !isThinkingStep(b)) return -1
+      if (!isThinkingStep(a) && isThinkingStep(b)) return 1
+      return 0
+    })
 
   // Check if we have any interleaved content (tool calls with content blocks)
   const hasInterleavedContent = hasContentBlocks && orderedSteps.length > 1

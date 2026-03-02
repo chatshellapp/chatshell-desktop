@@ -781,30 +781,6 @@ pub(crate) async fn handle_agent_streaming(
     }
     drop(reasoning_data);
 
-    // Fallback: if no ordered reasoning blocks but we have thinking content, save it
-    if reasoning_blocks.read().await.is_empty()
-        && let Some(thinking_content) = response.thinking_content
-        && !thinking_content.is_empty()
-    {
-        match state_clone
-            .db
-            .create_thinking_step(CreateThinkingStepRequest {
-                message_id: assistant_message.id.clone(),
-                content: thinking_content,
-                source: Some("llm".to_string()),
-                display_order: Some(0),
-            })
-            .await
-        {
-            Ok(_thinking_step) => {
-                // ThinkingStep is now directly linked via message_id FK
-            }
-            Err(e) => {
-                tracing::error!("Failed to save thinking step: {}", e);
-            }
-        }
-    }
-
     // Save tool calls to database with proper display order
     let tool_calls_data = tool_calls_map.read().await;
     if !tool_calls_data.is_empty() {
@@ -862,9 +838,11 @@ pub(crate) async fn handle_agent_streaming(
     drop(tool_calls_data);
 
     // Save content blocks to database with proper display order
+    // Also extract <think> tag thinking from content blocks and save as separate thinking_steps
     // Only save if we have tool calls (otherwise content is just the message content)
     let content_data = content_blocks.read().await;
     let has_tool_calls = !tool_calls_map.read().await.is_empty();
+    let mut xml_thinking_saved = false;
     if has_tool_calls && !content_data.is_empty() {
         tracing::info!(
             "💾 [agent_streaming] Saving {} content block(s) to database",
@@ -875,29 +853,92 @@ pub(crate) async fn handle_agent_streaming(
             if content.trim().is_empty() {
                 continue;
             }
-            match state_clone
-                .db
-                .create_content_block(CreateContentBlockRequest {
-                    message_id: assistant_message.id.clone(),
-                    content: content.clone(),
-                    display_order: *order,
-                })
-                .await
-            {
-                Ok(block) => {
-                    tracing::info!(
-                        "✅ [agent_streaming] Content block saved ({}) with display_order: {}",
-                        block.id,
-                        order
-                    );
+
+            // Parse content block for <think> tags
+            let parsed = crate::thinking_parser::parse_thinking_content(content);
+
+            // Save extracted thinking as a separate thinking_step
+            if let Some(ref thinking) = parsed.thinking_content {
+                if !thinking.trim().is_empty() {
+                    match state_clone
+                        .db
+                        .create_thinking_step(CreateThinkingStepRequest {
+                            message_id: assistant_message.id.clone(),
+                            content: thinking.clone(),
+                            source: Some("llm".to_string()),
+                            display_order: Some(*order),
+                        })
+                        .await
+                    {
+                        Ok(_) => {
+                            tracing::info!(
+                                "✅ [agent_streaming] XML thinking extracted from content block, saved with display_order: {}",
+                                order
+                            );
+                            xml_thinking_saved = true;
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "❌ [agent_streaming] Failed to save XML thinking step: {}",
+                                e
+                            );
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("❌ [agent_streaming] Failed to save content block: {}", e);
+            }
+
+            // Save cleaned content (with <think> tags stripped)
+            if !parsed.content.trim().is_empty() {
+                match state_clone
+                    .db
+                    .create_content_block(CreateContentBlockRequest {
+                        message_id: assistant_message.id.clone(),
+                        content: parsed.content,
+                        display_order: *order,
+                    })
+                    .await
+                {
+                    Ok(block) => {
+                        tracing::info!(
+                            "✅ [agent_streaming] Content block saved ({}) with display_order: {}",
+                            block.id,
+                            order
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ [agent_streaming] Failed to save content block: {}", e);
+                    }
                 }
             }
         }
     }
     drop(content_data);
+
+    // Fallback: if no API reasoning blocks and no XML thinking was extracted
+    // from content blocks, save the combined thinking content (no-tool-call case)
+    if reasoning_blocks.read().await.is_empty()
+        && !xml_thinking_saved
+        && let Some(thinking_content) = response.thinking_content
+        && !thinking_content.is_empty()
+    {
+        match state_clone
+            .db
+            .create_thinking_step(CreateThinkingStepRequest {
+                message_id: assistant_message.id.clone(),
+                content: thinking_content,
+                source: Some("llm".to_string()),
+                display_order: Some(0),
+            })
+            .await
+        {
+            Ok(_thinking_step) => {
+                // ThinkingStep is now directly linked via message_id FK
+            }
+            Err(e) => {
+                tracing::error!("Failed to save thinking step: {}", e);
+            }
+        }
+    }
 
     tracing::info!(
         "✅ [agent_streaming] Assistant message saved with id: {}",

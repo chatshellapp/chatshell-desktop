@@ -6,13 +6,15 @@ import { MarkdownContent } from '@/components/markdown-content'
 export function ThinkingPreview({
   content,
   isStreaming = false,
+  defaultExpanded,
 }: {
   content: string
   /** Whether thinking is still in progress (streaming) */
   isStreaming?: boolean
+  /** Override initial expanded state (useful for completed segments that should stay visible) */
+  defaultExpanded?: boolean
 }) {
-  // Auto-expand when streaming to show live thinking
-  const [isExpanded, setIsExpanded] = useState(isStreaming)
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? isStreaming)
 
   // Refs for auto-scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null)

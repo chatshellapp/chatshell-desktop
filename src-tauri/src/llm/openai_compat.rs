@@ -5,13 +5,15 @@
 //! with providers that only accept the simple string format (e.g. MiniMax CN).
 //!
 //! Uses `moonshot::Client` for HTTP transport and reuses OpenAI response types.
+//! Includes custom streaming implementation with `reasoning_content` support
+//! for providers like MiniMax that use the DeepSeek-style reasoning format.
 
 use rig::completion::{self, CompletionError, CompletionRequest};
 use rig::http_client::{self, HttpClientExt};
 use rig::message::{self, AssistantContent, DocumentSourceKind, UserContent};
 use rig::providers::moonshot;
-use rig::providers::openai::{self, send_compatible_streaming_request};
-use rig::streaming::StreamingCompletionResponse;
+use rig::providers::openai;
+use rig::streaming;
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{Instrument, info_span};
 
@@ -338,7 +340,8 @@ where
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         let preamble = request.preamble.clone();
         let mut request = CompatCompletionRequest::try_from((self.model.as_ref(), request))?;
 
@@ -376,15 +379,247 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        // rig's send_compatible_streaming_request bypasses Client::send() which normally
-        // sets Content-Type. Some providers (e.g. MiniMax) require it to parse the body.
         req.headers_mut().insert(
             reqwest::header::CONTENT_TYPE,
             reqwest::header::HeaderValue::from_static("application/json"),
         );
 
-        send_compatible_streaming_request(self.client.http_client().clone(), req)
+        send_compat_streaming_request_with_reasoning(self.client.http_client().clone(), req)
             .instrument(span)
             .await
     }
+}
+
+// ================================================================
+// Custom streaming with reasoning_content support
+// ================================================================
+
+#[derive(Deserialize, Debug)]
+struct CompatStreamingFunction {
+    name: Option<String>,
+    arguments: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CompatStreamingToolCall {
+    index: usize,
+    id: Option<String>,
+    function: CompatStreamingFunction,
+}
+
+#[derive(Deserialize, Debug)]
+struct CompatStreamingDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::llm::openai_compat::deserialize_null_or_vec"
+    )]
+    tool_calls: Vec<CompatStreamingToolCall>,
+}
+
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum CompatFinishReason {
+    ToolCalls,
+    Stop,
+    ContentFilter,
+    Length,
+    #[serde(untagged)]
+    Other(String),
+}
+
+#[derive(Deserialize, Debug)]
+struct CompatStreamingChoice {
+    delta: CompatStreamingDelta,
+    finish_reason: Option<CompatFinishReason>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CompatStreamingChunk {
+    choices: Vec<CompatStreamingChoice>,
+    usage: Option<openai::completion::Usage>,
+}
+
+async fn send_compat_streaming_request_with_reasoning<T>(
+    http_client: T,
+    req: http::Request<Vec<u8>>,
+) -> Result<
+    streaming::StreamingCompletionResponse<openai::StreamingCompletionResponse>,
+    CompletionError,
+>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    use async_stream::stream;
+    use futures::StreamExt;
+    use rig::http_client::sse::{Event, GenericEventSource};
+    use rig::message::{ToolCall, ToolFunction};
+    use std::collections::HashMap;
+
+    let mut event_source = GenericEventSource::new(http_client, req);
+
+    let stream = stream! {
+        let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+        let mut final_usage = None;
+
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
+                    continue;
+                }
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                        continue;
+                    }
+
+                    let data = match serde_json::from_str::<CompatStreamingChunk>(&message.data) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            tracing::error!(
+                                ?error,
+                                message = message.data,
+                                "Failed to parse SSE message"
+                            );
+                            continue;
+                        }
+                    };
+
+                    let Some(choice) = data.choices.first() else {
+                        tracing::debug!("No choice in streaming chunk");
+                        continue;
+                    };
+                    let delta = &choice.delta;
+
+                    if !delta.tool_calls.is_empty() {
+                        for tool_call in &delta.tool_calls {
+                            let index = tool_call.index;
+
+                            let existing_tool_call =
+                                tool_calls.entry(index).or_insert_with(|| ToolCall {
+                                    id: String::new(),
+                                    call_id: None,
+                                    function: ToolFunction {
+                                        name: String::new(),
+                                        arguments: serde_json::Value::Null,
+                                    },
+                                });
+
+                            if let Some(id) = &tool_call.id {
+                                if !id.is_empty() {
+                                    existing_tool_call.id = id.clone();
+                                }
+                            }
+
+                            if let Some(name) = &tool_call.function.name {
+                                if !name.is_empty() {
+                                    existing_tool_call.function.name = name.clone();
+                                }
+                            }
+
+                            if let Some(chunk) = &tool_call.function.arguments {
+                                let current_args =
+                                    match &existing_tool_call.function.arguments {
+                                        serde_json::Value::Null => String::new(),
+                                        serde_json::Value::String(s) => s.clone(),
+                                        v => v.to_string(),
+                                    };
+
+                                let combined = format!("{current_args}{chunk}");
+
+                                if combined.trim_start().starts_with('{')
+                                    && combined.trim_end().ends_with('}')
+                                {
+                                    match serde_json::from_str(&combined) {
+                                        Ok(parsed) => {
+                                            existing_tool_call.function.arguments = parsed
+                                        }
+                                        Err(_) => {
+                                            existing_tool_call.function.arguments =
+                                                serde_json::Value::String(combined)
+                                        }
+                                    }
+                                } else {
+                                    existing_tool_call.function.arguments =
+                                        serde_json::Value::String(combined);
+                                }
+
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    delta: chunk.clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    // Emit reasoning content (MiniMax M1, DeepSeek-R1 style)
+                    if let Some(reasoning) = &delta.reasoning_content {
+                        if !reasoning.is_empty() {
+                            yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                reasoning: reasoning.clone(),
+                                id: None,
+                                signature: None,
+                            });
+                        }
+                    }
+
+                    if let Some(content) = &delta.content {
+                        if !content.is_empty() {
+                            yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
+                        }
+                    }
+
+                    if let Some(usage) = data.usage {
+                        final_usage = Some(usage);
+                    }
+
+                    if let Some(finish_reason) = &choice.finish_reason {
+                        if *finish_reason == CompatFinishReason::ToolCalls {
+                            for (_idx, tool_call) in tool_calls.into_iter() {
+                                yield Ok(streaming::RawStreamingChoice::ToolCall {
+                                    name: tool_call.function.name,
+                                    id: tool_call.id,
+                                    arguments: tool_call.function.arguments,
+                                    call_id: None,
+                                });
+                            }
+                            tool_calls = HashMap::new();
+                        }
+                    }
+                }
+                Err(rig::http_client::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    break;
+                }
+            }
+        }
+
+        event_source.close();
+
+        for (_idx, tool_call) in tool_calls.into_iter() {
+            yield Ok(streaming::RawStreamingChoice::ToolCall {
+                name: tool_call.function.name,
+                id: tool_call.id,
+                arguments: tool_call.function.arguments,
+                call_id: None,
+            });
+        }
+
+        let final_usage = final_usage.unwrap_or_default();
+
+        yield Ok(streaming::RawStreamingChoice::FinalResponse(
+            openai::StreamingCompletionResponse { usage: final_usage },
+        ));
+    };
+
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }
