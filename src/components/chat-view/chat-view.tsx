@@ -71,6 +71,7 @@ export function ChatView() {
   const {
     handleCopy,
     handleRevert,
+    handleFork,
     handleExportAll,
     handleExportConversation,
     handleExportMessage,
@@ -114,6 +115,7 @@ export function ChatView() {
                 getMessageDisplayInfo={getMessageDisplayInfo}
                 onCopy={handleCopy}
                 onRevert={handleRevert}
+                onFork={handleFork}
                 onExportAll={handleExportAll}
                 onExportConversation={handleExportConversation}
                 onExportMessage={handleExportMessage}

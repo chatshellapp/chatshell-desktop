@@ -286,4 +286,118 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    /// Fork a conversation: create a new conversation and copy all messages
+    /// up to and including the specified message.
+    pub async fn fork_conversation(
+        &self,
+        source_conversation_id: &str,
+        up_to_message_id: &str,
+    ) -> Result<Conversation> {
+        let source = self
+            .get_conversation(source_conversation_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Source conversation not found"))?;
+
+        let target_message = self
+            .get_message(up_to_message_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Target message not found"))?;
+
+        let new_conv = self
+            .create_conversation(CreateConversationRequest {
+                title: source.title.clone(),
+            })
+            .await?;
+
+        let all_messages = self
+            .list_messages_by_conversation(source_conversation_id)
+            .await?;
+
+        for msg in &all_messages {
+            if msg.created_at > target_message.created_at {
+                break;
+            }
+            let new_msg_id = Uuid::now_v7().to_string();
+            let now = Utc::now().to_rfc3339();
+            sqlx::query(
+                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&new_msg_id)
+            .bind(&new_conv.id)
+            .bind(&msg.sender_type)
+            .bind(&msg.sender_id)
+            .bind(&msg.content)
+            .bind(msg.tokens)
+            .bind(&now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let participants = self
+            .list_conversation_participants(source_conversation_id)
+            .await?;
+        for p in &participants {
+            self.add_conversation_participant(CreateConversationParticipantRequest {
+                conversation_id: new_conv.id.clone(),
+                participant_type: p.participant_type.clone(),
+                participant_id: p.participant_id.clone(),
+                display_name: p.display_name.clone(),
+            })
+            .await?;
+        }
+
+        let settings = self
+            .get_conversation_settings(source_conversation_id)
+            .await?;
+        let param_json = serde_json::to_string(&settings.parameter_overrides)?;
+        let mcp_json = serde_json::to_string(&settings.enabled_mcp_server_ids)?;
+        let skill_json = serde_json::to_string(&settings.enabled_skill_ids)?;
+        sqlx::query(
+            "INSERT INTO conversation_settings (
+                conversation_id, use_provider_defaults, use_custom_parameters,
+                parameter_overrides, context_message_count, selected_preset_id,
+                system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
+                user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(conversation_id) DO UPDATE SET
+                use_provider_defaults = excluded.use_provider_defaults,
+                use_custom_parameters = excluded.use_custom_parameters,
+                parameter_overrides = excluded.parameter_overrides,
+                context_message_count = excluded.context_message_count,
+                selected_preset_id = excluded.selected_preset_id,
+                system_prompt_mode = excluded.system_prompt_mode,
+                selected_system_prompt_id = excluded.selected_system_prompt_id,
+                custom_system_prompt = excluded.custom_system_prompt,
+                user_prompt_mode = excluded.user_prompt_mode,
+                selected_user_prompt_id = excluded.selected_user_prompt_id,
+                custom_user_prompt = excluded.custom_user_prompt,
+                enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
+                enabled_skill_ids = excluded.enabled_skill_ids,
+                working_directory = excluded.working_directory",
+        )
+        .bind(&new_conv.id)
+        .bind(settings.use_provider_defaults as i32)
+        .bind(settings.use_custom_parameters as i32)
+        .bind(&param_json)
+        .bind(settings.context_message_count)
+        .bind(&settings.selected_preset_id)
+        .bind(String::from(settings.system_prompt_mode))
+        .bind(&settings.selected_system_prompt_id)
+        .bind(&settings.custom_system_prompt)
+        .bind(String::from(settings.user_prompt_mode))
+        .bind(&settings.selected_user_prompt_id)
+        .bind(&settings.custom_user_prompt)
+        .bind(&mcp_json)
+        .bind(&skill_json)
+        .bind(&settings.working_directory)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_conversation(&new_conv.id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve forked conversation"))
+    }
 }

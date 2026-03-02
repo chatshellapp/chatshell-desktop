@@ -110,3 +110,16 @@ pub async fn remove_conversation_participant(
         .await
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn fork_conversation(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+) -> Result<Conversation, String> {
+    state
+        .db
+        .fork_conversation(&conversation_id, &message_id)
+        .await
+        .map_err(|e| e.to_string())
+}

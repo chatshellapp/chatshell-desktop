@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { saveScreenshot, findMessageElement } from '@/lib/screenshot'
@@ -7,6 +8,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
+import type { Conversation } from '@/types'
 
 interface UseMessageHandlersOptions {
   messagesEndRef: RefObject<HTMLDivElement | null>
@@ -134,6 +136,34 @@ export function useMessageHandlers({
     ]
   )
 
+  const loadConversations = useConversationStore((state) => state.loadConversations)
+  const selectConversation = useConversationStore((state) => state.selectConversation)
+
+  const handleFork = useCallback(
+    async (messageId: string) => {
+      if (!currentConversation) {
+        toast.error('No active conversation')
+        return
+      }
+
+      try {
+        const newConversation = await invoke<Conversation>('fork_conversation', {
+          conversationId: currentConversation.id,
+          messageId,
+        })
+        await loadConversations()
+        await selectConversation(newConversation.id)
+        toast.success('Conversation forked')
+      } catch (error) {
+        logger.error('Failed to fork conversation:', error)
+        toast.error('Failed to fork conversation', {
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [currentConversation, loadConversations, selectConversation]
+  )
+
   const handleExportAll = useCallback(() => {
     const el = messagesContentRef.current
     if (!el) {
@@ -175,6 +205,7 @@ export function useMessageHandlers({
   return {
     handleCopy,
     handleRevert,
+    handleFork,
     handleExportAll,
     handleExportConversation,
     handleExportMessage,

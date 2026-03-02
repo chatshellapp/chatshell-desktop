@@ -23,6 +23,7 @@ interface MessageItemProps {
   getMessageDisplayInfo: (message: Message) => DisplayInfo
   onCopy: () => void
   onRevert: (messageId: string) => void
+  onFork: (messageId: string) => void
   onExportAll: () => void
   onExportConversation: () => void
   onExportMessage: (messageId: string) => void
@@ -37,6 +38,7 @@ export function MessageItem({
   getMessageDisplayInfo,
   onCopy,
   onRevert,
+  onFork,
   onExportAll,
   onExportConversation,
   onExportMessage,
@@ -187,6 +189,7 @@ export function MessageItem({
         headerContent={headerContent}
         onCopy={onCopy}
         onRevert={() => onRevert(message.id)}
+        onFork={() => onFork(message.id)}
         onExportAll={onExportAll}
         onExportConversation={onExportConversation}
         onExportMessage={() => onExportMessage(message.id)}
