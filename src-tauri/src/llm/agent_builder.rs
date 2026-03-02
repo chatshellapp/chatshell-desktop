@@ -34,13 +34,14 @@ use crate::llm::{
 };
 use crate::models::ModelParameters;
 
-/// MCP tools configuration for agent
+/// Per-server MCP tools and client (one entry per MCP server connection)
+pub type McpServerTools = (Vec<McpTool>, Peer<RoleClient>);
+
+/// MCP tools configuration for agent (supports multiple MCP servers; each server has its own client)
 #[derive(Clone)]
 pub struct McpToolsConfig {
-    /// MCP tools from connected servers
-    pub tools: Vec<McpTool>,
-    /// Client peer for calling tools
-    pub client: Peer<RoleClient>,
+    /// One (tools, client) pair per connected MCP server so tool calls are routed to the correct server
+    pub server_tools: Vec<McpServerTools>,
 }
 
 /// Configuration for building an agent.
@@ -122,8 +123,12 @@ impl AgentConfig {
         self
     }
 
-    pub fn with_mcp_tools(mut self, tools: Vec<McpTool>, client: Peer<RoleClient>) -> Self {
-        self.mcp_tools = Some(McpToolsConfig { tools, client });
+    /// Add MCP tools from one or more servers. Each (tools, client) pair is one MCP server connection.
+    pub fn with_mcp_tools(mut self, server_tools: Vec<McpServerTools>) -> Self {
+        if server_tools.is_empty() {
+            return self;
+        }
+        self.mcp_tools = Some(McpToolsConfig { server_tools });
         self
     }
 
@@ -166,6 +171,18 @@ impl AgentConfig {
     /// Enable the built-in glob (file pattern matching) tool
     pub fn with_glob(mut self) -> Self {
         self.enable_glob = true;
+        self
+    }
+
+    /// Set the default working directory for grep tool
+    pub fn with_grep_working_directory(mut self, dir: String) -> Self {
+        self.grep_working_directory = Some(dir);
+        self
+    }
+
+    /// Set the default working directory for glob tool
+    pub fn with_glob_working_directory(mut self, dir: String) -> Self {
+        self.glob_working_directory = Some(dir);
         self
     }
 
@@ -671,7 +688,7 @@ fn build_agent<M: CompletionModel>(
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
-        .is_some_and(|m| !m.tools.is_empty());
+        .is_some_and(|m| m.server_tools.iter().any(|(t, _)| !t.is_empty()));
 
     if has_native_tools || has_mcp_tools {
         return build_agent_with_tools(builder, config);
@@ -716,19 +733,41 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
     };
 
+    let create_grep_tool = || -> GrepTool {
+        if let Some(ref dir) = config.grep_working_directory {
+            tracing::info!("🔎 Grep tool configured with working directory: {}", dir);
+            GrepTool::with_working_directory(dir.clone())
+        } else {
+            GrepTool::new()
+        }
+    };
+
+    let create_glob_tool = || -> GlobTool {
+        if let Some(ref dir) = config.glob_working_directory {
+            tracing::info!("📂 Glob tool configured with working directory: {}", dir);
+            GlobTool::with_working_directory(dir.clone())
+        } else {
+            GlobTool::new()
+        }
+    };
+
     // Once we have a simple builder (after the first .tool() call), this macro
-    // chains all remaining enabled tools, adds MCP tools if any, and builds.
+    // chains all remaining enabled tools, adds MCP tools per server if any, and builds.
     macro_rules! finish_with_simple_builder {
         ($simple_builder:expr) => {{
-            let sb = $simple_builder;
+            let mut sb = $simple_builder;
 
             if let Some(ref mcp_config) = config.mcp_tools
-                && !mcp_config.tools.is_empty()
+                && !mcp_config.server_tools.is_empty()
             {
-                tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
-                return sb
-                    .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
-                    .build();
+                let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
+                tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
+                for (tools, client) in &mcp_config.server_tools {
+                    if !tools.is_empty() {
+                        sb = sb.rmcp_tools(tools.clone(), client.clone());
+                    }
+                }
+                return sb.build();
             }
 
             return sb.build();

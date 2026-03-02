@@ -18,7 +18,14 @@ export type { Assistant, CreateAssistantRequest } from './assistant'
 export type { KnowledgeBase, CreateKnowledgeBaseRequest } from './knowledge-base'
 
 // Tool types
-export type { Tool, CreateToolRequest, McpServerConfig, McpTransportType } from './tool'
+export type {
+  Tool,
+  CreateToolRequest,
+  McpServerConfig,
+  McpTransportType,
+  McpAuthType,
+  McpOAuthMetadata,
+} from './tool'
 export { parseMcpConfig, getTransportType, isBuiltinTool, isMcpTool } from './tool'
 
 // Skill types

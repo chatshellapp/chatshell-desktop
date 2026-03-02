@@ -894,11 +894,9 @@ export function AssistantDialog({
     if (activeSection === 'Tools') {
       const hasNoTools = builtinTools.length === 0 && mcpServers.length === 0
       const allToolsEnabled =
-        globalEnabledToolIds.length > 0 &&
-        globalEnabledToolIds.every((id) => toolIds.includes(id))
+        globalEnabledToolIds.length > 0 && globalEnabledToolIds.every((id) => toolIds.includes(id))
       const noToolsEnabled =
-        globalEnabledToolIds.length > 0 &&
-        !globalEnabledToolIds.some((id) => toolIds.includes(id))
+        globalEnabledToolIds.length > 0 && !globalEnabledToolIds.some((id) => toolIds.includes(id))
       const isToolsDifferentFromGlobal = (() => {
         if (toolIds.length !== globalEnabledToolIds.length) return true
         const sorted = [...toolIds].sort()

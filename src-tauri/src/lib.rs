@@ -98,6 +98,7 @@ pub fn run() {
                 db,
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
                 mcp_manager: Arc::new(McpConnectionManager::new()),
+                pending_oauth: Arc::new(RwLock::new(HashMap::new())),
             };
             app.manage(app_state);
 
@@ -221,6 +222,11 @@ pub fn run() {
             commands::test_mcp_stdio_connection,
             commands::list_mcp_server_tools,
             commands::get_conversation_mcp_servers,
+            commands::start_mcp_oauth,
+            commands::complete_mcp_oauth,
+            commands::check_mcp_oauth_status,
+            commands::revoke_mcp_oauth,
+            commands::set_mcp_bearer_token,
             // Skill commands
             commands::list_skills,
             commands::get_skill,

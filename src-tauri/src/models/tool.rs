@@ -50,6 +50,29 @@ pub enum McpTransportType {
     Stdio,
 }
 
+/// MCP HTTP auth type (OAuth applies only to HTTP transport per MCP spec)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum McpAuthType {
+    #[default]
+    None,
+    Bearer,
+    Oauth,
+}
+
+/// OAuth metadata stored after discovery/authorization (in config JSON)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthMetadata {
+    pub authorization_server_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_expires_at: Option<i64>,
+    pub is_authorized: bool,
+}
+
 /// MCP server configuration stored in the `config` field as JSON
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
@@ -73,6 +96,14 @@ pub struct McpConfig {
     /// Defaults to user's home directory if not specified
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+
+    /// Auth type for HTTP transport: "none", "bearer", "oauth"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_type: Option<McpAuthType>,
+
+    /// OAuth metadata (populated after discovery/authorization)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth_metadata: Option<OAuthMetadata>,
 }
 
 impl McpConfig {
@@ -84,6 +115,8 @@ impl McpConfig {
             args: None,
             env: None,
             cwd: None,
+            auth_type: None,
+            oauth_metadata: None,
         }
     }
 
@@ -95,6 +128,8 @@ impl McpConfig {
             args: None,
             env: None,
             cwd: None,
+            auth_type: None,
+            oauth_metadata: None,
         }
     }
 

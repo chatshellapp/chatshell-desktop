@@ -1,8 +1,14 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import type { Tool, McpServerConfig } from '@/types'
 import { logger } from '@/lib/logger'
+
+export interface OAuthStatusResult {
+  is_authorized: boolean
+  token_expires_at: number | null
+}
 
 // MCP tool info returned from server
 export interface McpToolInfo {
@@ -46,6 +52,12 @@ interface McpState {
   listServerTools: (id: string) => Promise<McpToolInfo[]>
   getServerById: (id: string) => Tool | undefined
   clearTestResult: () => void
+
+  // OAuth and Bearer auth (HTTP transport only)
+  startOAuth: (serverId: string) => Promise<Tool>
+  checkOAuthStatus: (serverId: string) => Promise<OAuthStatusResult>
+  revokeOAuth: (serverId: string) => Promise<void>
+  setBearerToken: (serverId: string, token: string) => Promise<void>
 }
 
 export const useMcpStore = create<McpState>()(
@@ -292,6 +304,34 @@ export const useMcpStore = create<McpState>()(
         draft.testError = null
         draft.testingEndpoint = null
       })
+    },
+
+    startOAuth: async (serverId: string) => {
+      const { auth_url: authUrl } = await invoke<{ auth_url: string; redirect_uri: string }>(
+        'start_mcp_oauth',
+        { serverId }
+      )
+      await openUrl(authUrl)
+      const tool = await invoke<Tool>('complete_mcp_oauth', { serverId })
+      set((draft) => {
+        const index = draft.servers.findIndex((s: Tool) => s.id === serverId)
+        if (index >= 0) draft.servers[index] = tool
+      })
+      return tool
+    },
+
+    checkOAuthStatus: async (serverId: string) => {
+      const result = await invoke<OAuthStatusResult>('check_mcp_oauth_status', { serverId })
+      return result
+    },
+
+    revokeOAuth: async (serverId: string) => {
+      await invoke('revoke_mcp_oauth', { serverId })
+      await get().loadServers()
+    },
+
+    setBearerToken: async (serverId: string, token: string) => {
+      await invoke('set_mcp_bearer_token', { serverId, token })
     },
   }))
 )

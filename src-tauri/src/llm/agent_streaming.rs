@@ -30,11 +30,7 @@ where
 {
     tracing::info!("🤖 [{}] Agent created, starting stream chat", log_prefix);
 
-    // Use stream_chat to get a streaming response with chat history
-    // stream_chat returns a StreamingPromptRequest which implements IntoFuture
-    // When awaited, it returns the stream directly (not wrapped in Result)
-    // multi_turn(10) allows up to 10 conversation turns for tool calling
-    let mut stream = agent.stream_chat(prompt, chat_history).multi_turn(10).await;
+    let mut stream = agent.stream_chat(prompt, chat_history).multi_turn(100).await;
 
     let mut full_content = String::new();
     let mut full_reasoning = String::new();

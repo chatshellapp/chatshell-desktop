@@ -14,7 +14,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::{McpConfig, McpTransportType, Tool};
+use crate::keychain::get_secret;
+use crate::mcp::oauth;
+use crate::models::{McpAuthType, McpConfig, McpTransportType, Tool};
+
+const KEYCHAIN_PREFIX_BEARER: &str = "mcp_bearer_";
 
 /// Type alias for the running MCP client service
 type McpRunningService = RunningService<RoleClient, ClientInfo>;
@@ -74,15 +78,56 @@ impl McpConnectionManager {
         }
     }
 
+    /// Resolve HTTP auth header from tool config (Bearer or OAuth token from keychain).
+    /// Keychain read runs in spawn_blocking so the OS keychain dialog does not block the async runtime.
+    async fn get_http_auth_header_async(tool: &Tool) -> Result<Option<String>> {
+        let config = match tool.parse_mcp_config() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+        let auth_type = config.auth_type.unwrap_or(McpAuthType::None);
+        match auth_type {
+            McpAuthType::None => Ok(None),
+            McpAuthType::Bearer => {
+                let key = format!("{}{}", KEYCHAIN_PREFIX_BEARER, tool.id);
+                let key_clone = key.clone();
+                let token = tokio::task::spawn_blocking(move || get_secret(&key_clone))
+                    .await
+                    .context("Keychain read task failed")??;
+                Ok(token)
+            }
+            McpAuthType::Oauth => {
+                let server_id = tool.id.clone();
+                let token = tokio::task::spawn_blocking(move || oauth::load_access_token(&server_id))
+                    .await
+                    .context("Keychain read task failed")??;
+                if token.is_none() {
+                    anyhow::bail!(
+                        "OAuth token not found for MCP server. Please re-authorize in Settings (MCP server: {}).",
+                        tool.name
+                    );
+                }
+                Ok(token)
+            }
+        }
+    }
+
     /// Connect to an MCP server via HTTP transport
-    async fn connect_http(&self, endpoint: &str) -> Result<McpRunningService> {
+    async fn connect_http(
+        &self,
+        endpoint: &str,
+        auth_header: Option<String>,
+    ) -> Result<McpRunningService> {
         tracing::info!("🌐 Connecting via HTTP to: {}", endpoint);
 
         let http_client = reqwest::Client::new();
-        let config = StreamableHttpClientTransportConfig {
+        let mut config = StreamableHttpClientTransportConfig {
             uri: endpoint.to_string().into(),
             ..Default::default()
         };
+        if let Some(token) = auth_header {
+            config = config.auth_header(token);
+        }
         let transport = StreamableHttpClientTransport::with_client(http_client, config);
 
         let client_info = Self::create_client_info();
@@ -209,7 +254,25 @@ impl McpConnectionManager {
                     .endpoint
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("HTTP transport requires an endpoint URL"))?;
-                self.connect_http(endpoint).await?
+                let mut auth_header = Self::get_http_auth_header_async(tool).await?;
+                // Fallback: if config did not yield a token but we have an OAuth token in keychain
+                // for this tool (e.g. config was not persisted), use it so the server gets Authorization.
+                if auth_header.is_none() {
+                    let tool_id = tool.id.clone();
+                    let fallback_token = tokio::task::spawn_blocking(move || oauth::load_access_token(&tool_id))
+                        .await
+                        .context("Keychain read task failed")??;
+                    if fallback_token.is_some() {
+                        tracing::info!("🔐 Using OAuth token from keychain for {} (config had no auth)", tool.name);
+                        auth_header = fallback_token;
+                    }
+                }
+                tracing::debug!(
+                    "🔐 HTTP auth for {}: {}",
+                    tool.name,
+                    if auth_header.is_some() { "token present" } else { "none" }
+                );
+                self.connect_http(endpoint, auth_header).await?
             }
             McpTransportType::Stdio => {
                 let mcp_config =
@@ -327,7 +390,7 @@ impl McpConnectionManager {
     pub async fn test_http_connection(&self, endpoint: &str) -> Result<Vec<McpTool>> {
         tracing::info!("🧪 Testing HTTP connection to: {}", endpoint);
 
-        let running_service = self.connect_http(endpoint).await?;
+        let running_service = self.connect_http(endpoint, None).await?;
 
         let tools_result = running_service
             .list_tools(Default::default())

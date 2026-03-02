@@ -45,6 +45,18 @@ export interface CreateToolRequest {
 // MCP transport types
 export type McpTransportType = 'http' | 'stdio'
 
+// MCP HTTP auth type (OAuth applies only to HTTP per MCP spec)
+export type McpAuthType = 'none' | 'bearer' | 'oauth'
+
+// OAuth metadata (populated after discovery/authorization)
+export interface McpOAuthMetadata {
+  authorization_server_url: string
+  client_id?: string
+  scopes?: string[]
+  token_expires_at?: number
+  is_authorized: boolean
+}
+
 // MCP server configuration for frontend
 export interface McpServerConfig {
   transport: McpTransportType
@@ -52,6 +64,8 @@ export interface McpServerConfig {
   args?: string[]
   env?: Record<string, string>
   cwd?: string
+  auth_type?: McpAuthType
+  oauth_metadata?: McpOAuthMetadata
 }
 
 // Helper to parse Tool.config as McpServerConfig

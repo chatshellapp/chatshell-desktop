@@ -76,6 +76,7 @@ import type {
   Skill,
   McpTransportType,
   McpServerConfig,
+  McpAuthType,
 } from '@/types'
 import {
   parseMcpConfig,
@@ -143,6 +144,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [newMcpEnv, setNewMcpEnv] = React.useState('')
   const [newMcpCwd, setNewMcpCwd] = React.useState('')
   const [newMcpDescription, setNewMcpDescription] = React.useState('')
+  const [newMcpAuthType, setNewMcpAuthType] = React.useState<McpAuthType>('none')
+  const [newMcpBearerToken, setNewMcpBearerToken] = React.useState('')
+  const [newMcpShowBearer, setNewMcpShowBearer] = React.useState(false)
   const [editingMcpId, setEditingMcpId] = React.useState<string | null>(null)
   const [editMcpName, setEditMcpName] = React.useState('')
   const [editMcpTransport, setEditMcpTransport] = React.useState<McpTransportType>('http')
@@ -152,6 +156,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [editMcpEnv, setEditMcpEnv] = React.useState('')
   const [editMcpCwd, setEditMcpCwd] = React.useState('')
   const [editMcpDescription, setEditMcpDescription] = React.useState('')
+  const [editMcpAuthType, setEditMcpAuthType] = React.useState<McpAuthType>('none')
+  const [editMcpBearerToken, setEditMcpBearerToken] = React.useState('')
+  const [editMcpShowBearer, setEditMcpShowBearer] = React.useState(false)
+  const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
   const [testingMcpEndpoint, setTestingMcpEndpoint] = React.useState<string | null>(null)
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
@@ -196,6 +204,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const setAllToolsEnabled = useMcpStore((state) => state.setAllEnabled)
   const testHttpConnection = useMcpStore((state) => state.testHttpConnection)
   const testStdioConnection = useMcpStore((state) => state.testStdioConnection)
+  const startOAuth = useMcpStore((state) => state.startOAuth)
+  const revokeOAuth = useMcpStore((state) => state.revokeOAuth)
+  const setBearerToken = useMcpStore((state) => state.setBearerToken)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
@@ -358,14 +369,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         args: newMcpTransport === 'stdio' && newMcpArgs.trim() ? parseArgs(newMcpArgs) : undefined,
         env: newMcpTransport === 'stdio' && newMcpEnv.trim() ? parseEnv(newMcpEnv) : undefined,
         cwd: newMcpTransport === 'stdio' && newMcpCwd.trim() ? newMcpCwd.trim() : undefined,
+        auth_type:
+          newMcpTransport === 'http' && newMcpAuthType !== 'none' ? newMcpAuthType : undefined,
       }
 
-      await createMcpServer(
+      const created = await createMcpServer(
         newMcpName.trim(),
         newMcpTransport === 'http' ? newMcpEndpoint.trim() : undefined,
         newMcpDescription.trim() || undefined,
         config
       )
+
+      if (newMcpTransport === 'http' && newMcpAuthType === 'bearer' && newMcpBearerToken.trim()) {
+        await setBearerToken(created.id, newMcpBearerToken.trim())
+      }
 
       // Reset form
       setNewMcpName('')
@@ -376,6 +393,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       setNewMcpEnv('')
       setNewMcpCwd('')
       setNewMcpDescription('')
+      setNewMcpAuthType('none')
+      setNewMcpBearerToken('')
+      setNewMcpShowBearer(false)
     } catch (error) {
       logger.error('Failed to create MCP server:', error)
     }
@@ -396,6 +416,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           editMcpTransport === 'stdio' && editMcpArgs.trim() ? parseArgs(editMcpArgs) : undefined,
         env: editMcpTransport === 'stdio' && editMcpEnv.trim() ? parseEnv(editMcpEnv) : undefined,
         cwd: editMcpTransport === 'stdio' && editMcpCwd.trim() ? editMcpCwd.trim() : undefined,
+        auth_type:
+          editMcpTransport === 'http' && editMcpAuthType !== 'none' ? editMcpAuthType : undefined,
       }
 
       await updateMcpServer(
@@ -405,6 +427,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         editMcpDescription.trim() || undefined,
         config
       )
+
+      if (
+        editMcpTransport === 'http' &&
+        editMcpAuthType === 'bearer' &&
+        editMcpBearerToken.trim()
+      ) {
+        await setBearerToken(id, editMcpBearerToken.trim())
+      }
+
       setEditingMcpId(null)
     } catch (error) {
       logger.error('Failed to update MCP server:', error)
@@ -472,6 +503,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setEditMcpEnv(formatEnv(config?.env))
     setEditMcpCwd(config?.cwd || '')
     setEditMcpDescription(server.description || '')
+    setEditMcpAuthType((config?.auth_type as McpAuthType) || 'none')
+    setEditMcpBearerToken('')
+    setEditMcpShowBearer(false)
   }
 
   const cancelEditingMcp = () => {
@@ -484,6 +518,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setEditMcpEnv('')
     setEditMcpCwd('')
     setEditMcpDescription('')
+    setEditMcpAuthType('none')
+    setEditMcpBearerToken('')
+    setEditMcpShowBearer(false)
   }
 
   const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
@@ -694,15 +731,78 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
             {/* HTTP-specific fields */}
             {newMcpTransport === 'http' && (
-              <div className="grid gap-2">
-                <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
-                <Input
-                  id="mcp-endpoint"
-                  placeholder="http://localhost:8080/mcp"
-                  value={newMcpEndpoint}
-                  onChange={(e) => setNewMcpEndpoint(e.target.value)}
-                />
-              </div>
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
+                  <Input
+                    id="mcp-endpoint"
+                    placeholder="http://localhost:8080/mcp"
+                    value={newMcpEndpoint}
+                    onChange={(e) => setNewMcpEndpoint(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Authentication</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="w-full justify-between">
+                        <span>
+                          {newMcpAuthType === 'none'
+                            ? 'None'
+                            : newMcpAuthType === 'bearer'
+                              ? 'Bearer Token'
+                              : 'OAuth 2.0'}
+                        </span>
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-full">
+                      <DropdownMenuItem onClick={() => setNewMcpAuthType('none')}>
+                        None
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setNewMcpAuthType('bearer')}>
+                        Bearer Token
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setNewMcpAuthType('oauth')}>
+                        OAuth 2.0
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {newMcpAuthType === 'bearer' && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="mcp-bearer">Bearer Token</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="mcp-bearer"
+                          type={newMcpShowBearer ? 'text' : 'password'}
+                          placeholder="Your token"
+                          value={newMcpBearerToken}
+                          onChange={(e) => setNewMcpBearerToken(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setNewMcpShowBearer((v) => !v)}
+                          aria-label="Toggle token visibility"
+                        >
+                          {newMcpShowBearer ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {newMcpAuthType === 'oauth' && (
+                    <p className="text-xs text-muted-foreground">
+                      After adding the server, click Edit then Authorize to complete OAuth.
+                    </p>
+                  )}
+                </div>
+              </>
             )}
 
             {/* STDIO-specific fields */}
@@ -860,13 +960,131 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                         {/* Edit HTTP fields */}
                         {editMcpTransport === 'http' && (
-                          <div className="grid gap-2">
-                            <Label>Endpoint URL</Label>
-                            <Input
-                              value={editMcpEndpoint}
-                              onChange={(e) => setEditMcpEndpoint(e.target.value)}
-                            />
-                          </div>
+                          <>
+                            <div className="grid gap-2">
+                              <Label>Endpoint URL</Label>
+                              <Input
+                                value={editMcpEndpoint}
+                                onChange={(e) => setEditMcpEndpoint(e.target.value)}
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Authentication</Label>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="outline" className="w-full justify-between">
+                                    <span>
+                                      {editMcpAuthType === 'none'
+                                        ? 'None'
+                                        : editMcpAuthType === 'bearer'
+                                          ? 'Bearer Token'
+                                          : 'OAuth 2.0'}
+                                    </span>
+                                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-full">
+                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('none')}>
+                                    None
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('bearer')}>
+                                    Bearer Token
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('oauth')}>
+                                    OAuth 2.0
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              {editMcpAuthType === 'bearer' && (
+                                <div className="grid gap-2">
+                                  <Label>Bearer Token</Label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type={editMcpShowBearer ? 'text' : 'password'}
+                                      placeholder="Leave blank to keep existing token"
+                                      value={editMcpBearerToken}
+                                      onChange={(e) => setEditMcpBearerToken(e.target.value)}
+                                      className="flex-1"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => setEditMcpShowBearer((v) => !v)}
+                                      aria-label="Toggle token visibility"
+                                    >
+                                      {editMcpShowBearer ? (
+                                        <EyeOff className="h-4 w-4" />
+                                      ) : (
+                                        <Eye className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                              {editMcpAuthType === 'oauth' && (
+                                <div className="grid gap-2">
+                                  {(() => {
+                                    const meta = serverConfig?.oauth_metadata
+                                    const isAuthorized = meta?.is_authorized ?? false
+                                    const authorizing = oauthAuthorizingId === server.id
+                                    return (
+                                      <>
+                                        <p className="text-xs text-muted-foreground">
+                                          {isAuthorized
+                                            ? 'Authorized.'
+                                            : 'Not authorized. Click Authorize to open the browser.'}
+                                          {meta?.scopes?.length
+                                            ? ` Scopes: ${meta.scopes.join(', ')}`
+                                            : ''}
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={authorizing}
+                                            onClick={async () => {
+                                              setOauthAuthorizingId(server.id)
+                                              try {
+                                                await startOAuth(server.id)
+                                                await loadMcpServers()
+                                              } catch (e) {
+                                                logger.error('OAuth failed', e)
+                                              } finally {
+                                                setOauthAuthorizingId(null)
+                                              }
+                                            }}
+                                          >
+                                            {authorizing ? (
+                                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            ) : null}
+                                            {isAuthorized ? 'Re-authorize' : 'Authorize'}
+                                          </Button>
+                                          {isAuthorized && (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="text-destructive"
+                                              onClick={async () => {
+                                                try {
+                                                  await revokeOAuth(server.id)
+                                                  setEditMcpAuthType('none')
+                                                } catch (e) {
+                                                  logger.error('Revoke OAuth failed', e)
+                                                }
+                                              }}
+                                            >
+                                              Revoke
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </>
+                                    )
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          </>
                         )}
 
                         {/* Edit STDIO fields */}

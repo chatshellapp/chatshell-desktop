@@ -31,11 +31,15 @@ pub use crate::llm::models::ModelInfo;
 // Global state to track active generation tasks with cancellation tokens
 pub(crate) type GenerationTasks = Arc<RwLock<HashMap<String, CancellationToken>>>;
 
+/// Pending OAuth flow state (keyed by server_id in mcp commands)
+pub type PendingOAuthMap = Arc<RwLock<HashMap<String, mcp::PendingOAuthState>>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
     pub generation_tasks: GenerationTasks,
     pub mcp_manager: Arc<McpConnectionManager>,
+    pub pending_oauth: PendingOAuthMap,
 }
 
 // Re-export all commands

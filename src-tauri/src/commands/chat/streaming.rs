@@ -314,11 +314,12 @@ pub(crate) async fn handle_agent_streaming(
     if !mcp_server_ids.is_empty() {
         let mcp_tools_config = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
 
-        if let Some((tools, client)) = mcp_tools_config
-            && !tools.is_empty()
+        if let Some(server_tools) = mcp_tools_config
+            && server_tools.iter().any(|(t, _)| !t.is_empty())
         {
-            tracing::info!("🔌 [agent_streaming] Loaded {} MCP tools", tools.len());
-            config = config.with_mcp_tools(tools, client);
+            let total: usize = server_tools.iter().map(|(t, _)| t.len()).sum();
+            tracing::info!("🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)", total, server_tools.len());
+            config = config.with_mcp_tools(server_tools);
         }
     }
 
@@ -987,12 +988,12 @@ pub(crate) async fn handle_agent_streaming(
     });
 }
 
-/// Load MCP tools by their tool IDs
-/// Returns (tools, client) if MCP servers are found, None otherwise
+/// Load MCP tools by their tool IDs.
+/// Returns one (tools, client) per connected MCP server so tool calls are routed to the correct server.
 async fn load_mcp_tools_by_ids(
     state: &AppState,
     tool_ids: &[String],
-) -> Option<(Vec<McpTool>, Peer<RoleClient>)> {
+) -> Option<Vec<(Vec<McpTool>, Peer<RoleClient>)>> {
     if tool_ids.is_empty() {
         return None;
     }
@@ -1018,7 +1019,7 @@ async fn load_mcp_tools_by_ids(
         return None;
     }
 
-    // Connect to all enabled MCP servers and collect tools
+    // Connect to all enabled MCP servers and collect (tools, client) per server
     let connections = match state.mcp_manager.connect_multiple(&enabled_tools).await {
         Ok(c) => c,
         Err(e) => {
@@ -1031,18 +1032,10 @@ async fn load_mcp_tools_by_ids(
         return None;
     }
 
-    // Collect all tools from all servers
-    // Note: For simplicity, we use the first server's client for all tools
-    // In a more complex setup, we'd need to track which client handles which tools
-    let mut all_tools = Vec::new();
-    let mut first_client: Option<Peer<RoleClient>> = None;
+    let server_tools: Vec<(Vec<McpTool>, Peer<RoleClient>)> = connections
+        .into_iter()
+        .map(|(conn, tools)| (tools, conn.client))
+        .collect();
 
-    for (conn, tools) in connections {
-        if first_client.is_none() {
-            first_client = Some(conn.client.clone());
-        }
-        all_tools.extend(tools);
-    }
-
-    first_client.map(|client| (all_tools, client))
+    Some(server_tools)
 }
