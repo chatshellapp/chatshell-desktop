@@ -53,6 +53,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // Parameter presets for displaying names
   const [parameterPresets, setParameterPresets] = useState<ModelParameterPreset[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const cursorPositionRef = useRef<number | null>(null)
 
   // Attachment handling hook
   const {
@@ -504,6 +505,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
             onImageSelect={handleImageSelect}
             onWebPageSelect={handleWebPageSelect}
             onUserPromptSelect={() => {
+              cursorPositionRef.current = textareaRef.current?.selectionStart ?? null
               ensurePromptsLoaded()
               setIsUserPromptDialogOpen(true)
             }}
@@ -611,8 +613,23 @@ export function ChatInput(/* _props: ChatInputProps */) {
         isOpen={isUserPromptDialogOpen}
         onOpenChange={setIsUserPromptDialogOpen}
         onSelectPrompt={(_promptId, content) => {
-          // Set the prompt content directly to the input
-          setInput(content)
+          const pos = cursorPositionRef.current
+          if (pos !== null && input.length > 0) {
+            const before = input.slice(0, pos)
+            const after = input.slice(pos)
+            const newInput = before + content + after
+            setInput(newInput)
+            const newCursorPos = pos + content.length
+            requestAnimationFrame(() => {
+              if (textareaRef.current) {
+                textareaRef.current.focus()
+                textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+              }
+            })
+          } else {
+            setInput(content)
+          }
+          cursorPositionRef.current = null
         }}
       />
 
