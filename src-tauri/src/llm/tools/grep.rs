@@ -134,18 +134,25 @@ impl Tool for GrepTool {
             args.glob
         );
 
-        let search_path = args.path.clone().or(self.default_path.clone()).unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| ".".to_string())
-        });
+        let search_path = args
+            .path
+            .clone()
+            .or(self.default_path.clone())
+            .unwrap_or_else(|| {
+                dirs::home_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| ".".to_string())
+            });
 
         // Try ripgrep first (check multiple paths), fall back to system grep
         let result = run_ripgrep(&args.pattern, &search_path, &args).await;
         match result {
             Ok(output) => Ok(output),
             Err(rg_err) => {
-                tracing::info!("🔧 [grep] ripgrep unavailable ({}), falling back to system grep", rg_err);
+                tracing::info!(
+                    "🔧 [grep] ripgrep unavailable ({}), falling back to system grep",
+                    rg_err
+                );
                 run_system_grep(&args.pattern, &search_path, &args).await
             }
         }
@@ -154,10 +161,7 @@ impl Tool for GrepTool {
 
 /// Try to find the `rg` binary, checking common Homebrew paths on macOS
 fn find_rg_binary() -> String {
-    for path in &[
-        "/opt/homebrew/bin/rg",
-        "/usr/local/bin/rg",
-    ] {
+    for path in &["/opt/homebrew/bin/rg", "/usr/local/bin/rg"] {
         if std::path::Path::new(path).exists() {
             return path.to_string();
         }

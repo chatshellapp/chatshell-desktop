@@ -264,54 +264,56 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       </div>
       {!isStreaming && (
-      <TooltipProvider delayDuration={300}>
-        <div
-          data-screenshot-exclude="true"
-          className={`flex gap-1 transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
-                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isCopied ? 'Copied!' : 'Copy'}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onTranslate}>
-                <Languages className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Translate</p>
-            </TooltipContent>
-          </Tooltip>
-          <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <TooltipProvider delayDuration={300}>
+          <div
+            data-screenshot-exclude="true"
+            className={`flex gap-1 transition-opacity ${isExportOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                    <Scan className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy}>
+                  {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Screenshot</p>
+                <p>{isCopied ? 'Copied!' : 'Copy'}</p>
               </TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={onExportAll}>Export All Messages</DropdownMenuItem>
-              <DropdownMenuItem onClick={onExportConversation}>
-                Export Current Conversation
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onExportMessage}>Export Current Message</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onTranslate}>
+                  <Languages className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Translate</p>
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <Scan className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Screenshot</p>
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={onExportAll}>Export All Messages</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportConversation}>
+                  Export Current Conversation
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportMessage}>
+                  Export Current Message
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </TooltipProvider>
       )}
     </div>
   )

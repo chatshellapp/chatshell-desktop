@@ -216,7 +216,11 @@ export function StreamingMessage({
             if (streamingContent.length > lastContentLength) {
               const rawSegment = streamingContent.slice(lastContentLength)
               const parsed = parseThinkingContent(rawSegment)
-              if (parsed.thinkingContent && parsed.thinkingContent.trim() && searchDecisionResolved) {
+              if (
+                parsed.thinkingContent &&
+                parsed.thinkingContent.trim() &&
+                searchDecisionResolved
+              ) {
                 elements.push(
                   <ThinkingPreview
                     key="remaining-xml-thinking"

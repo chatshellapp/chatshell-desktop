@@ -36,9 +36,7 @@ export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
       >
         <Layers className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 
-        <span className="text-xs text-muted-foreground">
-          Ran {items.length} steps
-        </span>
+        <span className="text-xs text-muted-foreground">Ran {items.length} steps</span>
 
         <span className="text-xs text-muted-foreground/60 truncate">{summary}</span>
 

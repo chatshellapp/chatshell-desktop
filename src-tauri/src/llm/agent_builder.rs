@@ -186,18 +186,6 @@ impl AgentConfig {
         self
     }
 
-    /// Set the default working directory for grep tool
-    pub fn with_grep_working_directory(mut self, dir: String) -> Self {
-        self.grep_working_directory = Some(dir);
-        self
-    }
-
-    /// Set the default working directory for glob tool
-    pub fn with_glob_working_directory(mut self, dir: String) -> Self {
-        self.glob_working_directory = Some(dir);
-        self
-    }
-
     /// Enable all built-in tools
     pub fn with_builtin_tools(mut self) -> Self {
         self.enable_web_search = true;
@@ -733,24 +721,6 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
     };
 
-    let create_grep_tool = || -> GrepTool {
-        if let Some(ref dir) = config.grep_working_directory {
-            tracing::info!("🔎 Grep tool configured with working directory: {}", dir);
-            GrepTool::with_working_directory(dir.clone())
-        } else {
-            GrepTool::new()
-        }
-    };
-
-    let create_glob_tool = || -> GlobTool {
-        if let Some(ref dir) = config.glob_working_directory {
-            tracing::info!("📂 Glob tool configured with working directory: {}", dir);
-            GlobTool::with_working_directory(dir.clone())
-        } else {
-            GlobTool::new()
-        }
-    };
-
     // Once we have a simple builder (after the first .tool() call), this macro
     // chains all remaining enabled tools, adds MCP tools per server if any, and builds.
     macro_rules! finish_with_simple_builder {
@@ -875,14 +845,20 @@ fn build_agent_with_tools<M: CompletionModel>(
         finish_with_simple_builder!(sb);
     }
 
-    // Only MCP tools (no native tools)
+    // Only MCP tools (no native tools). First .rmcp_tools() turns AgentBuilder into AgentBuilderSimple.
     if let Some(ref mcp_config) = config.mcp_tools
-        && !mcp_config.tools.is_empty()
+        && !mcp_config.server_tools.is_empty()
     {
-        tracing::info!("🔌 Adding {} MCP tool(s) to agent", mcp_config.tools.len());
-        return builder
-            .rmcp_tools(mcp_config.tools.clone(), mcp_config.client.clone())
-            .build();
+        let mut iter = mcp_config.server_tools.iter().filter(|(t, _)| !t.is_empty());
+        if let Some((first_tools, first_client)) = iter.next() {
+            let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
+            tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
+            let mut sb = builder.rmcp_tools(first_tools.clone(), first_client.clone());
+            for (tools, client) in iter {
+                sb = sb.rmcp_tools(tools.clone(), client.clone());
+            }
+            return sb.build();
+        }
     }
 
     builder.build()
