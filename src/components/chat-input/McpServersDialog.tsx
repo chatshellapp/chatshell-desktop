@@ -98,13 +98,8 @@ export function McpServersDialog({
     if (enabledSkillIds.length > 0) {
       reasons.push('skills need the read tool to load instructions')
     }
-    const enabledMcpIds = enabledServerIds.filter((id) =>
-      mcpServers.some((s) => s.id === id)
-    )
-    const totalMcpTools = enabledMcpIds.reduce(
-      (sum, id) => sum + (serverTools[id]?.length ?? 0),
-      0
-    )
+    const enabledMcpIds = enabledServerIds.filter((id) => mcpServers.some((s) => s.id === id))
+    const totalMcpTools = enabledMcpIds.reduce((sum, id) => sum + (serverTools[id]?.length ?? 0), 0)
     if (totalMcpTools > MCP_LAZY_LOAD_THRESHOLD) {
       reasons.push('MCP lazy loading requires the read tool')
     }
@@ -144,37 +139,56 @@ export function McpServersDialog({
     const isConversationEnabled = enabledServerIds.includes(tool.id)
     const isMcp = isMcpTool(tool)
     const isReadForceEnabled = tool.id === BUILTIN_READ_ID && readAutoEnableReason !== null
-    const rawStatus = isMcp ? (connectionStatus[tool.id] || 'idle') : null
+    const rawStatus = isMcp ? connectionStatus[tool.id] || 'idle' : null
     const status = isMcp && !isConversationEnabled ? 'idle' : rawStatus
-    const tools = isMcp ? (serverTools[tool.id] || []) : []
+    const tools = isMcp ? serverTools[tool.id] || [] : []
     const error = isMcp ? connectionErrors[tool.id] : null
 
     return (
-      <div
-        key={tool.id}
-        className={`py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
-      >
+      <div key={tool.id} className={`py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}>
         <div className="flex items-center justify-between">
           <div className="grid gap-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {!isMcp && (
-                <BuiltinToolIcon toolId={tool.id} className="h-4 w-4 text-muted-foreground shrink-0" />
+                <BuiltinToolIcon
+                  toolId={tool.id}
+                  className="h-4 w-4 text-muted-foreground shrink-0"
+                />
               )}
-              {isMcp && (() => {
-                const dotClass = 'h-2 w-2 rounded-full shrink-0'
-                if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
-                if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
-                if (status === 'needs_auth') return <span className={`${dotClass} bg-yellow-500`} title="Authorization required" />
-                if (status === 'error') return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className={`${dotClass} bg-red-500 cursor-help`} />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-[250px]">{error || 'Connection failed'}</TooltipContent>
-                  </Tooltip>
-                )
-                return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
-              })()}
+              {isMcp &&
+                (() => {
+                  const dotClass = 'h-2 w-2 rounded-full shrink-0'
+                  if (status === 'connecting')
+                    return (
+                      <span
+                        className={`${dotClass} bg-yellow-500 animate-pulse`}
+                        title="Connecting..."
+                      />
+                    )
+                  if (status === 'connected')
+                    return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                  if (status === 'needs_auth')
+                    return (
+                      <span
+                        className={`${dotClass} bg-yellow-500`}
+                        title="Authorization required"
+                      />
+                    )
+                  if (status === 'error')
+                    return (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`${dotClass} bg-red-500 cursor-help`} />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[250px]">
+                          {error || 'Connection failed'}
+                        </TooltipContent>
+                      </Tooltip>
+                    )
+                  return (
+                    <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+                  )
+                })()}
               <Label
                 htmlFor={tool.id}
                 className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : ''}`}
@@ -186,7 +200,9 @@ export function McpServersDialog({
               <p className="text-xs text-muted-foreground max-w-[280px]">{tool.description}</p>
             )}
             {isMcp && tool.endpoint && (
-              <p className="text-xs text-muted-foreground truncate max-w-[280px]">{tool.endpoint}</p>
+              <p className="text-xs text-muted-foreground truncate max-w-[280px]">
+                {tool.endpoint}
+              </p>
             )}
             {isGloballyDisabled && (
               <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
@@ -315,21 +331,29 @@ export function McpServersDialog({
             </p>
           </div>
         ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 gap-0">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex flex-col flex-1 min-h-0 gap-0"
+          >
             <div className="px-6 pt-2 pb-0">
               <TabsList className="w-full">
                 <TabsTrigger value="mcp-servers" className="gap-1.5">
                   <Plug className="h-3.5 w-3.5" />
                   MCP Servers
                   {mcpServers.length > 0 && (
-                    <span className="text-xs text-muted-foreground ml-0.5">({mcpServers.length})</span>
+                    <span className="text-xs text-muted-foreground ml-0.5">
+                      ({mcpServers.length})
+                    </span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="builtin-tools" className="gap-1.5">
                   <Wrench className="h-3.5 w-3.5" />
                   Built-in Tools
                   {builtinTools.length > 0 && (
-                    <span className="text-xs text-muted-foreground ml-0.5">({builtinTools.length})</span>
+                    <span className="text-xs text-muted-foreground ml-0.5">
+                      ({builtinTools.length})
+                    </span>
                   )}
                 </TabsTrigger>
               </TabsList>
@@ -362,9 +386,7 @@ export function McpServersDialog({
 
             <TabsContent value="mcp-servers" className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {mcpServers.length > 0 ? (
-                <div className="space-y-1">
-                  {mcpServers.map(renderToolItem)}
-                </div>
+                <div className="space-y-1">{mcpServers.map(renderToolItem)}</div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No MCP servers configured. Add servers in Settings.
@@ -374,9 +396,7 @@ export function McpServersDialog({
 
             <TabsContent value="builtin-tools" className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
               {builtinTools.length > 0 ? (
-                <div className="space-y-1">
-                  {builtinTools.map(renderToolItem)}
-                </div>
+                <div className="space-y-1">{builtinTools.map(renderToolItem)}</div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No built-in tools available.

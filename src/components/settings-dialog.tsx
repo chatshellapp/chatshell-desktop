@@ -483,11 +483,37 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                           <div className="flex items-center gap-2">
                             {(() => {
                               const dotClass = 'h-2 w-2 rounded-full shrink-0'
-                              if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
-                              if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
-                              if (status === 'needs_auth') return <span className={`${dotClass} bg-yellow-500`} title="Authorization required" />
-                              if (status === 'error') return <span className={`${dotClass} bg-red-500`} title="Connection failed" />
-                              return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+                              if (status === 'connecting')
+                                return (
+                                  <span
+                                    className={`${dotClass} bg-yellow-500 animate-pulse`}
+                                    title="Connecting..."
+                                  />
+                                )
+                              if (status === 'connected')
+                                return (
+                                  <span className={`${dotClass} bg-green-500`} title="Connected" />
+                                )
+                              if (status === 'needs_auth')
+                                return (
+                                  <span
+                                    className={`${dotClass} bg-yellow-500`}
+                                    title="Authorization required"
+                                  />
+                                )
+                              if (status === 'error')
+                                return (
+                                  <span
+                                    className={`${dotClass} bg-red-500`}
+                                    title="Connection failed"
+                                  />
+                                )
+                              return (
+                                <span
+                                  className={`${dotClass} bg-muted-foreground/30`}
+                                  title="Not connected"
+                                />
+                              )
                             })()}
                             <span className="font-medium truncate">{server.name}</span>
                             <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
@@ -511,7 +537,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             disabled={status === 'connecting'}
                             title="Refresh connection"
                           >
-                            <RefreshCw className={`h-4 w-4 ${status === 'connecting' ? 'animate-spin' : ''}`} />
+                            <RefreshCw
+                              className={`h-4 w-4 ${status === 'connecting' ? 'animate-spin' : ''}`}
+                            />
                           </Button>
 
                           {isNeedsAuth ? (
@@ -573,32 +601,41 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       )}
 
                       {/* Connected tools list */}
-                      {status === 'connected' && serverTools[server.id] && serverTools[server.id].length > 0 && (
-                        <div className="border-t pt-2 mt-1">
-                          <button
-                            type="button"
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-                            onClick={() => setExpandedToolsId(expandedToolsId === server.id ? null : server.id)}
-                          >
-                            <ChevronDown
-                              className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
-                            />
-                            {serverTools[server.id].length} tool{serverTools[server.id].length !== 1 ? 's' : ''}
-                          </button>
-                          {expandedToolsId === server.id && (
-                            <div className="mt-2 space-y-1 pl-5">
-                              {serverTools[server.id].map((tool) => (
-                                <div key={tool.name} className="text-xs">
-                                  <span className="font-mono font-medium text-foreground">{tool.name}</span>
-                                  {tool.description && (
-                                    <p className="text-muted-foreground mt-0.5 line-clamp-2">{tool.description}</p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {status === 'connected' &&
+                        serverTools[server.id] &&
+                        serverTools[server.id].length > 0 && (
+                          <div className="border-t pt-2 mt-1">
+                            <button
+                              type="button"
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+                              onClick={() =>
+                                setExpandedToolsId(expandedToolsId === server.id ? null : server.id)
+                              }
+                            >
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
+                              />
+                              {serverTools[server.id].length} tool
+                              {serverTools[server.id].length !== 1 ? 's' : ''}
+                            </button>
+                            {expandedToolsId === server.id && (
+                              <div className="mt-2 space-y-1 pl-5">
+                                {serverTools[server.id].map((tool) => (
+                                  <div key={tool.name} className="text-xs">
+                                    <span className="font-mono font-medium text-foreground">
+                                      {tool.name}
+                                    </span>
+                                    {tool.description && (
+                                      <p className="text-muted-foreground mt-0.5 line-clamp-2">
+                                        {tool.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </div>
                 )

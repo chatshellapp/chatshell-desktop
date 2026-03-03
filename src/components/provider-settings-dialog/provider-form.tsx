@@ -231,7 +231,13 @@ export function ProviderForm({
           </div>
           <Button
             type="button"
-            variant={checkStatus === 'success' ? 'default' : checkStatus === 'failed' ? 'destructive' : 'outline'}
+            variant={
+              checkStatus === 'success'
+                ? 'default'
+                : checkStatus === 'failed'
+                  ? 'destructive'
+                  : 'outline'
+            }
             size="sm"
             className="h-9 shrink-0"
             onClick={handleCheckApi}
@@ -242,9 +248,7 @@ export function ProviderForm({
             ) : checkStatus === 'success' ? (
               <>
                 <Check className="size-4" />
-                {checkLatency != null && (
-                  <span className="ml-1 text-xs">{checkLatency}ms</span>
-                )}
+                {checkLatency != null && <span className="ml-1 text-xs">{checkLatency}ms</span>}
               </>
             ) : checkStatus === 'failed' ? (
               <>

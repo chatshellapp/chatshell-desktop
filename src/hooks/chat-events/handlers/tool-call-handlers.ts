@@ -31,13 +31,10 @@ export function useToolCallHandlers() {
     []
   )
 
-  const handleMcpAuthRequired = useCallback(
-    (serverId: string) => {
-      logger.warn('[useToolCallHandlers] MCP auth required for server:', serverId)
-      useMcpStore.getState().probeEndpoint(serverId)
-    },
-    []
-  )
+  const handleMcpAuthRequired = useCallback((serverId: string) => {
+    logger.warn('[useToolCallHandlers] MCP auth required for server:', serverId)
+    useMcpStore.getState().probeEndpoint(serverId)
+  }, [])
 
   return {
     handleToolCallStarted,

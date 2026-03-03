@@ -38,7 +38,10 @@ export const BUILTIN_PROVIDERS: LLMProvider[] = [
  * configure them manually. Users can still delete or add more models.
  * Aggregators like OpenRouter have more defaults.
  */
-export const DEFAULT_PROVIDER_MODELS: Record<string, Array<{ modelId: string; displayName: string }>> = {
+export const DEFAULT_PROVIDER_MODELS: Record<
+  string,
+  Array<{ modelId: string; displayName: string }>
+> = {
   openai: [
     { modelId: 'gpt-5.2', displayName: 'GPT-5.2' },
     { modelId: 'gpt-5-mini', displayName: 'GPT-5 Mini' },
@@ -103,25 +106,15 @@ export const DEFAULT_PROVIDER_MODELS: Record<string, Array<{ modelId: string; di
     { modelId: 'command-r-plus', displayName: 'Command R+' },
     { modelId: 'command-r', displayName: 'Command R' },
   ],
-  moonshot: [
-    { modelId: 'kimi-k2.5', displayName: 'Kimi K2.5' },
-  ],
+  moonshot: [{ modelId: 'kimi-k2.5', displayName: 'Kimi K2.5' }],
   hyperbolic: [
     { modelId: 'meta-llama/Llama-3.3-70B-Instruct', displayName: 'Llama 3.3 70B' },
     { modelId: 'deepseek-ai/DeepSeek-V3', displayName: 'DeepSeek V3' },
   ],
-  galadriel: [
-    { modelId: 'llama3.3:70b', displayName: 'Llama 3.3 70B' },
-  ],
-  minimax: [
-    { modelId: 'minimax-m2.5', displayName: 'MiniMax M2.5' },
-  ],
-  minimax_cn: [
-    { modelId: 'MiniMax-M2.5', displayName: 'MiniMax M2.5' },
-  ],
-  mira: [
-    { modelId: 'mira/llama-3.1-70b', displayName: 'Llama 3.1 70B' },
-  ],
+  galadriel: [{ modelId: 'llama3.3:70b', displayName: 'Llama 3.3 70B' }],
+  minimax: [{ modelId: 'minimax-m2.5', displayName: 'MiniMax M2.5' }],
+  minimax_cn: [{ modelId: 'MiniMax-M2.5', displayName: 'MiniMax M2.5' }],
+  mira: [{ modelId: 'mira/llama-3.1-70b', displayName: 'Llama 3.1 70B' }],
 }
 
 /**

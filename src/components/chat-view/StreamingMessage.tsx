@@ -166,9 +166,7 @@ export function StreamingMessage({
         )
         if (rowCount >= 2) {
           const items = toCollapsedItems(pendingCompleted)
-          elements.push(
-            <CollapsedToolGroup key={`group-${items[0].toolCall.id}`} items={items} />
-          )
+          elements.push(<CollapsedToolGroup key={`group-${items[0].toolCall.id}`} items={items} />)
           pendingCompleted = []
         } else {
           flushAsIndividual()

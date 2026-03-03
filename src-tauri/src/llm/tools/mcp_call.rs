@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
+use rmcp::RoleClient;
 use rmcp::model::{CallToolRequestParam, RawContent};
 use rmcp::service::Peer;
-use rmcp::RoleClient;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -92,11 +92,7 @@ impl Tool for McpCallTool {
             server_name
         );
 
-        let arguments = args
-            .arguments
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let arguments = args.arguments.as_object().cloned().unwrap_or_default();
 
         let result = client
             .call_tool(CallToolRequestParam {
@@ -141,9 +137,7 @@ impl Tool for McpCallTool {
                     } => {
                         format!(
                             "{mime_type}{uri}:{text}",
-                            mime_type = mime_type
-                                .map(|m| format!("data:{m};"))
-                                .unwrap_or_default(),
+                            mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                         )
                     }
                     rmcp::model::ResourceContents::BlobResourceContents {
@@ -153,9 +147,7 @@ impl Tool for McpCallTool {
                         ..
                     } => format!(
                         "{mime_type}{uri}:{blob}",
-                        mime_type = mime_type
-                            .map(|m| format!("data:{m};"))
-                            .unwrap_or_default(),
+                        mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                     ),
                 },
                 _ => String::new(),

@@ -136,7 +136,10 @@ export function AssistantDialog({
   }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools, ensureSkillsLoaded])
 
   // Separate builtin tools and MCP servers for the Tools tab (show all, not just enabled)
-  const builtinTools = useMemo(() => sortBuiltinTools(allTools.filter((t) => isBuiltinTool(t))), [allTools])
+  const builtinTools = useMemo(
+    () => sortBuiltinTools(allTools.filter((t) => isBuiltinTool(t))),
+    [allTools]
+  )
   const mcpServers = useMemo(() => allTools.filter((t) => isMcpTool(t)), [allTools])
 
   // All globally enabled tool IDs
@@ -915,7 +918,10 @@ export function AssistantDialog({
             <div className="grid gap-1">
               <div className="flex items-center gap-2">
                 {isBuiltinTool(tool) && (
-                  <BuiltinToolIcon toolId={tool.id} className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <BuiltinToolIcon
+                    toolId={tool.id}
+                    className="h-4 w-4 text-muted-foreground shrink-0"
+                  />
                 )}
                 <label
                   htmlFor={`tool-${tool.id}`}

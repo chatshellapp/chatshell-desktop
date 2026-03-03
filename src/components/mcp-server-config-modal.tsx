@@ -1,13 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import {
-  Check,
-  ChevronDown,
-  Plus,
-  Trash2,
-  Loader2,
-} from 'lucide-react'
+import { Check, ChevronDown, Plus, Trash2, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -27,11 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMcpStore } from '@/stores/mcpStore'
-import type {
-  Tool,
-  McpTransportType,
-  McpServerConfig,
-} from '@/types'
+import type { Tool, McpTransportType, McpServerConfig } from '@/types'
 import { parseMcpConfig, getTransportType } from '@/types'
 import { logger } from '@/lib/logger'
 
@@ -156,8 +146,7 @@ export function McpServerConfigModal({
 
   const canSave =
     name.trim() &&
-    ((transport === 'http' && endpoint.trim()) ||
-      (transport === 'stdio' && command.trim()))
+    ((transport === 'http' && endpoint.trim()) || (transport === 'stdio' && command.trim()))
 
   const handleSave = async () => {
     if (!canSave) return
@@ -181,7 +170,7 @@ export function McpServerConfigModal({
           name.trim(),
           transport === 'http' ? endpoint.trim() : undefined,
           description.trim() || undefined,
-          config,
+          config
         )
         serverId = updated.id
       } else {
@@ -189,7 +178,7 @@ export function McpServerConfigModal({
           name.trim(),
           transport === 'http' ? endpoint.trim() : undefined,
           description.trim() || undefined,
-          config,
+          config
         )
         serverId = created.id
       }
@@ -301,8 +290,8 @@ export function McpServerConfigModal({
                 </div>
                 {headers.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No custom headers. Click "Add Header" to add request headers
-                    (e.g. Authorization, X-API-Key).
+                    No custom headers. Click "Add Header" to add request headers (e.g.
+                    Authorization, X-API-Key).
                   </p>
                 )}
                 {headers.map((header, index) => (

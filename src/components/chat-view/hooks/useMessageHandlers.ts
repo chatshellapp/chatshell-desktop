@@ -53,9 +53,7 @@ export function useMessageHandlers({
 
       const content = message.content
 
-      let modelToUse = selectedAssistant
-        ? getModelById(selectedAssistant.model_id)
-        : selectedModel
+      const modelToUse = selectedAssistant ? getModelById(selectedAssistant.model_id) : selectedModel
 
       if (!modelToUse) {
         toast.error('Please select a model or assistant first')
