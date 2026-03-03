@@ -33,3 +33,8 @@ export interface ToolCallCompletedEvent {
   tool_input: string
   tool_output: string
 }
+
+export interface McpAuthRequiredEvent {
+  conversation_id: string
+  server_id: string
+}

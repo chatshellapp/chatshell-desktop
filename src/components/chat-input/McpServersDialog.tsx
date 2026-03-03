@@ -7,6 +7,8 @@ import {
   ToggleRight,
   RefreshCw,
   ChevronDown,
+  LogIn,
+  Loader2,
 } from 'lucide-react'
 import {
   Dialog,
@@ -24,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMcpStore } from '@/stores/mcpStore'
 import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
+import { logger } from '@/lib/logger'
 
 interface McpServersDialogProps {
   open: boolean
@@ -44,7 +47,23 @@ export function McpServersDialog({
   const connectionStatus = useMcpStore((state) => state.connectionStatus)
   const serverTools = useMcpStore((state) => state.serverTools)
   const connectionErrors = useMcpStore((state) => state.connectionErrors)
+  const startOAuth = useMcpStore((state) => state.startOAuth)
+  const loadServers = useMcpStore((state) => state.loadServers)
   const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
+  const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
+
+  const handleOAuthConnect = async (serverId: string) => {
+    setOauthAuthorizingId(serverId)
+    try {
+      await startOAuth(serverId)
+      await loadServers()
+      connectServer(serverId)
+    } catch (e) {
+      logger.error('OAuth connect failed', e)
+    } finally {
+      setOauthAuthorizingId(null)
+    }
+  }
 
   React.useEffect(() => {
     if (open) {
@@ -116,6 +135,7 @@ export function McpServersDialog({
                 const dotClass = 'h-2 w-2 rounded-full shrink-0'
                 if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
                 if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                if (status === 'needs_auth') return <span className={`${dotClass} bg-yellow-500`} title="Authorization required" />
                 if (status === 'error') return (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -144,7 +164,7 @@ export function McpServersDialog({
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {isMcp && !isGloballyDisabled && (
+            {isMcp && !isGloballyDisabled && status !== 'needs_auth' && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -153,10 +173,28 @@ export function McpServersDialog({
                 disabled={status === 'connecting'}
                 title="Refresh connection"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${status === 'connecting' ? 'animate-spin' : ''}`} />
+                {status === 'connecting' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
               </Button>
             )}
-            {isGloballyDisabled ? (
+            {isMcp && status === 'needs_auth' ? (
+              <Button
+                size="sm"
+                variant="default"
+                disabled={oauthAuthorizingId === tool.id}
+                onClick={() => handleOAuthConnect(tool.id)}
+              >
+                {oauthAuthorizingId === tool.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5 mr-1" />
+                )}
+                Connect
+              </Button>
+            ) : isGloballyDisabled ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>

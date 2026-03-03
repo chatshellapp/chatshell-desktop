@@ -14,6 +14,7 @@ import type {
 import type {
   ConversationUpdatedEvent,
   GenerationStoppedEvent,
+  McpAuthRequiredEvent,
   ReasoningStartedEvent,
   SearchDecisionStartedEvent,
   ToolCallStartedEvent,
@@ -56,7 +57,7 @@ export function useChatEvents(conversationId: string | null) {
 
   const { handleConversationUpdated, handleGenerationStopped } = useConversationHandlers()
 
-  const { handleToolCallStarted, handleToolCallCompleted } = useToolCallHandlers()
+  const { handleToolCallStarted, handleToolCallCompleted, handleMcpAuthRequired } = useToolCallHandlers()
 
   useEffect(() => {
     if (!conversationId) return
@@ -202,6 +203,15 @@ export function useChatEvents(conversationId: string | null) {
       }
     )
 
+    // Listen for MCP auth required (token expired, 401 from tool call)
+    const unlistenMcpAuthRequired = listen<McpAuthRequiredEvent>(
+      'mcp-auth-required',
+      (event) => {
+        logger.warn('[useChatEvents] Received mcp-auth-required event:', event.payload)
+        handleMcpAuthRequired(event.payload.server_id)
+      }
+    )
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
@@ -220,6 +230,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenReasoningStarted.then((fn) => fn())
       unlistenToolCallStarted.then((fn) => fn())
       unlistenToolCallCompleted.then((fn) => fn())
+      unlistenMcpAuthRequired.then((fn) => fn())
     }
   }, [
     conversationId,
@@ -238,5 +249,6 @@ export function useChatEvents(conversationId: string | null) {
     handleReasoningStarted,
     handleToolCallStarted,
     handleToolCallCompleted,
+    handleMcpAuthRequired,
   ])
 }

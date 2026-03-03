@@ -46,6 +46,18 @@ impl Clone for McpServerConnection {
     }
 }
 
+/// A server that failed to connect, with the error message.
+pub struct ConnectFailure {
+    pub tool_id: String,
+    pub error: String,
+}
+
+/// Result of connecting to multiple MCP servers.
+pub struct ConnectMultipleResult {
+    pub connections: Vec<(McpServerConnection, Vec<McpTool>)>,
+    pub failures: Vec<ConnectFailure>,
+}
+
 /// Manager for MCP server connections
 #[derive(Default)]
 pub struct McpConnectionManager {
@@ -339,13 +351,36 @@ impl McpConnectionManager {
         Ok(connection)
     }
 
-    /// Get a cached connection or create a new one
+    /// Get a cached connection or create a new one.
+    /// Validates cached connections by re-listing tools to detect stale auth tokens.
     pub async fn get_or_connect(&self, tool: &Tool) -> Result<McpServerConnection> {
         // Check cache first
-        {
+        let cached = {
             let connections = self.connections.read().await;
-            if let Some(conn) = connections.get(&tool.id) {
-                return Ok(conn.clone());
+            connections.get(&tool.id).cloned()
+        };
+
+        if let Some(conn) = cached {
+            // Validate the cached connection is still alive
+            match conn._running_service.list_tools(Default::default()).await {
+                Ok(tools_result) => {
+                    // Update cached tools in case they changed
+                    let mut updated = conn.clone();
+                    updated.mcp_tools = tools_result.tools;
+                    {
+                        let mut connections = self.connections.write().await;
+                        connections.insert(tool.id.clone(), updated.clone());
+                    }
+                    return Ok(updated);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "⚠️ Cached connection for '{}' is stale, reconnecting: {}",
+                        tool.name,
+                        e
+                    );
+                    self.disconnect(&tool.id).await;
+                }
             }
         }
 
@@ -379,23 +414,28 @@ impl McpConnectionManager {
     pub async fn connect_multiple(
         &self,
         tools: &[Tool],
-    ) -> Result<Vec<(McpServerConnection, Vec<McpTool>)>> {
-        let mut results = Vec::new();
+    ) -> Result<ConnectMultipleResult> {
+        let mut connections = Vec::new();
+        let mut failures = Vec::new();
 
         for tool in tools {
             match self.get_or_connect(tool).await {
                 Ok(conn) => {
                     let mcp_tools = conn.mcp_tools.clone();
-                    results.push((conn, mcp_tools));
+                    connections.push((conn, mcp_tools));
                 }
                 Err(e) => {
-                    tracing::warn!("⚠️ Failed to connect to MCP server {}: {}", tool.name, e);
-                    // Continue with other servers
+                    let error_str = e.to_string();
+                    tracing::warn!("⚠️ Failed to connect to MCP server {}: {}", tool.name, error_str);
+                    failures.push(ConnectFailure {
+                        tool_id: tool.id.clone(),
+                        error: error_str,
+                    });
                 }
             }
         }
 
-        Ok(results)
+        Ok(ConnectMultipleResult { connections, failures })
     }
 
     /// Test connection to an MCP server via HTTP

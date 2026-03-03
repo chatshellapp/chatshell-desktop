@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
+import { useMcpStore } from '@/stores/mcpStore'
 import { logger } from '@/lib/logger'
 
 /**
@@ -30,8 +31,17 @@ export function useToolCallHandlers() {
     []
   )
 
+  const handleMcpAuthRequired = useCallback(
+    (serverId: string) => {
+      logger.warn('[useToolCallHandlers] MCP auth required for server:', serverId)
+      useMcpStore.getState().probeEndpoint(serverId)
+    },
+    []
+  )
+
   return {
     handleToolCallStarted,
     handleToolCallCompleted,
+    handleMcpAuthRequired,
   }
 }
