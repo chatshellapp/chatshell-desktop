@@ -12,12 +12,19 @@ use crate::llm::{FileData, ImageData};
 const APP_REFERER: &str = "https://chatshell.app";
 const APP_TITLE: &str = "ChatShell";
 
-/// Create a reqwest client with app attribution headers
-/// Used for all API calls to include HTTP-Referer and X-Title headers
+/// Create a reqwest client with app attribution and content-type headers.
+/// The Content-Type header is required because rig's streaming path
+/// (GenericEventSource -> HttpClientExt::send_streaming) does not set it,
+/// unlike the non-streaming path (Client::send which explicitly inserts it).
+/// Without it, providers like Anthropic reject the request with "unsupported content type".
 pub fn create_http_client() -> reqwest::Client {
     let mut headers = HeaderMap::new();
     headers.insert("HTTP-Referer", HeaderValue::from_static(APP_REFERER));
     headers.insert("X-Title", HeaderValue::from_static(APP_TITLE));
+    headers.insert(
+        reqwest::header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
 
     reqwest::Client::builder()
         .default_headers(headers)

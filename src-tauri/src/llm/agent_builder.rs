@@ -355,6 +355,9 @@ pub fn create_ollama_agent(
     Ok(build_agent(client.agent(model_id), config))
 }
 
+/// Default max_tokens for Anthropic (required by the API, unlike OpenAI)
+const ANTHROPIC_DEFAULT_MAX_TOKENS: i64 = 8192;
+
 /// Create an Anthropic agent with full configuration
 pub fn create_anthropic_agent(
     api_key: &str,
@@ -369,7 +372,12 @@ pub fn create_anthropic_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    let mut anthropic_config = config.clone();
+    if anthropic_config.model_params.max_tokens.is_none() {
+        anthropic_config.model_params.max_tokens = Some(ANTHROPIC_DEFAULT_MAX_TOKENS);
+    }
+
+    Ok(build_agent(client.agent(model_id), &anthropic_config))
 }
 
 /// Create an Azure OpenAI agent with full configuration.
