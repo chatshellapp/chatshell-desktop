@@ -1,10 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Wrench,
   ChevronDown,
   ChevronUp,
-  CheckCircle2,
   XCircle,
   Loader2,
   FileText,
@@ -15,17 +14,24 @@ import {
   FolderSearch,
   Globe,
   Plug,
+  Braces,
 } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
 import type { ParsedToolName } from '@/lib/tool-name'
+import {
+  getToolInputSummary,
+  formatDuration,
+  ToolOutputRenderer,
+  CopyButton,
+} from './tool-output-renderers'
+import { MarkdownContent } from '@/components/markdown-content'
 
 // Re-export StreamingToolCall from store types for consistency
 export type { StreamingToolCall } from '@/stores/message/types'
 import type { StreamingToolCall } from '@/stores/message/types'
 
 interface ToolCallPreviewProps {
-  // Either a saved ToolCall from DB or a streaming one
   toolCall?: ToolCall
   streamingToolCall?: StreamingToolCall
   isStreaming?: boolean
@@ -57,6 +63,18 @@ const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   web_search: Globe,
 }
 
+// Tools that use specialized output renderers instead of generic JSON display
+const SPECIALIZED_TOOLS = new Set([
+  'web_search',
+  'web_fetch',
+  'read',
+  'bash',
+  'edit',
+  'write',
+  'grep',
+  'glob',
+])
+
 function getToolIcon(parsed: ParsedToolName): LucideIcon {
   if (parsed.type === 'mcp') return Plug
   return BUILTIN_TOOL_ICONS[parsed.toolName] ?? Plug
@@ -72,7 +90,7 @@ function StatusIcon({
   parsed: ParsedToolName
 }) {
   if (isStreaming || status === 'running' || status === 'pending') {
-    return <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
+    return <Loader2 className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-spin" />
   }
   if (status === 'error') {
     return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
@@ -100,10 +118,16 @@ export function ToolNameDisplay({ rawName }: { rawName: string }) {
   )
 }
 
-// Get status text for display
-function getStatusText(status: string, isStreaming?: boolean): string {
-  if (isStreaming || status === 'running') return 'Running...'
-  if (status === 'pending') return 'Pending'
+function isJsonLike(text: string): boolean {
+  const trimmed = text.trimStart()
+  return trimmed.startsWith('{') || trimmed.startsWith('[')
+}
+
+function jsonCodeBlock(text: string): string {
+  return '```json\n' + text + '\n```'
+}
+
+function getStatusText(status: string): string {
   if (status === 'error') return 'Failed'
   return ''
 }
@@ -114,40 +138,50 @@ export function ToolCallPreview({
   isStreaming = false,
 }: ToolCallPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showRaw, setShowRaw] = useState(false)
 
-  // Use either saved or streaming tool call
   const tc = toolCall || streamingToolCall
   if (!tc) return null
 
   const toolName = tc.tool_name
   const parsed = parseToolName(toolName)
   const toolInput = tc.tool_input
-  const toolOutput = 'tool_output' in tc ? tc.tool_output : streamingToolCall?.tool_output
+  const rawOutput = 'tool_output' in tc ? tc.tool_output : streamingToolCall?.tool_output
   const status = tc.status
   const error = 'error' in tc ? tc.error : streamingToolCall?.error
+  const durationMs = toolCall?.duration_ms
 
-  // Check if we have content to show
+  // Unwrap rig's JSON-encoded string outputs for built-in tools
+  const toolOutput = useMemo(() => formatJson(rawOutput), [rawOutput])
+  const formattedInput = useMemo(() => formatJson(toolInput), [toolInput])
+
   const hasInput = toolInput && toolInput !== '{}' && toolInput !== ''
-  const hasOutput = toolOutput && toolOutput !== ''
+  const hasOutput = rawOutput && rawOutput !== ''
   const hasError = error && error !== ''
   const canExpand = hasInput || hasOutput || hasError
 
-  // Determine if this is still in progress
   const isInProgress = isStreaming || status === 'running' || status === 'pending'
+  const isBuiltin = parsed.type === 'builtin'
+  const hasSpecializedRenderer = isBuiltin && SPECIALIZED_TOOLS.has(parsed.toolName)
 
-  // Dynamic container styles based on state
+  const inputSummary = useMemo(
+    () => (isBuiltin ? getToolInputSummary(parsed.toolName, toolInput) : null),
+    [isBuiltin, parsed.toolName, toolInput]
+  )
+  const duration = formatDuration(durationMs)
+
   const containerClass = isExpanded
     ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
     : isInProgress
-      ? 'w-fit rounded border border-muted/40 bg-muted/30 overflow-hidden'
-      : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+      ? 'w-fit max-w-full rounded border border-muted/40 bg-muted/30 overflow-hidden'
+      : 'w-fit max-w-full rounded border border-transparent bg-muted/20 overflow-hidden'
 
   return (
     <div className={containerClass}>
       {/* Header row */}
       <button
         onClick={() => canExpand && setIsExpanded(!isExpanded)}
-        className={`flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
+        className={`flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 text-left transition-colors ${
           canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
         }`}
       >
@@ -155,14 +189,24 @@ export function ToolCallPreview({
 
         <ToolNameDisplay rawName={toolName} />
 
-        {getStatusText(status, isInProgress) && (
-          <span className="text-xs text-muted-foreground/60 flex-shrink-0">
-            {getStatusText(status, isInProgress)}
+        {inputSummary && (
+          <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
+            {inputSummary}
           </span>
         )}
 
+        {getStatusText(status) && (
+          <span className="text-xs text-muted-foreground/60 flex-shrink-0">
+            {getStatusText(status)}
+          </span>
+        )}
+
+        {duration && !isInProgress && (
+          <span className="text-xs text-muted-foreground/40 flex-shrink-0">{duration}</span>
+        )}
+
         {canExpand && (
-          <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
+          <span className="flex items-center text-muted-foreground/60 flex-shrink-0 ml-auto">
             {isExpanded ? (
               <ChevronUp className="h-3.5 w-3.5" />
             ) : (
@@ -175,41 +219,96 @@ export function ToolCallPreview({
       {/* Expandable content */}
       {isExpanded && canExpand && (
         <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
-          {/* Input */}
-          {hasInput && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Input</p>
-              <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
-                {formatJson(toolInput)}
-              </pre>
-            </div>
+          {hasSpecializedRenderer && !showRaw ? (
+            <>
+              <ToolOutputRenderer
+                toolName={parsed.toolName}
+                toolInput={toolInput}
+                toolOutput={toolOutput}
+              />
+              {hasError && (
+                <div className="space-y-1">
+                  <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
+                  <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
+                    {error}
+                  </pre>
+                </div>
+              )}
+              {isInProgress && !hasOutput && !hasError && (
+                <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
+              )}
+            </>
+          ) : (
+            <>
+              {hasInput && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                      Input
+                    </p>
+                    <CopyButton text={formattedInput} />
+                  </div>
+                  {isJsonLike(formattedInput) ? (
+                    <div className="max-h-40 overflow-y-auto rounded">
+                      <MarkdownContent
+                        content={jsonCodeBlock(formattedInput)}
+                        className="text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
+                      {formattedInput}
+                    </pre>
+                  )}
+                </div>
+              )}
+              {hasOutput && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                      Output
+                    </p>
+                    <CopyButton text={toolOutput} />
+                  </div>
+                  {showRaw ? (
+                    <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
+                      {toolOutput}
+                    </pre>
+                  ) : (
+                    <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
+                      <MarkdownContent content={toolOutput} className="text-xs" />
+                    </div>
+                  )}
+                </div>
+              )}
+              {hasError && (
+                <div className="space-y-1">
+                  <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
+                  <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
+                    {error}
+                  </pre>
+                </div>
+              )}
+              {isInProgress && !hasOutput && !hasError && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                    Output
+                  </p>
+                  <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
+                </div>
+              )}
+            </>
           )}
-
-          {/* Output */}
-          {hasOutput && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Output</p>
-              <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
-                {formatJson(toolOutput)}
-              </pre>
-            </div>
-          )}
-
-          {/* Error */}
-          {hasError && (
-            <div className="space-y-1">
-              <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
-              <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
-                {error}
-              </pre>
-            </div>
-          )}
-
-          {/* Loading state for output */}
-          {isInProgress && !hasOutput && !hasError && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Output</p>
-              <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
+          {(hasOutput || hasSpecializedRenderer) && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowRaw(!showRaw)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30 transition-colors"
+                title={showRaw ? 'Show formatted' : 'Show raw'}
+              >
+                <Braces className="h-3 w-3" />
+                <span className="text-[10px]">{showRaw ? 'Formatted' : 'Raw'}</span>
+              </button>
             </div>
           )}
         </div>
@@ -222,7 +321,7 @@ export function PendingToolCallPreview({ toolName }: { toolName: string }) {
   return (
     <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
+        <Loader2 className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-spin" />
         <ToolNameDisplay rawName={toolName} />
         <span className="text-xs text-muted-foreground/60">Calling...</span>
       </div>
