@@ -4,9 +4,11 @@ import {
   ToolCallPreview,
   type StreamingToolCall,
 } from '@/components/attachment-preview/tool-call-preview'
+import { CollapsedToolGroup } from '@/components/attachment-preview/collapsed-tool-group'
 import { MarkdownContent } from '@/components/markdown-content'
 import { parseThinkingContent } from '@/lib/utils'
-import type { Message, UrlStatus } from '@/types'
+import type { ToolWithThinking } from '@/lib/step-grouping'
+import type { Message, ToolCall, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG } from './utils'
 import type { DisplayInfo } from './hooks'
@@ -107,6 +109,26 @@ export function StreamingMessage({
         (tc.reasoningBefore && tc.reasoningBefore.length > 0)
     )
 
+  // Calculate the content to display after all tool calls
+  let finalContent = parsedStreaming.content
+  if (hasInterleavedContent && sortedToolCalls.length > 0) {
+    const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+    const lastContentLength = lastToolCall.contentBefore?.length || 0
+    if (streamingContent.length > lastContentLength) {
+      const rawSegment = streamingContent.slice(lastContentLength)
+      const parsed = parseThinkingContent(rawSegment)
+      finalContent = parsed.content
+    } else {
+      finalContent = ''
+    }
+  }
+
+  // Collapse completed tool calls once the model starts outputting final content
+  const allToolCallsCompleted =
+    sortedToolCalls.length > 0 &&
+    sortedToolCalls.every((tc) => tc.status === 'success' || tc.status === 'error')
+  const shouldCollapseTools = allToolCallsCompleted && finalContent.trim().length > 0
+
   if (
     hasAssistantResources ||
     hasPendingDecision ||
@@ -114,19 +136,176 @@ export function StreamingMessage({
     showThinkingPlaceholder ||
     hasStreamingToolCalls
   ) {
-    // If we have interleaved content, render it properly ordered
     if (hasInterleavedContent) {
+      // Smart per-segment grouping: collapse completed tool calls before content boundaries
+      const elements: React.ReactNode[] = []
+      let pendingCompleted: { tc: StreamingToolCall; thinkingContent?: string }[] = []
+
+      const toCollapsedItems = (
+        pending: { tc: StreamingToolCall; thinkingContent?: string }[]
+      ): ToolWithThinking[] =>
+        pending.map((item) => ({
+          toolCall: {
+            id: item.tc.id,
+            tool_name: item.tc.tool_name,
+            tool_input: item.tc.tool_input,
+            tool_output: item.tc.tool_output,
+            status: item.tc.status,
+            error: item.tc.error,
+            display_order: item.tc.order,
+            created_at: '',
+          } as ToolCall,
+          thinkingContent: item.thinkingContent,
+        }))
+
+      const flushAsCollapsed = () => {
+        if (pendingCompleted.length === 0) return
+        const rowCount = pendingCompleted.reduce(
+          (total, item) => total + 1 + (item.thinkingContent ? 1 : 0),
+          0
+        )
+        if (rowCount >= 2) {
+          const items = toCollapsedItems(pendingCompleted)
+          elements.push(
+            <CollapsedToolGroup key={`group-${items[0].toolCall.id}`} items={items} />
+          )
+          pendingCompleted = []
+        } else {
+          flushAsIndividual()
+        }
+      }
+
+      const flushAsIndividual = () => {
+        for (const item of pendingCompleted) {
+          elements.push(
+            <div key={item.tc.id} className="space-y-2">
+              {item.thinkingContent && item.thinkingContent.trim() && searchDecisionResolved && (
+                <ThinkingPreview content={item.thinkingContent} isStreaming={false} />
+              )}
+              <ToolCallPreview streamingToolCall={item.tc} isStreaming={false} />
+            </div>
+          )
+        }
+        pendingCompleted = []
+      }
+
+      for (let index = 0; index < sortedToolCalls.length; index++) {
+        const toolCall = sortedToolCalls[index]
+
+        // Calculate API reasoning segment
+        let reasoningSegment = ''
+        if (index === 0) {
+          reasoningSegment = toolCall.reasoningBefore || ''
+        } else {
+          const prevReasoningLength = sortedToolCalls[index - 1].reasoningBefore?.length || 0
+          if ((toolCall.reasoningBefore?.length || 0) > prevReasoningLength) {
+            reasoningSegment = (toolCall.reasoningBefore || '').slice(prevReasoningLength)
+          }
+        }
+
+        // Calculate content segment and extract XML thinking
+        let contentSegment = ''
+        let xmlThinkingSegment: string | null = null
+        const prevContentLength =
+          index === 0 ? 0 : sortedToolCalls[index - 1].contentBefore?.length || 0
+        const currentContentLength = toolCall.contentBefore?.length || 0
+        if (currentContentLength > prevContentLength) {
+          const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
+          const parsed = parseThinkingContent(rawSegment)
+          contentSegment = parsed.content
+          xmlThinkingSegment = parsed.thinkingContent
+        }
+
+        // Combine thinking sources for this tool call
+        const thinkingParts = [reasoningSegment, xmlThinkingSegment].filter(
+          (p): p is string => !!p && p.trim().length > 0
+        )
+        const thinkingContent = thinkingParts.length > 0 ? thinkingParts.join('\n\n') : undefined
+
+        const isCompleted = toolCall.status === 'success' || toolCall.status === 'error'
+
+        // Content boundary: collapse preceding completed tool calls
+        if (contentSegment.trim()) {
+          flushAsCollapsed()
+          elements.push(
+            <div
+              key={`content-${index}`}
+              className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
+            >
+              <MarkdownContent content={contentSegment} />
+            </div>
+          )
+        }
+
+        if (isCompleted) {
+          pendingCompleted.push({ tc: toolCall, thinkingContent })
+        } else {
+          flushAsIndividual()
+          elements.push(
+            <div key={toolCall.id} className="space-y-2">
+              {thinkingContent && thinkingContent.trim() && searchDecisionResolved && (
+                <ThinkingPreview content={thinkingContent} isStreaming={false} />
+              )}
+              <ToolCallPreview
+                streamingToolCall={toolCall}
+                isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+              />
+            </div>
+          )
+        }
+      }
+
+      // Flush remaining: collapse if final content follows, otherwise show individually
+      if (pendingCompleted.length > 0) {
+        if (finalContent.trim()) {
+          flushAsCollapsed()
+        } else {
+          flushAsIndividual()
+        }
+      }
+
+      // Remaining reasoning/thinking after last tool call
+      {
+        const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+
+        const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
+        if (streamingReasoningContent.length > lastReasoningLength) {
+          const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
+          if (remainingReasoning.trim() && searchDecisionResolved) {
+            elements.push(
+              <ThinkingPreview
+                key="remaining-api-reasoning"
+                content={remainingReasoning}
+                isStreaming={isThinkingInProgress}
+              />
+            )
+          }
+        }
+
+        const lastContentLength = lastToolCall?.contentBefore?.length || 0
+        if (streamingContent.length > lastContentLength) {
+          const rawSegment = streamingContent.slice(lastContentLength)
+          const parsed = parseThinkingContent(rawSegment)
+          if (parsed.thinkingContent?.trim() && searchDecisionResolved) {
+            elements.push(
+              <ThinkingPreview
+                key="remaining-xml-thinking"
+                content={parsed.thinkingContent}
+                isStreaming={parsed.isThinkingInProgress}
+              />
+            )
+          }
+        }
+      }
+
       streamingHeaderContent = (
         <div className="space-y-2 mb-2">
-          {/* Show pending search decision preview */}
           {hasPendingDecision && searchDecisionSteps.length === 0 && (
             <AttachmentPreview pendingSearchDecision={true} />
           )}
-          {/* Show search decisions */}
           {searchDecisionSteps.map((step) => (
             <AttachmentPreview key={step.id} step={step} />
           ))}
-          {/* Show search results (fetch results from search are shown inside) */}
           {searchResultContexts.map((context) => (
             <AttachmentPreview
               key={context.id}
@@ -135,100 +314,41 @@ export function StreamingMessage({
               messageId={lastUserMessage?.id}
             />
           ))}
-          {/* Interleaved tool calls with reasoning and content between them */}
-          {sortedToolCalls.map((toolCall, index) => {
-            // Calculate API reasoning segment (from reasoning_content field)
-            let reasoningSegment = ''
-            if (index === 0) {
-              reasoningSegment = toolCall.reasoningBefore || ''
-            } else {
-              const prevToolCall = sortedToolCalls[index - 1]
-              const prevReasoningLength = prevToolCall.reasoningBefore?.length || 0
-              const currentReasoningLength = toolCall.reasoningBefore?.length || 0
-              if (currentReasoningLength > prevReasoningLength) {
-                reasoningSegment = (toolCall.reasoningBefore || '').slice(prevReasoningLength)
-              }
-            }
+          {elements}
+        </div>
+      )
+    } else if (shouldCollapseTools) {
+      const collapsedItems: ToolWithThinking[] = sortedToolCalls.map((tc, index) => ({
+        toolCall: {
+          id: tc.id,
+          tool_name: tc.tool_name,
+          tool_input: tc.tool_input,
+          tool_output: tc.tool_output,
+          status: tc.status,
+          error: tc.error,
+          display_order: tc.order,
+          created_at: '',
+        } as ToolCall,
+        thinkingContent: index === 0 ? (combinedThinkingContent ?? undefined) : undefined,
+      }))
 
-            // Calculate content segment and extract XML thinking from <think> tags
-            let contentSegment = ''
-            let xmlThinkingSegment: string | null = null
-            const prevContentLength =
-              index === 0 ? 0 : sortedToolCalls[index - 1].contentBefore?.length || 0
-            const currentContentLength = toolCall.contentBefore?.length || 0
-            if (currentContentLength > prevContentLength) {
-              const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
-              const parsed = parseThinkingContent(rawSegment)
-              contentSegment = parsed.content
-              xmlThinkingSegment = parsed.thinkingContent
-            }
-
-            return (
-              <div key={toolCall.id} className="space-y-2">
-                {/* API reasoning before this tool call */}
-                {reasoningSegment && reasoningSegment.trim() && searchDecisionResolved && (
-                  <ThinkingPreview content={reasoningSegment} isStreaming={false} />
-                )}
-                {/* XML <think> tag thinking from content before this tool call */}
-                {xmlThinkingSegment && xmlThinkingSegment.trim() && searchDecisionResolved && (
-                  <ThinkingPreview content={xmlThinkingSegment} isStreaming={false} />
-                )}
-                {/* Content before this tool call */}
-                {contentSegment && contentSegment.trim() && (
-                  <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none">
-                    <MarkdownContent content={contentSegment} />
-                  </div>
-                )}
-                {/* The tool call itself */}
-                <ToolCallPreview
-                  streamingToolCall={toolCall}
-                  isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
-                />
-              </div>
-            )
-          })}
-          {/* Show remaining reasoning/thinking after last tool call */}
-          {(() => {
-            const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
-            const elements: React.ReactNode[] = []
-
-            // Remaining API reasoning
-            const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
-            if (streamingReasoningContent.length > lastReasoningLength) {
-              const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
-              if (remainingReasoning.trim() && searchDecisionResolved) {
-                elements.push(
-                  <ThinkingPreview
-                    key="remaining-api-reasoning"
-                    content={remainingReasoning}
-                    isStreaming={isThinkingInProgress}
-                  />
-                )
-              }
-            }
-
-            // Remaining XML thinking from content after last tool call
-            const lastContentLength = lastToolCall?.contentBefore?.length || 0
-            if (streamingContent.length > lastContentLength) {
-              const rawSegment = streamingContent.slice(lastContentLength)
-              const parsed = parseThinkingContent(rawSegment)
-              if (
-                parsed.thinkingContent &&
-                parsed.thinkingContent.trim() &&
-                searchDecisionResolved
-              ) {
-                elements.push(
-                  <ThinkingPreview
-                    key="remaining-xml-thinking"
-                    content={parsed.thinkingContent}
-                    isStreaming={parsed.isThinkingInProgress}
-                  />
-                )
-              }
-            }
-
-            return elements.length > 0 ? <>{elements}</> : null
-          })()}
+      streamingHeaderContent = (
+        <div className="space-y-1.5 mb-2">
+          {hasPendingDecision && searchDecisionSteps.length === 0 && (
+            <AttachmentPreview pendingSearchDecision={true} />
+          )}
+          {searchDecisionSteps.map((step) => (
+            <AttachmentPreview key={step.id} step={step} />
+          ))}
+          {searchResultContexts.map((context) => (
+            <AttachmentPreview
+              key={context.id}
+              context={context}
+              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
+              messageId={lastUserMessage?.id}
+            />
+          ))}
+          <CollapsedToolGroup items={collapsedItems} />
         </div>
       )
     } else {
@@ -270,22 +390,6 @@ export function StreamingMessage({
           ))}
         </div>
       )
-    }
-  }
-
-  // Calculate the content to display after all tool calls
-  // This is the content that came after the last tool call
-  let finalContent = parsedStreaming.content
-  if (hasInterleavedContent && sortedToolCalls.length > 0) {
-    const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
-    const lastContentLength = lastToolCall.contentBefore?.length || 0
-    const totalContentLength = streamingContent.length
-    if (totalContentLength > lastContentLength) {
-      const rawSegment = streamingContent.slice(lastContentLength)
-      const parsed = parseThinkingContent(rawSegment)
-      finalContent = parsed.content
-    } else {
-      finalContent = ''
     }
   }
 
