@@ -6,6 +6,7 @@ use super::AppState;
 use super::attachment_processing;
 use crate::llm::{self, ChatMessage};
 use crate::prompts;
+use chrono::Local;
 
 /// Build chat messages for LLM request
 ///
@@ -26,10 +27,14 @@ pub async fn build_chat_messages(
     user_files: &[llm::FileData],
     context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
-    // Build system prompt
-    let system_prompt_content = system_prompt
+    // Build system prompt with current date/time injected
+    let base_prompt = system_prompt
         .clone()
         .unwrap_or_else(|| prompts::DEFAULT_ASSISTANT_SYSTEM_PROMPT.to_string());
+
+    let now = Local::now();
+    let current_datetime = now.format("%A, %B %-d, %Y %H:%M %Z").to_string();
+    let system_prompt_content = format!("{}\n\nCurrent date and time: {}", base_prompt, current_datetime);
 
     let mut chat_messages = vec![ChatMessage {
         role: "system".to_string(),

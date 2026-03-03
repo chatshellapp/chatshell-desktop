@@ -3,6 +3,7 @@
 //! Uses LLM to determine if web search is needed for a given user query.
 
 use anyhow::Result;
+use chrono::Local;
 use serde_json::Value;
 
 use crate::llm::{self, ChatMessage};
@@ -25,14 +26,20 @@ pub async fn decide_search_needed(
         user_input.chars().take(100).collect::<String>()
     );
 
-    // Use the unified LLM provider function
+    let now = Local::now();
+    let current_datetime = now.format("%A, %B %-d, %Y %H:%M %Z").to_string();
+    let system_prompt = format!(
+        "{}\n\nCurrent date and time: {}",
+        SEARCH_DECISION_SYSTEM_PROMPT, current_datetime
+    );
+
     let response = llm::call_provider(
         provider,
         model.to_string(),
         vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: SEARCH_DECISION_SYSTEM_PROMPT.to_string(),
+                content: system_prompt,
                 images: vec![],
                 files: vec![],
             },
