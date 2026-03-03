@@ -286,6 +286,23 @@ impl Database {
             }
         }
 
+        // Remove stale builtin tools that are no longer in the canonical list
+        let canonical_ids: Vec<&str> = builtin_tools.iter().map(|(id, _, _)| *id).collect();
+        let all_builtin_rows = sqlx::query("SELECT id FROM tools WHERE type = ?")
+            .bind(TOOL_TYPE_BUILTIN)
+            .fetch_all(self.pool.as_ref())
+            .await?;
+        for row in &all_builtin_rows {
+            let id: String = row.get("id");
+            if !canonical_ids.contains(&id.as_str()) {
+                sqlx::query("DELETE FROM tools WHERE id = ?")
+                    .bind(&id)
+                    .execute(self.pool.as_ref())
+                    .await?;
+                tracing::info!("🗑️ [db] Removed stale builtin tool: {}", id);
+            }
+        }
+
         // Auto-add newly created builtin tools to every assistant that already
         // uses at least one builtin tool, so they're available immediately.
         if !newly_created_ids.is_empty() {

@@ -59,6 +59,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
+import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
 import { isBuiltinSkill, isUserSkill } from '@/types/skill'
 import { useModelStore } from '@/stores/modelStore'
@@ -912,12 +913,17 @@ export function AssistantDialog({
             className={`flex items-center justify-between py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
           >
             <div className="grid gap-1">
-              <label
-                htmlFor={`tool-${tool.id}`}
-                className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : 'cursor-pointer'}`}
-              >
-                {tool.name}
-              </label>
+              <div className="flex items-center gap-2">
+                {isBuiltinTool(tool) && (
+                  <BuiltinToolIcon toolId={tool.id} className="h-4 w-4 text-muted-foreground shrink-0" />
+                )}
+                <label
+                  htmlFor={`tool-${tool.id}`}
+                  className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : 'cursor-pointer'}`}
+                >
+                  {tool.name}
+                </label>
+              </div>
               {tool.description && (
                 <p className="text-xs text-muted-foreground max-w-[380px]">{tool.description}</p>
               )}

@@ -8,7 +8,6 @@ import {
   Eye,
   EyeOff,
   FileDown,
-  Globe,
   Heading,
   Loader2,
   Plug,
@@ -16,7 +15,6 @@ import {
   RefreshCw,
   Search,
   Settings,
-  TerminalSquare,
   Trash2,
   Wrench,
   Zap,
@@ -79,6 +77,7 @@ import {
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
 import { Switch } from '@/components/ui/switch'
+import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 const data = {
@@ -398,15 +397,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   className="flex items-start justify-between gap-4 rounded-lg border p-4"
                 >
                   <div className="flex items-start gap-3">
-                    {tool.id === 'builtin-web-search' ? (
-                      <Search className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    ) : tool.id === 'builtin-web-fetch' ? (
-                      <Globe className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    ) : tool.id === 'builtin-bash' ? (
-                      <TerminalSquare className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    ) : (
-                      <Wrench className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    )}
+                    <BuiltinToolIcon
+                      toolId={tool.id}
+                      className="h-5 w-5 text-muted-foreground mt-0.5"
+                    />
                     <div className="grid gap-1">
                       <span className="font-medium">{tool.name}</span>
                       {tool.description && (
