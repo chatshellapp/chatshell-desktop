@@ -1,49 +1,53 @@
 //! Grep tool for LLM agents
 //!
-//! A content search tool modeled after Claude Code's Grep tool.
-//! Wraps ripgrep (`rg`) for fast regex searching across files.
+//! A content search tool powered by ripgrep's core crates (grep-regex, grep-searcher, ignore).
+//! Performs fast, in-process regex searching without requiring external binaries.
 
+use grep_regex::RegexMatcherBuilder;
+use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
+use ignore::overrides::OverrideBuilder;
+use ignore::types::TypesBuilder;
+use ignore::WalkBuilder;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::process::Stdio;
-use tokio::process::Command;
+use std::fmt::Write;
+use std::path::Path;
 
-const MAX_OUTPUT_CHARS: usize = 50000;
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
+const MAX_OUTPUT_CHARS: usize = 50_000;
+const SEARCH_TIMEOUT_SECS: u64 = 30;
 
-const EXCLUDED_DIRS: &[&str] = &[
-    "target",
-    "node_modules",
-    ".git",
-    "build",
-    "dist",
-    ".next",
-    "__pycache__",
-    ".cache",
-    "vendor",
-];
-
-/// Arguments for the grep tool
 #[derive(Debug, Clone, Deserialize)]
 pub struct GrepArgs {
-    /// Regular expression pattern to search for
     pub pattern: String,
-    /// File or directory path to search in (defaults to home directory)
     #[serde(default)]
     pub path: Option<String>,
-    /// Glob pattern to filter files (e.g. "*.rs", "*.tsx")
+    /// Glob pattern to filter files (e.g. "*.rs", "*.{ts,tsx}")
     #[serde(default)]
     pub glob: Option<String>,
-    /// Case-insensitive search
+    /// File type to filter by (e.g. "rust", "js", "py"). Uses ripgrep's built-in type definitions.
+    #[serde(default)]
+    pub file_type: Option<String>,
     #[serde(default)]
     pub case_insensitive: Option<bool>,
-    /// Number of context lines around each match
+    /// Enable multiline matching (`.` matches `\n`, patterns can span lines)
+    #[serde(default)]
+    pub multiline: Option<bool>,
+    /// Context lines around each match (sets both before and after)
     #[serde(default)]
     pub context_lines: Option<usize>,
-    /// Maximum number of matches to return
+    /// Lines to show before each match (overrides context_lines for before)
     #[serde(default)]
-    pub max_results: Option<usize>,
+    pub before_context: Option<usize>,
+    /// Lines to show after each match (overrides context_lines for after)
+    #[serde(default)]
+    pub after_context: Option<usize>,
+    /// Maximum total number of matches to return across all files
+    #[serde(default)]
+    pub head_limit: Option<usize>,
+    /// "content" (default), "files_with_matches", or "count"
+    #[serde(default)]
+    pub output_mode: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -89,16 +93,15 @@ impl Tool for GrepTool {
             name: "grep".to_string(),
             description: "Search file contents using regular expressions. \
                 Returns matching lines with file paths and line numbers. \
-                Use this to find code patterns, function definitions, variable usage, \
-                error messages, or any text across a codebase. \
-                Powered by ripgrep for fast searching."
+                Supports multiple output modes, file type filtering, multiline matching, \
+                and context lines. Powered by ripgrep's core engine for fast in-process searching."
                 .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Regular expression pattern to search for"
+                        "description": "Regular expression pattern to search for. Uses ripgrep syntax (not grep). Literal braces need escaping."
                     },
                     "path": {
                         "type": "string",
@@ -106,19 +109,40 @@ impl Tool for GrepTool {
                     },
                     "glob": {
                         "type": "string",
-                        "description": "Glob pattern to filter files (e.g. \"*.rs\", \"*.tsx\")"
+                        "description": "Glob pattern to filter files (e.g. \"*.rs\", \"*.{ts,tsx}\")"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "File type to search (e.g. \"rust\", \"js\", \"py\", \"ts\", \"go\", \"java\", \"cpp\"). More efficient than glob for standard file types."
                     },
                     "case_insensitive": {
                         "type": "boolean",
                         "description": "Enable case-insensitive search. Defaults to false."
                     },
+                    "multiline": {
+                        "type": "boolean",
+                        "description": "Enable multiline matching where . matches newlines and patterns can span lines. Defaults to false."
+                    },
                     "context_lines": {
                         "type": "number",
-                        "description": "Number of context lines to show around each match"
+                        "description": "Number of context lines to show before and after each match"
                     },
-                    "max_results": {
+                    "before_context": {
                         "type": "number",
-                        "description": "Maximum number of matches to return"
+                        "description": "Number of lines to show before each match (overrides context_lines)"
+                    },
+                    "after_context": {
+                        "type": "number",
+                        "description": "Number of lines to show after each match (overrides context_lines)"
+                    },
+                    "head_limit": {
+                        "type": "number",
+                        "description": "Maximum total number of matches to return across all files"
+                    },
+                    "output_mode": {
+                        "type": "string",
+                        "enum": ["content", "files_with_matches", "count"],
+                        "description": "Output mode: \"content\" shows matching lines with context (default), \"files_with_matches\" shows only file paths containing matches, \"count\" shows match counts per file"
                     }
                 },
                 "required": ["pattern"]
@@ -128,10 +152,12 @@ impl Tool for GrepTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         tracing::info!(
-            "🔧 [tool-call] grep: pattern=\"{}\" path={:?} glob={:?}",
+            "🔧 [tool-call] grep: pattern=\"{}\" path={:?} glob={:?} type={:?} mode={:?}",
             args.pattern,
             args.path,
-            args.glob
+            args.glob,
+            args.file_type,
+            args.output_mode
         );
 
         let search_path = args
@@ -144,153 +170,296 @@ impl Tool for GrepTool {
                     .unwrap_or_else(|| ".".to_string())
             });
 
-        // Try ripgrep first (check multiple paths), fall back to system grep
-        let result = run_ripgrep(&args.pattern, &search_path, &args).await;
-        match result {
-            Ok(output) => Ok(output),
-            Err(rg_err) => {
-                tracing::info!(
-                    "🔧 [grep] ripgrep unavailable ({}), falling back to system grep",
-                    rg_err
-                );
-                run_system_grep(&args.pattern, &search_path, &args).await
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(SEARCH_TIMEOUT_SECS),
+            tokio::task::spawn_blocking(move || run_search(&args, &search_path)),
+        )
+        .await
+        .map_err(|_| {
+            GrepError(format!(
+                "Search timed out after {}s (search scope may be too large)",
+                SEARCH_TIMEOUT_SECS
+            ))
+        })?
+        .map_err(|e| GrepError(format!("Search task failed: {}", e)))?;
+
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core search logic (runs on a blocking thread)
+// ---------------------------------------------------------------------------
+
+fn run_search(args: &GrepArgs, search_path: &str) -> Result<String, GrepError> {
+    let mut matcher_builder = RegexMatcherBuilder::new();
+    if args.case_insensitive.unwrap_or(false) {
+        matcher_builder.case_insensitive(true);
+    }
+    if args.multiline.unwrap_or(false) {
+        matcher_builder.multi_line(true);
+        matcher_builder.dot_matches_new_line(true);
+    }
+
+    let matcher = matcher_builder
+        .build(&args.pattern)
+        .map_err(|e| GrepError(format!("Invalid regex pattern: {}", e)))?;
+
+    let mut searcher_builder = SearcherBuilder::new();
+    searcher_builder.line_number(true);
+    searcher_builder.binary_detection(BinaryDetection::quit(b'\x00'));
+
+    if args.multiline.unwrap_or(false) {
+        searcher_builder.multi_line(true);
+    }
+
+    let before = args.before_context.or(args.context_lines).unwrap_or(0);
+    let after = args.after_context.or(args.context_lines).unwrap_or(0);
+    if before > 0 {
+        searcher_builder.before_context(before);
+    }
+    if after > 0 {
+        searcher_builder.after_context(after);
+    }
+
+    let mut searcher = searcher_builder.build();
+    let output_mode = args.output_mode.as_deref().unwrap_or("content");
+    let head_limit = args.head_limit.unwrap_or(usize::MAX);
+    let path = Path::new(search_path);
+
+    if !path.exists() {
+        return Err(GrepError(format!("Path not found: {}", search_path)));
+    }
+
+    let mut output = String::new();
+    let mut total_matches: usize = 0;
+
+    if path.is_file() {
+        search_file(
+            &matcher,
+            &mut searcher,
+            path,
+            output_mode,
+            &mut output,
+            &mut total_matches,
+            head_limit,
+        );
+    } else {
+        let mut walk_builder = WalkBuilder::new(search_path);
+
+        if let Some(ref file_type) = args.file_type {
+            let mut types_builder = TypesBuilder::new();
+            types_builder.add_defaults();
+            types_builder.select(file_type);
+            let types = types_builder
+                .build()
+                .map_err(|e| GrepError(format!("Failed to build type matcher: {}", e)))?;
+            walk_builder.types(types);
+        }
+
+        if let Some(ref glob_pat) = args.glob {
+            let mut override_builder = OverrideBuilder::new(search_path);
+            override_builder
+                .add(glob_pat)
+                .map_err(|e| GrepError(format!("Invalid glob pattern: {}", e)))?;
+            let overrides = override_builder
+                .build()
+                .map_err(|e| GrepError(format!("Failed to build glob override: {}", e)))?;
+            walk_builder.overrides(overrides);
+        }
+
+        for entry in walk_builder.build().flatten() {
+            if total_matches >= head_limit || output.len() > MAX_OUTPUT_CHARS {
+                break;
             }
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+                continue;
+            }
+            search_file(
+                &matcher,
+                &mut searcher,
+                entry.path(),
+                output_mode,
+                &mut output,
+                &mut total_matches,
+                head_limit,
+            );
         }
     }
-}
 
-/// Try to find the `rg` binary, checking common Homebrew paths on macOS
-fn find_rg_binary() -> String {
-    for path in &["/opt/homebrew/bin/rg", "/usr/local/bin/rg"] {
-        if std::path::Path::new(path).exists() {
-            return path.to_string();
-        }
-    }
-    "rg".to_string()
-}
-
-async fn run_ripgrep(
-    pattern: &str,
-    search_path: &str,
-    args: &GrepArgs,
-) -> Result<String, GrepError> {
-    let rg_bin = find_rg_binary();
-    let mut cmd = Command::new(&rg_bin);
-    cmd.arg("--line-number")
-        .arg("--no-heading")
-        .arg("--color=never");
-
-    if args.case_insensitive.unwrap_or(false) {
-        cmd.arg("--case-insensitive");
-    }
-
-    if let Some(ctx) = args.context_lines {
-        cmd.arg(format!("-C{}", ctx));
-    }
-
-    if let Some(max) = args.max_results {
-        cmd.arg(format!("-m{}", max));
-    }
-
-    if let Some(ref glob) = args.glob {
-        cmd.arg("--glob").arg(glob);
-    }
-
-    cmd.arg(pattern).arg(search_path);
-
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS),
-        cmd.output(),
-    )
-    .await
-    .map_err(|_| GrepError("ripgrep timed out".to_string()))?
-    .map_err(|e| GrepError(format!("Failed to execute rg: {}", e)))?;
-
-    // rg exit code 1 = no matches (not an error), 2+ = actual error
-    if output.status.code() == Some(2) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GrepError(format!("ripgrep error: {}", stderr)));
-    }
-
-    let mut result = String::from_utf8_lossy(&output.stdout).to_string();
-
-    if result.is_empty() {
+    if output.is_empty() {
         return Ok("No matches found.".to_string());
     }
 
-    if result.len() > MAX_OUTPUT_CHARS {
-        result.truncate(MAX_OUTPUT_CHARS);
-        result.push_str("\n\n... (output truncated)");
-    }
-
-    tracing::info!("🔧 [tool-result] grep: {} chars of results", result.len());
-
-    Ok(result)
-}
-
-async fn run_system_grep(
-    pattern: &str,
-    search_path: &str,
-    args: &GrepArgs,
-) -> Result<String, GrepError> {
-    let mut cmd = Command::new("grep");
-    cmd.arg("-rn").arg("--color=never");
-
-    for dir in EXCLUDED_DIRS {
-        cmd.arg("--exclude-dir").arg(dir);
-    }
-
-    if args.case_insensitive.unwrap_or(false) {
-        cmd.arg("-i");
-    }
-
-    if let Some(ctx) = args.context_lines {
-        cmd.arg(format!("-C{}", ctx));
-    }
-
-    if let Some(max) = args.max_results {
-        cmd.arg(format!("-m{}", max));
-    }
-
-    if let Some(ref glob) = args.glob {
-        cmd.arg("--include").arg(glob);
-    }
-
-    cmd.arg(pattern).arg(search_path);
-
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS),
-        cmd.output(),
-    )
-    .await
-    .map_err(|_| {
-        GrepError(format!(
-            "grep timed out after {}s (search path may be too large)",
-            DEFAULT_TIMEOUT_SECS
-        ))
-    })?
-    .map_err(|e| GrepError(format!("Failed to execute grep: {}", e)))?;
-
-    // grep exit code 1 = no matches
-    let mut result = String::from_utf8_lossy(&output.stdout).to_string();
-
-    if result.is_empty() {
-        return Ok("No matches found.".to_string());
-    }
-
-    if result.len() > MAX_OUTPUT_CHARS {
-        result.truncate(MAX_OUTPUT_CHARS);
-        result.push_str("\n\n... (output truncated)");
+    if output.len() > MAX_OUTPUT_CHARS {
+        output.truncate(MAX_OUTPUT_CHARS);
+        output.push_str("\n\n... (output truncated)");
     }
 
     tracing::info!(
-        "🔧 [tool-result] grep (fallback): {} chars of results",
-        result.len()
+        "🔧 [tool-result] grep: {} matches, {} chars",
+        total_matches,
+        output.len()
     );
 
-    Ok(result)
+    Ok(output)
+}
+
+fn search_file(
+    matcher: &grep_regex::RegexMatcher,
+    searcher: &mut Searcher,
+    path: &Path,
+    output_mode: &str,
+    output: &mut String,
+    total_matches: &mut usize,
+    head_limit: usize,
+) {
+    let path_display = path.to_string_lossy();
+
+    match output_mode {
+        "files_with_matches" => {
+            let mut found = false;
+            let _ = searcher.search_path(
+                matcher,
+                path,
+                FileMatchSink {
+                    found: &mut found,
+                },
+            );
+            if found {
+                let _ = writeln!(output, "{}", path_display);
+                *total_matches += 1;
+            }
+        }
+        "count" => {
+            let mut count: u64 = 0;
+            let _ = searcher.search_path(
+                matcher,
+                path,
+                CountSink {
+                    count: &mut count,
+                },
+            );
+            if count > 0 {
+                let _ = writeln!(output, "{}:{}", path_display, count);
+                *total_matches += count as usize;
+            }
+        }
+        _ => {
+            let _ = searcher.search_path(
+                matcher,
+                path,
+                ContentSink {
+                    path: &path_display,
+                    output,
+                    total_matches,
+                    head_limit,
+                    needs_separator: false,
+                    had_output: false,
+                },
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sink implementations
+// ---------------------------------------------------------------------------
+
+/// Collects matching lines with file paths, line numbers, and context.
+/// Output format matches ripgrep's `--no-heading --color=never` style:
+///   match:   `filepath:linenum:content`
+///   context: `filepath-linenum-content`
+///   group separator: `--`
+struct ContentSink<'a> {
+    path: &'a str,
+    output: &'a mut String,
+    total_matches: &'a mut usize,
+    head_limit: usize,
+    needs_separator: bool,
+    had_output: bool,
+}
+
+impl Sink for ContentSink<'_> {
+    type Error = std::io::Error;
+
+    fn matched(&mut self, _: &Searcher, mat: &SinkMatch<'_>) -> Result<bool, Self::Error> {
+        if *self.total_matches >= self.head_limit {
+            return Ok(false);
+        }
+        *self.total_matches += 1;
+
+        if self.needs_separator {
+            self.output.push_str("--\n");
+            self.needs_separator = false;
+        }
+        self.had_output = true;
+
+        let line = String::from_utf8_lossy(mat.bytes());
+        if let Some(n) = mat.line_number() {
+            let _ = write!(self.output, "{}:{}:{}", self.path, n, line);
+        } else {
+            let _ = write!(self.output, "{}:{}", self.path, line);
+        }
+        if !line.ends_with('\n') {
+            self.output.push('\n');
+        }
+        Ok(true)
+    }
+
+    fn context(&mut self, _: &Searcher, ctx: &SinkContext<'_>) -> Result<bool, Self::Error> {
+        if *self.total_matches >= self.head_limit {
+            return Ok(false);
+        }
+        if self.needs_separator {
+            self.output.push_str("--\n");
+            self.needs_separator = false;
+        }
+
+        let line = String::from_utf8_lossy(ctx.bytes());
+        if let Some(n) = ctx.line_number() {
+            let _ = write!(self.output, "{}-{}-{}", self.path, n, line);
+        } else {
+            let _ = write!(self.output, "{}-{}", self.path, line);
+        }
+        if !line.ends_with('\n') {
+            self.output.push('\n');
+        }
+        Ok(true)
+    }
+
+    fn context_break(&mut self, _: &Searcher) -> Result<bool, Self::Error> {
+        if self.had_output {
+            self.needs_separator = true;
+        }
+        Ok(true)
+    }
+}
+
+/// Short-circuits on first match — used by `files_with_matches` mode.
+struct FileMatchSink<'a> {
+    found: &'a mut bool,
+}
+
+impl Sink for FileMatchSink<'_> {
+    type Error = std::io::Error;
+
+    fn matched(&mut self, _: &Searcher, _: &SinkMatch<'_>) -> Result<bool, Self::Error> {
+        *self.found = true;
+        Ok(false)
+    }
+}
+
+/// Counts matches in a single file — used by `count` mode.
+struct CountSink<'a> {
+    count: &'a mut u64,
+}
+
+impl Sink for CountSink<'_> {
+    type Error = std::io::Error;
+
+    fn matched(&mut self, _: &Searcher, _: &SinkMatch<'_>) -> Result<bool, Self::Error> {
+        *self.count += 1;
+        Ok(true)
+    }
 }
