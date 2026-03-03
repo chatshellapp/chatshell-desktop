@@ -44,14 +44,25 @@ where
 
     tracing::info!("📥 [{}] Processing stream...", log_prefix);
 
-    // Process stream with cancellation support
-    while let Some(result) = stream.next().await {
-        if cancel_token.is_cancelled() {
-            tracing::info!("🛑 [{}] Cancellation detected, stopping stream", log_prefix);
-            cancelled = true;
-            drop(stream);
-            break;
-        }
+    // Process stream with cancellation support.
+    // Use tokio::select! so cancellation takes effect immediately,
+    // even while a tool call is executing inside stream.next().
+    loop {
+        let result = tokio::select! {
+            biased;
+            _ = cancel_token.cancelled() => {
+                tracing::info!("🛑 [{}] Cancellation detected, stopping stream", log_prefix);
+                cancelled = true;
+                drop(stream);
+                break;
+            }
+            item = stream.next() => {
+                match item {
+                    Some(r) => r,
+                    None => break,
+                }
+            }
+        };
 
         match result {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
