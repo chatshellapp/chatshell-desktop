@@ -223,6 +223,7 @@ pub fn run() {
             commands::set_all_tools_enabled,
             commands::test_mcp_connection,
             commands::test_mcp_stdio_connection,
+            commands::disconnect_mcp_server,
             commands::list_mcp_server_tools,
             commands::get_conversation_mcp_servers,
             commands::start_mcp_oauth,

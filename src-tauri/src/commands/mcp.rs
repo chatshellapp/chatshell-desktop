@@ -348,6 +348,13 @@ pub async fn test_mcp_stdio_connection(
         .collect())
 }
 
+/// Disconnect from an MCP server, clearing its cached connection
+#[tauri::command]
+pub async fn disconnect_mcp_server(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.mcp_manager.disconnect(&id).await;
+    Ok(())
+}
+
 /// List tools available from an MCP server
 #[tauri::command]
 pub async fn list_mcp_server_tools(

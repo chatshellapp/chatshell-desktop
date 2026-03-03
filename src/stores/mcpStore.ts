@@ -340,6 +340,7 @@ export const useMcpStore = create<McpState>()(
         delete draft.probeResults[id]
       })
       try {
+        await invoke('disconnect_mcp_server', { id })
         const tools = await invoke<McpToolInfo[]>('list_mcp_server_tools', { id })
         logger.info('[mcpStore] Connected to server:', { id, toolCount: tools.length })
         set((draft) => {
