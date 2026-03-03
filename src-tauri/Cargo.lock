@@ -640,7 +640,6 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "futures",
- "glob",
  "grep-regex",
  "grep-searcher",
  "headless_chrome",
