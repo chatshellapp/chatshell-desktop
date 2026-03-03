@@ -639,6 +639,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
         onOpenChange={setIsMcpServersDialogOpen}
         enabledServerIds={conversationSettings?.enabledMcpServerIds ?? []}
         onServerIdsChange={handleMcpServerIdsChange}
+        enabledSkillIds={conversationSettings?.enabledSkillIds ?? []}
       />
 
       {/* Skills Dialog */}

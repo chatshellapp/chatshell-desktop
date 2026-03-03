@@ -9,6 +9,7 @@ import {
   ChevronDown,
   LogIn,
   Loader2,
+  Lock,
 } from 'lucide-react'
 import {
   Dialog,
@@ -24,15 +25,19 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { useMcpStore } from '@/stores/mcpStore'
-import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
+import { BUILTIN_READ_ID, isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
 import { logger } from '@/lib/logger'
+
+const MCP_LAZY_LOAD_THRESHOLD = 8
 
 interface McpServersDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   enabledServerIds: string[]
   onServerIdsChange: (serverIds: string[]) => void
+  enabledSkillIds?: string[]
 }
 
 export function McpServersDialog({
@@ -40,6 +45,7 @@ export function McpServersDialog({
   onOpenChange,
   enabledServerIds,
   onServerIdsChange,
+  enabledSkillIds = [],
 }: McpServersDialogProps) {
   const servers = useMcpStore((state) => state.servers)
   const ensureLoaded = useMcpStore((state) => state.ensureLoaded)
@@ -87,6 +93,24 @@ export function McpServersDialog({
     return !sortedCurrent.every((id, index) => id === sortedGlobal[index])
   }, [enabledServerIds, globalEnabledIds])
 
+  const readAutoEnableReason = React.useMemo(() => {
+    const reasons: string[] = []
+    if (enabledSkillIds.length > 0) {
+      reasons.push('skills need the read tool to load instructions')
+    }
+    const enabledMcpIds = enabledServerIds.filter((id) =>
+      mcpServers.some((s) => s.id === id)
+    )
+    const totalMcpTools = enabledMcpIds.reduce(
+      (sum, id) => sum + (serverTools[id]?.length ?? 0),
+      0
+    )
+    if (totalMcpTools > MCP_LAZY_LOAD_THRESHOLD) {
+      reasons.push('MCP lazy loading requires the read tool')
+    }
+    return reasons.length > 0 ? reasons.join('; ') : null
+  }, [enabledSkillIds, enabledServerIds, mcpServers, serverTools])
+
   const handleToggleServer = (serverId: string, checked: boolean) => {
     if (checked) {
       onServerIdsChange([...enabledServerIds, serverId])
@@ -119,6 +143,7 @@ export function McpServersDialog({
     const isGloballyDisabled = !tool.is_enabled
     const isConversationEnabled = enabledServerIds.includes(tool.id)
     const isMcp = isMcpTool(tool)
+    const isReadForceEnabled = tool.id === BUILTIN_READ_ID && readAutoEnableReason !== null
     const rawStatus = isMcp ? (connectionStatus[tool.id] || 'idle') : null
     const status = isMcp && !isConversationEnabled ? 'idle' : rawStatus
     const tools = isMcp ? (serverTools[tool.id] || []) : []
@@ -132,6 +157,9 @@ export function McpServersDialog({
         <div className="flex items-center justify-between">
           <div className="grid gap-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
+              {!isMcp && (
+                <BuiltinToolIcon toolId={tool.id} className="h-4 w-4 text-muted-foreground shrink-0" />
+              )}
               {isMcp && (() => {
                 const dotClass = 'h-2 w-2 rounded-full shrink-0'
                 if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
@@ -203,6 +231,18 @@ export function McpServersDialog({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>Enable this tool in Settings first</TooltipContent>
+              </Tooltip>
+            ) : isReadForceEnabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Switch id={tool.id} checked={true} disabled />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[250px]">
+                  Auto-enabled: {readAutoEnableReason}
+                </TooltipContent>
               </Tooltip>
             ) : (
               <Switch
