@@ -26,19 +26,19 @@ export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
 
   const containerClass = isExpanded
     ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
-    : 'w-fit rounded border border-transparent bg-muted/20 overflow-hidden'
+    : 'w-fit max-w-full rounded border border-transparent bg-muted/20 overflow-hidden'
 
   return (
     <div className={containerClass}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
+        className="flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         <Layers className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 
-        <span className="text-xs text-muted-foreground">Ran {items.length} steps</span>
+        <span className="text-xs text-muted-foreground flex-shrink-0">Ran {items.length} steps</span>
 
-        <span className="text-xs text-muted-foreground/60 truncate">{summary}</span>
+        <span className="text-xs text-muted-foreground/60 min-w-0 truncate">{summary}</span>
 
         <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
           {isExpanded ? (
