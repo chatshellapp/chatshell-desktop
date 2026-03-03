@@ -77,6 +77,30 @@ function getLangFromPath(path: string): string {
 
 // --- Input summary extraction ---
 
+function extractCommandNames(command: string): string {
+  // Strip heredoc/stdin content: remove everything from << (with optional quotes) to EOF
+  const stripped = command.replace(/<<-?\s*'?\w+'?[\s\S]*/, '')
+
+  const names = stripped
+    .split(/\s*(?:&&|\|\||[|;])\s*/)
+    .map((segment) => {
+      const trimmed = segment.trim()
+      if (!trimmed) return null
+      const parts = trimmed.split(/\s+/)
+      for (const part of parts) {
+        if (part.includes('=') || part === 'sudo' || part === 'env') continue
+        // Handle redirects like > or >>
+        if (part === '>' || part === '>>' || part === '<' || part === '2>') return null
+        return part.replace(/^.*\//, '')
+      }
+      return null
+    })
+    .filter((n): n is string => n !== null)
+
+  const deduped = names.filter((n, i) => i === 0 || n !== names[i - 1])
+  return deduped.join(', ')
+}
+
 function fileNameFromPath(path: string): string {
   const parts = path.split('/')
   return parts[parts.length - 1] || path
@@ -92,7 +116,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'write':
         return parsed.path ? fileNameFromPath(parsed.path) : null
       case 'bash':
-        return parsed.command || null
+        return parsed.command ? extractCommandNames(parsed.command) : null
       case 'web_search':
         return parsed.query || null
       case 'web_fetch':
