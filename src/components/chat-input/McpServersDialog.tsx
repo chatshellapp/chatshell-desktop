@@ -119,7 +119,8 @@ export function McpServersDialog({
     const isGloballyDisabled = !tool.is_enabled
     const isConversationEnabled = enabledServerIds.includes(tool.id)
     const isMcp = isMcpTool(tool)
-    const status = isMcp ? (connectionStatus[tool.id] || 'idle') : null
+    const rawStatus = isMcp ? (connectionStatus[tool.id] || 'idle') : null
+    const status = isMcp && !isConversationEnabled ? 'idle' : rawStatus
     const tools = isMcp ? (serverTools[tool.id] || []) : []
     const error = isMcp ? connectionErrors[tool.id] : null
 
@@ -164,23 +165,23 @@ export function McpServersDialog({
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {isMcp && !isGloballyDisabled && status !== 'needs_auth' && (
+            {isMcp && !isGloballyDisabled && rawStatus !== 'needs_auth' && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => connectServer(tool.id)}
-                disabled={status === 'connecting'}
+                disabled={rawStatus === 'connecting'}
                 title="Refresh connection"
               >
-                {status === 'connecting' ? (
+                {rawStatus === 'connecting' ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" />
                 )}
               </Button>
             )}
-            {isMcp && status === 'needs_auth' ? (
+            {isMcp && rawStatus === 'needs_auth' ? (
               <Button
                 size="sm"
                 variant="default"
@@ -213,7 +214,7 @@ export function McpServersDialog({
           </div>
         </div>
 
-        {isMcp && status === 'connected' && tools.length > 0 && (
+        {isMcp && isConversationEnabled && rawStatus === 'connected' && tools.length > 0 && (
           <div className="mt-1.5 ml-0">
             <button
               type="button"
