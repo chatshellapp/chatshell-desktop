@@ -308,7 +308,7 @@ pub async fn test_mcp_connection(
         .mcp_manager
         .test_http_connection(&endpoint)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("{:#}", e))?;
 
     Ok(tools
         .into_iter()
@@ -337,7 +337,7 @@ pub async fn test_mcp_stdio_connection(
         .mcp_manager
         .test_stdio_connection(&mcp_config)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("{:#}", e))?;
 
     Ok(tools
         .into_iter()
@@ -367,7 +367,7 @@ pub async fn list_mcp_server_tools(
         .mcp_manager
         .get_or_connect(&tool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("{:#}", e))?;
 
     Ok(connection
         .mcp_tools

@@ -3,7 +3,7 @@ import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { Tool, McpServerConfig, ProbeResult } from '@/types'
-import { isMcpTool } from '@/types'
+import { isMcpTool, getTransportType } from '@/types'
 import { logger } from '@/lib/logger'
 
 export interface OAuthStatusResult {
@@ -357,7 +357,7 @@ export const useMcpStore = create<McpState>()(
 
         // Auto-probe for HTTP servers to detect OAuth requirements
         const server = get().servers.find((s) => s.id === id)
-        if (server) {
+        if (server && getTransportType(server) === 'http') {
           try {
             await get().probeEndpoint(id)
           } catch {
