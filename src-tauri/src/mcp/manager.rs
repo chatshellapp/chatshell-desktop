@@ -14,11 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::keychain::get_secret;
-use crate::mcp::oauth;
 use crate::models::{McpAuthType, McpConfig, McpTransportType, Tool};
-
-const KEYCHAIN_PREFIX_BEARER: &str = "mcp_bearer_";
 
 /// Type alias for the running MCP client service
 type McpRunningService = RunningService<RoleClient, ClientInfo>;
@@ -78,9 +74,10 @@ impl McpConnectionManager {
         }
     }
 
-    /// Resolve HTTP auth header from tool config (Bearer or OAuth token from keychain).
-    /// Keychain read runs in spawn_blocking so the OS keychain dialog does not block the async runtime.
-    async fn get_http_auth_header_async(tool: &Tool) -> Result<Option<String>> {
+    /// Resolve HTTP auth header from the tool's encrypted `auth_token` column.
+    /// All secrets are decrypted from SQLite using the in-memory master key,
+    /// so this never triggers the macOS keychain authorization dialog.
+    fn get_http_auth_header(tool: &Tool) -> Result<Option<String>> {
         let config = match tool.parse_mcp_config() {
             Some(c) => c,
             None => return Ok(None),
@@ -89,25 +86,32 @@ impl McpConnectionManager {
         match auth_type {
             McpAuthType::None => Ok(None),
             McpAuthType::Bearer => {
-                let key = format!("{}{}", KEYCHAIN_PREFIX_BEARER, tool.id);
-                let key_clone = key.clone();
-                let token = tokio::task::spawn_blocking(move || get_secret(&key_clone))
-                    .await
-                    .context("Keychain read task failed")??;
-                Ok(token)
+                let encrypted = match &tool.auth_token {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
+                let token = crate::crypto::decrypt(encrypted)
+                    .context("Failed to decrypt MCP bearer token")?;
+                Ok(Some(token))
             }
             McpAuthType::Oauth => {
-                let server_id = tool.id.clone();
-                let token = tokio::task::spawn_blocking(move || oauth::load_access_token(&server_id))
-                    .await
-                    .context("Keychain read task failed")??;
-                if token.is_none() {
-                    anyhow::bail!(
-                        "OAuth token not found for MCP server. Please re-authorize in Settings (MCP server: {}).",
-                        tool.name
-                    );
-                }
-                Ok(token)
+                let encrypted = match &tool.auth_token {
+                    Some(t) => t,
+                    None => {
+                        anyhow::bail!(
+                            "OAuth token not found for MCP server. Please re-authorize in Settings (MCP server: {}).",
+                            tool.name
+                        );
+                    }
+                };
+                let json_str = crate::crypto::decrypt(encrypted)
+                    .context("Failed to decrypt MCP OAuth token")?;
+                let parsed: serde_json::Value = serde_json::from_str(&json_str)
+                    .context("Invalid OAuth token JSON")?;
+                let access_token = parsed["access_token"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Missing access_token in OAuth data"))?;
+                Ok(Some(access_token.to_string()))
             }
         }
     }
@@ -254,19 +258,7 @@ impl McpConnectionManager {
                     .endpoint
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("HTTP transport requires an endpoint URL"))?;
-                let mut auth_header = Self::get_http_auth_header_async(tool).await?;
-                // Fallback: if config did not yield a token but we have an OAuth token in keychain
-                // for this tool (e.g. config was not persisted), use it so the server gets Authorization.
-                if auth_header.is_none() {
-                    let tool_id = tool.id.clone();
-                    let fallback_token = tokio::task::spawn_blocking(move || oauth::load_access_token(&tool_id))
-                        .await
-                        .context("Keychain read task failed")??;
-                    if fallback_token.is_some() {
-                        tracing::info!("🔐 Using OAuth token from keychain for {} (config had no auth)", tool.name);
-                        auth_header = fallback_token;
-                    }
-                }
+                let auth_header = Self::get_http_auth_header(tool)?;
                 tracing::debug!(
                     "🔐 HTTP auth for {}: {}",
                     tool.name,

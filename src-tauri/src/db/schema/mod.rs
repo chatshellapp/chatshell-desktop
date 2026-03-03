@@ -15,7 +15,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 7;
+const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -88,11 +88,18 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v7 completed");
     }
 
+    if current_version < 8 {
+        migrate_v7_to_v8(pool).await?;
+        set_user_version(pool, 8).await?;
+        tracing::info!("Migration to v8 completed");
+    }
+
     // Ensure columns exist (idempotent, fixes databases
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
     ensure_working_directory_column(pool).await?;
     ensure_api_style_column(pool).await?;
+    ensure_auth_token_column(pool).await?;
 
     Ok(())
 }
@@ -230,6 +237,33 @@ async fn ensure_working_directory_column(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
         tracing::info!("Added working_directory column to conversation_settings table");
+    }
+
+    Ok(())
+}
+
+/// Migration v7 -> v8: Add auth_token column to tools table.
+/// MCP auth tokens (Bearer / OAuth) are now encrypted and stored in SQLite
+/// instead of the OS keychain, so macOS no longer prompts for keychain access.
+async fn migrate_v7_to_v8(pool: &SqlitePool) -> Result<()> {
+    ensure_auth_token_column(pool).await?;
+    Ok(())
+}
+
+/// Ensure auth_token column exists in tools (idempotent)
+async fn ensure_auth_token_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('tools')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "auth_token");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE tools ADD COLUMN auth_token TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added auth_token column to tools table");
     }
 
     Ok(())

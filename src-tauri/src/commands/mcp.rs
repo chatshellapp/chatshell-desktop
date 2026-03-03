@@ -1,7 +1,6 @@
 //! MCP server management commands
 
 use super::AppState;
-use crate::keychain::set_secret;
 use crate::mcp::oauth;
 use crate::models::{
     CreateToolRequest, McpAuthType, McpConfig, McpTransportType, OAuthMetadata, Tool,
@@ -484,7 +483,17 @@ pub async fn complete_mcp_oauth(
     .await
     .map_err(|e| e.to_string())?;
 
-    oauth::store_tokens(&server_id, &tokens).map_err(|e| e.to_string())?;
+    // Store OAuth tokens encrypted in SQLite (not the OS keychain)
+    let oauth_json = serde_json::json!({
+        "access_token": tokens.access_token,
+        "refresh_token": tokens.refresh_token,
+    });
+    let encrypted = crate::crypto::encrypt(&oauth_json.to_string()).map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_tool_auth_token(&server_id, Some(&encrypted))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let expires_at = tokens
         .expires_in_secs
@@ -547,7 +556,7 @@ pub async fn check_mcp_oauth_status(
             })
         }
     };
-    let has_token = oauth::load_access_token(&server_id).map_err(|e| e.to_string())?.is_some();
+    let has_token = tool.auth_token.is_some();
     Ok(OAuthStatusResult {
         is_authorized: meta.is_authorized && has_token,
         token_expires_at: meta.token_expires_at,
@@ -560,7 +569,11 @@ pub async fn revoke_mcp_oauth(
     state: State<'_, AppState>,
     server_id: String,
 ) -> Result<(), String> {
-    oauth::delete_tokens(&server_id).map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_tool_auth_token(&server_id, None)
+        .await
+        .map_err(|e| e.to_string())?;
     state.mcp_manager.disconnect(&server_id).await;
 
     let mut tool = state.db.get_tool(&server_id).await.map_err(|e| e.to_string())?;
@@ -594,16 +607,19 @@ pub async fn revoke_mcp_oauth(
     Ok(())
 }
 
-const KEYCHAIN_PREFIX_BEARER: &str = "mcp_bearer_";
-
-/// Store a manual Bearer token for an MCP server (HTTP transport)
+/// Store a manual Bearer token for an MCP server (HTTP transport).
+/// The token is encrypted with AES-256-GCM and stored in SQLite (not the OS keychain).
 #[tauri::command]
 pub async fn set_mcp_bearer_token(
     state: State<'_, AppState>,
     server_id: String,
     token: String,
 ) -> Result<(), String> {
-    set_secret(&format!("{}{}", KEYCHAIN_PREFIX_BEARER, server_id), &token)
+    let encrypted = crate::crypto::encrypt(&token).map_err(|e| e.to_string())?;
+    state
+        .db
+        .set_tool_auth_token(&server_id, Some(&encrypted))
+        .await
         .map_err(|e| e.to_string())?;
     state.mcp_manager.disconnect(&server_id).await;
     Ok(())

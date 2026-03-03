@@ -8,6 +8,6 @@ pub(crate) mod oauth;
 
 pub use manager::{McpConnectionManager, McpServerConnection};
 pub use oauth::{
-    delete_tokens, discover, exchange_code, load_access_token, load_refresh_token, run_callback_server,
-    store_tokens, OAuthAuthState, OAuthDiscoveryResult, OAuthTokens,
+    discover, exchange_code, run_callback_server,
+    OAuthAuthState, OAuthDiscoveryResult, OAuthTokens,
 };

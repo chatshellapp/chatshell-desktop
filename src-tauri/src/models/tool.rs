@@ -11,6 +11,11 @@ pub struct Tool {
     pub config: Option<String>,
     pub description: Option<String>,
     pub is_enabled: bool,
+    /// Encrypted MCP auth token (Bearer or OAuth JSON), stored in SQLite.
+    /// Encrypted with the same AES-256-GCM master key used for provider API keys,
+    /// so reading this field never triggers the macOS keychain dialog.
+    #[serde(skip_serializing)]
+    pub auth_token: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -170,6 +175,7 @@ mod tests {
             config,
             description: Some("A test tool".to_string()),
             is_enabled: true,
+            auth_token: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         }

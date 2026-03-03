@@ -47,6 +47,7 @@ pub async fn create_tools_table(pool: &SqlitePool) -> Result<()> {
             config TEXT,
             description TEXT,
             is_enabled INTEGER DEFAULT 1,
+            auth_token TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )",

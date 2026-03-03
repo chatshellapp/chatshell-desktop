@@ -12,10 +12,6 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use url::Url;
 
-use crate::keychain::{delete_secret, get_secret, set_secret};
-
-const KEYCHAIN_PREFIX_ACCESS: &str = "mcp_oauth_access_";
-const KEYCHAIN_PREFIX_REFRESH: &str = "mcp_oauth_refresh_";
 
 /// RFC 9728 Protected Resource Metadata
 #[derive(Debug, Clone, Deserialize)]
@@ -351,34 +347,6 @@ pub async fn exchange_code(
     })
 }
 
-/// Store OAuth tokens in keychain for a server
-pub fn store_tokens(server_id: &str, tokens: &OAuthTokens) -> Result<()> {
-    set_secret(&format!("{}{}_access", KEYCHAIN_PREFIX_ACCESS, server_id), &tokens.access_token)?;
-    if let Some(ref rt) = tokens.refresh_token {
-        set_secret(
-            &format!("{}{}_refresh", KEYCHAIN_PREFIX_REFRESH, server_id),
-            rt,
-        )?;
-    }
-    Ok(())
-}
-
-/// Load access token from keychain
-pub fn load_access_token(server_id: &str) -> Result<Option<String>> {
-    get_secret(&format!("{}{}_access", KEYCHAIN_PREFIX_ACCESS, server_id))
-}
-
-/// Load refresh token from keychain
-pub fn load_refresh_token(server_id: &str) -> Result<Option<String>> {
-    get_secret(&format!("{}{}_refresh", KEYCHAIN_PREFIX_REFRESH, server_id))
-}
-
-/// Delete OAuth tokens for a server
-pub fn delete_tokens(server_id: &str) -> Result<()> {
-    let _ = delete_secret(&format!("{}{}_access", KEYCHAIN_PREFIX_ACCESS, server_id));
-    let _ = delete_secret(&format!("{}{}_refresh", KEYCHAIN_PREFIX_REFRESH, server_id));
-    Ok(())
-}
 
 /// Callback server: binds to 127.0.0.1:0, returns (port, receiver for (code, state))
 pub async fn run_callback_server(

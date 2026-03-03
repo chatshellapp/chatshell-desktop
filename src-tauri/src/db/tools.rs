@@ -51,7 +51,7 @@ impl Database {
     /// Get a tool by ID
     pub async fn get_tool(&self, id: &str) -> Result<Tool> {
         let row = sqlx::query(
-            "SELECT id, name, type, endpoint, config, description, is_enabled, created_at, updated_at
+            "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
              FROM tools WHERE id = ?",
         )
         .bind(id)
@@ -65,7 +65,7 @@ impl Database {
     /// List all tools
     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
         let rows = sqlx::query(
-            "SELECT id, name, type, endpoint, config, description, is_enabled, created_at, updated_at
+            "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
              FROM tools ORDER BY created_at DESC",
         )
         .fetch_all(self.pool.as_ref())
@@ -77,7 +77,7 @@ impl Database {
     /// List tools by type (e.g., 'mcp' for MCP servers)
     pub async fn list_tools_by_type(&self, tool_type: &str) -> Result<Vec<Tool>> {
         let rows = sqlx::query(
-            "SELECT id, name, type, endpoint, config, description, is_enabled, created_at, updated_at
+            "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
              FROM tools WHERE type = ? ORDER BY created_at DESC",
         )
         .bind(tool_type)
@@ -90,7 +90,7 @@ impl Database {
     /// List enabled tools by type
     pub async fn list_enabled_tools_by_type(&self, tool_type: &str) -> Result<Vec<Tool>> {
         let rows = sqlx::query(
-            "SELECT id, name, type, endpoint, config, description, is_enabled, created_at, updated_at
+            "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
              FROM tools WHERE type = ? AND is_enabled = 1 ORDER BY created_at DESC",
         )
         .bind(tool_type)
@@ -109,7 +109,7 @@ impl Database {
         // Build placeholders for IN clause
         let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
         let query = format!(
-            "SELECT id, name, type, endpoint, config, description, is_enabled, created_at, updated_at
+            "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
              FROM tools WHERE id IN ({}) ORDER BY created_at DESC",
             placeholders.join(", ")
         );
@@ -193,9 +193,22 @@ impl Database {
             config: row.get("config"),
             description: row.get("description"),
             is_enabled: is_enabled != 0,
+            auth_token: row.get("auth_token"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         }
+    }
+
+    /// Update only the encrypted auth_token column for an MCP server
+    pub async fn set_tool_auth_token(&self, id: &str, encrypted_token: Option<&str>) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tools SET auth_token = ?, updated_at = ? WHERE id = ?")
+            .bind(encrypted_token)
+            .bind(&now)
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(())
     }
 
     /// Ensure builtin tools exist in the database
