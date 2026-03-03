@@ -76,7 +76,6 @@ import {
   isBuiltinSkill,
   isUserSkill,
 } from '@/types'
-import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
 import { Switch } from '@/components/ui/switch'
@@ -323,6 +322,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       await startOAuth(serverId)
       await loadMcpServers()
+      // Explicitly reconnect after OAuth to clear needs_auth status
+      connectServer(serverId)
     } catch (e) {
       logger.error('OAuth connect failed', e)
     } finally {

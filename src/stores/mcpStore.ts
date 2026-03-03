@@ -104,7 +104,7 @@ export const useMcpStore = create<McpState>()(
         const enabledMcpServers = servers.filter((s) => isMcpTool(s) && s.is_enabled)
         for (const server of enabledMcpServers) {
           const status = get().connectionStatus[server.id]
-          if (!status || status === 'idle' || status === 'error') {
+          if (!status || status === 'idle' || status === 'error' || status === 'needs_auth') {
             get().connectServer(server.id)
           }
         }
