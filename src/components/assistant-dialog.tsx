@@ -59,7 +59,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
-import { isBuiltinTool, isMcpTool } from '@/types/tool'
+import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
 import { isBuiltinSkill, isUserSkill } from '@/types/skill'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -135,7 +135,7 @@ export function AssistantDialog({
   }, [open, models.length, loadModels, ensurePromptsLoaded, loadTools, ensureSkillsLoaded])
 
   // Separate builtin tools and MCP servers for the Tools tab (show all, not just enabled)
-  const builtinTools = useMemo(() => allTools.filter((t) => isBuiltinTool(t)), [allTools])
+  const builtinTools = useMemo(() => sortBuiltinTools(allTools.filter((t) => isBuiltinTool(t))), [allTools])
   const mcpServers = useMemo(() => allTools.filter((t) => isMcpTool(t)), [allTools])
 
   // All globally enabled tool IDs

@@ -109,6 +109,10 @@ pub struct McpConfig {
     /// OAuth metadata (populated after discovery/authorization)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_metadata: Option<OAuthMetadata>,
+
+    /// Custom HTTP headers (for HTTP transport)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
 }
 
 impl McpConfig {
@@ -122,6 +126,7 @@ impl McpConfig {
             cwd: None,
             auth_type: None,
             oauth_metadata: None,
+            headers: None,
         }
     }
 
@@ -135,6 +140,7 @@ impl McpConfig {
             cwd: None,
             auth_type: None,
             oauth_metadata: None,
+            headers: None,
         }
     }
 

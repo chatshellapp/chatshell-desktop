@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { Tool, McpServerConfig } from '@/types'
+import type { Tool, McpServerConfig, ProbeResult } from '@/types'
 import { isMcpTool } from '@/types'
 import { logger } from '@/lib/logger'
 
@@ -17,7 +17,7 @@ export interface McpToolInfo {
   description?: string
 }
 
-export type McpConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error'
+export type McpConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'needs_auth'
 
 interface McpState {
   // MCP servers (stored as Tool with type='mcp')
@@ -34,6 +34,9 @@ interface McpState {
   connectionStatus: Record<string, McpConnectionStatus>
   serverTools: Record<string, McpToolInfo[]>
   connectionErrors: Record<string, string>
+
+  // Per-server probe/discovery state
+  probeResults: Record<string, ProbeResult>
 
   // Actions
   loadServers: () => Promise<void>
@@ -61,6 +64,7 @@ interface McpState {
   getServerById: (id: string) => Tool | undefined
   clearTestResult: () => void
   connectServer: (id: string) => Promise<void>
+  probeEndpoint: (id: string) => Promise<ProbeResult>
   getConnectionStatus: (id: string) => McpConnectionStatus
   getServerToolsCached: (id: string) => McpToolInfo[]
 
@@ -82,6 +86,7 @@ export const useMcpStore = create<McpState>()(
     connectionStatus: {},
     serverTools: {},
     connectionErrors: {},
+    probeResults: {},
 
     loadServers: async () => {
       set((draft) => {
@@ -332,6 +337,7 @@ export const useMcpStore = create<McpState>()(
       set((draft) => {
         draft.connectionStatus[id] = 'connecting'
         delete draft.connectionErrors[id]
+        delete draft.probeResults[id]
       })
       try {
         const tools = await invoke<McpToolInfo[]>('list_mcp_server_tools', { id })
@@ -347,6 +353,40 @@ export const useMcpStore = create<McpState>()(
           draft.connectionErrors[id] = String(error)
           delete draft.serverTools[id]
         })
+
+        // Auto-probe for HTTP servers to detect OAuth requirements
+        const server = get().servers.find((s) => s.id === id)
+        if (server) {
+          try {
+            await get().probeEndpoint(id)
+          } catch {
+            // probe errors already handled inside probeEndpoint
+          }
+        }
+      }
+    },
+
+    probeEndpoint: async (id: string) => {
+      try {
+        const result = await invoke<ProbeResult>('probe_mcp_endpoint', { serverId: id })
+        logger.info('[mcpStore] Probe result for server:', { id, status: result.status })
+        set((draft) => {
+          draft.probeResults[id] = result
+          if (result.status === 'needs_oauth') {
+            draft.connectionStatus[id] = 'needs_auth'
+          }
+        })
+        return result
+      } catch (error) {
+        logger.error('[mcpStore] Probe failed for server:', { id, error })
+        const errorResult: ProbeResult = {
+          status: 'error',
+          error: String(error),
+        }
+        set((draft) => {
+          draft.probeResults[id] = errorResult
+        })
+        return errorResult
       }
     },
 

@@ -3,14 +3,32 @@ export const TOOL_TYPE_MCP = 'mcp'
 export const TOOL_TYPE_BUILTIN = 'builtin'
 
 // Builtin tool IDs (must match backend constants)
-export const BUILTIN_WEB_SEARCH_ID = 'builtin-web-search'
 export const BUILTIN_WEB_FETCH_ID = 'builtin-web-fetch'
+export const BUILTIN_WEB_SEARCH_ID = 'builtin-web-search'
 export const BUILTIN_BASH_ID = 'builtin-bash'
 export const BUILTIN_READ_ID = 'builtin-read'
 export const BUILTIN_EDIT_ID = 'builtin-edit'
 export const BUILTIN_WRITE_ID = 'builtin-write'
 export const BUILTIN_GREP_ID = 'builtin-grep'
 export const BUILTIN_GLOB_ID = 'builtin-glob'
+
+// Canonical display order for builtin tools
+const BUILTIN_TOOL_ORDER: Record<string, number> = {
+  [BUILTIN_WEB_FETCH_ID]: 0,
+  [BUILTIN_WEB_SEARCH_ID]: 1,
+  [BUILTIN_BASH_ID]: 2,
+  [BUILTIN_READ_ID]: 3,
+  [BUILTIN_EDIT_ID]: 4,
+  [BUILTIN_WRITE_ID]: 5,
+  [BUILTIN_GREP_ID]: 6,
+  [BUILTIN_GLOB_ID]: 7,
+}
+
+export function sortBuiltinTools<T extends { id: string }>(tools: T[]): T[] {
+  return [...tools].sort(
+    (a, b) => (BUILTIN_TOOL_ORDER[a.id] ?? 99) - (BUILTIN_TOOL_ORDER[b.id] ?? 99)
+  )
+}
 
 // Tool types
 export interface Tool {
@@ -68,6 +86,18 @@ export interface McpServerConfig {
   cwd?: string
   auth_type?: McpAuthType
   oauth_metadata?: McpOAuthMetadata
+  headers?: Record<string, string>
+}
+
+// Result of probing an MCP endpoint for OAuth discovery
+export interface ProbeResult {
+  status: 'ok' | 'needs_oauth' | 'error'
+  error?: string
+  authorization_server_url?: string
+  authorization_endpoint?: string
+  token_endpoint?: string
+  registration_endpoint?: string
+  scopes_supported?: string[]
 }
 
 // Helper to parse Tool.config as McpServerConfig

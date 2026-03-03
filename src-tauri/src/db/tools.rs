@@ -216,14 +216,14 @@ impl Database {
     pub async fn ensure_builtin_tools(&self) -> Result<()> {
         let builtin_tools = [
             (
-                BUILTIN_WEB_SEARCH_ID,
-                "Web Search",
-                "Search the web for information using a search engine. Returns relevant search results with titles, URLs, and snippets.",
-            ),
-            (
                 BUILTIN_WEB_FETCH_ID,
                 "Web Fetch",
                 "Fetch and extract content from web pages. Returns cleaned text content suitable for reading articles and documentation.",
+            ),
+            (
+                BUILTIN_WEB_SEARCH_ID,
+                "Web Search",
+                "Search the web for information using a search engine. Returns relevant search results with titles, URLs, and snippets.",
             ),
             (
                 BUILTIN_BASH_ID,

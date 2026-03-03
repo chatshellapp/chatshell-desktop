@@ -41,6 +41,7 @@ pub struct McpServerConfig {
     pub cwd: Option<String>,
     pub auth_type: Option<String>, // "none", "bearer", "oauth"
     pub oauth_metadata: Option<OAuthMetadataDto>,
+    pub headers: Option<HashMap<String, String>>,
 }
 
 /// OAuth metadata DTO for frontend
@@ -76,6 +77,7 @@ impl From<McpConfig> for McpServerConfig {
                 token_expires_at: m.token_expires_at,
                 is_authorized: m.is_authorized,
             }),
+            headers: config.headers,
         }
     }
 }
@@ -103,6 +105,7 @@ impl From<McpServerConfig> for McpConfig {
                 token_expires_at: m.token_expires_at,
                 is_authorized: m.is_authorized,
             }),
+            headers: config.headers,
         }
     }
 }
@@ -135,7 +138,8 @@ pub async fn create_mcp_server(
             "http" | _ => {
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
                 tracing::info!("🔌 Creating HTTP MCP server: {} at {}", name, ep);
-                let mcp_config = McpConfig::http();
+                let mut mcp_config = McpConfig::http();
+                mcp_config.headers = cfg.headers;
                 (
                     Some(ep),
                     Some(mcp_config.to_json().map_err(|e| e.to_string())?),
@@ -194,6 +198,10 @@ pub async fn update_mcp_server(
     // Disconnect existing connection
     state.mcp_manager.disconnect(&id).await;
 
+    // Preserve existing OAuth metadata if not changing auth
+    let existing_tool = state.db.get_tool(&id).await.map_err(|e| e.to_string())?;
+    let existing_config = existing_tool.parse_mcp_config();
+
     // Determine transport type and validate
     let (final_endpoint, final_config) = if let Some(cfg) = config {
         let transport = cfg.transport.as_str();
@@ -213,7 +221,13 @@ pub async fn update_mcp_server(
             "http" | _ => {
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
                 tracing::info!("📝 Updating HTTP MCP server: {} at {}", name, ep);
-                let mcp_config = McpConfig::http();
+                let mut mcp_config = McpConfig::http();
+                mcp_config.headers = cfg.headers;
+                // Preserve existing OAuth state
+                if let Some(ref ec) = existing_config {
+                    mcp_config.auth_type = ec.auth_type;
+                    mcp_config.oauth_metadata = ec.oauth_metadata.clone();
+                }
                 (
                     Some(ep),
                     Some(mcp_config.to_json().map_err(|e| e.to_string())?),
@@ -623,4 +637,116 @@ pub async fn set_mcp_bearer_token(
         .map_err(|e| e.to_string())?;
     state.mcp_manager.disconnect(&server_id).await;
     Ok(())
+}
+
+/// Result of probing an MCP endpoint for OAuth discovery
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProbeResult {
+    pub status: String, // "ok", "needs_oauth", "error"
+    pub error: Option<String>,
+    pub authorization_server_url: Option<String>,
+    pub authorization_endpoint: Option<String>,
+    pub token_endpoint: Option<String>,
+    pub registration_endpoint: Option<String>,
+    pub scopes_supported: Option<Vec<String>>,
+}
+
+/// Probe an MCP endpoint: try connecting with custom headers. If 401, run
+/// RFC 9728 / RFC 8414 discovery. Returns discovery result or error.
+#[tauri::command]
+pub async fn probe_mcp_endpoint(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> Result<ProbeResult, String> {
+    let tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let config = tool.parse_mcp_config().unwrap_or_else(McpConfig::http);
+    if config.transport != McpTransportType::Http {
+        return Ok(ProbeResult {
+            status: "error".to_string(),
+            error: Some("Probe only applies to HTTP transport".to_string()),
+            authorization_server_url: None,
+            authorization_endpoint: None,
+            token_endpoint: None,
+            registration_endpoint: None,
+            scopes_supported: None,
+        });
+    }
+
+    let endpoint = tool
+        .endpoint
+        .as_ref()
+        .ok_or("HTTP MCP server has no endpoint")?;
+
+    let http_client = {
+        let mut builder = reqwest::Client::builder();
+        if let Some(ref headers) = config.headers {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+            builder = builder.default_headers(header_map);
+        }
+        builder.build().map_err(|e| e.to_string())?
+    };
+
+    // 1. Probe endpoint
+    let resp = http_client
+        .get(endpoint.as_str())
+        .send()
+        .await
+        .map_err(|e| format!("Failed to probe endpoint: {}", e))?;
+
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(ProbeResult {
+            status: "ok".to_string(),
+            error: None,
+            authorization_server_url: None,
+            authorization_endpoint: None,
+            token_endpoint: None,
+            registration_endpoint: None,
+            scopes_supported: None,
+        });
+    }
+
+    // 2. Got 401, run OAuth discovery
+    tracing::info!("🔐 Got 401 from {}, running OAuth discovery...", endpoint);
+    match oauth::discover(&http_client, endpoint).await {
+        Ok(discovery) => {
+            tracing::info!(
+                "✅ OAuth discovery successful: AS={}",
+                discovery.authorization_server_url
+            );
+            Ok(ProbeResult {
+                status: "needs_oauth".to_string(),
+                error: None,
+                authorization_server_url: Some(discovery.authorization_server_url),
+                authorization_endpoint: Some(discovery.authorization_endpoint),
+                token_endpoint: Some(discovery.token_endpoint),
+                registration_endpoint: discovery.registration_endpoint,
+                scopes_supported: Some(discovery.scopes_supported),
+            })
+        }
+        Err(e) => {
+            tracing::warn!("❌ OAuth discovery failed: {}", e);
+            Ok(ProbeResult {
+                status: "error".to_string(),
+                error: Some(format!("OAuth discovery failed: {}", e)),
+                authorization_server_url: None,
+                authorization_endpoint: None,
+                token_endpoint: None,
+                registration_endpoint: None,
+                scopes_supported: None,
+            })
+        }
+    }
 }

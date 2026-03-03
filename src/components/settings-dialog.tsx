@@ -10,28 +10,20 @@ import {
   FileDown,
   Globe,
   Heading,
-  // Home,
-  // Keyboard,
-  // Link,
   Loader2,
-  // Lock,
-  // Menu,
-  // MessageCircle,
-  // Paintbrush,
   Plug,
   Plus,
   RefreshCw,
   Search,
   Settings,
-  // Settings,
   TerminalSquare,
   Trash2,
-  // Video,
   Wrench,
   Zap,
   FolderOpen,
   ToggleLeft,
   ToggleRight,
+  LogIn,
 } from 'lucide-react'
 
 import { invoke } from '@tauri-apps/api/core'
@@ -74,14 +66,12 @@ import type {
   LogLevel,
   Tool,
   Skill,
-  McpTransportType,
-  McpServerConfig,
-  McpAuthType,
 } from '@/types'
 import {
   parseMcpConfig,
   getTransportType,
   isBuiltinTool,
+  sortBuiltinTools,
   isMcpTool,
   isBuiltinSkill,
   isUserSkill,
@@ -90,6 +80,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
 import { Switch } from '@/components/ui/switch'
+import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 const data = {
   nav: [
@@ -136,32 +127,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [logLevelTypeScript, setLogLevelTypeScriptState] = React.useState<LogLevel>('info')
 
   // MCP state
-  const [newMcpName, setNewMcpName] = React.useState('')
-  const [newMcpTransport, setNewMcpTransport] = React.useState<McpTransportType>('http')
-  const [newMcpEndpoint, setNewMcpEndpoint] = React.useState('')
-  const [newMcpCommand, setNewMcpCommand] = React.useState('')
-  const [newMcpArgs, setNewMcpArgs] = React.useState('')
-  const [newMcpEnv, setNewMcpEnv] = React.useState('')
-  const [newMcpCwd, setNewMcpCwd] = React.useState('')
-  const [newMcpDescription, setNewMcpDescription] = React.useState('')
-  const [newMcpAuthType, setNewMcpAuthType] = React.useState<McpAuthType>('none')
-  const [newMcpBearerToken, setNewMcpBearerToken] = React.useState('')
-  const [newMcpShowBearer, setNewMcpShowBearer] = React.useState(false)
-  const [editingMcpId, setEditingMcpId] = React.useState<string | null>(null)
-  const [editMcpName, setEditMcpName] = React.useState('')
-  const [editMcpTransport, setEditMcpTransport] = React.useState<McpTransportType>('http')
-  const [editMcpEndpoint, setEditMcpEndpoint] = React.useState('')
-  const [editMcpCommand, setEditMcpCommand] = React.useState('')
-  const [editMcpArgs, setEditMcpArgs] = React.useState('')
-  const [editMcpEnv, setEditMcpEnv] = React.useState('')
-  const [editMcpCwd, setEditMcpCwd] = React.useState('')
-  const [editMcpDescription, setEditMcpDescription] = React.useState('')
-  const [editMcpAuthType, setEditMcpAuthType] = React.useState<McpAuthType>('none')
-  const [editMcpBearerToken, setEditMcpBearerToken] = React.useState('')
-  const [editMcpShowBearer, setEditMcpShowBearer] = React.useState(false)
-  const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
-  const [testingMcpEndpoint, setTestingMcpEndpoint] = React.useState<string | null>(null)
+  const [mcpConfigModalOpen, setMcpConfigModalOpen] = React.useState(false)
+  const [editingMcpServer, setEditingMcpServer] = React.useState<Tool | null>(null)
   const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
+  const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -197,22 +166,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // MCP store methods
   const mcpServers = useMcpStore((state) => state.servers)
   const mcpLoading = useMcpStore((state) => state.isLoading)
-  const loadMcpServers = useMcpStore((state) => state.loadServers)
   const ensureMcpLoaded = useMcpStore((state) => state.ensureLoaded)
-  const createMcpServer = useMcpStore((state) => state.createServer)
-  const updateMcpServer = useMcpStore((state) => state.updateServer)
   const deleteMcpServer = useMcpStore((state) => state.deleteServer)
   const toggleMcpServer = useMcpStore((state) => state.toggleServer)
   const setAllToolsEnabled = useMcpStore((state) => state.setAllEnabled)
-  const testHttpConnection = useMcpStore((state) => state.testHttpConnection)
-  const testStdioConnection = useMcpStore((state) => state.testStdioConnection)
   const startOAuth = useMcpStore((state) => state.startOAuth)
-  const revokeOAuth = useMcpStore((state) => state.revokeOAuth)
-  const setBearerToken = useMcpStore((state) => state.setBearerToken)
+  const loadMcpServers = useMcpStore((state) => state.loadServers)
   const connectServer = useMcpStore((state) => state.connectServer)
   const connectionStatus = useMcpStore((state) => state.connectionStatus)
   const serverTools = useMcpStore((state) => state.serverTools)
   const connectionErrors = useMcpStore((state) => state.connectionErrors)
+  const probeResults = useMcpStore((state) => state.probeResults)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
@@ -327,127 +291,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
-  // Helper to parse args from textarea (one per line)
-  const parseArgs = (argsText: string): string[] => {
-    return argsText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-  }
-
-  // Helper to parse env vars from textarea (KEY=VALUE per line)
-  const parseEnv = (envText: string): Record<string, string> => {
-    const env: Record<string, string> = {}
-    envText.split('\n').forEach((line) => {
-      const trimmed = line.trim()
-      if (trimmed && trimmed.includes('=')) {
-        const eqIndex = trimmed.indexOf('=')
-        const key = trimmed.substring(0, eqIndex).trim()
-        const value = trimmed.substring(eqIndex + 1).trim()
-        if (key) {
-          env[key] = value
-        }
-      }
-    })
-    return env
-  }
-
-  // Helper to format env vars for textarea
-  const formatEnv = (env?: Record<string, string>): string => {
-    if (!env) return ''
-    return Object.entries(env)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n')
-  }
-
   // MCP handlers
-  const handleCreateMcpServer = async () => {
-    if (!newMcpName.trim()) return
-
-    // Validate based on transport type
-    if (newMcpTransport === 'http' && !newMcpEndpoint.trim()) return
-    if (newMcpTransport === 'stdio' && !newMcpCommand.trim()) return
-
-    try {
-      const config: McpServerConfig = {
-        transport: newMcpTransport,
-        command: newMcpTransport === 'stdio' ? newMcpCommand.trim() : undefined,
-        args: newMcpTransport === 'stdio' && newMcpArgs.trim() ? parseArgs(newMcpArgs) : undefined,
-        env: newMcpTransport === 'stdio' && newMcpEnv.trim() ? parseEnv(newMcpEnv) : undefined,
-        cwd: newMcpTransport === 'stdio' && newMcpCwd.trim() ? newMcpCwd.trim() : undefined,
-        auth_type:
-          newMcpTransport === 'http' && newMcpAuthType !== 'none' ? newMcpAuthType : undefined,
-      }
-
-      const created = await createMcpServer(
-        newMcpName.trim(),
-        newMcpTransport === 'http' ? newMcpEndpoint.trim() : undefined,
-        newMcpDescription.trim() || undefined,
-        config
-      )
-
-      if (newMcpTransport === 'http' && newMcpAuthType === 'bearer' && newMcpBearerToken.trim()) {
-        await setBearerToken(created.id, newMcpBearerToken.trim())
-      }
-
-      // Reset form
-      setNewMcpName('')
-      setNewMcpTransport('http')
-      setNewMcpEndpoint('')
-      setNewMcpCommand('')
-      setNewMcpArgs('')
-      setNewMcpEnv('')
-      setNewMcpCwd('')
-      setNewMcpDescription('')
-      setNewMcpAuthType('none')
-      setNewMcpBearerToken('')
-      setNewMcpShowBearer(false)
-    } catch (error) {
-      logger.error('Failed to create MCP server:', error)
-    }
-  }
-
-  const handleUpdateMcpServer = async (id: string) => {
-    if (!editMcpName.trim()) return
-
-    // Validate based on transport type
-    if (editMcpTransport === 'http' && !editMcpEndpoint.trim()) return
-    if (editMcpTransport === 'stdio' && !editMcpCommand.trim()) return
-
-    try {
-      const config: McpServerConfig = {
-        transport: editMcpTransport,
-        command: editMcpTransport === 'stdio' ? editMcpCommand.trim() : undefined,
-        args:
-          editMcpTransport === 'stdio' && editMcpArgs.trim() ? parseArgs(editMcpArgs) : undefined,
-        env: editMcpTransport === 'stdio' && editMcpEnv.trim() ? parseEnv(editMcpEnv) : undefined,
-        cwd: editMcpTransport === 'stdio' && editMcpCwd.trim() ? editMcpCwd.trim() : undefined,
-        auth_type:
-          editMcpTransport === 'http' && editMcpAuthType !== 'none' ? editMcpAuthType : undefined,
-      }
-
-      await updateMcpServer(
-        id,
-        editMcpName.trim(),
-        editMcpTransport === 'http' ? editMcpEndpoint.trim() : undefined,
-        editMcpDescription.trim() || undefined,
-        config
-      )
-
-      if (
-        editMcpTransport === 'http' &&
-        editMcpAuthType === 'bearer' &&
-        editMcpBearerToken.trim()
-      ) {
-        await setBearerToken(id, editMcpBearerToken.trim())
-      }
-
-      setEditingMcpId(null)
-    } catch (error) {
-      logger.error('Failed to update MCP server:', error)
-    }
-  }
-
   const handleDeleteMcpServer = async (id: string) => {
     try {
       await deleteMcpServer(id)
@@ -464,76 +308,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
-  const handleTestMcpConnection = async () => {
-    if (newMcpTransport === 'http') {
-      if (!newMcpEndpoint.trim()) return
-      setTestingMcpEndpoint(newMcpEndpoint)
-      try {
-        await testHttpConnection(newMcpEndpoint.trim())
-        logger.info('HTTP MCP connection test successful')
-      } catch (error) {
-        logger.error('HTTP MCP connection test failed:', error)
-      } finally {
-        setTestingMcpEndpoint(null)
-      }
-    } else {
-      if (!newMcpCommand.trim()) return
-      setTestingMcpEndpoint(newMcpCommand)
-      try {
-        const config: McpServerConfig = {
-          transport: 'stdio',
-          command: newMcpCommand.trim(),
-          args: newMcpArgs.trim() ? parseArgs(newMcpArgs) : undefined,
-          env: newMcpEnv.trim() ? parseEnv(newMcpEnv) : undefined,
-          cwd: newMcpCwd.trim() ? newMcpCwd.trim() : undefined,
-        }
-        await testStdioConnection(config)
-        logger.info('STDIO MCP connection test successful')
-      } catch (error) {
-        logger.error('STDIO MCP connection test failed:', error)
-      } finally {
-        setTestingMcpEndpoint(null)
-      }
+  const handleEditMcpServer = (server: Tool) => {
+    setEditingMcpServer(server)
+    setMcpConfigModalOpen(true)
+  }
+
+  const handleAddMcpServer = () => {
+    setEditingMcpServer(null)
+    setMcpConfigModalOpen(true)
+  }
+
+  const handleOAuthConnect = async (serverId: string) => {
+    setOauthAuthorizingId(serverId)
+    try {
+      await startOAuth(serverId)
+      await loadMcpServers()
+    } catch (e) {
+      logger.error('OAuth connect failed', e)
+    } finally {
+      setOauthAuthorizingId(null)
     }
-  }
-
-  const startEditingMcp = (server: Tool) => {
-    setEditingMcpId(server.id)
-    setEditMcpName(server.name)
-    const config = parseMcpConfig(server.config)
-    const transport = getTransportType(server)
-    setEditMcpTransport(transport)
-    setEditMcpEndpoint(server.endpoint || '')
-    setEditMcpCommand(config?.command || '')
-    setEditMcpArgs(config?.args?.join('\n') || '')
-    setEditMcpEnv(formatEnv(config?.env))
-    setEditMcpCwd(config?.cwd || '')
-    setEditMcpDescription(server.description || '')
-    setEditMcpAuthType((config?.auth_type as McpAuthType) || 'none')
-    setEditMcpBearerToken('')
-    setEditMcpShowBearer(false)
-  }
-
-  const cancelEditingMcp = () => {
-    setEditingMcpId(null)
-    setEditMcpName('')
-    setEditMcpTransport('http')
-    setEditMcpEndpoint('')
-    setEditMcpCommand('')
-    setEditMcpArgs('')
-    setEditMcpEnv('')
-    setEditMcpCwd('')
-    setEditMcpDescription('')
-    setEditMcpAuthType('none')
-    setEditMcpBearerToken('')
-    setEditMcpShowBearer(false)
   }
 
   const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
   const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
   // Separate builtin tools and MCP servers
-  const builtinTools = mcpServers.filter((s) => isBuiltinTool(s))
+  const builtinTools = sortBuiltinTools(mcpServers.filter((s) => isBuiltinTool(s)))
   const mcpServersOnly = mcpServers.filter((s) => isMcpTool(s))
 
   // Separate builtin and user skills
@@ -629,20 +430,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
 
     if (activeSection === 'MCP Servers') {
-      const canCreateServer =
-        newMcpName.trim() &&
-        ((newMcpTransport === 'http' && newMcpEndpoint.trim()) ||
-          (newMcpTransport === 'stdio' && newMcpCommand.trim()))
-
-      const canTestConnection =
-        (newMcpTransport === 'http' && newMcpEndpoint.trim()) ||
-        (newMcpTransport === 'stdio' && newMcpCommand.trim())
-
-      const canUpdateServer =
-        editMcpName.trim() &&
-        ((editMcpTransport === 'http' && editMcpEndpoint.trim()) ||
-          (editMcpTransport === 'stdio' && editMcpCommand.trim()))
-
       const allMcpEnabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => s.is_enabled)
       const allMcpDisabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => !s.is_enabled)
 
@@ -653,599 +440,171 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               Configure MCP (Model Context Protocol) servers to extend your AI assistant with
               external tools and capabilities. Supports both HTTP and STDIO transports.
             </p>
-            {mcpServersOnly.length > 0 && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAllToolsEnabled('mcp', true)}
-                  disabled={allMcpEnabled}
-                >
-                  <ToggleRight className="mr-2 h-4 w-4" />
-                  Enable All
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAllToolsEnabled('mcp', false)}
-                  disabled={allMcpDisabled}
-                >
-                  <ToggleLeft className="mr-2 h-4 w-4" />
-                  Disable All
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Add new MCP server */}
-          <div className="grid gap-3 rounded-lg border p-4 max-w-lg">
-            <h4 className="text-sm font-medium">Add New MCP Server</h4>
-
-            {/* Name */}
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-name">Name</Label>
-              <Input
-                id="mcp-name"
-                placeholder="My MCP Server"
-                value={newMcpName}
-                onChange={(e) => setNewMcpName(e.target.value)}
-              />
-            </div>
-
-            {/* Transport Type */}
-            <div className="grid gap-2">
-              <Label>Transport</Label>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    <span>
-                      {newMcpTransport === 'http' ? 'HTTP (Streamable)' : 'STDIO (Local Process)'}
-                    </span>
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-full">
-                  <DropdownMenuItem onClick={() => setNewMcpTransport('http')}>
-                    <div className="flex items-center gap-2">
-                      {newMcpTransport === 'http' && <Check className="h-4 w-4 text-primary" />}
-                      <div>
-                        <span className={newMcpTransport === 'http' ? 'font-medium' : ''}>
-                          HTTP (Streamable)
-                        </span>
-                        <p className="text-xs text-muted-foreground">
-                          Connect to a remote MCP server via HTTP
-                        </p>
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setNewMcpTransport('stdio')}>
-                    <div className="flex items-center gap-2">
-                      {newMcpTransport === 'stdio' && <Check className="h-4 w-4 text-primary" />}
-                      <div>
-                        <span className={newMcpTransport === 'stdio' ? 'font-medium' : ''}>
-                          STDIO (Local Process)
-                        </span>
-                        <p className="text-xs text-muted-foreground">
-                          Run a local MCP server as a subprocess
-                        </p>
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* HTTP-specific fields */}
-            {newMcpTransport === 'http' && (
-              <>
-                <div className="grid gap-2">
-                  <Label htmlFor="mcp-endpoint">Endpoint URL</Label>
-                  <Input
-                    id="mcp-endpoint"
-                    placeholder="http://localhost:8080/mcp"
-                    value={newMcpEndpoint}
-                    onChange={(e) => setNewMcpEndpoint(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Authentication</Label>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between">
-                        <span>
-                          {newMcpAuthType === 'none'
-                            ? 'None'
-                            : newMcpAuthType === 'bearer'
-                              ? 'Bearer Token'
-                              : 'OAuth 2.0'}
-                        </span>
-                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-full">
-                      <DropdownMenuItem onClick={() => setNewMcpAuthType('none')}>
-                        None
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setNewMcpAuthType('bearer')}>
-                        Bearer Token
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setNewMcpAuthType('oauth')}>
-                        OAuth 2.0
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  {newMcpAuthType === 'bearer' && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="mcp-bearer">Bearer Token</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="mcp-bearer"
-                          type={newMcpShowBearer ? 'text' : 'password'}
-                          placeholder="Your token"
-                          value={newMcpBearerToken}
-                          onChange={(e) => setNewMcpBearerToken(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() => setNewMcpShowBearer((v) => !v)}
-                          aria-label="Toggle token visibility"
-                        >
-                          {newMcpShowBearer ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  {newMcpAuthType === 'oauth' && (
-                    <p className="text-xs text-muted-foreground">
-                      After adding the server, click Edit then Authorize to complete OAuth.
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* STDIO-specific fields */}
-            {newMcpTransport === 'stdio' && (
-              <>
-                <div className="grid gap-2">
-                  <Label htmlFor="mcp-command">Command</Label>
-                  <Input
-                    id="mcp-command"
-                    placeholder="npx -y @modelcontextprotocol/server-filesystem"
-                    value={newMcpCommand}
-                    onChange={(e) => setNewMcpCommand(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Full command with arguments, or just the executable (e.g., npx, uvx)
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="mcp-args">Arguments (one per line)</Label>
-                  <Textarea
-                    id="mcp-args"
-                    placeholder={'/path/to/allowed/directory\n/another/directory'}
-                    value={newMcpArgs}
-                    onChange={(e) => setNewMcpArgs(e.target.value)}
-                    rows={3}
-                    className="font-mono text-sm"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="mcp-env">Environment Variables (KEY=VALUE per line)</Label>
-                  <Textarea
-                    id="mcp-env"
-                    placeholder={'API_KEY=your-api-key\nDEBUG=true'}
-                    value={newMcpEnv}
-                    onChange={(e) => setNewMcpEnv(e.target.value)}
-                    rows={2}
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Custom environment variables (system environment is inherited)
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="mcp-cwd">Working Directory (optional)</Label>
-                  <Input
-                    id="mcp-cwd"
-                    placeholder="~/projects/my-project"
-                    value={newMcpCwd}
-                    onChange={(e) => setNewMcpCwd(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Defaults to home directory if not specified
-                  </p>
-                </div>
-              </>
-            )}
-
-            {/* Description */}
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-description">Description (optional)</Label>
-              <Input
-                id="mcp-description"
-                placeholder="A brief description of this MCP server"
-                value={newMcpDescription}
-                onChange={(e) => setNewMcpDescription(e.target.value)}
-              />
-            </div>
-
-            {/* Actions */}
             <div className="flex gap-2">
-              <Button onClick={handleCreateMcpServer} disabled={!canCreateServer || mcpLoading}>
+              <Button size="sm" onClick={handleAddMcpServer}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Server
               </Button>
-              {canTestConnection && (
-                <Button
-                  variant="outline"
-                  onClick={handleTestMcpConnection}
-                  disabled={!!testingMcpEndpoint}
-                >
-                  {testingMcpEndpoint ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plug className="mr-2 h-4 w-4" />
-                  )}
-                  Test
-                </Button>
+              {mcpServersOnly.length > 0 && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllToolsEnabled('mcp', true)}
+                    disabled={allMcpEnabled}
+                  >
+                    <ToggleRight className="mr-2 h-4 w-4" />
+                    Enable All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllToolsEnabled('mcp', false)}
+                    disabled={allMcpDisabled}
+                  >
+                    <ToggleLeft className="mr-2 h-4 w-4" />
+                    Disable All
+                  </Button>
+                </>
               )}
             </div>
           </div>
 
-          {/* List of existing MCP servers */}
+          {/* Server list */}
           {mcpServersOnly.length > 0 && (
             <div className="grid gap-3">
-              <h4 className="text-sm font-medium">Configured Servers</h4>
               {mcpServersOnly.map((server) => {
                 const serverTransport = getTransportType(server)
                 const serverConfig = parseMcpConfig(server.config)
+                const status = connectionStatus[server.id] || 'idle'
+                const probe = probeResults[server.id]
+                const isNeedsAuth = status === 'needs_auth'
 
                 return (
                   <div key={server.id} className="rounded-lg border p-4 max-w-lg">
-                    {editingMcpId === server.id ? (
-                      <div className="grid gap-3">
-                        {/* Edit Name */}
-                        <div className="grid gap-2">
-                          <Label>Name</Label>
-                          <Input
-                            value={editMcpName}
-                            onChange={(e) => setEditMcpName(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Edit Transport */}
-                        <div className="grid gap-2">
-                          <Label>Transport</Label>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" className="w-full justify-between">
-                                <span>
-                                  {editMcpTransport === 'http'
-                                    ? 'HTTP (Streamable)'
-                                    : 'STDIO (Local Process)'}
-                                </span>
-                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="w-full">
-                              <DropdownMenuItem onClick={() => setEditMcpTransport('http')}>
-                                <div className="flex items-center gap-2">
-                                  {editMcpTransport === 'http' && (
-                                    <Check className="h-4 w-4 text-primary" />
-                                  )}
-                                  <span
-                                    className={editMcpTransport === 'http' ? 'font-medium' : ''}
-                                  >
-                                    HTTP (Streamable)
-                                  </span>
-                                </div>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setEditMcpTransport('stdio')}>
-                                <div className="flex items-center gap-2">
-                                  {editMcpTransport === 'stdio' && (
-                                    <Check className="h-4 w-4 text-primary" />
-                                  )}
-                                  <span
-                                    className={editMcpTransport === 'stdio' ? 'font-medium' : ''}
-                                  >
-                                    STDIO (Local Process)
-                                  </span>
-                                </div>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        {/* Edit HTTP fields */}
-                        {editMcpTransport === 'http' && (
-                          <>
-                            <div className="grid gap-2">
-                              <Label>Endpoint URL</Label>
-                              <Input
-                                value={editMcpEndpoint}
-                                onChange={(e) => setEditMcpEndpoint(e.target.value)}
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Authentication</Label>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" className="w-full justify-between">
-                                    <span>
-                                      {editMcpAuthType === 'none'
-                                        ? 'None'
-                                        : editMcpAuthType === 'bearer'
-                                          ? 'Bearer Token'
-                                          : 'OAuth 2.0'}
-                                    </span>
-                                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="w-full">
-                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('none')}>
-                                    None
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('bearer')}>
-                                    Bearer Token
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setEditMcpAuthType('oauth')}>
-                                    OAuth 2.0
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              {editMcpAuthType === 'bearer' && (
-                                <div className="grid gap-2">
-                                  <Label>Bearer Token</Label>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type={editMcpShowBearer ? 'text' : 'password'}
-                                      placeholder="Leave blank to keep existing token"
-                                      value={editMcpBearerToken}
-                                      onChange={(e) => setEditMcpBearerToken(e.target.value)}
-                                      className="flex-1"
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => setEditMcpShowBearer((v) => !v)}
-                                      aria-label="Toggle token visibility"
-                                    >
-                                      {editMcpShowBearer ? (
-                                        <EyeOff className="h-4 w-4" />
-                                      ) : (
-                                        <Eye className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-                              {editMcpAuthType === 'oauth' && (
-                                <div className="grid gap-2">
-                                  {(() => {
-                                    const meta = serverConfig?.oauth_metadata
-                                    const isAuthorized = meta?.is_authorized ?? false
-                                    const authorizing = oauthAuthorizingId === server.id
-                                    return (
-                                      <>
-                                        <p className="text-xs text-muted-foreground">
-                                          {isAuthorized
-                                            ? 'Authorized.'
-                                            : 'Not authorized. Click Authorize to open the browser.'}
-                                          {meta?.scopes?.length
-                                            ? ` Scopes: ${meta.scopes.join(', ')}`
-                                            : ''}
-                                        </p>
-                                        <div className="flex gap-2">
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            disabled={authorizing}
-                                            onClick={async () => {
-                                              setOauthAuthorizingId(server.id)
-                                              try {
-                                                await startOAuth(server.id)
-                                                await loadMcpServers()
-                                              } catch (e) {
-                                                logger.error('OAuth failed', e)
-                                              } finally {
-                                                setOauthAuthorizingId(null)
-                                              }
-                                            }}
-                                          >
-                                            {authorizing ? (
-                                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                            ) : null}
-                                            {isAuthorized ? 'Re-authorize' : 'Authorize'}
-                                          </Button>
-                                          {isAuthorized && (
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="text-destructive"
-                                              onClick={async () => {
-                                                try {
-                                                  await revokeOAuth(server.id)
-                                                  setEditMcpAuthType('none')
-                                                } catch (e) {
-                                                  logger.error('Revoke OAuth failed', e)
-                                                }
-                                              }}
-                                            >
-                                              Revoke
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </>
-                                    )
-                                  })()}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        {/* Edit STDIO fields */}
-                        {editMcpTransport === 'stdio' && (
-                          <>
-                            <div className="grid gap-2">
-                              <Label>Command</Label>
-                              <Input
-                                value={editMcpCommand}
-                                onChange={(e) => setEditMcpCommand(e.target.value)}
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Arguments (one per line)</Label>
-                              <Textarea
-                                value={editMcpArgs}
-                                onChange={(e) => setEditMcpArgs(e.target.value)}
-                                rows={3}
-                                className="font-mono text-sm"
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Environment Variables</Label>
-                              <Textarea
-                                value={editMcpEnv}
-                                onChange={(e) => setEditMcpEnv(e.target.value)}
-                                rows={2}
-                                className="font-mono text-sm"
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Working Directory</Label>
-                              <Input
-                                value={editMcpCwd}
-                                onChange={(e) => setEditMcpCwd(e.target.value)}
-                              />
-                            </div>
-                          </>
-                        )}
-
-                        {/* Edit Description */}
-                        <div className="grid gap-2">
-                          <Label>Description</Label>
-                          <Input
-                            value={editMcpDescription}
-                            onChange={(e) => setEditMcpDescription(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Edit Actions */}
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleUpdateMcpServer(server.id)}
-                            disabled={!canUpdateServer}
-                          >
-                            Save
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={cancelEditingMcp}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid gap-2">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="grid gap-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              {(() => {
-                                const status = connectionStatus[server.id] || 'idle'
-                                const dotClass = 'h-2 w-2 rounded-full shrink-0'
-                                if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
-                                if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
-                                if (status === 'error') return <span className={`${dotClass} bg-red-500`} title="Connection failed" />
-                                return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
-                              })()}
-                              <span className="font-medium truncate">{server.name}</span>
-                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground truncate font-mono">
-                              {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
+                    <div className="grid gap-2">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="grid gap-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const dotClass = 'h-2 w-2 rounded-full shrink-0'
+                              if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
+                              if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                              if (status === 'needs_auth') return <span className={`${dotClass} bg-yellow-500`} title="Authorization required" />
+                              if (status === 'error') return <span className={`${dotClass} bg-red-500`} title="Connection failed" />
+                              return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+                            })()}
+                            <span className="font-medium truncate">{server.name}</span>
+                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
                             </span>
-                            {server.description && (
-                              <span className="text-xs text-muted-foreground">
-                                {server.description}
-                              </span>
-                            )}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-muted-foreground truncate font-mono">
+                            {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
+                          </span>
+                          {server.description && (
+                            <span className="text-xs text-muted-foreground">
+                              {server.description}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => connectServer(server.id)}
+                            disabled={status === 'connecting'}
+                            title="Refresh connection"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${status === 'connecting' ? 'animate-spin' : ''}`} />
+                          </Button>
+
+                          {isNeedsAuth ? (
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => connectServer(server.id)}
-                              disabled={connectionStatus[server.id] === 'connecting'}
-                              title="Refresh connection"
+                              size="sm"
+                              variant="default"
+                              disabled={oauthAuthorizingId === server.id}
+                              onClick={() => handleOAuthConnect(server.id)}
                             >
-                              <RefreshCw className={`h-4 w-4 ${connectionStatus[server.id] === 'connecting' ? 'animate-spin' : ''}`} />
+                              {oauthAuthorizingId === server.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                              ) : (
+                                <LogIn className="h-4 w-4 mr-1" />
+                              )}
+                              Connect
                             </Button>
+                          ) : (
                             <Switch
                               checked={server.is_enabled}
                               onCheckedChange={() => handleToggleMcpServer(server.id)}
                             />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => startEditingMcp(server)}
-                            >
-                              <Settings className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteMcpServer(server.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
+                          )}
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditMcpServer(server)}
+                          >
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteMcpServer(server.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </div>
-
-                        {connectionErrors[server.id] && connectionStatus[server.id] === 'error' && (
-                          <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1.5 break-all">
-                            {connectionErrors[server.id]}
-                          </p>
-                        )}
-
-                        {connectionStatus[server.id] === 'connected' && serverTools[server.id] && serverTools[server.id].length > 0 && (
-                          <div className="border-t pt-2 mt-1">
-                            <button
-                              type="button"
-                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-                              onClick={() => setExpandedToolsId(expandedToolsId === server.id ? null : server.id)}
-                            >
-                              <ChevronDown
-                                className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
-                              />
-                              {serverTools[server.id].length} tool{serverTools[server.id].length !== 1 ? 's' : ''}
-                            </button>
-                            {expandedToolsId === server.id && (
-                              <div className="mt-2 space-y-1 pl-5">
-                                {serverTools[server.id].map((tool) => (
-                                  <div key={tool.name} className="text-xs">
-                                    <span className="font-mono font-medium text-foreground">{tool.name}</span>
-                                    {tool.description && (
-                                      <p className="text-muted-foreground mt-0.5 line-clamp-2">{tool.description}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
-                    )}
+
+                      {/* OAuth discovery info */}
+                      {isNeedsAuth && probe?.status === 'needs_oauth' && (
+                        <p className="text-xs text-muted-foreground bg-yellow-500/10 rounded px-2 py-1.5">
+                          Server requires OAuth authorization.
+                          {probe.scopes_supported?.length
+                            ? ` Scopes: ${probe.scopes_supported.join(', ')}`
+                            : ''}
+                        </p>
+                      )}
+
+                      {/* Error with red indicator */}
+                      {status === 'error' && connectionErrors[server.id] && (
+                        <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1.5 break-all">
+                          {connectionErrors[server.id]}
+                          {probe?.status === 'error' && probe.error && (
+                            <span className="block mt-1">{probe.error}</span>
+                          )}
+                        </p>
+                      )}
+
+                      {/* Connected tools list */}
+                      {status === 'connected' && serverTools[server.id] && serverTools[server.id].length > 0 && (
+                        <div className="border-t pt-2 mt-1">
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+                            onClick={() => setExpandedToolsId(expandedToolsId === server.id ? null : server.id)}
+                          >
+                            <ChevronDown
+                              className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
+                            />
+                            {serverTools[server.id].length} tool{serverTools[server.id].length !== 1 ? 's' : ''}
+                          </button>
+                          {expandedToolsId === server.id && (
+                            <div className="mt-2 space-y-1 pl-5">
+                              {serverTools[server.id].map((tool) => (
+                                <div key={tool.name} className="text-xs">
+                                  <span className="font-mono font-medium text-foreground">{tool.name}</span>
+                                  {tool.description && (
+                                    <p className="text-muted-foreground mt-0.5 line-clamp-2">{tool.description}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -1254,9 +613,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
           {mcpServersOnly.length === 0 && !mcpLoading && (
             <div className="text-sm text-muted-foreground">
-              No MCP servers configured yet. Add one above to get started.
+              No MCP servers configured yet. Click "Add Server" to get started.
             </div>
           )}
+
+          {/* Config Modal */}
+          <McpServerConfigModal
+            open={mcpConfigModalOpen}
+            onOpenChange={setMcpConfigModalOpen}
+            editingServer={editingMcpServer}
+          />
         </div>
       )
     }

@@ -16,13 +16,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMcpStore } from '@/stores/mcpStore'
-import { isBuiltinTool, isMcpTool } from '@/types/tool'
+import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
 
 interface McpServersDialogProps {
   open: boolean
@@ -51,7 +52,7 @@ export function McpServersDialog({
     }
   }, [open, ensureLoaded])
 
-  const builtinTools = servers.filter((s) => isBuiltinTool(s))
+  const builtinTools = sortBuiltinTools(servers.filter((s) => isBuiltinTool(s)))
   const mcpServers = servers.filter((s) => isMcpTool(s))
 
   // Global enabled IDs include both builtin and MCP
@@ -59,9 +60,6 @@ export function McpServersDialog({
     () => servers.filter((s) => s.is_enabled).map((s) => s.id),
     [servers]
   )
-
-  // All available IDs (globally enabled)
-  const allAvailableIds = globalEnabledIds
 
   const isDifferentFromGlobal = React.useMemo(() => {
     if (enabledServerIds.length !== globalEnabledIds.length) return true
@@ -82,21 +80,21 @@ export function McpServersDialog({
     onServerIdsChange(globalEnabledIds)
   }
 
-  const handleEnableAll = () => {
-    onServerIdsChange(allAvailableIds)
-  }
-
-  const handleDisableAll = () => {
-    onServerIdsChange([])
-  }
-
   const hasNoTools = builtinTools.length === 0 && mcpServers.length === 0
+  const [activeTab, setActiveTab] = React.useState<string>('mcp-servers')
 
-  // Check if all available (globally enabled) items are enabled/disabled for this conversation
+  const tabItems = React.useMemo(() => {
+    return activeTab === 'builtin-tools' ? builtinTools : mcpServers
+  }, [activeTab, builtinTools, mcpServers])
+
+  const tabAvailableIds = React.useMemo(() => {
+    return tabItems.filter((s) => s.is_enabled).map((s) => s.id)
+  }, [tabItems])
+
   const allEnabled =
-    allAvailableIds.length > 0 && allAvailableIds.every((id) => enabledServerIds.includes(id))
+    tabAvailableIds.length > 0 && tabAvailableIds.every((id) => enabledServerIds.includes(id))
   const noneEnabled =
-    allAvailableIds.length > 0 && !allAvailableIds.some((id) => enabledServerIds.includes(id))
+    tabAvailableIds.length > 0 && !tabAvailableIds.some((id) => enabledServerIds.includes(id))
 
   const renderToolItem = (tool: (typeof servers)[number]) => {
     const isGloballyDisabled = !tool.is_enabled
@@ -207,6 +205,16 @@ export function McpServersDialog({
     )
   }
 
+  const handleTabEnableAll = () => {
+    const idsToAdd = tabAvailableIds.filter((id) => !enabledServerIds.includes(id))
+    onServerIdsChange([...enabledServerIds, ...idsToAdd])
+  }
+
+  const handleTabDisableAll = () => {
+    const tabIdSet = new Set(tabAvailableIds)
+    onServerIdsChange(enabledServerIds.filter((id) => !tabIdSet.has(id)))
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px] max-h-[70vh] flex flex-col gap-0 p-0">
@@ -221,66 +229,83 @@ export function McpServersDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Enable All / Disable All buttons */}
-        {!hasNoTools && allAvailableIds.length > 0 && (
-          <div className="flex gap-2 px-6 pb-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEnableAll}
-              disabled={allEnabled}
-              className="gap-1.5"
-            >
-              <ToggleRight className="h-3.5 w-3.5" />
-              Enable All
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDisableAll}
-              disabled={noneEnabled}
-              className="gap-1.5"
-            >
-              <ToggleLeft className="h-3.5 w-3.5" />
-              Disable All
-            </Button>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 grid gap-4">
-          {hasNoTools ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
+        {hasNoTools ? (
+          <div className="px-6 py-8">
+            <p className="text-sm text-muted-foreground text-center">
               No tools available. Enable builtin tools or configure MCP servers in Settings.
             </p>
-          ) : (
-            <>
-              {/* Builtin Tools Section */}
-              {builtinTools.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Wrench className="h-4 w-4" />
-                    Built-in Tools
-                  </h4>
-                  {builtinTools.map(renderToolItem)}
-                </div>
-              )}
+          </div>
+        ) : (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 gap-0">
+            <div className="px-6 pt-2 pb-0">
+              <TabsList className="w-full">
+                <TabsTrigger value="mcp-servers" className="gap-1.5">
+                  <Plug className="h-3.5 w-3.5" />
+                  MCP Servers
+                  {mcpServers.length > 0 && (
+                    <span className="text-xs text-muted-foreground ml-0.5">({mcpServers.length})</span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="builtin-tools" className="gap-1.5">
+                  <Wrench className="h-3.5 w-3.5" />
+                  Built-in Tools
+                  {builtinTools.length > 0 && (
+                    <span className="text-xs text-muted-foreground ml-0.5">({builtinTools.length})</span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-              {/* Separator between sections */}
-              {builtinTools.length > 0 && mcpServers.length > 0 && <Separator />}
+            {tabAvailableIds.length > 0 && (
+              <div className="flex gap-2 px-6 pt-3 pb-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTabEnableAll}
+                  disabled={allEnabled}
+                  className="gap-1.5"
+                >
+                  <ToggleRight className="h-3.5 w-3.5" />
+                  Enable All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTabDisableAll}
+                  disabled={noneEnabled}
+                  className="gap-1.5"
+                >
+                  <ToggleLeft className="h-3.5 w-3.5" />
+                  Disable All
+                </Button>
+              </div>
+            )}
 
-              {/* MCP Servers Section */}
-              {mcpServers.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Plug className="h-4 w-4" />
-                    MCP Servers
-                  </h4>
+            <TabsContent value="mcp-servers" className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+              {mcpServers.length > 0 ? (
+                <div className="space-y-1">
                   {mcpServers.map(renderToolItem)}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No MCP servers configured. Add servers in Settings.
+                </p>
               )}
-            </>
-          )}
-        </div>
+            </TabsContent>
+
+            <TabsContent value="builtin-tools" className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+              {builtinTools.length > 0 ? (
+                <div className="space-y-1">
+                  {builtinTools.map(renderToolItem)}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No built-in tools available.
+                </p>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
 
         {isDifferentFromGlobal && (
           <div className="px-6 pb-6">

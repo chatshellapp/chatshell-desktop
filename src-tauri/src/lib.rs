@@ -229,6 +229,7 @@ pub fn run() {
             commands::check_mcp_oauth_status,
             commands::revoke_mcp_oauth,
             commands::set_mcp_bearer_token,
+            commands::probe_mcp_endpoint,
             // Skill commands
             commands::list_skills,
             commands::get_skill,

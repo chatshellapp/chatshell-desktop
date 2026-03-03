@@ -121,10 +121,28 @@ impl McpConnectionManager {
         &self,
         endpoint: &str,
         auth_header: Option<String>,
+        custom_headers: Option<&HashMap<String, String>>,
     ) -> Result<McpRunningService> {
         tracing::info!("🌐 Connecting via HTTP to: {}", endpoint);
 
-        let http_client = reqwest::Client::new();
+        let http_client = if let Some(headers) = custom_headers {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+            reqwest::Client::builder()
+                .default_headers(header_map)
+                .build()
+                .context("Failed to build HTTP client with custom headers")?
+        } else {
+            reqwest::Client::new()
+        };
+
         let mut config = StreamableHttpClientTransportConfig {
             uri: endpoint.to_string().into(),
             ..Default::default()
@@ -259,12 +277,14 @@ impl McpConnectionManager {
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("HTTP transport requires an endpoint URL"))?;
                 let auth_header = Self::get_http_auth_header(tool)?;
+                let custom_headers = config.as_ref().and_then(|c| c.headers.as_ref());
                 tracing::debug!(
-                    "🔐 HTTP auth for {}: {}",
+                    "🔐 HTTP auth for {}: {}, custom headers: {}",
                     tool.name,
-                    if auth_header.is_some() { "token present" } else { "none" }
+                    if auth_header.is_some() { "token present" } else { "none" },
+                    custom_headers.map(|h| h.len()).unwrap_or(0)
                 );
-                self.connect_http(endpoint, auth_header).await?
+                self.connect_http(endpoint, auth_header, custom_headers).await?
             }
             McpTransportType::Stdio => {
                 let mcp_config =
@@ -382,7 +402,7 @@ impl McpConnectionManager {
     pub async fn test_http_connection(&self, endpoint: &str) -> Result<Vec<McpTool>> {
         tracing::info!("🧪 Testing HTTP connection to: {}", endpoint);
 
-        let running_service = self.connect_http(endpoint, None).await?;
+        let running_service = self.connect_http(endpoint, None, None).await?;
 
         let tools_result = running_service
             .list_tools(Default::default())
@@ -418,7 +438,6 @@ impl McpConnectionManager {
 
     /// Test connection to an MCP server (auto-detect transport type)
     pub async fn test_connection(&self, endpoint: &str) -> Result<Vec<McpTool>> {
-        // For backward compatibility, this method assumes HTTP transport
         self.test_http_connection(endpoint).await
     }
 }
