@@ -8,6 +8,8 @@ import {
   XCircle,
   Loader2,
   FileText,
+  Pencil,
+  FilePlus2,
   Terminal,
   Search,
   FolderSearch,
@@ -44,6 +46,8 @@ function formatJson(jsonString: string | undefined): string {
 
 const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText,
+  edit: Pencil,
+  write: FilePlus2,
   bash: Terminal,
   grep: Search,
   glob: FolderSearch,

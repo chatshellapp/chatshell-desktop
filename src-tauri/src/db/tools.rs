@@ -17,6 +17,8 @@ pub const BUILTIN_WEB_SEARCH_ID: &str = "builtin-web-search";
 pub const BUILTIN_WEB_FETCH_ID: &str = "builtin-web-fetch";
 pub const BUILTIN_BASH_ID: &str = "builtin-bash";
 pub const BUILTIN_READ_ID: &str = "builtin-read";
+pub const BUILTIN_EDIT_ID: &str = "builtin-edit";
+pub const BUILTIN_WRITE_ID: &str = "builtin-write";
 pub const BUILTIN_GREP_ID: &str = "builtin-grep";
 pub const BUILTIN_GLOB_ID: &str = "builtin-glob";
 
@@ -218,7 +220,17 @@ impl Database {
             (
                 BUILTIN_READ_ID,
                 "Read",
-                "Read the contents of text files from the filesystem. Supports reading specific line ranges for large files.",
+                "Read file contents from the filesystem. Supports text files with line numbers, image files (PNG, JPEG, GIF, WebP) with metadata, and PDF text extraction.",
+            ),
+            (
+                BUILTIN_EDIT_ID,
+                "Edit",
+                "Make precise text replacements in files. Specify exact text to find and its replacement. Supports replacing all occurrences for variable renaming.",
+            ),
+            (
+                BUILTIN_WRITE_ID,
+                "Write",
+                "Create new files or overwrite existing files with provided content. Automatically creates parent directories as needed.",
             ),
             (
                 BUILTIN_GREP_ID,
@@ -232,8 +244,9 @@ impl Database {
             ),
         ];
 
+        let mut newly_created_ids: Vec<&str> = Vec::new();
+
         for (id, name, description) in builtin_tools {
-            // Check if tool already exists
             let exists = sqlx::query("SELECT 1 FROM tools WHERE id = ?")
                 .bind(id)
                 .fetch_optional(self.pool.as_ref())
@@ -256,6 +269,53 @@ impl Database {
                 .await?;
 
                 tracing::info!("✅ [db] Created builtin tool: {}", name);
+                newly_created_ids.push(id);
+            }
+        }
+
+        // Auto-add newly created builtin tools to every assistant that already
+        // uses at least one builtin tool, so they're available immediately.
+        if !newly_created_ids.is_empty() {
+            let assistant_ids: Vec<String> = sqlx::query_scalar(
+                "SELECT DISTINCT assistant_id FROM assistant_tools \
+                 WHERE tool_id LIKE 'builtin-%'",
+            )
+            .fetch_all(self.pool.as_ref())
+            .await?;
+
+            if !assistant_ids.is_empty() {
+                let now = Utc::now().to_rfc3339();
+                for assistant_id in &assistant_ids {
+                    for tool_id in &newly_created_ids {
+                        let already = sqlx::query(
+                            "SELECT 1 FROM assistant_tools WHERE assistant_id = ? AND tool_id = ?",
+                        )
+                        .bind(assistant_id)
+                        .bind(tool_id)
+                        .fetch_optional(self.pool.as_ref())
+                        .await?
+                        .is_some();
+
+                        if !already {
+                            let id = Uuid::now_v7().to_string();
+                            sqlx::query(
+                                "INSERT INTO assistant_tools (id, assistant_id, tool_id, created_at) \
+                                 VALUES (?, ?, ?, ?)",
+                            )
+                            .bind(&id)
+                            .bind(assistant_id)
+                            .bind(tool_id)
+                            .bind(&now)
+                            .execute(self.pool.as_ref())
+                            .await?;
+                        }
+                    }
+                }
+                tracing::info!(
+                    "✅ [db] Auto-added {} new builtin tool(s) to {} assistant(s)",
+                    newly_created_ids.len(),
+                    assistant_ids.len()
+                );
             }
         }
 

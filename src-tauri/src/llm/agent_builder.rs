@@ -22,7 +22,9 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
-use crate::llm::tools::{BashTool, GlobTool, GrepTool, ReadTool, WebFetchTool, WebSearchTool};
+use crate::llm::tools::{
+    BashTool, EditTool, GlobTool, GrepTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
+};
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
     deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
@@ -68,6 +70,10 @@ pub struct AgentConfig {
     pub bash_working_directory: Option<String>,
     /// Enable built-in file read tool
     pub enable_read: bool,
+    /// Enable built-in file edit tool
+    pub enable_edit: bool,
+    /// Enable built-in file write tool
+    pub enable_write: bool,
     /// Enable built-in grep (content search) tool
     pub enable_grep: bool,
     /// Enable built-in glob (file pattern matching) tool
@@ -162,6 +168,18 @@ impl AgentConfig {
         self
     }
 
+    /// Enable the built-in file edit tool
+    pub fn with_edit(mut self) -> Self {
+        self.enable_edit = true;
+        self
+    }
+
+    /// Enable the built-in file write tool
+    pub fn with_write(mut self) -> Self {
+        self.enable_write = true;
+        self
+    }
+
     /// Enable the built-in grep (content search) tool
     pub fn with_grep(mut self) -> Self {
         self.enable_grep = true;
@@ -192,6 +210,8 @@ impl AgentConfig {
         self.enable_web_fetch = true;
         self.enable_bash = true;
         self.enable_read = true;
+        self.enable_edit = true;
+        self.enable_write = true;
         self.enable_grep = true;
         self.enable_glob = true;
         self
@@ -671,6 +691,8 @@ fn build_agent<M: CompletionModel>(
         || config.enable_web_fetch
         || config.enable_bash
         || config.enable_read
+        || config.enable_edit
+        || config.enable_write
         || config.enable_grep
         || config.enable_glob;
     let has_mcp_tools = config
@@ -744,10 +766,35 @@ fn build_agent_with_tools<M: CompletionModel>(
         }};
     }
 
+    // Macro to conditionally chain the remaining tools (edit → write → grep → glob)
+    // onto a simple builder, then add MCP tools and build.
+    macro_rules! chain_remaining {
+        ($sb:expr) => {{
+            let mut sb = $sb;
+            if config.enable_edit {
+                tracing::info!("✏️ Adding edit tool to agent");
+                sb = sb.tool(EditTool::new());
+            }
+            if config.enable_write {
+                tracing::info!("📝 Adding write tool to agent");
+                sb = sb.tool(WriteTool::new());
+            }
+            if config.enable_grep {
+                tracing::info!("🔎 Adding grep tool to agent");
+                sb = sb.tool(create_grep_tool());
+            }
+            if config.enable_glob {
+                tracing::info!("📂 Adding glob tool to agent");
+                sb = sb.tool(create_glob_tool());
+            }
+            finish_with_simple_builder!(sb);
+        }};
+    }
+
     // Each block below is an entry point for the first enabled tool.
     // Once we enter a block, all tools listed before it are disabled (otherwise
-    // we would have entered their block first). So we only need to add the tools
-    // that come AFTER the current one in this ordered list.
+    // we would have entered their block first). We chain the remaining tools
+    // in order: web_search → web_fetch → bash → read → edit → write → grep → glob.
 
     if config.enable_web_search {
         tracing::info!("🔍 Adding web_search tool to agent");
@@ -764,15 +811,7 @@ fn build_agent_with_tools<M: CompletionModel>(
             tracing::info!("📖 Adding read tool to agent");
             sb = sb.tool(ReadTool::new());
         }
-        if config.enable_grep {
-            tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(create_grep_tool());
-        }
-        if config.enable_glob {
-            tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(create_glob_tool());
-        }
-        finish_with_simple_builder!(sb);
+        chain_remaining!(sb);
     }
 
     if config.enable_web_fetch {
@@ -786,15 +825,7 @@ fn build_agent_with_tools<M: CompletionModel>(
             tracing::info!("📖 Adding read tool to agent");
             sb = sb.tool(ReadTool::new());
         }
-        if config.enable_grep {
-            tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(create_grep_tool());
-        }
-        if config.enable_glob {
-            tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(create_glob_tool());
-        }
-        finish_with_simple_builder!(sb);
+        chain_remaining!(sb);
     }
 
     if config.enable_bash {
@@ -804,6 +835,22 @@ fn build_agent_with_tools<M: CompletionModel>(
             tracing::info!("📖 Adding read tool to agent");
             sb = sb.tool(ReadTool::new());
         }
+        chain_remaining!(sb);
+    }
+
+    if config.enable_read {
+        tracing::info!("📖 Adding read tool to agent");
+        let sb = builder.tool(ReadTool::new());
+        chain_remaining!(sb);
+    }
+
+    if config.enable_edit {
+        tracing::info!("✏️ Adding edit tool to agent");
+        let mut sb = builder.tool(EditTool::new());
+        if config.enable_write {
+            tracing::info!("📝 Adding write tool to agent");
+            sb = sb.tool(WriteTool::new());
+        }
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
             sb = sb.tool(create_grep_tool());
@@ -815,9 +862,9 @@ fn build_agent_with_tools<M: CompletionModel>(
         finish_with_simple_builder!(sb);
     }
 
-    if config.enable_read {
-        tracing::info!("📖 Adding read tool to agent");
-        let mut sb = builder.tool(ReadTool::new());
+    if config.enable_write {
+        tracing::info!("📝 Adding write tool to agent");
+        let mut sb = builder.tool(WriteTool::new());
         if config.enable_grep {
             tracing::info!("🔎 Adding grep tool to agent");
             sb = sb.tool(create_grep_tool());

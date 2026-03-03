@@ -14,6 +14,8 @@
 //!     .with_web_fetch()
 //!     .with_bash()
 //!     .with_read()
+//!     .with_edit()
+//!     .with_write()
 //!     .with_grep()
 //!     .with_glob();
 //! ```
@@ -26,15 +28,19 @@
 //! ```
 
 mod bash;
+mod edit;
 mod glob;
 mod grep;
 mod read;
 mod web_fetch;
 mod web_search;
+mod write;
 
 pub use bash::BashTool;
+pub use edit::EditTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use read::ReadTool;
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
+pub use write::WriteTool;

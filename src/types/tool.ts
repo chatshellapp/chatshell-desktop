@@ -7,6 +7,8 @@ export const BUILTIN_WEB_SEARCH_ID = 'builtin-web-search'
 export const BUILTIN_WEB_FETCH_ID = 'builtin-web-fetch'
 export const BUILTIN_BASH_ID = 'builtin-bash'
 export const BUILTIN_READ_ID = 'builtin-read'
+export const BUILTIN_EDIT_ID = 'builtin-edit'
+export const BUILTIN_WRITE_ID = 'builtin-write'
 export const BUILTIN_GREP_ID = 'builtin-grep'
 export const BUILTIN_GLOB_ID = 'builtin-glob'
 

@@ -21,8 +21,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
 use crate::db::tools::{
-    BUILTIN_BASH_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID,
-    BUILTIN_WEB_SEARCH_ID,
+    BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_READ_ID,
+    BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
 };
 
 /// Handle streaming using the agent-based approach
@@ -238,6 +238,8 @@ pub(crate) async fn handle_agent_streaming(
     let web_fetch_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
     let bash_enabled = all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
     let read_enabled = all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string());
+    let edit_enabled = all_enabled_tool_ids.contains(&BUILTIN_EDIT_ID.to_string());
+    let write_enabled = all_enabled_tool_ids.contains(&BUILTIN_WRITE_ID.to_string());
     let grep_enabled = all_enabled_tool_ids.contains(&BUILTIN_GREP_ID.to_string());
     let glob_enabled = all_enabled_tool_ids.contains(&BUILTIN_GLOB_ID.to_string());
 
@@ -266,6 +268,14 @@ pub(crate) async fn handle_agent_streaming(
     if read_enabled {
         tracing::info!("📖 [agent_streaming] Enabling read tool");
         config = config.with_read();
+    }
+    if edit_enabled {
+        tracing::info!("✏️ [agent_streaming] Enabling edit tool");
+        config = config.with_edit();
+    }
+    if write_enabled {
+        tracing::info!("📝 [agent_streaming] Enabling write tool");
+        config = config.with_write();
     }
     if grep_enabled {
         tracing::info!("🔎 [agent_streaming] Enabling grep tool");
@@ -304,6 +314,8 @@ pub(crate) async fn handle_agent_streaming(
                 && *id != &BUILTIN_WEB_FETCH_ID.to_string()
                 && *id != &BUILTIN_BASH_ID.to_string()
                 && *id != &BUILTIN_READ_ID.to_string()
+                && *id != &BUILTIN_EDIT_ID.to_string()
+                && *id != &BUILTIN_WRITE_ID.to_string()
                 && *id != &BUILTIN_GREP_ID.to_string()
                 && *id != &BUILTIN_GLOB_ID.to_string()
         })

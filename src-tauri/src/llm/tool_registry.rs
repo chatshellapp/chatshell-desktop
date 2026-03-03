@@ -199,9 +199,8 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// Register default tools (web search, file operations, etc.)
+    /// Register default tools (web search, web fetch)
     fn register_default_tools(&mut self) {
-        // Web search tool
         let web_search = ToolDefinition::new(
             "web_search",
             "Search the web for information using a search engine",
@@ -218,7 +217,6 @@ impl ToolRegistry {
             "Maximum number of results to return (default: 5)",
         ));
 
-        // Web fetch tool
         let web_fetch =
             ToolDefinition::new("web_fetch", "Fetch and extract content from a web page")
                 .with_category("web")
@@ -228,38 +226,8 @@ impl ToolRegistry {
                     "The URL of the web page to fetch",
                 ));
 
-        // File read tool
-        let file_read = ToolDefinition::new(
-            "file_read",
-            "Read the contents of a file from the filesystem",
-        )
-        .with_category("file")
-        .with_parameter(ToolParameter::required(
-            "path",
-            "string",
-            "The path to the file to read",
-        ));
-
-        // File write tool
-        let file_write =
-            ToolDefinition::new("file_write", "Write content to a file on the filesystem")
-                .with_category("file")
-                .with_parameter(ToolParameter::required(
-                    "path",
-                    "string",
-                    "The path to the file to write",
-                ))
-                .with_parameter(ToolParameter::required(
-                    "content",
-                    "string",
-                    "The content to write to the file",
-                ));
-
-        // Register all default tools (ignore errors since we're the only caller)
         let _ = self.register(web_search);
         let _ = self.register(web_fetch);
-        let _ = self.register(file_read);
-        let _ = self.register(file_write);
     }
 }
 
@@ -298,8 +266,8 @@ mod tests {
         let registry = ToolRegistry::with_defaults();
         assert!(registry.get("web_search").is_some());
         assert!(registry.get("web_fetch").is_some());
-        assert!(registry.get("file_read").is_some());
-        assert!(registry.get("file_write").is_some());
+        assert!(registry.get("file_read").is_none());
+        assert!(registry.get("file_write").is_none());
     }
 
     #[test]
