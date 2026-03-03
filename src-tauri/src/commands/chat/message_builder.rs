@@ -34,7 +34,10 @@ pub async fn build_chat_messages(
 
     let now = Local::now();
     let current_datetime = now.format("%A, %B %-d, %Y %H:%M %Z").to_string();
-    let system_prompt_content = format!("{}\n\nCurrent date and time: {}", base_prompt, current_datetime);
+    let system_prompt_content = format!(
+        "{}\n\nCurrent date and time: {}",
+        base_prompt, current_datetime
+    );
 
     let mut chat_messages = vec![ChatMessage {
         role: "system".to_string(),
