@@ -200,8 +200,7 @@ impl BashSession {
             Err(_) => {
                 // Kill the process to free resources; session will be recreated.
                 let _ = self.child.kill().await;
-                let _ =
-                    tokio::time::timeout(Duration::from_secs(5), self.child.wait()).await;
+                let _ = tokio::time::timeout(Duration::from_secs(5), self.child.wait()).await;
                 Err(BashError(format!(
                     "Command timed out after {} seconds. Session has been reset.",
                     timeout.as_secs()
@@ -224,7 +223,13 @@ impl BashSession {
             .unwrap_or_default()
             .as_nanos();
 
-        format!("__CHATSHELL_{}_{:x}_{}_{}__", label, nanos, std::process::id(), seq)
+        format!(
+            "__CHATSHELL_{}_{:x}_{}_{}__",
+            label,
+            nanos,
+            std::process::id(),
+            seq
+        )
     }
 }
 
@@ -362,8 +367,10 @@ impl BashTool {
         }
 
         let head_end = Self::char_boundary_at_or_before(output, TRUNCATE_HEAD_CHARS);
-        let tail_start =
-            Self::char_boundary_at_or_after(output, output.len().saturating_sub(TRUNCATE_TAIL_CHARS));
+        let tail_start = Self::char_boundary_at_or_after(
+            output,
+            output.len().saturating_sub(TRUNCATE_TAIL_CHARS),
+        );
 
         if head_end >= tail_start {
             let end = Self::char_boundary_at_or_before(output, MAX_OUTPUT_CHARS);
@@ -462,8 +469,7 @@ impl Tool for BashTool {
         if is_restart {
             if let Some(mut old) = guard.take() {
                 let _ = old.child.kill().await;
-                let _ =
-                    tokio::time::timeout(Duration::from_secs(5), old.child.wait()).await;
+                let _ = tokio::time::timeout(Duration::from_secs(5), old.child.wait()).await;
                 tracing::info!("🖥️ [bash] Session killed for restart");
             }
             // If no command follows, just restart and return.
@@ -612,9 +618,7 @@ mod tests {
     fn test_smart_truncate_preserves_char_boundaries() {
         // Create a string with multi-byte chars
         let piece = "你好世界\n";
-        let long: String = std::iter::repeat(piece)
-            .take(10_000)
-            .collect();
+        let long: String = std::iter::repeat(piece).take(10_000).collect();
         let result = BashTool::smart_truncate(&long);
         // Should not panic and should be valid UTF-8
         assert!(result.len() < long.len());

@@ -108,16 +108,13 @@ impl Database {
         message_id: &str,
     ) -> Result<()> {
         let target = self.get_message(message_id).await?;
-        let target =
-            target.ok_or_else(|| anyhow::anyhow!("Message not found: {}", message_id))?;
+        let target = target.ok_or_else(|| anyhow::anyhow!("Message not found: {}", message_id))?;
 
-        sqlx::query(
-            "DELETE FROM messages WHERE conversation_id = ? AND created_at >= ?",
-        )
-        .bind(conversation_id)
-        .bind(&target.created_at)
-        .execute(self.pool.as_ref())
-        .await?;
+        sqlx::query("DELETE FROM messages WHERE conversation_id = ? AND created_at >= ?")
+            .bind(conversation_id)
+            .bind(&target.created_at)
+            .execute(self.pool.as_ref())
+            .await?;
         Ok(())
     }
 }

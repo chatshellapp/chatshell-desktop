@@ -324,7 +324,10 @@ pub(crate) async fn handle_agent_streaming(
         .collect();
 
     // Load MCP tools from enabled servers
-    let mcp_tool_name_to_server_id: Arc<HashMap<String, String>> = if !mcp_server_ids.is_empty() {
+    let (mcp_tool_name_to_server_id, mcp_tool_name_to_server_name): (
+        Arc<HashMap<String, String>>,
+        Arc<HashMap<String, String>>,
+    ) = if !mcp_server_ids.is_empty() {
         let loaded = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
         if let Some(loaded) = loaded {
             // Emit mcp-auth-required for servers that failed with auth errors
@@ -342,15 +345,22 @@ pub(crate) async fn handle_agent_streaming(
 
             if loaded.server_tools.iter().any(|(t, _)| !t.is_empty()) {
                 let total: usize = loaded.server_tools.iter().map(|(t, _)| t.len()).sum();
-                tracing::info!("🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)", total, loaded.server_tools.len());
+                tracing::info!(
+                    "🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)",
+                    total,
+                    loaded.server_tools.len()
+                );
                 config = config.with_mcp_tools(loaded.server_tools);
             }
-            Arc::new(loaded.tool_name_to_server_id)
+            (
+                Arc::new(loaded.tool_name_to_server_id),
+                Arc::new(loaded.tool_name_to_server_name),
+            )
         } else {
-            Arc::new(HashMap::new())
+            (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
         }
     } else {
-        Arc::new(HashMap::new())
+        (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
     };
 
     // Create the agent
@@ -448,6 +458,7 @@ pub(crate) async fn handle_agent_streaming(
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
     let mcp_tool_map_for_callback = mcp_tool_name_to_server_id.clone();
+    let mcp_server_name_map_for_callback = mcp_tool_name_to_server_name.clone();
     let mcp_manager_for_callback = state_clone.mcp_manager.clone();
 
     // Stream using the agent
@@ -560,7 +571,13 @@ pub(crate) async fn handle_agent_streaming(
                     let tool_order = display_order_for_callback
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-                    // Store tool call in tracking map with display order
+                    // Build display name: prefix MCP tools with mcp__{server_name}__
+                    let display_name = mcp_display_name(
+                        &tool_info.tool_name,
+                        &mcp_server_name_map_for_callback,
+                    );
+
+                    // Store tool call in tracking map (original name for auth lookup)
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
                         tool_calls.insert(
                             tool_info.id.clone(),
@@ -573,11 +590,11 @@ pub(crate) async fn handle_agent_streaming(
                         );
                     }
 
-                    // Emit tool call event to frontend
+                    // Emit tool call event to frontend with display name
                     let payload = serde_json::json!({
                         "conversation_id": conversation_id_for_stream,
                         "tool_call_id": tool_info.id,
-                        "tool_name": tool_info.tool_name,
+                        "tool_name": display_name,
                         "tool_input": tool_info.tool_input,
                     });
                     let _ = app_for_stream.emit("tool-call-started", payload);
@@ -589,7 +606,7 @@ pub(crate) async fn handle_agent_streaming(
                     {
                         *output = Some(result_info.tool_output.clone());
 
-                        // Detect 401 auth errors from MCP tool calls
+                        // Detect 401 auth errors from MCP tool calls (uses original name)
                         if is_auth_error(&result_info.tool_output) {
                             if let Some(server_id) = mcp_tool_map_for_callback.get(name.as_str()) {
                                 tracing::warn!(
@@ -611,11 +628,17 @@ pub(crate) async fn handle_agent_streaming(
                             }
                         }
 
+                        // Build display name for frontend
+                        let display_name = mcp_display_name(
+                            name,
+                            &mcp_server_name_map_for_callback,
+                        );
+
                         // Emit tool result event to frontend
                         let payload = serde_json::json!({
                             "conversation_id": conversation_id_for_stream,
                             "tool_call_id": result_info.id,
-                            "tool_name": name.clone(),
+                            "tool_name": display_name,
                             "tool_input": input.clone(),
                             "tool_output": result_info.tool_output,
                         });
@@ -853,11 +876,13 @@ pub(crate) async fn handle_agent_streaming(
                 "pending"
             };
 
+            let display_name = mcp_display_name(tool_name, &mcp_tool_name_to_server_name);
+
             match state_clone
                 .db
                 .create_tool_call(CreateToolCallRequest {
                     message_id: assistant_message.id.clone(),
-                    tool_name: tool_name.clone(),
+                    tool_name: display_name,
                     tool_input: Some(tool_input.clone()),
                     tool_output: tool_output.clone(),
                     status: Some(status.to_string()),
@@ -1042,21 +1067,20 @@ pub(crate) async fn handle_agent_streaming(
     });
 }
 
-/// Result of loading MCP tools: server tools for the agent + a mapping from MCP tool name to server tool ID.
+/// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.
 struct LoadedMcpTools {
     server_tools: Vec<(Vec<McpTool>, Peer<RoleClient>)>,
     /// Maps MCP tool name (e.g. "search") to the DB tool ID of the MCP server that provides it.
     tool_name_to_server_id: HashMap<String, String>,
+    /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
+    tool_name_to_server_name: HashMap<String, String>,
     /// Server IDs that failed to connect due to auth errors (401/Unauthorized).
     auth_failed_server_ids: Vec<String>,
 }
 
 /// Load MCP tools by their tool IDs.
 /// Returns one (tools, client) per connected MCP server so tool calls are routed to the correct server.
-async fn load_mcp_tools_by_ids(
-    state: &AppState,
-    tool_ids: &[String],
-) -> Option<LoadedMcpTools> {
+async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<LoadedMcpTools> {
     if tool_ids.is_empty() {
         return None;
     }
@@ -1112,11 +1136,13 @@ async fn load_mcp_tools_by_ids(
     }
 
     let mut tool_name_to_server_id = HashMap::new();
+    let mut tool_name_to_server_name = HashMap::new();
     let mut server_tools = Vec::new();
 
     for (conn, tools) in result.connections {
         for t in &tools {
             tool_name_to_server_id.insert(t.name.to_string(), conn.tool.id.clone());
+            tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
         }
         server_tools.push((tools, conn.client));
     }
@@ -1124,8 +1150,37 @@ async fn load_mcp_tools_by_ids(
     Some(LoadedMcpTools {
         server_tools,
         tool_name_to_server_id,
+        tool_name_to_server_name,
         auth_failed_server_ids,
     })
+}
+
+/// Build a display-friendly tool name: prefix MCP tools with `mcp__{server_name}__`.
+/// Built-in tools are returned as-is.
+fn mcp_display_name(original_name: &str, server_name_map: &HashMap<String, String>) -> String {
+    match server_name_map.get(original_name) {
+        Some(server_name) => {
+            let sanitized = sanitize_server_name(server_name);
+            format!("mcp__{}__{}", sanitized, original_name)
+        }
+        None => original_name.to_string(),
+    }
+}
+
+/// Sanitize an MCP server name for use in the `mcp__<name>__` prefix.
+/// Keeps alphanumeric chars and hyphens; replaces everything else with hyphens.
+fn sanitize_server_name(name: &str) -> String {
+    let s: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    s.trim_matches('-').to_string()
 }
 
 /// Check if a tool output looks like an HTTP 401 authentication error.

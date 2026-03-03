@@ -5,9 +5,9 @@
 
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
+use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use ignore::types::TypesBuilder;
-use ignore::WalkBuilder;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -319,13 +319,7 @@ fn search_file(
     match output_mode {
         "files_with_matches" => {
             let mut found = false;
-            let _ = searcher.search_path(
-                matcher,
-                path,
-                FileMatchSink {
-                    found: &mut found,
-                },
-            );
+            let _ = searcher.search_path(matcher, path, FileMatchSink { found: &mut found });
             if found {
                 let _ = writeln!(output, "{}", path_display);
                 *total_matches += 1;
@@ -333,13 +327,7 @@ fn search_file(
         }
         "count" => {
             let mut count: u64 = 0;
-            let _ = searcher.search_path(
-                matcher,
-                path,
-                CountSink {
-                    count: &mut count,
-                },
-            );
+            let _ = searcher.search_path(matcher, path, CountSink { count: &mut count });
             if count > 0 {
                 let _ = writeln!(output, "{}:{}", path_display, count);
                 *total_matches += count as usize;

@@ -74,9 +74,8 @@ impl Tool for WriteTool {
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    WriteError(format!("Failed to create directories: {}", e))
-                })?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| WriteError(format!("Failed to create directories: {}", e)))?;
             }
         }
 
@@ -98,7 +97,10 @@ impl Tool for WriteTool {
 
         Ok(format!(
             "{} {} ({} lines, {} bytes)",
-            action, args.path, line_count, args.content.len()
+            action,
+            args.path,
+            line_count,
+            args.content.len()
         ))
     }
 }
@@ -116,10 +118,9 @@ mod tests {
 
     #[test]
     fn test_write_args() {
-        let args: WriteArgs = serde_json::from_str(
-            r#"{"path": "/tmp/test.txt", "content": "hello\nworld"}"#,
-        )
-        .unwrap();
+        let args: WriteArgs =
+            serde_json::from_str(r#"{"path": "/tmp/test.txt", "content": "hello\nworld"}"#)
+                .unwrap();
         assert_eq!(args.path, "/tmp/test.txt");
         assert_eq!(args.content, "hello\nworld");
     }

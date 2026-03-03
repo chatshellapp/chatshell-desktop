@@ -251,8 +251,8 @@ impl Tool for ReadTool {
 
 /// Read a text file with line numbers and offset/limit support.
 fn read_text(path: &std::path::Path, args: &ReadArgs) -> Result<String, ReadError> {
-    let raw_bytes = std::fs::read(path)
-        .map_err(|e| ReadError(format!("Failed to read file: {}", e)))?;
+    let raw_bytes =
+        std::fs::read(path).map_err(|e| ReadError(format!("Failed to read file: {}", e)))?;
 
     let check_len = raw_bytes.len().min(BINARY_CHECK_SIZE);
     if raw_bytes[..check_len].contains(&0) {
@@ -331,8 +331,8 @@ fn read_image(path: &std::path::Path, ext: &str) -> Result<String, ReadError> {
         )));
     }
 
-    let raw_bytes = std::fs::read(path)
-        .map_err(|e| ReadError(format!("Failed to read image: {}", e)))?;
+    let raw_bytes =
+        std::fs::read(path).map_err(|e| ReadError(format!("Failed to read image: {}", e)))?;
 
     let mime = mime_from_extension(ext);
 

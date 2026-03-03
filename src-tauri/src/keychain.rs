@@ -9,7 +9,8 @@ const SERVICE_NAME: &str = "app.chatshell.desktop";
 /// In-memory cache for secrets read from the OS keychain.
 /// Avoids repeated keychain access which triggers macOS authorization dialogs,
 /// especially during development where the binary signature changes on rebuild.
-static SECRET_CACHE: std::sync::OnceLock<RwLock<HashMap<String, String>>> = std::sync::OnceLock::new();
+static SECRET_CACHE: std::sync::OnceLock<RwLock<HashMap<String, String>>> =
+    std::sync::OnceLock::new();
 
 fn cache() -> &'static RwLock<HashMap<String, String>> {
     SECRET_CACHE.get_or_init(|| RwLock::new(HashMap::new()))

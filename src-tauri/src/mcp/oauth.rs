@@ -5,13 +5,12 @@
 
 use anyhow::{Context, Result};
 use oauth2::{
-    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, Scope, TokenResponse, TokenUrl, basic::BasicClient,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use url::Url;
-
 
 /// RFC 9728 Protected Resource Metadata
 #[derive(Debug, Clone, Deserialize)]
@@ -76,7 +75,10 @@ struct WwwAuthenticateParams {
 }
 
 /// Probe MCP endpoint and discover OAuth metadata (RFC 9728, RFC 8414)
-pub async fn discover(client: &reqwest::Client, mcp_endpoint: &str) -> Result<OAuthDiscoveryResult> {
+pub async fn discover(
+    client: &reqwest::Client,
+    mcp_endpoint: &str,
+) -> Result<OAuthDiscoveryResult> {
     let resource_uri = normalize_resource_uri(mcp_endpoint)?;
 
     // 1. Probe unauthenticated request to get 401 + WWW-Authenticate
@@ -88,15 +90,18 @@ pub async fn discover(client: &reqwest::Client, mcp_endpoint: &str) -> Result<OA
 
     let resource_metadata_url = if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         let params = parse_www_authenticate(resp.headers())?;
-        params
-            .resource_metadata
-            .ok_or_else(|| anyhow::anyhow!("401 response missing resource_metadata in WWW-Authenticate"))?
+        params.resource_metadata.ok_or_else(|| {
+            anyhow::anyhow!("401 response missing resource_metadata in WWW-Authenticate")
+        })?
     } else {
         // Fallback: well-known URI (RFC 9728)
         let base = Url::parse(mcp_endpoint).context("Invalid MCP endpoint URL")?;
         let path = base.path().trim_end_matches('/');
         let well_known = if path.is_empty() || path == "/" {
-            format!("{}/.well-known/oauth-protected-resource", base.origin().ascii_serialization())
+            format!(
+                "{}/.well-known/oauth-protected-resource",
+                base.origin().ascii_serialization()
+            )
         } else {
             format!(
                 "{}/.well-known/oauth-protected-resource{}",
@@ -128,7 +133,12 @@ pub async fn discover(client: &reqwest::Client, mcp_endpoint: &str) -> Result<OA
     // 3. Fetch Authorization Server Metadata (try RFC 8414 then OIDC)
     let as_metadata = fetch_as_metadata(client, &as_url).await?;
 
-    let scopes = if as_metadata.scopes_supported.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+    let scopes = if as_metadata
+        .scopes_supported
+        .as_ref()
+        .map(|s| s.is_empty())
+        .unwrap_or(true)
+    {
         scopes_from_prm
     } else {
         as_metadata.scopes_supported.unwrap_or_default()
@@ -240,7 +250,10 @@ async fn fetch_as_metadata(
             }
         }
     }
-    anyhow::bail!("Could not fetch Authorization Server Metadata from {}", issuer)
+    anyhow::bail!(
+        "Could not fetch Authorization Server Metadata from {}",
+        issuer
+    )
 }
 
 /// PKCE and auth URL for starting authorization
@@ -261,9 +274,10 @@ pub fn start_authorization(
 ) -> Result<OAuthAuthState> {
     let auth_url = AuthUrl::new(discovery.authorization_endpoint.clone())
         .context("Invalid authorization endpoint")?;
-    let token_url = TokenUrl::new(discovery.token_endpoint.clone())
-        .context("Invalid token endpoint")?;
-    let redirect_url = RedirectUrl::new(redirect_uri.to_string()).context("Invalid redirect URI")?;
+    let token_url =
+        TokenUrl::new(discovery.token_endpoint.clone()).context("Invalid token endpoint")?;
+    let redirect_url =
+        RedirectUrl::new(redirect_uri.to_string()).context("Invalid redirect URI")?;
 
     let mut client = BasicClient::new(ClientId::new(client_id.to_string()))
         .set_auth_uri(auth_url)
@@ -315,9 +329,10 @@ pub async fn exchange_code(
 ) -> Result<OAuthTokens> {
     let auth_url = AuthUrl::new(discovery.authorization_endpoint.clone())
         .context("Invalid authorization endpoint")?;
-    let token_url = TokenUrl::new(discovery.token_endpoint.clone())
-        .context("Invalid token endpoint")?;
-    let redirect_url = RedirectUrl::new(redirect_uri.to_string()).context("Invalid redirect URI")?;
+    let token_url =
+        TokenUrl::new(discovery.token_endpoint.clone()).context("Invalid token endpoint")?;
+    let redirect_url =
+        RedirectUrl::new(redirect_uri.to_string()).context("Invalid redirect URI")?;
 
     let mut client = BasicClient::new(ClientId::new(client_id.to_string()))
         .set_auth_uri(auth_url)
@@ -347,17 +362,12 @@ pub async fn exchange_code(
     })
 }
 
-
 /// Callback server: binds to 127.0.0.1:0, returns (port, receiver for (code, state))
-pub async fn run_callback_server(
-) -> Result<(u16, oneshot::Receiver<(String, String)>)> {
+pub async fn run_callback_server() -> Result<(u16, oneshot::Receiver<(String, String)>)> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .context("Failed to bind callback server")?;
-    let port = listener
-        .local_addr()
-        .context("No local addr")?
-        .port();
+    let port = listener.local_addr().context("No local addr")?.port();
 
     let (tx, rx) = oneshot::channel();
 
@@ -376,7 +386,11 @@ fn parse_query_param(query: &str, name: &str) -> Option<String> {
     query.split('&').find_map(|pair| {
         let (k, v) = pair.split_once('=')?;
         if k == name {
-            Some(urlencoding::decode(v).unwrap_or(std::borrow::Cow::Borrowed(v)).into_owned())
+            Some(
+                urlencoding::decode(v)
+                    .unwrap_or(std::borrow::Cow::Borrowed(v))
+                    .into_owned(),
+            )
         } else {
             None
         }
@@ -389,7 +403,10 @@ async fn handle_callback_request(
 ) -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut buf = vec![0u8; 4096];
-    let n = stream.read(&mut buf).await.context("Read callback request")?;
+    let n = stream
+        .read(&mut buf)
+        .await
+        .context("Read callback request")?;
     let request = String::from_utf8_lossy(&buf[..n]);
     let first_line = request.lines().next().unwrap_or("");
     // "GET /callback?code=...&state=... HTTP/1.1"

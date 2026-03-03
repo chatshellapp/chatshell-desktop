@@ -252,10 +252,9 @@ async fn migrate_v7_to_v8(pool: &SqlitePool) -> Result<()> {
 
 /// Ensure auth_token column exists in tools (idempotent)
 async fn ensure_auth_token_column(pool: &SqlitePool) -> Result<()> {
-    let columns: Vec<(String,)> =
-        sqlx::query_as("SELECT name FROM pragma_table_info('tools')")
-            .fetch_all(pool)
-            .await?;
+    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('tools')")
+        .fetch_all(pool)
+        .await?;
 
     let has_column = columns.iter().any(|(name,)| name == "auth_token");
 

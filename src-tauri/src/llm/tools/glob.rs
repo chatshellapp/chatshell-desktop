@@ -4,8 +4,8 @@
 //! Uses the `ignore` crate for directory walking (respects .gitignore)
 //! and returns results sorted by modification time (most recent first).
 
-use ignore::overrides::OverrideBuilder;
 use ignore::WalkBuilder;
+use ignore::overrides::OverrideBuilder;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -97,14 +97,11 @@ impl Tool for GlobTool {
             args.path
         );
 
-        let base_dir = args
-            .path
-            .or(self.default_path.clone())
-            .unwrap_or_else(|| {
-                dirs::home_dir()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string())
-            });
+        let base_dir = args.path.or(self.default_path.clone()).unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| ".".to_string())
+        });
 
         let pattern = args.pattern;
 

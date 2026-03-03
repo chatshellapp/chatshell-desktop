@@ -17,6 +17,8 @@ import {
   Plug,
 } from 'lucide-react'
 import type { ToolCall } from '@/types'
+import { parseToolName } from '@/lib/tool-name'
+import type { ParsedToolName } from '@/lib/tool-name'
 
 // Re-export StreamingToolCall from store types for consistency
 export type { StreamingToolCall } from '@/stores/message/types'
@@ -55,19 +57,19 @@ const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   web_search: Globe,
 }
 
-function getToolIcon(toolName?: string): LucideIcon {
-  if (!toolName) return CheckCircle2
-  return BUILTIN_TOOL_ICONS[toolName] ?? Plug
+function getToolIcon(parsed: ParsedToolName): LucideIcon {
+  if (parsed.type === 'mcp') return Plug
+  return BUILTIN_TOOL_ICONS[parsed.toolName] ?? Plug
 }
 
 function StatusIcon({
   status,
   isStreaming,
-  toolName,
+  parsed,
 }: {
   status: string
   isStreaming?: boolean
-  toolName?: string
+  parsed: ParsedToolName
 }) {
   if (isStreaming || status === 'running' || status === 'pending') {
     return <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
@@ -76,10 +78,26 @@ function StatusIcon({
     return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
   }
   if (status === 'success') {
-    const Icon = getToolIcon(toolName)
+    const Icon = getToolIcon(parsed)
     return <Icon className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
   }
   return <Wrench className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
+}
+
+export function ToolNameDisplay({ rawName }: { rawName: string }) {
+  const parsed = parseToolName(rawName)
+
+  if (parsed.type === 'builtin') {
+    return (
+      <span className="text-xs text-muted-foreground truncate font-mono">{parsed.toolName}</span>
+    )
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground truncate font-mono">
+      {parsed.serverName}/{parsed.toolName}
+    </span>
+  )
 }
 
 // Get status text for display
@@ -102,6 +120,7 @@ export function ToolCallPreview({
   if (!tc) return null
 
   const toolName = tc.tool_name
+  const parsed = parseToolName(toolName)
   const toolInput = tc.tool_input
   const toolOutput = 'tool_output' in tc ? tc.tool_output : streamingToolCall?.tool_output
   const status = tc.status
@@ -132,9 +151,9 @@ export function ToolCallPreview({
           canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
         }`}
       >
-        <StatusIcon status={status} isStreaming={isInProgress} toolName={toolName} />
+        <StatusIcon status={status} isStreaming={isInProgress} parsed={parsed} />
 
-        <span className="text-xs text-muted-foreground truncate font-mono">{toolName}</span>
+        <ToolNameDisplay rawName={toolName} />
 
         {getStatusText(status, isInProgress) && (
           <span className="text-xs text-muted-foreground/60 flex-shrink-0">
@@ -199,13 +218,12 @@ export function ToolCallPreview({
   )
 }
 
-// Pending tool call preview - shown while waiting for tool to start
 export function PendingToolCallPreview({ toolName }: { toolName: string }) {
   return (
     <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <Loader2 className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0 animate-spin" />
-        <span className="text-xs text-muted-foreground font-mono">{toolName}</span>
+        <ToolNameDisplay rawName={toolName} />
         <span className="text-xs text-muted-foreground/60">Calling...</span>
       </div>
     </div>

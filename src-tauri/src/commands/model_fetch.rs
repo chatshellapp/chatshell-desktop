@@ -1,6 +1,8 @@
 use crate::llm;
-use crate::llm::agent_builder::{AgentConfig, build_user_message, create_provider_agent, stream_chat_with_agent};
 use crate::llm::StreamChunkType;
+use crate::llm::agent_builder::{
+    AgentConfig, build_user_message, create_provider_agent, stream_chat_with_agent,
+};
 pub use crate::llm::models::ModelInfo;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
@@ -89,7 +91,10 @@ pub async fn check_provider_api(
             vec![],
             cancel_token,
             move |_chunk, chunk_type| {
-                if matches!(chunk_type, StreamChunkType::Text | StreamChunkType::Reasoning) {
+                if matches!(
+                    chunk_type,
+                    StreamChunkType::Text | StreamChunkType::Reasoning
+                ) {
                     cancel_clone.cancel();
                 }
                 true

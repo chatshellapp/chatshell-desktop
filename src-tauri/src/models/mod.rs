@@ -34,9 +34,7 @@ pub use assistant::{Assistant, CreateAssistantRequest};
 pub use knowledge_base::{CreateKnowledgeBaseRequest, KnowledgeBase};
 
 // Tool
-pub use tool::{
-    CreateToolRequest, McpAuthType, McpConfig, McpTransportType, OAuthMetadata, Tool,
-};
+pub use tool::{CreateToolRequest, McpAuthType, McpConfig, McpTransportType, OAuthMetadata, Tool};
 
 // User
 pub use user::{CreateUserRelationshipRequest, CreateUserRequest, User, UserRelationship};

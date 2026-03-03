@@ -118,8 +118,8 @@ impl McpConnectionManager {
                 };
                 let json_str = crate::crypto::decrypt(encrypted)
                     .context("Failed to decrypt MCP OAuth token")?;
-                let parsed: serde_json::Value = serde_json::from_str(&json_str)
-                    .context("Invalid OAuth token JSON")?;
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&json_str).context("Invalid OAuth token JSON")?;
                 let access_token = parsed["access_token"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing access_token in OAuth data"))?;
@@ -293,10 +293,15 @@ impl McpConnectionManager {
                 tracing::debug!(
                     "🔐 HTTP auth for {}: {}, custom headers: {}",
                     tool.name,
-                    if auth_header.is_some() { "token present" } else { "none" },
+                    if auth_header.is_some() {
+                        "token present"
+                    } else {
+                        "none"
+                    },
                     custom_headers.map(|h| h.len()).unwrap_or(0)
                 );
-                self.connect_http(endpoint, auth_header, custom_headers).await?
+                self.connect_http(endpoint, auth_header, custom_headers)
+                    .await?
             }
             McpTransportType::Stdio => {
                 let mcp_config =
@@ -411,10 +416,7 @@ impl McpConnectionManager {
     }
 
     /// Connect to multiple MCP servers and collect all tools
-    pub async fn connect_multiple(
-        &self,
-        tools: &[Tool],
-    ) -> Result<ConnectMultipleResult> {
+    pub async fn connect_multiple(&self, tools: &[Tool]) -> Result<ConnectMultipleResult> {
         let mut connections = Vec::new();
         let mut failures = Vec::new();
 
@@ -426,7 +428,11 @@ impl McpConnectionManager {
                 }
                 Err(e) => {
                     let error_str = e.to_string();
-                    tracing::warn!("⚠️ Failed to connect to MCP server {}: {}", tool.name, error_str);
+                    tracing::warn!(
+                        "⚠️ Failed to connect to MCP server {}: {}",
+                        tool.name,
+                        error_str
+                    );
                     failures.push(ConnectFailure {
                         tool_id: tool.id.clone(),
                         error: error_str,
@@ -435,7 +441,10 @@ impl McpConnectionManager {
             }
         }
 
-        Ok(ConnectMultipleResult { connections, failures })
+        Ok(ConnectMultipleResult {
+            connections,
+            failures,
+        })
     }
 
     /// Test connection to an MCP server via HTTP

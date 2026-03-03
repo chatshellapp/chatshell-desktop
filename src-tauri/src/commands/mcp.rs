@@ -416,10 +416,12 @@ pub async fn start_mcp_oauth(
     state: State<'_, AppState>,
     server_id: String,
 ) -> Result<StartOAuthResult, String> {
-    let tool = state.db.get_tool(&server_id).await.map_err(|e| e.to_string())?;
-    let config = tool
-        .parse_mcp_config()
-        .ok_or("Invalid MCP config")?;
+    let tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let config = tool.parse_mcp_config().ok_or("Invalid MCP config")?;
     if config.transport != McpTransportType::Http {
         return Err("OAuth is only supported for HTTP transport".to_string());
     }
@@ -482,7 +484,8 @@ pub async fn complete_mcp_oauth(
 ) -> Result<Tool, String> {
     let pending = {
         let mut map = state.pending_oauth.write().await;
-        map.remove(&server_id).ok_or("No pending OAuth for this server")?
+        map.remove(&server_id)
+            .ok_or("No pending OAuth for this server")?
     };
 
     let (code, state_param) = timeout(Duration::from_secs(300), pending.rx)
@@ -520,10 +523,12 @@ pub async fn complete_mcp_oauth(
         .expires_in_secs
         .map(|s| chrono::Utc::now().timestamp() + s as i64);
 
-    let mut tool = state.db.get_tool(&server_id).await.map_err(|e| e.to_string())?;
-    let mut config: McpConfig = tool
-        .parse_mcp_config()
-        .unwrap_or_else(McpConfig::http);
+    let mut tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut config: McpConfig = tool.parse_mcp_config().unwrap_or_else(McpConfig::http);
     config.auth_type = Some(McpAuthType::Oauth);
     config.oauth_metadata = Some(OAuthMetadata {
         authorization_server_url: pending.discovery.authorization_server_url,
@@ -551,7 +556,11 @@ pub async fn complete_mcp_oauth(
 
     state.mcp_manager.disconnect(&server_id).await;
 
-    state.db.get_tool(&server_id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -566,7 +575,11 @@ pub async fn check_mcp_oauth_status(
     state: State<'_, AppState>,
     server_id: String,
 ) -> Result<OAuthStatusResult, String> {
-    let tool = state.db.get_tool(&server_id).await.map_err(|e| e.to_string())?;
+    let tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
     let config = tool.parse_mcp_config().unwrap_or_else(McpConfig::http);
     let meta = match &config.oauth_metadata {
         Some(m) => m,
@@ -574,7 +587,7 @@ pub async fn check_mcp_oauth_status(
             return Ok(OAuthStatusResult {
                 is_authorized: false,
                 token_expires_at: None,
-            })
+            });
         }
     };
     let has_token = tool.auth_token.is_some();
@@ -586,10 +599,7 @@ pub async fn check_mcp_oauth_status(
 
 /// Revoke OAuth tokens for an MCP server
 #[tauri::command]
-pub async fn revoke_mcp_oauth(
-    state: State<'_, AppState>,
-    server_id: String,
-) -> Result<(), String> {
+pub async fn revoke_mcp_oauth(state: State<'_, AppState>, server_id: String) -> Result<(), String> {
     state
         .db
         .set_tool_auth_token(&server_id, None)
@@ -597,7 +607,11 @@ pub async fn revoke_mcp_oauth(
         .map_err(|e| e.to_string())?;
     state.mcp_manager.disconnect(&server_id).await;
 
-    let mut tool = state.db.get_tool(&server_id).await.map_err(|e| e.to_string())?;
+    let mut tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
     if let Some(mut config) = tool.parse_mcp_config() {
         if let Some(meta) = config.oauth_metadata.as_ref() {
             config.oauth_metadata = Some(OAuthMetadata {

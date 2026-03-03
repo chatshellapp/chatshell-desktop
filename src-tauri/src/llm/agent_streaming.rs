@@ -30,7 +30,10 @@ where
 {
     tracing::info!("🤖 [{}] Agent created, starting stream chat", log_prefix);
 
-    let mut stream = agent.stream_chat(prompt, chat_history).multi_turn(100).await;
+    let mut stream = agent
+        .stream_chat(prompt, chat_history)
+        .multi_turn(100)
+        .await;
 
     let mut full_content = String::new();
     let mut full_reasoning = String::new();

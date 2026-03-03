@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Layers } from 'lucide-react'
 import type { ToolWithThinking } from '@/lib/step-grouping'
+import { parseToolName } from '@/lib/tool-name'
 import { ThinkingPreview } from './thinking-preview'
 import { ToolCallPreview } from './tool-call-preview'
 
@@ -8,13 +9,21 @@ interface CollapsedToolGroupProps {
   items: ToolWithThinking[]
 }
 
+function formatToolSummaryName(rawName: string): string {
+  const parsed = parseToolName(rawName)
+  if (parsed.type === 'mcp' && parsed.serverName) {
+    return `${parsed.serverName}/${parsed.toolName}`
+  }
+  return parsed.toolName
+}
+
 export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const toolCounts = items.reduce(
     (acc, item) => {
-      const name = item.toolCall.tool_name
-      acc[name] = (acc[name] || 0) + 1
+      const displayName = formatToolSummaryName(item.toolCall.tool_name)
+      acc[displayName] = (acc[displayName] || 0) + 1
       return acc
     },
     {} as Record<string, number>
