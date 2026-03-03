@@ -463,6 +463,7 @@ where
 
     let stream = stream! {
         let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+        let mut tool_call_raw_args: HashMap<usize, String> = HashMap::new();
         let mut final_usage = None;
 
         while let Some(event_result) = event_source.next().await {
@@ -521,31 +522,10 @@ where
                             }
 
                             if let Some(chunk) = &tool_call.function.arguments {
-                                let current_args =
-                                    match &existing_tool_call.function.arguments {
-                                        serde_json::Value::Null => String::new(),
-                                        serde_json::Value::String(s) => s.clone(),
-                                        v => v.to_string(),
-                                    };
-
-                                let combined = format!("{current_args}{chunk}");
-
-                                if combined.trim_start().starts_with('{')
-                                    && combined.trim_end().ends_with('}')
-                                {
-                                    match serde_json::from_str(&combined) {
-                                        Ok(parsed) => {
-                                            existing_tool_call.function.arguments = parsed
-                                        }
-                                        Err(_) => {
-                                            existing_tool_call.function.arguments =
-                                                serde_json::Value::String(combined)
-                                        }
-                                    }
-                                } else {
-                                    existing_tool_call.function.arguments =
-                                        serde_json::Value::String(combined);
-                                }
+                                tool_call_raw_args
+                                    .entry(index)
+                                    .or_default()
+                                    .push_str(chunk);
 
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
@@ -575,20 +555,6 @@ where
                     if let Some(usage) = data.usage {
                         final_usage = Some(usage);
                     }
-
-                    if let Some(finish_reason) = &choice.finish_reason {
-                        if *finish_reason == CompatFinishReason::ToolCalls {
-                            for (_idx, tool_call) in tool_calls.into_iter() {
-                                yield Ok(streaming::RawStreamingChoice::ToolCall {
-                                    name: tool_call.function.name,
-                                    id: tool_call.id,
-                                    arguments: tool_call.function.arguments,
-                                    call_id: None,
-                                });
-                            }
-                            tool_calls = HashMap::new();
-                        }
-                    }
                 }
                 Err(rig::http_client::Error::StreamEnded) => {
                     break;
@@ -603,7 +569,30 @@ where
 
         event_source.close();
 
-        for (_idx, tool_call) in tool_calls.into_iter() {
+        for (idx, mut tool_call) in tool_calls.into_iter() {
+            if let Some(raw_args) = tool_call_raw_args.remove(&idx) {
+                match serde_json::from_str::<serde_json::Value>(&raw_args) {
+                    Ok(parsed) => tool_call.function.arguments = parsed,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse tool call arguments as JSON (tool: {}): {}",
+                            tool_call.function.name,
+                            e
+                        );
+                        tool_call.function.arguments = serde_json::Value::String(raw_args);
+                    }
+                }
+            }
+
+            if tool_call.function.name.is_empty() {
+                tracing::warn!(
+                    "Skipping tool call with empty name (id: {}, args: {})",
+                    tool_call.id,
+                    tool_call.function.arguments
+                );
+                continue;
+            }
+
             yield Ok(streaming::RawStreamingChoice::ToolCall {
                 name: tool_call.function.name,
                 id: tool_call.id,
