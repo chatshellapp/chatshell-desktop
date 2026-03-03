@@ -5,7 +5,10 @@ use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
     stream_chat_with_agent,
 };
+use crate::llm::tools::McpCallTool;
 use crate::llm::{ChatMessage, StreamChunkType};
+use crate::mcp::sync_tool_definitions;
+use tauri::Manager;
 use crate::models::{
     CreateContentBlockRequest, CreateMessageRequest, CreateThinkingStepRequest,
     CreateToolCallRequest, ModelParameters,
@@ -25,6 +28,10 @@ use crate::db::tools::{
     BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_READ_ID,
     BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
 };
+
+/// MCP tool count threshold: above this, use lazy loading via file-based discovery
+/// instead of injecting all tool schemas into every API call.
+const MCP_LAZY_LOAD_THRESHOLD: usize = 8;
 
 /// Handle streaming using the agent-based approach
 /// This provides built-in support for preamble, temperature, max_tokens, etc.
@@ -229,10 +236,8 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
-    // Set the effective system prompt
-    if !effective_system_prompt.is_empty() {
-        config = config.with_system_prompt(effective_system_prompt);
-    }
+    // NOTE: effective_system_prompt is set on config later, after the MCP block
+    // may append the MCP tool catalog to it.
 
     // Determine which builtin tools are enabled
     let web_search_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
@@ -350,7 +355,117 @@ pub(crate) async fn handle_agent_streaming(
                     total,
                     loaded.server_tools.len()
                 );
-                config = config.with_mcp_tools(loaded.server_tools);
+
+                if total > MCP_LAZY_LOAD_THRESHOLD {
+                    // Lazy-load path: sync definitions to files, inject catalog
+                    // into system prompt, and use McpCallTool meta-tool.
+                    tracing::info!(
+                        "📄 [agent_streaming] {} tools > threshold {}, using lazy loading",
+                        total,
+                        MCP_LAZY_LOAD_THRESHOLD
+                    );
+
+                    let mcp_tools_dir = app
+                        .path()
+                        .app_cache_dir()
+                        .map(|d| d.join("mcp-tools"))
+                        .unwrap_or_else(|_| {
+                            std::env::temp_dir().join("chatshell-mcp-tools")
+                        });
+                    if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
+                        tracing::warn!(
+                            "⚠️ [agent_streaming] Failed to create mcp-tools dir: {}",
+                            e
+                        );
+                    }
+
+                    // Sync tool definitions to files and build catalog
+                    let mut mcp_catalog =
+                        String::from("\n\n## Available MCP Tools\n\n");
+                    mcp_catalog.push_str(
+                        "Before calling an MCP tool, use the `read` tool to load its \
+                         definition file to understand the required parameters.\n\n",
+                    );
+
+                    let mut client_map: HashMap<String, (String, Peer<RoleClient>)> =
+                        HashMap::new();
+
+                    for (tools, client) in &loaded.server_tools {
+                        if tools.is_empty() {
+                            continue;
+                        }
+                        // Derive server name from the first tool's mapping
+                        let server_name = tools
+                            .first()
+                            .and_then(|t| {
+                                loaded
+                                    .tool_name_to_server_name
+                                    .get(&t.name.to_string())
+                            })
+                            .cloned()
+                            .unwrap_or_else(|| "unknown".to_string());
+
+                        match sync_tool_definitions(
+                            &mcp_tools_dir,
+                            &server_name,
+                            tools,
+                        ) {
+                            Ok(server_dir) => {
+                                mcp_catalog.push_str(&format!(
+                                    "### {}\n",
+                                    server_name
+                                ));
+                                for tool in tools {
+                                    let desc = tool
+                                        .description
+                                        .as_deref()
+                                        .unwrap_or("No description");
+                                    let file_path = server_dir
+                                        .join(format!("{}.json", tool.name));
+                                    mcp_catalog.push_str(&format!(
+                                        "- **{}** - {} (`{}`)\n",
+                                        tool.name,
+                                        desc,
+                                        file_path.display()
+                                    ));
+                                    client_map.insert(
+                                        tool.name.to_string(),
+                                        (server_name.clone(), client.clone()),
+                                    );
+                                }
+                                mcp_catalog.push('\n');
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "⚠️ [agent_streaming] Failed to sync tool definitions \
+                                     for server '{}': {}",
+                                    server_name,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
+                    effective_system_prompt.push_str(&mcp_catalog);
+                    config = config.with_mcp_call_tool(McpCallTool::new(
+                        Arc::new(RwLock::new(client_map)),
+                    ));
+
+                    // Auto-enable read tool for looking up tool definitions
+                    if !all_enabled_tool_ids
+                        .contains(&BUILTIN_READ_ID.to_string())
+                    {
+                        tracing::info!(
+                            "📖 [agent_streaming] Auto-enabling read tool for \
+                             MCP lazy loading"
+                        );
+                        all_enabled_tool_ids
+                            .push(BUILTIN_READ_ID.to_string());
+                    }
+                } else {
+                    // Below threshold: use the existing direct rmcp_tools approach
+                    config = config.with_mcp_tools(loaded.server_tools);
+                }
             }
             (
                 Arc::new(loaded.tool_name_to_server_id),
@@ -362,6 +477,16 @@ pub(crate) async fn handle_agent_streaming(
     } else {
         (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
     };
+
+    // Set the effective system prompt (after MCP catalog may have been appended)
+    if !effective_system_prompt.is_empty() {
+        config = config.with_system_prompt(effective_system_prompt);
+    }
+
+    // If MCP lazy loading auto-enabled the read tool, apply it to config now
+    if all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string()) && !config.enable_read {
+        config = config.with_read();
+    }
 
     // Create the agent
     let agent = match create_provider_agent(
@@ -571,20 +696,42 @@ pub(crate) async fn handle_agent_streaming(
                     let tool_order = display_order_for_callback
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
+                    // For call_mcp_tool, extract the real MCP tool name and inner arguments
+                    let (actual_tool_name, display_input) =
+                        if tool_info.tool_name == "call_mcp_tool" {
+                            if let Ok(parsed) =
+                                serde_json::from_str::<serde_json::Value>(&tool_info.tool_input)
+                            {
+                                let real_name = parsed["tool_name"]
+                                    .as_str()
+                                    .unwrap_or("call_mcp_tool")
+                                    .to_string();
+                                let inner_args = parsed
+                                    .get("arguments")
+                                    .map(|a| a.to_string())
+                                    .unwrap_or_else(|| "{}".to_string());
+                                (real_name, inner_args)
+                            } else {
+                                (tool_info.tool_name.clone(), tool_info.tool_input.clone())
+                            }
+                        } else {
+                            (tool_info.tool_name.clone(), tool_info.tool_input.clone())
+                        };
+
                     // Build display name: prefix MCP tools with mcp__{server_name}__
                     let display_name = mcp_display_name(
-                        &tool_info.tool_name,
+                        &actual_tool_name,
                         &mcp_server_name_map_for_callback,
                     );
 
-                    // Store tool call in tracking map (original name for auth lookup)
+                    // Store tool call in tracking map (actual MCP tool name for auth lookup)
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
                         tool_calls.insert(
                             tool_info.id.clone(),
                             (
                                 tool_order,
-                                tool_info.tool_name.clone(),
-                                tool_info.tool_input.clone(),
+                                actual_tool_name,
+                                display_input.clone(),
                                 None,
                             ),
                         );
@@ -595,7 +742,7 @@ pub(crate) async fn handle_agent_streaming(
                         "conversation_id": conversation_id_for_stream,
                         "tool_call_id": tool_info.id,
                         "tool_name": display_name,
-                        "tool_input": tool_info.tool_input,
+                        "tool_input": display_input,
                     });
                     let _ = app_for_stream.emit("tool-call-started", payload);
                 }

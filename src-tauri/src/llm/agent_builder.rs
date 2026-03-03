@@ -23,7 +23,8 @@ use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
+    BashTool, EditTool, GlobTool, GrepTool, McpCallTool, ReadTool, WebFetchTool, WebSearchTool,
+    WriteTool,
 };
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
@@ -82,6 +83,8 @@ pub struct AgentConfig {
     pub grep_working_directory: Option<String>,
     /// Default working directory for glob tool
     pub glob_working_directory: Option<String>,
+    /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
+    pub mcp_call_tool: Option<McpCallTool>,
 }
 
 impl AgentConfig {
@@ -201,6 +204,12 @@ impl AgentConfig {
     /// Set the default working directory for glob tool
     pub fn with_glob_working_directory(mut self, dir: String) -> Self {
         self.glob_working_directory = Some(dir);
+        self
+    }
+
+    /// Set the MCP meta-tool for lazy-loaded MCP tool calling
+    pub fn with_mcp_call_tool(mut self, tool: McpCallTool) -> Self {
+        self.mcp_call_tool = Some(tool);
         self
     }
 
@@ -702,7 +711,8 @@ fn build_agent<M: CompletionModel>(
         || config.enable_edit
         || config.enable_write
         || config.enable_grep
-        || config.enable_glob;
+        || config.enable_glob
+        || config.mcp_call_tool.is_some();
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
@@ -756,6 +766,11 @@ fn build_agent_with_tools<M: CompletionModel>(
     macro_rules! finish_with_simple_builder {
         ($simple_builder:expr) => {{
             let mut sb = $simple_builder;
+
+            if let Some(ref mcp_call) = config.mcp_call_tool {
+                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+                sb = sb.tool(mcp_call.clone());
+            }
 
             if let Some(ref mcp_config) = config.mcp_tools
                 && !mcp_config.server_tools.is_empty()
@@ -902,6 +917,13 @@ fn build_agent_with_tools<M: CompletionModel>(
         tracing::info!("📂 Adding glob tool to agent");
         let sb = builder.tool(create_glob_tool());
         finish_with_simple_builder!(sb);
+    }
+
+    // Only McpCallTool (lazy-load meta-tool, no native tools or rmcp_tools)
+    if let Some(ref mcp_call) = config.mcp_call_tool {
+        tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+        let sb = builder.tool(mcp_call.clone());
+        return sb.build();
     }
 
     // Only MCP tools (no native tools). First .rmcp_tools() turns AgentBuilder into AgentBuilderSimple.

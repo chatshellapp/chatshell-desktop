@@ -490,3 +490,59 @@ impl McpConnectionManager {
         self.test_http_connection(endpoint).await
     }
 }
+
+/// Sanitize a string for use as a directory or file name.
+fn sanitize_name(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_ascii_control() => '_',
+            c => c,
+        })
+        .collect()
+}
+
+/// Sync MCP tool definitions to JSON files for dynamic context discovery.
+///
+/// Creates one JSON file per tool under `base_dir/<server_name>/`, containing
+/// the tool's name, description, and full inputSchema. The agent can then read
+/// these files on demand instead of having all schemas in every API call.
+///
+/// Removes any existing files for the server before writing to avoid stale
+/// definitions from previous connections.
+pub fn sync_tool_definitions(
+    base_dir: &std::path::Path,
+    server_name: &str,
+    mcp_tools: &[McpTool],
+) -> Result<std::path::PathBuf> {
+    let server_dir = base_dir.join(sanitize_name(server_name));
+
+    if server_dir.exists() {
+        std::fs::remove_dir_all(&server_dir)
+            .context("Failed to remove stale MCP tool definitions")?;
+    }
+    std::fs::create_dir_all(&server_dir)
+        .context("Failed to create MCP tool definitions directory")?;
+
+    for tool in mcp_tools {
+        let file_name = format!("{}.json", sanitize_name(&tool.name));
+        let file_path = server_dir.join(&file_name);
+        let definition = serde_json::json!({
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": tool.input_schema,
+        });
+        let json_str = serde_json::to_string_pretty(&definition)
+            .context("Failed to serialize MCP tool definition")?;
+        std::fs::write(&file_path, json_str)
+            .with_context(|| format!("Failed to write tool definition: {}", file_path.display()))?;
+    }
+
+    tracing::info!(
+        "📄 Synced {} tool definition(s) to {}",
+        mcp_tools.len(),
+        server_dir.display()
+    );
+
+    Ok(server_dir)
+}
