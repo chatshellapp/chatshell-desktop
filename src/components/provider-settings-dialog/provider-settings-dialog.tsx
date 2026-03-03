@@ -179,6 +179,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                   onApiStyleChange={setApiStyle}
                   compatibilityType={compatibilityType}
                   onCompatibilityTypeChange={setCompatibilityType}
+                  models={models}
                 />
 
                 <ModelsTable

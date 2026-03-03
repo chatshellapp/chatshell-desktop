@@ -204,6 +204,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
               onApiStyleChange={setApiStyle}
               compatibilityType={compatibilityType}
               onCompatibilityTypeChange={setCompatibilityType}
+              models={models}
             />
 
             <ModelsTable
