@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { Tool, McpServerConfig } from '@/types'
+import { isMcpTool } from '@/types'
 import { logger } from '@/lib/logger'
 
 export interface OAuthStatusResult {
@@ -16,6 +17,8 @@ export interface McpToolInfo {
   description?: string
 }
 
+export type McpConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error'
+
 interface McpState {
   // MCP servers (stored as Tool with type='mcp')
   servers: Tool[]
@@ -26,6 +29,11 @@ interface McpState {
   testingEndpoint: string | null
   testResult: McpToolInfo[] | null
   testError: string | null
+
+  // Per-server connection status and tools
+  connectionStatus: Record<string, McpConnectionStatus>
+  serverTools: Record<string, McpToolInfo[]>
+  connectionErrors: Record<string, string>
 
   // Actions
   loadServers: () => Promise<void>
@@ -52,6 +60,9 @@ interface McpState {
   listServerTools: (id: string) => Promise<McpToolInfo[]>
   getServerById: (id: string) => Tool | undefined
   clearTestResult: () => void
+  connectServer: (id: string) => Promise<void>
+  getConnectionStatus: (id: string) => McpConnectionStatus
+  getServerToolsCached: (id: string) => McpToolInfo[]
 
   // OAuth and Bearer auth (HTTP transport only)
   startOAuth: (serverId: string) => Promise<Tool>
@@ -68,6 +79,9 @@ export const useMcpStore = create<McpState>()(
     testingEndpoint: null,
     testResult: null,
     testError: null,
+    connectionStatus: {},
+    serverTools: {},
+    connectionErrors: {},
 
     loadServers: async () => {
       set((draft) => {
@@ -81,6 +95,14 @@ export const useMcpStore = create<McpState>()(
           draft.servers = servers
           draft.isLoading = false
         })
+
+        const enabledMcpServers = servers.filter((s) => isMcpTool(s) && s.is_enabled)
+        for (const server of enabledMcpServers) {
+          const status = get().connectionStatus[server.id]
+          if (!status || status === 'idle' || status === 'error') {
+            get().connectServer(server.id)
+          }
+        }
       } catch (error) {
         logger.error('[mcpStore] Failed to load MCP servers:', error)
         set((draft) => {
@@ -304,6 +326,36 @@ export const useMcpStore = create<McpState>()(
         draft.testError = null
         draft.testingEndpoint = null
       })
+    },
+
+    connectServer: async (id: string) => {
+      set((draft) => {
+        draft.connectionStatus[id] = 'connecting'
+        delete draft.connectionErrors[id]
+      })
+      try {
+        const tools = await invoke<McpToolInfo[]>('list_mcp_server_tools', { id })
+        logger.info('[mcpStore] Connected to server:', { id, toolCount: tools.length })
+        set((draft) => {
+          draft.connectionStatus[id] = 'connected'
+          draft.serverTools[id] = tools
+        })
+      } catch (error) {
+        logger.error('[mcpStore] Failed to connect to server:', { id, error })
+        set((draft) => {
+          draft.connectionStatus[id] = 'error'
+          draft.connectionErrors[id] = String(error)
+          delete draft.serverTools[id]
+        })
+      }
+    },
+
+    getConnectionStatus: (id: string) => {
+      return get().connectionStatus[id] || 'idle'
+    },
+
+    getServerToolsCached: (id: string) => {
+      return get().serverTools[id] || []
     },
 
     startOAuth: async (serverId: string) => {

@@ -7,6 +7,7 @@ import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUserStore } from '@/stores/userStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { logger } from '@/lib/logger'
 
@@ -55,6 +56,10 @@ export function useAppInit() {
         // Load conversations
         logger.info('Loading conversations...')
         await conversationStore.loadConversations()
+
+        // Load MCP servers and probe connections in background
+        logger.info('Loading MCP servers...')
+        useMcpStore.getState().loadServers()
 
         // Check keychain availability
         try {

@@ -161,6 +161,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [editMcpShowBearer, setEditMcpShowBearer] = React.useState(false)
   const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
   const [testingMcpEndpoint, setTestingMcpEndpoint] = React.useState<string | null>(null)
+  const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -197,6 +198,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const mcpServers = useMcpStore((state) => state.servers)
   const mcpLoading = useMcpStore((state) => state.isLoading)
   const loadMcpServers = useMcpStore((state) => state.loadServers)
+  const ensureMcpLoaded = useMcpStore((state) => state.ensureLoaded)
   const createMcpServer = useMcpStore((state) => state.createServer)
   const updateMcpServer = useMcpStore((state) => state.updateServer)
   const deleteMcpServer = useMcpStore((state) => state.deleteServer)
@@ -207,13 +209,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const startOAuth = useMcpStore((state) => state.startOAuth)
   const revokeOAuth = useMcpStore((state) => state.revokeOAuth)
   const setBearerToken = useMcpStore((state) => state.setBearerToken)
+  const connectServer = useMcpStore((state) => state.connectServer)
+  const connectionStatus = useMcpStore((state) => state.connectionStatus)
+  const serverTools = useMcpStore((state) => state.serverTools)
+  const connectionErrors = useMcpStore((state) => state.connectionErrors)
 
   // Load models and settings when dialog opens
   React.useEffect(() => {
     if (open) {
       loadModels()
       loadSearchProviders()
-      loadMcpServers()
+      ensureMcpLoaded()
       ensureSkillsLoaded()
       const loadSettings = async () => {
         const summaryModelValue = await getSetting('conversation_summary_model_id')
@@ -247,7 +253,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     open,
     loadModels,
     loadSearchProviders,
-    loadMcpServers,
+    ensureMcpLoaded,
     ensureSkillsLoaded,
     getSetting,
     getWebFetchMode,
@@ -1149,43 +1155,95 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="grid gap-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium truncate">{server.name}</span>
-                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
+                      <div className="grid gap-2">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="grid gap-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const status = connectionStatus[server.id] || 'idle'
+                                const dotClass = 'h-2 w-2 rounded-full shrink-0'
+                                if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
+                                if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                                if (status === 'error') return <span className={`${dotClass} bg-red-500`} title="Connection failed" />
+                                return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+                              })()}
+                              <span className="font-medium truncate">{server.name}</span>
+                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground truncate font-mono">
+                              {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
                             </span>
+                            {server.description && (
+                              <span className="text-xs text-muted-foreground">
+                                {server.description}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-xs text-muted-foreground truncate font-mono">
-                            {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
-                          </span>
-                          {server.description && (
-                            <span className="text-xs text-muted-foreground">
-                              {server.description}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => connectServer(server.id)}
+                              disabled={connectionStatus[server.id] === 'connecting'}
+                              title="Refresh connection"
+                            >
+                              <RefreshCw className={`h-4 w-4 ${connectionStatus[server.id] === 'connecting' ? 'animate-spin' : ''}`} />
+                            </Button>
+                            <Switch
+                              checked={server.is_enabled}
+                              onCheckedChange={() => handleToggleMcpServer(server.id)}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => startEditingMcp(server)}
+                            >
+                              <Settings className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteMcpServer(server.id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Switch
-                            checked={server.is_enabled}
-                            onCheckedChange={() => handleToggleMcpServer(server.id)}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => startEditingMcp(server)}
-                          >
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteMcpServer(server.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+
+                        {connectionErrors[server.id] && connectionStatus[server.id] === 'error' && (
+                          <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1.5 break-all">
+                            {connectionErrors[server.id]}
+                          </p>
+                        )}
+
+                        {connectionStatus[server.id] === 'connected' && serverTools[server.id] && serverTools[server.id].length > 0 && (
+                          <div className="border-t pt-2 mt-1">
+                            <button
+                              type="button"
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+                              onClick={() => setExpandedToolsId(expandedToolsId === server.id ? null : server.id)}
+                            >
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
+                              />
+                              {serverTools[server.id].length} tool{serverTools[server.id].length !== 1 ? 's' : ''}
+                            </button>
+                            {expandedToolsId === server.id && (
+                              <div className="mt-2 space-y-1 pl-5">
+                                {serverTools[server.id].map((tool) => (
+                                  <div key={tool.name} className="text-xs">
+                                    <span className="font-mono font-medium text-foreground">{tool.name}</span>
+                                    {tool.description && (
+                                      <p className="text-muted-foreground mt-0.5 line-clamp-2">{tool.description}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

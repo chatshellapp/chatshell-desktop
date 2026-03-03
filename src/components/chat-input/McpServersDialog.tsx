@@ -1,5 +1,13 @@
 import * as React from 'react'
-import { Plug, RotateCcw, Wrench, ToggleLeft, ToggleRight } from 'lucide-react'
+import {
+  Plug,
+  RotateCcw,
+  Wrench,
+  ToggleLeft,
+  ToggleRight,
+  RefreshCw,
+  ChevronDown,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -30,13 +38,18 @@ export function McpServersDialog({
   onServerIdsChange,
 }: McpServersDialogProps) {
   const servers = useMcpStore((state) => state.servers)
-  const loadServers = useMcpStore((state) => state.loadServers)
+  const ensureLoaded = useMcpStore((state) => state.ensureLoaded)
+  const connectServer = useMcpStore((state) => state.connectServer)
+  const connectionStatus = useMcpStore((state) => state.connectionStatus)
+  const serverTools = useMcpStore((state) => state.serverTools)
+  const connectionErrors = useMcpStore((state) => state.connectionErrors)
+  const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (open) {
-      loadServers()
+      ensureLoaded()
     }
-  }, [open, loadServers])
+  }, [open, ensureLoaded])
 
   const builtinTools = servers.filter((s) => isBuiltinTool(s))
   const mcpServers = servers.filter((s) => isMcpTool(s))
@@ -88,44 +101,107 @@ export function McpServersDialog({
   const renderToolItem = (tool: (typeof servers)[number]) => {
     const isGloballyDisabled = !tool.is_enabled
     const isConversationEnabled = enabledServerIds.includes(tool.id)
+    const isMcp = isMcpTool(tool)
+    const status = isMcp ? (connectionStatus[tool.id] || 'idle') : null
+    const tools = isMcp ? (serverTools[tool.id] || []) : []
+    const error = isMcp ? connectionErrors[tool.id] : null
 
     return (
       <div
         key={tool.id}
-        className={`flex items-center justify-between py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
+        className={`py-2 pl-2 ${isGloballyDisabled ? 'opacity-50' : ''}`}
       >
-        <div className="grid gap-1">
-          <Label
-            htmlFor={tool.id}
-            className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : ''}`}
-          >
-            {tool.name}
-          </Label>
-          {tool.description && (
-            <p className="text-xs text-muted-foreground max-w-[280px]">{tool.description}</p>
-          )}
-          {isMcpTool(tool) && tool.endpoint && (
-            <p className="text-xs text-muted-foreground truncate max-w-[280px]">{tool.endpoint}</p>
-          )}
-          {isGloballyDisabled && (
-            <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
-          )}
+        <div className="flex items-center justify-between">
+          <div className="grid gap-1 min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              {isMcp && (() => {
+                const dotClass = 'h-2 w-2 rounded-full shrink-0'
+                if (status === 'connecting') return <span className={`${dotClass} bg-yellow-500 animate-pulse`} title="Connecting..." />
+                if (status === 'connected') return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                if (status === 'error') return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={`${dotClass} bg-red-500 cursor-help`} />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[250px]">{error || 'Connection failed'}</TooltipContent>
+                  </Tooltip>
+                )
+                return <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+              })()}
+              <Label
+                htmlFor={tool.id}
+                className={`text-sm font-medium leading-none ${isGloballyDisabled ? 'text-muted-foreground' : ''}`}
+              >
+                {tool.name}
+              </Label>
+            </div>
+            {tool.description && (
+              <p className="text-xs text-muted-foreground max-w-[280px]">{tool.description}</p>
+            )}
+            {isMcp && tool.endpoint && (
+              <p className="text-xs text-muted-foreground truncate max-w-[280px]">{tool.endpoint}</p>
+            )}
+            {isGloballyDisabled && (
+              <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isMcp && !isGloballyDisabled && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => connectServer(tool.id)}
+                disabled={status === 'connecting'}
+                title="Refresh connection"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${status === 'connecting' ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
+            {isGloballyDisabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Switch id={tool.id} checked={false} disabled />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Enable this tool in Settings first</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Switch
+                id={tool.id}
+                checked={isConversationEnabled}
+                onCheckedChange={(checked) => handleToggleServer(tool.id, checked === true)}
+              />
+            )}
+          </div>
         </div>
-        {isGloballyDisabled ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Switch id={tool.id} checked={false} disabled />
+
+        {isMcp && status === 'connected' && tools.length > 0 && (
+          <div className="mt-1.5 ml-0">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setExpandedToolsId(expandedToolsId === tool.id ? null : tool.id)}
+            >
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${expandedToolsId === tool.id ? '' : '-rotate-90'}`}
+              />
+              {tools.length} tool{tools.length !== 1 ? 's' : ''}
+            </button>
+            {expandedToolsId === tool.id && (
+              <div className="mt-1.5 space-y-1 pl-4">
+                {tools.map((t) => (
+                  <div key={t.name} className="text-xs">
+                    <span className="font-mono font-medium">{t.name}</span>
+                    {t.description && (
+                      <p className="text-muted-foreground mt-0.5 line-clamp-2">{t.description}</p>
+                    )}
+                  </div>
+                ))}
               </div>
-            </TooltipTrigger>
-            <TooltipContent>Enable this tool in Settings first</TooltipContent>
-          </Tooltip>
-        ) : (
-          <Switch
-            id={tool.id}
-            checked={isConversationEnabled}
-            onCheckedChange={(checked) => handleToggleServer(tool.id, checked === true)}
-          />
+            )}
+          </div>
         )}
       </div>
     )
