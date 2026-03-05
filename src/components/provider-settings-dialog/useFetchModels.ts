@@ -109,7 +109,7 @@ export function useFetchModels({
       setAvailableModels(fetchedModels)
     } catch (error) {
       logger.error('Error fetching models:', error)
-      setFetchError(error instanceof Error ? error.message : 'Failed to fetch models')
+      setFetchError(error instanceof Error ? error.message : String(error))
     } finally {
       setIsLoading(false)
     }

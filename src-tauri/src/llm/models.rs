@@ -83,7 +83,13 @@ pub async fn fetch_openai_models(
         .await?;
 
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to fetch OpenAI models"));
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "Failed to fetch OpenAI models (HTTP {}): {}",
+            status,
+            body
+        ));
     }
 
     let data: OpenAIModelsResponse = response.json().await?;
@@ -184,7 +190,13 @@ pub async fn fetch_openrouter_models(
         .await?;
 
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to fetch OpenRouter models"));
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "Failed to fetch OpenRouter models (HTTP {}): {}",
+            status,
+            body
+        ));
     }
 
     let data: OpenRouterModelsResponse = response.json().await?;
@@ -245,7 +257,13 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
     let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to fetch Ollama models"));
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "Failed to fetch Ollama models (HTTP {}): {}",
+            status,
+            body
+        ));
     }
 
     let data: OllamaModelsResponse = response.json().await?;

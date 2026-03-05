@@ -261,7 +261,12 @@ export function ProviderForm({
           </Button>
         </div>
         {checkStatus === 'failed' && checkError && (
-          <p className="text-xs text-destructive">{checkError}</p>
+          <div className="text-xs text-destructive space-y-1">
+            <p className="font-medium">Connection failed</p>
+            <div className="px-2 py-1.5 bg-destructive/5 rounded max-h-24 overflow-y-auto">
+              <p className="font-mono text-destructive/80 whitespace-pre-wrap break-all">{checkError}</p>
+            </div>
+          </div>
         )}
         {checkStatus === 'success' && (
           <p className="text-xs text-green-600 dark:text-green-400">Connection successful</p>

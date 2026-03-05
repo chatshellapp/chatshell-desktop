@@ -40,6 +40,7 @@ where
     let mut cancelled = false;
     let mut consecutive_errors = 0;
     let mut is_reasoning = false;
+    let mut last_error: Option<String> = None;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
     tracing::info!("📥 [{}] Processing stream...", log_prefix);
@@ -183,6 +184,7 @@ where
             Err(e) => {
                 consecutive_errors += 1;
                 let error_str = e.to_string();
+                last_error = Some(error_str.clone());
 
                 let is_decode_error = error_str.contains("decoding response body")
                     || error_str.contains("error reading a body")
@@ -236,6 +238,18 @@ where
         tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
     } else {
         tracing::info!("✅ [{}] Stream completed successfully", log_prefix);
+    }
+
+    // If stream ended with no content and there were errors, return the error
+    if full_content.is_empty() && !cancelled {
+        if let Some(err) = last_error {
+            tracing::error!(
+                "❌ [{}] Stream ended with no content after error(s), propagating: {}",
+                log_prefix,
+                err
+            );
+            return Err(anyhow::anyhow!("{}", err));
+        }
     }
 
     // Parse thinking content from XML tags in the text

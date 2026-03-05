@@ -75,8 +75,13 @@ export function FetchModelsDialog({
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
             </div>
           ) : fetchError ? (
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <p className="text-sm text-destructive mb-3">{fetchError}</p>
+            <div className="flex flex-col items-center justify-center min-h-32 py-6 text-center">
+              <p className="text-sm text-destructive mb-1 font-medium">Failed to fetch models</p>
+              <div className="mx-4 mb-3 px-3 py-2 bg-destructive/5 rounded-md max-h-24 overflow-y-auto w-full">
+                <p className="text-xs text-destructive/80 font-mono whitespace-pre-wrap break-all text-left">
+                  {fetchError}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={onRetry}>
                   Retry
