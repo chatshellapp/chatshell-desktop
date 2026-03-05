@@ -93,8 +93,7 @@ export function ModelsTable({
                     />
                   </TableCell>
                   <TableCell>
-                    {!model.isExisting && (
-                      <DropdownMenu>
+                    <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon-sm">
                             <MoreHorizontal className="size-4" />
@@ -102,7 +101,7 @@ export function ModelsTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => onModelSettings(model)}>
-                            Configure
+                            Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
@@ -112,7 +111,6 @@ export function ModelsTable({
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    )}
                   </TableCell>
                 </TableRow>
               ))

@@ -83,12 +83,19 @@ export interface UseProviderSettingsReturn {
   modelsToDelete: string[]
   setModelsToDelete: React.Dispatch<React.SetStateAction<string[]>>
   originalModelNames: Record<string, string>
+  originalModelIds: Record<string, string>
   storeProviders: Provider[]
   isDataLoaded: boolean
 
   // Manual add model dialog
   addModelDialogOpen: boolean
   setAddModelDialogOpen: (open: boolean) => void
+
+  // Edit model dialog
+  editModelDialogOpen: boolean
+  setEditModelDialogOpen: (open: boolean) => void
+  editingModel: ModelItem | null
+  handleEditModelSave: (id: string, modelId: string, displayName: string) => void
 
   // Handlers
   handleUpdateModelName: (id: string, newDisplayName: string) => void

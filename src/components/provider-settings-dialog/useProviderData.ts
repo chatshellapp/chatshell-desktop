@@ -23,6 +23,7 @@ interface UseProviderDataParams {
   setCompatibilityType: (type: string) => void
   setModels: React.Dispatch<React.SetStateAction<ModelItem[]>>
   setOriginalModelNames: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  setOriginalModelIds: React.Dispatch<React.SetStateAction<Record<string, string>>>
   setModelsToDelete: React.Dispatch<React.SetStateAction<string[]>>
 }
 
@@ -40,6 +41,7 @@ export function useProviderData({
   setCompatibilityType,
   setModels,
   setOriginalModelNames,
+  setOriginalModelIds,
   setModelsToDelete,
 }: UseProviderDataParams): UseProviderDataReturn {
   const loadAll = useModelStore((state) => state.loadAll)
@@ -65,6 +67,7 @@ export function useProviderData({
     // Reset tracking state
     setModelsToDelete([])
     setOriginalModelNames({})
+    setOriginalModelIds({})
 
     let existing: Provider | undefined
 
@@ -97,10 +100,13 @@ export function useProviderData({
       setModels(existingModels)
 
       const nameMap: Record<string, string> = {}
+      const idMap: Record<string, string> = {}
       existingModels.forEach((m) => {
         nameMap[m.id] = m.displayName
+        idMap[m.id] = m.modelId
       })
       setOriginalModelNames(nameMap)
+      setOriginalModelIds(idMap)
     } else {
       setApiKey('')
       setApiBaseUrl(selectedProvider.baseUrl)
@@ -122,6 +128,7 @@ export function useProviderData({
     setCompatibilityType,
     setModels,
     setOriginalModelNames,
+    setOriginalModelIds,
     setModelsToDelete,
   ])
 

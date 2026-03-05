@@ -15,6 +15,7 @@ interface UseProviderSaveParams {
   models: ModelItem[]
   modelsToDelete: string[]
   originalModelNames: Record<string, string>
+  originalModelIds: Record<string, string>
   existingProvider: Provider | null
   apiKey: string
   apiBaseUrl: string
@@ -33,6 +34,7 @@ export function useProviderSave({
   models,
   modelsToDelete,
   originalModelNames,
+  originalModelIds,
   existingProvider,
   apiKey,
   apiBaseUrl,
@@ -48,7 +50,9 @@ export function useProviderSave({
   const handleSave = React.useCallback(async () => {
     const newModels = models.filter((m) => !m.isExisting)
     const modifiedModels = models.filter(
-      (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
+      (m) =>
+        m.isExisting &&
+        (originalModelNames[m.id] !== m.displayName || originalModelIds[m.id] !== m.modelId)
     )
 
     if (
@@ -153,6 +157,7 @@ export function useProviderSave({
     models,
     modelsToDelete,
     originalModelNames,
+    originalModelIds,
     existingProvider,
     apiKey,
     apiBaseUrl,

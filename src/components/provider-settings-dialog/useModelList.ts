@@ -9,6 +9,8 @@ export interface UseModelListReturn {
   setModelsToDelete: React.Dispatch<React.SetStateAction<string[]>>
   originalModelNames: Record<string, string>
   setOriginalModelNames: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  originalModelIds: Record<string, string>
+  setOriginalModelIds: React.Dispatch<React.SetStateAction<Record<string, string>>>
   handleUpdateModelName: (id: string, newDisplayName: string) => void
   handleDeleteModel: (id: string) => void
   handleToggleImportModel: (model: ModelInfo) => void
@@ -24,6 +26,7 @@ export function useModelList(): UseModelListReturn {
   const [models, setModels] = React.useState<ModelItem[]>([])
   const [modelsToDelete, setModelsToDelete] = React.useState<string[]>([])
   const [originalModelNames, setOriginalModelNames] = React.useState<Record<string, string>>({})
+  const [originalModelIds, setOriginalModelIds] = React.useState<Record<string, string>>({})
 
   const handleUpdateModelName = React.useCallback((id: string, newDisplayName: string) => {
     setModels((prev) =>
@@ -32,7 +35,13 @@ export function useModelList(): UseModelListReturn {
   }, [])
 
   const handleDeleteModel = React.useCallback((id: string) => {
-    setModels((prev) => prev.filter((model) => model.id !== id))
+    setModels((prev) => {
+      const target = prev.find((model) => model.id === id)
+      if (target?.isExisting) {
+        setModelsToDelete((dels) => [...dels, target.id])
+      }
+      return prev.filter((model) => model.id !== id)
+    })
   }, [])
 
   const handleToggleImportModel = React.useCallback(
@@ -121,6 +130,8 @@ export function useModelList(): UseModelListReturn {
     setModelsToDelete,
     originalModelNames,
     setOriginalModelNames,
+    originalModelIds,
+    setOriginalModelIds,
     handleUpdateModelName,
     handleDeleteModel,
     handleToggleImportModel,

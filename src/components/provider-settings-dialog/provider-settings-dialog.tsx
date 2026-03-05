@@ -27,6 +27,7 @@ import { ProviderForm } from './provider-form'
 import { ModelsTable } from './models-table'
 import { FetchModelsDialog } from './fetch-models-dialog'
 import { AddModelDialog } from './add-model-dialog'
+import { EditModelDialog } from './edit-model-dialog'
 
 export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
   const {
@@ -58,9 +59,14 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     existingProvider,
     modelsToDelete,
     originalModelNames,
+    originalModelIds,
     storeProviders,
     addModelDialogOpen,
     setAddModelDialogOpen,
+    editModelDialogOpen,
+    setEditModelDialogOpen,
+    editingModel,
+    handleEditModelSave,
     handleUpdateModelName,
     handleDeleteModel,
     handleModelSettings,
@@ -87,7 +93,9 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     models.filter((m) => !m.isExisting).length > 0 ||
     modelsToDelete.length > 0 ||
     models.filter(
-      (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
+      (m) =>
+        m.isExisting &&
+        (originalModelNames[m.id] !== m.displayName || originalModelIds[m.id] !== m.modelId)
     ).length > 0 ||
     (existingProvider &&
       (existingProvider.api_key !== apiKey ||
@@ -198,7 +206,12 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
+              <Button
+                onClick={handleSave}
+                disabled={
+                  isSaving || !hasChanges || (selectedProvider.id !== 'ollama' && !apiKey.trim())
+                }
+              >
                 {isSaving ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
@@ -240,6 +253,14 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         open={addModelDialogOpen}
         onOpenChange={setAddModelDialogOpen}
         onAddModel={handleAddManualModel}
+      />
+
+      {/* Edit Model Dialog */}
+      <EditModelDialog
+        open={editModelDialogOpen}
+        model={editingModel}
+        onOpenChange={setEditModelDialogOpen}
+        onSave={handleEditModelSave}
       />
     </Dialog>
   )

@@ -49,6 +49,7 @@ export function useProviderSettings(
     setCompatibilityType: formState.setCompatibilityType,
     setModels: modelList.setModels,
     setOriginalModelNames: modelList.setOriginalModelNames,
+    setOriginalModelIds: modelList.setOriginalModelIds,
     setModelsToDelete: modelList.setModelsToDelete,
   })
 
@@ -72,6 +73,7 @@ export function useProviderSettings(
     models: modelList.models,
     modelsToDelete: modelList.modelsToDelete,
     originalModelNames: modelList.originalModelNames,
+    originalModelIds: modelList.originalModelIds,
     existingProvider: providerData.existingProvider,
     apiKey: formState.apiKey,
     apiBaseUrl: formState.apiBaseUrl,
@@ -86,9 +88,25 @@ export function useProviderSettings(
   // 7. Manual add model dialog state
   const [addModelDialogOpen, setAddModelDialogOpen] = React.useState(false)
 
+  // 8. Edit model dialog state
+  const [editModelDialogOpen, setEditModelDialogOpen] = React.useState(false)
+  const [editingModel, setEditingModel] = React.useState<ModelItem | null>(null)
+
   const handleModelSettings = React.useCallback((model: ModelItem) => {
-    logger.info('Model settings:', model)
+    setEditingModel(model)
+    setEditModelDialogOpen(true)
   }, [])
+
+  const handleEditModelSave = React.useCallback(
+    (id: string, newModelId: string, newDisplayName: string) => {
+      modelList.setModels((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, modelId: newModelId, displayName: newDisplayName } : m
+        )
+      )
+    },
+    [modelList]
+  )
 
   return {
     // Form state
@@ -101,6 +119,7 @@ export function useProviderSettings(
     modelsToDelete: modelList.modelsToDelete,
     setModelsToDelete: modelList.setModelsToDelete,
     originalModelNames: modelList.originalModelNames,
+    originalModelIds: modelList.originalModelIds,
 
     // Provider data
     existingProvider: providerData.existingProvider,
@@ -122,6 +141,12 @@ export function useProviderSettings(
     // Manual add model dialog
     addModelDialogOpen,
     setAddModelDialogOpen,
+
+    // Edit model dialog
+    editModelDialogOpen,
+    setEditModelDialogOpen,
+    editingModel,
+    handleEditModelSave,
 
     // Handlers
     handleUpdateModelName: modelList.handleUpdateModelName,

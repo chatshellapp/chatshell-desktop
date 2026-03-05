@@ -17,6 +17,7 @@ import { ProviderForm } from '@/components/provider-settings-dialog/provider-for
 import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
 import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-models-dialog'
 import { AddModelDialog } from '@/components/provider-settings-dialog/add-model-dialog'
+import { EditModelDialog } from '@/components/provider-settings-dialog/edit-model-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
 import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER } from '@/components/provider-settings-dialog/constants'
 import { ProviderLogo } from '@/components/provider-settings-dialog/provider-logo'
@@ -56,9 +57,14 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     existingProvider,
     modelsToDelete,
     originalModelNames,
+    originalModelIds,
     storeProviders,
     addModelDialogOpen,
     setAddModelDialogOpen,
+    editModelDialogOpen,
+    setEditModelDialogOpen,
+    editingModel,
+    handleEditModelSave,
     handleUpdateModelName,
     handleDeleteModel,
     handleModelSettings,
@@ -86,7 +92,9 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     models.filter((m) => !m.isExisting).length > 0 ||
     modelsToDelete.length > 0 ||
     models.filter(
-      (m) => m.isExisting && originalModelNames[m.id] && originalModelNames[m.id] !== m.displayName
+      (m) =>
+        m.isExisting &&
+        (originalModelNames[m.id] !== m.displayName || originalModelIds[m.id] !== m.modelId)
     ).length > 0 ||
     (existingProvider &&
       (existingProvider.api_key !== apiKey ||
@@ -222,7 +230,12 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
 
         {/* Footer with Save Button */}
         <div className="shrink-0 border-t p-4 flex justify-end gap-2">
-          <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
+          <Button
+            onClick={handleSave}
+            disabled={
+              isSaving || !hasChanges || (selectedProvider.id !== 'ollama' && !apiKey.trim())
+            }
+          >
             {isSaving ? (
               <>
                 <Loader2 className="size-4 mr-2 animate-spin" />
@@ -262,6 +275,14 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
         open={addModelDialogOpen}
         onOpenChange={setAddModelDialogOpen}
         onAddModel={handleAddManualModel}
+      />
+
+      {/* Edit Model Dialog */}
+      <EditModelDialog
+        open={editModelDialogOpen}
+        model={editingModel}
+        onOpenChange={setEditModelDialogOpen}
+        onSave={handleEditModelSave}
       />
     </div>
   )
