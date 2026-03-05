@@ -59,8 +59,8 @@ impl Tool for McpCallTool {
         ToolDefinition {
             name: "call_mcp_tool".to_string(),
             description: "Call an MCP (Model Context Protocol) tool by name. \
-                Before calling, use the `read` tool to load the tool's definition \
-                file (listed in the system prompt under 'Available MCP Tools') \
+                Before calling, use the `load_mcp_schema` tool to load the tool's definition \
+                (listed in the system prompt under 'Available MCP Tools') \
                 to understand the required parameters and their types."
                 .to_string(),
             parameters: json!({

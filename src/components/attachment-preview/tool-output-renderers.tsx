@@ -115,6 +115,10 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'edit':
       case 'write':
         return parsed.path ? fileNameFromPath(parsed.path) : null
+      case 'load_skill':
+        return parsed.name ?? null
+      case 'load_mcp_schema':
+        return parsed.tool_name ?? null
       case 'bash':
         return parsed.command ? extractCommandNames(parsed.command) : null
       case 'web_search':
@@ -323,6 +327,85 @@ export function GlobOutput({ toolOutput }: ToolOutputProps) {
   )
 }
 
+/**
+ * Normalize SKILL.md so that YAML frontmatter (between ---) is rendered as a markdown
+ * code block instead of raw lines. This way the full document is still one markdown
+ * stream: metadata appears as ```yaml ... ``` and the rest renders normally.
+ */
+function normalizeSkillMarkdown(content: string): string {
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('---')) {
+    return content
+  }
+  const afterOpening = trimmed.slice(3)
+  const endIdx = afterOpening.indexOf('\n---')
+  if (endIdx === -1) {
+    return content
+  }
+  const frontmatter = afterOpening.slice(0, endIdx).trim()
+  const body = afterOpening.slice(endIdx + 4).trim()
+  const codeBlock = '```yaml\n' + frontmatter + '\n```\n\n'
+  return codeBlock + body
+}
+
+export function LoadSkillOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const name = safeParseField(toolInput, 'name') || ''
+  const output = toolOutput || ''
+  const normalized = output ? normalizeSkillMarkdown(output) : ''
+
+  return (
+    <div className="space-y-2">
+      {name && (
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground/70 font-medium truncate min-w-0">
+            {name}
+          </span>
+          {output && <CopyButton text={output} />}
+        </div>
+      )}
+      {normalized && (
+        <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
+          <MarkdownContent content={normalized} className="text-xs" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function tryFormatJson(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return raw
+  }
+}
+
+export function LoadMcpSchemaOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const toolName = safeParseField(toolInput, 'tool_name') || ''
+  const output = toolOutput || ''
+  const formatted = tryFormatJson(output)
+  const codeBlock = formatted ? '```json\n' + formatted + '\n```' : ''
+
+  return (
+    <div className="space-y-2">
+      {toolName && (
+        <div className="flex items-center justify-between min-w-0">
+          <span className="text-xs text-muted-foreground/70 font-mono truncate">
+            {toolName}
+          </span>
+          {output && <CopyButton text={output} />}
+        </div>
+      )}
+      {codeBlock && (
+        <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
+          <MarkdownContent content={codeBlock} className="text-xs [&_pre]:!bg-transparent [&_pre]:!p-0" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // --- Dispatcher ---
 
 export function ToolOutputRenderer({
@@ -341,6 +424,10 @@ export function ToolOutputRenderer({
       return <WebFetchOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'read':
       return <ReadOutput toolInput={toolInput} toolOutput={toolOutput} />
+    case 'load_skill':
+      return <LoadSkillOutput toolInput={toolInput} toolOutput={toolOutput} />
+    case 'load_mcp_schema':
+      return <LoadMcpSchemaOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'bash':
       return <BashOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'edit':

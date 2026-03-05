@@ -23,8 +23,8 @@ use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, McpCallTool, ReadTool, WebFetchTool, WebSearchTool,
-    WriteTool,
+    BashTool, EditTool, GlobTool, GrepTool, LoadMcpSchemaTool, LoadSkillTool, McpCallTool, ReadTool,
+    WebFetchTool, WebSearchTool, WriteTool,
 };
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
@@ -85,6 +85,10 @@ pub struct AgentConfig {
     pub glob_working_directory: Option<String>,
     /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
     pub mcp_call_tool: Option<McpCallTool>,
+    /// Optional load_skill tool (when skills are in catalog)
+    pub load_skill_tool: Option<LoadSkillTool>,
+    /// Optional load_mcp_schema tool (when MCP lazy loading is active)
+    pub load_mcp_schema_tool: Option<LoadMcpSchemaTool>,
 }
 
 impl AgentConfig {
@@ -210,6 +214,18 @@ impl AgentConfig {
     /// Set the MCP meta-tool for lazy-loaded MCP tool calling
     pub fn with_mcp_call_tool(mut self, tool: McpCallTool) -> Self {
         self.mcp_call_tool = Some(tool);
+        self
+    }
+
+    /// Set the load_skill tool (when skills are in catalog)
+    pub fn with_load_skill_tool(mut self, tool: LoadSkillTool) -> Self {
+        self.load_skill_tool = Some(tool);
+        self
+    }
+
+    /// Set the load_mcp_schema tool (when MCP lazy loading is active)
+    pub fn with_load_mcp_schema_tool(mut self, tool: LoadMcpSchemaTool) -> Self {
+        self.load_mcp_schema_tool = Some(tool);
         self
     }
 
@@ -712,7 +728,9 @@ fn build_agent<M: CompletionModel>(
         || config.enable_write
         || config.enable_grep
         || config.enable_glob
-        || config.mcp_call_tool.is_some();
+        || config.mcp_call_tool.is_some()
+        || config.load_skill_tool.is_some()
+        || config.load_mcp_schema_tool.is_some();
     let has_mcp_tools = config
         .mcp_tools
         .as_ref()
@@ -767,26 +785,30 @@ fn build_agent_with_tools<M: CompletionModel>(
         ($simple_builder:expr) => {{
             let mut sb = $simple_builder;
 
-            if let Some(ref mcp_call) = config.mcp_call_tool {
-                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-                sb = sb.tool(mcp_call.clone());
-            }
-
             if let Some(ref mcp_config) = config.mcp_tools
                 && !mcp_config.server_tools.is_empty()
             {
                 let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-                tracing::info!(
-                    "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
-                    total,
-                    mcp_config.server_tools.len()
-                );
+                tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
                 for (tools, client) in &mcp_config.server_tools {
                     if !tools.is_empty() {
                         sb = sb.rmcp_tools(tools.clone(), client.clone());
                     }
                 }
                 return sb.build();
+            }
+
+            if let Some(ref mcp_call) = config.mcp_call_tool {
+                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+                sb = sb.tool(mcp_call.clone());
+            }
+            if let Some(ref load_skill) = config.load_skill_tool {
+                tracing::info!("📋 Adding load_skill tool to agent");
+                sb = sb.tool(load_skill.clone());
+            }
+            if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
+                tracing::info!("📋 Adding load_mcp_schema tool to agent");
+                sb = sb.tool(load_mcp_schema.clone());
             }
 
             return sb.build();
@@ -919,28 +941,34 @@ fn build_agent_with_tools<M: CompletionModel>(
         finish_with_simple_builder!(sb);
     }
 
-    // Only McpCallTool (lazy-load meta-tool, no native tools or rmcp_tools)
-    if let Some(ref mcp_call) = config.mcp_call_tool {
-        tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-        let sb = builder.tool(mcp_call.clone());
-        return sb.build();
+    // Only load_skill / load_mcp_schema / mcp_call_tool (no other native tools)
+    if config.mcp_call_tool.is_some()
+        || config.load_skill_tool.is_some()
+        || config.load_mcp_schema_tool.is_some()
+    {
+        let sb = if let Some(ref mcp_call) = config.mcp_call_tool {
+            tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+            builder.tool(mcp_call.clone())
+        } else if let Some(ref load_skill) = config.load_skill_tool {
+            tracing::info!("📋 Adding load_skill tool to agent");
+            builder.tool(load_skill.clone())
+        } else if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
+            tracing::info!("📋 Adding load_mcp_schema tool to agent");
+            builder.tool(load_mcp_schema.clone())
+        } else {
+            unreachable!()
+        };
+        finish_with_simple_builder!(sb);
     }
 
     // Only MCP tools (no native tools). First .rmcp_tools() turns AgentBuilder into AgentBuilderSimple.
     if let Some(ref mcp_config) = config.mcp_tools
         && !mcp_config.server_tools.is_empty()
     {
-        let mut iter = mcp_config
-            .server_tools
-            .iter()
-            .filter(|(t, _)| !t.is_empty());
+        let mut iter = mcp_config.server_tools.iter().filter(|(t, _)| !t.is_empty());
         if let Some((first_tools, first_client)) = iter.next() {
             let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-            tracing::info!(
-                "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
-                total,
-                mcp_config.server_tools.len()
-            );
+            tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
             let mut sb = builder.rmcp_tools(first_tools.clone(), first_client.clone());
             for (tools, client) in iter {
                 sb = sb.rmcp_tools(tools.clone(), client.clone());

@@ -16,6 +16,7 @@ import {
   Plug,
   Braces,
   Ban,
+  BookOpen,
 } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
@@ -62,6 +63,8 @@ const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   glob: FolderSearch,
   web_fetch: Globe,
   web_search: Globe,
+  load_skill: BookOpen,
+  load_mcp_schema: Braces,
 }
 
 // Tools that use specialized output renderers instead of generic JSON display
@@ -69,6 +72,8 @@ const SPECIALIZED_TOOLS = new Set([
   'web_search',
   'web_fetch',
   'read',
+  'load_skill',
+  'load_mcp_schema',
   'bash',
   'edit',
   'write',

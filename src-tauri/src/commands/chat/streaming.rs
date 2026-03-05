@@ -5,7 +5,7 @@ use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
     stream_chat_with_agent,
 };
-use crate::llm::tools::McpCallTool;
+use crate::llm::tools::{LoadMcpSchemaTool, LoadSkillTool, McpCallTool};
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
@@ -213,26 +213,23 @@ pub(crate) async fn handle_agent_streaming(
 
     // Build skill catalog and inject into system prompt (lazy-load approach)
     if !skill_entries.is_empty() {
+        let mut skill_name_to_path: HashMap<String, String> = HashMap::new();
+        for entry in &skill_entries {
+            skill_name_to_path.insert(entry.name.clone(), entry.path.clone());
+        }
+        config = config.with_load_skill_tool(LoadSkillTool::new(skill_name_to_path));
+
         effective_system_prompt.push_str("\n\n## Available Skills\n\n");
         effective_system_prompt.push_str(
-            "When a task matches one of the skills below, use the `read` tool to load \
+            "When a task matches one of the skills below, use the `load_skill` tool to load \
              its full instructions before proceeding.\n\n",
         );
         for entry in &skill_entries {
             let desc = entry.description.as_deref().unwrap_or("No description");
             effective_system_prompt.push_str(&format!(
-                "- **{}** - {} (path: {})\n",
-                entry.name, desc, entry.path
+                "- **{}** - {}\n",
+                entry.name, desc
             ));
-        }
-
-        // Auto-enable the `read` tool so the LLM can load skill files
-        if !all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string()) {
-            tracing::info!(
-                "📖 [agent_streaming] Auto-enabling read tool for {} skill(s)",
-                skill_entries.len()
-            );
-            all_enabled_tool_ids.push(BUILTIN_READ_ID.to_string());
         }
     }
 
@@ -377,15 +374,16 @@ pub(crate) async fn handle_agent_streaming(
                         );
                     }
 
-                    // Sync tool definitions to files and build catalog
+                    // Sync tool definitions to files (for debugging) and build in-memory schema map + catalog
                     let mut mcp_catalog = String::from("\n\n## Available MCP Tools\n\n");
                     mcp_catalog.push_str(
-                        "Before calling an MCP tool, use the `read` tool to load its \
-                         definition file to understand the required parameters.\n\n",
+                        "Before calling an MCP tool, use the `load_mcp_schema` tool to load its \
+                         definition to understand the required parameters.\n\n",
                     );
 
                     let mut client_map: HashMap<String, (String, Peer<RoleClient>)> =
                         HashMap::new();
+                    let mut schema_map: HashMap<String, String> = HashMap::new();
 
                     for (tools, client) in &loaded.server_tools {
                         if tools.is_empty() {
@@ -399,22 +397,28 @@ pub(crate) async fn handle_agent_streaming(
                             .unwrap_or_else(|| "unknown".to_string());
 
                         match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
-                            Ok(server_dir) => {
+                            Ok(_server_dir) => {
                                 mcp_catalog.push_str(&format!("### {}\n", server_name));
                                 for tool in tools {
                                     let desc =
                                         tool.description.as_deref().unwrap_or("No description");
-                                    let file_path = server_dir.join(format!("{}.json", tool.name));
                                     mcp_catalog.push_str(&format!(
-                                        "- **{}** - {} (`{}`)\n",
+                                        "- **{}** - {}\n",
                                         tool.name,
-                                        desc,
-                                        file_path.display()
+                                        desc
                                     ));
                                     client_map.insert(
                                         tool.name.to_string(),
                                         (server_name.clone(), client.clone()),
                                     );
+                                    let definition = serde_json::json!({
+                                        "name": tool.name,
+                                        "description": tool.description,
+                                        "inputSchema": tool.input_schema,
+                                    });
+                                    if let Ok(json_str) = serde_json::to_string_pretty(&definition) {
+                                        schema_map.insert(tool.name.to_string(), json_str);
+                                    }
                                 }
                                 mcp_catalog.push('\n');
                             }
@@ -431,16 +435,8 @@ pub(crate) async fn handle_agent_streaming(
 
                     effective_system_prompt.push_str(&mcp_catalog);
                     config = config
-                        .with_mcp_call_tool(McpCallTool::new(Arc::new(RwLock::new(client_map))));
-
-                    // Auto-enable read tool for looking up tool definitions
-                    if !all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string()) {
-                        tracing::info!(
-                            "📖 [agent_streaming] Auto-enabling read tool for \
-                             MCP lazy loading"
-                        );
-                        all_enabled_tool_ids.push(BUILTIN_READ_ID.to_string());
-                    }
+                        .with_mcp_call_tool(McpCallTool::new(Arc::new(RwLock::new(client_map))))
+                        .with_load_mcp_schema_tool(LoadMcpSchemaTool::new(schema_map));
                 } else {
                     // Below threshold: use the existing direct rmcp_tools approach
                     config = config.with_mcp_tools(loaded.server_tools);
@@ -460,11 +456,6 @@ pub(crate) async fn handle_agent_streaming(
     // Set the effective system prompt (after MCP catalog may have been appended)
     if !effective_system_prompt.is_empty() {
         config = config.with_system_prompt(effective_system_prompt);
-    }
-
-    // If MCP lazy loading auto-enabled the read tool, apply it to config now
-    if all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string()) && !config.enable_read {
-        config = config.with_read();
     }
 
     // Create the agent
