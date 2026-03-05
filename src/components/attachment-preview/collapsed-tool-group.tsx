@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Layers } from 'lucide-react'
+import { ChevronDown, ChevronUp, ListChecks } from 'lucide-react'
 import type { ToolWithThinking } from '@/lib/step-grouping'
 import { parseToolName } from '@/lib/tool-name'
 import { ThinkingPreview } from './thinking-preview'
@@ -43,10 +43,10 @@ export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
-        <Layers className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
+        <ListChecks className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 
         <span className="text-xs text-muted-foreground flex-shrink-0">
-          Ran {items.length} steps
+          Used {items.length} tools
         </span>
 
         <span className="text-xs text-muted-foreground/60 min-w-0 truncate">{summary}</span>
