@@ -21,6 +21,7 @@ pub const BUILTIN_EDIT_ID: &str = "builtin-edit";
 pub const BUILTIN_WRITE_ID: &str = "builtin-write";
 pub const BUILTIN_GREP_ID: &str = "builtin-grep";
 pub const BUILTIN_GLOB_ID: &str = "builtin-glob";
+pub const BUILTIN_KILL_SHELL_ID: &str = "builtin-kill-shell";
 
 impl Database {
     /// Create a new tool
@@ -254,6 +255,11 @@ impl Database {
                 BUILTIN_GLOB_ID,
                 "Glob",
                 "Find files matching a glob pattern. Returns a list of matching file paths from a directory tree.",
+            ),
+            (
+                BUILTIN_KILL_SHELL_ID,
+                "Kill Shell",
+                "Terminate the current bash session. All state will be lost and a new session will be created on the next bash command.",
             ),
         ];
 

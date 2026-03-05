@@ -15,6 +15,7 @@ mod web_search;
 
 use commands::AppState;
 use db::Database;
+use llm::tools::BashSessionManager;
 use mcp::McpConnectionManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -99,6 +100,7 @@ pub fn run() {
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
                 mcp_manager: Arc::new(McpConnectionManager::new()),
                 pending_oauth: Arc::new(RwLock::new(HashMap::new())),
+                bash_session_manager: Arc::new(BashSessionManager::new()),
             };
             app.manage(app_state);
 

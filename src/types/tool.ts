@@ -11,17 +11,19 @@ export const BUILTIN_EDIT_ID = 'builtin-edit'
 export const BUILTIN_WRITE_ID = 'builtin-write'
 export const BUILTIN_GREP_ID = 'builtin-grep'
 export const BUILTIN_GLOB_ID = 'builtin-glob'
+export const BUILTIN_KILL_SHELL_ID = 'builtin-kill-shell'
 
 // Canonical display order for builtin tools
 const BUILTIN_TOOL_ORDER: Record<string, number> = {
   [BUILTIN_WEB_FETCH_ID]: 0,
   [BUILTIN_WEB_SEARCH_ID]: 1,
   [BUILTIN_BASH_ID]: 2,
-  [BUILTIN_READ_ID]: 3,
-  [BUILTIN_EDIT_ID]: 4,
-  [BUILTIN_WRITE_ID]: 5,
-  [BUILTIN_GREP_ID]: 6,
-  [BUILTIN_GLOB_ID]: 7,
+  [BUILTIN_KILL_SHELL_ID]: 3,
+  [BUILTIN_READ_ID]: 4,
+  [BUILTIN_EDIT_ID]: 5,
+  [BUILTIN_WRITE_ID]: 6,
+  [BUILTIN_GREP_ID]: 7,
+  [BUILTIN_GLOB_ID]: 8,
 }
 
 export function sortBuiltinTools<T extends { id: string }>(tools: T[]): T[] {

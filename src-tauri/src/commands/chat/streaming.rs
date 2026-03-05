@@ -25,8 +25,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
 use crate::db::tools::{
-    BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_READ_ID,
-    BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
+    BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_KILL_SHELL_ID,
+    BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
 };
 
 /// MCP tool count threshold: above this, use lazy loading via file-based discovery
@@ -240,6 +240,7 @@ pub(crate) async fn handle_agent_streaming(
     let web_search_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
     let web_fetch_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_FETCH_ID.to_string());
     let bash_enabled = all_enabled_tool_ids.contains(&BUILTIN_BASH_ID.to_string());
+    let kill_shell_enabled = all_enabled_tool_ids.contains(&BUILTIN_KILL_SHELL_ID.to_string());
     let read_enabled = all_enabled_tool_ids.contains(&BUILTIN_READ_ID.to_string());
     let edit_enabled = all_enabled_tool_ids.contains(&BUILTIN_EDIT_ID.to_string());
     let write_enabled = all_enabled_tool_ids.contains(&BUILTIN_WRITE_ID.to_string());
@@ -258,6 +259,11 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
         config = config.with_bash();
 
+        let session = state_clone
+            .bash_session_manager
+            .get_or_create(&conversation_id_clone);
+        config = config.with_bash_session(session);
+
         if let Some(ref settings) = conv_settings
             && let Some(ref working_dir) = settings.working_directory
         {
@@ -267,6 +273,10 @@ pub(crate) async fn handle_agent_streaming(
             );
             config = config.with_bash_working_directory(working_dir.clone());
         }
+    }
+    if kill_shell_enabled && bash_enabled {
+        tracing::info!("🔪 [agent_streaming] Enabling kill_shell tool");
+        config = config.with_kill_shell();
     }
     if read_enabled {
         tracing::info!("📖 [agent_streaming] Enabling read tool");
@@ -316,6 +326,7 @@ pub(crate) async fn handle_agent_streaming(
             *id != &BUILTIN_WEB_SEARCH_ID.to_string()
                 && *id != &BUILTIN_WEB_FETCH_ID.to_string()
                 && *id != &BUILTIN_BASH_ID.to_string()
+                && *id != &BUILTIN_KILL_SHELL_ID.to_string()
                 && *id != &BUILTIN_READ_ID.to_string()
                 && *id != &BUILTIN_EDIT_ID.to_string()
                 && *id != &BUILTIN_WRITE_ID.to_string()

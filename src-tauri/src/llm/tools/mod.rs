@@ -27,10 +27,12 @@
 //!     .with_builtin_tools();
 //! ```
 
-mod bash;
+pub(crate) mod bash;
+mod bash_session_manager;
 mod edit;
 mod glob;
 mod grep;
+mod kill_shell;
 mod load_mcp_schema;
 mod load_skill;
 mod mcp_call;
@@ -40,9 +42,11 @@ mod web_search;
 mod write;
 
 pub use bash::BashTool;
+pub use bash_session_manager::BashSessionManager;
 pub use edit::EditTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
+pub use kill_shell::KillShellTool;
 pub use load_mcp_schema::LoadMcpSchemaTool;
 pub use load_skill::LoadSkillTool;
 pub use mcp_call::McpCallTool;

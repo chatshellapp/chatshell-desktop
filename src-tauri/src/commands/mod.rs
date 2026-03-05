@@ -19,6 +19,7 @@ mod steps;
 mod users;
 
 use crate::db::Database;
+use crate::llm::tools::BashSessionManager;
 use crate::mcp::McpConnectionManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,6 +41,7 @@ pub struct AppState {
     pub generation_tasks: GenerationTasks,
     pub mcp_manager: Arc<McpConnectionManager>,
     pub pending_oauth: PendingOAuthMap,
+    pub bash_session_manager: Arc<BashSessionManager>,
 }
 
 // Re-export all commands

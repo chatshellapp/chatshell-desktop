@@ -57,11 +57,14 @@ struct CommandOutput {
     exit_code: i32,
 }
 
-struct BashSession {
+pub(crate) struct BashSession {
     child: Child,
     stdin: ChildStdin,
     reader: BufReader<ChildStdout>,
 }
+
+/// Shared handle to a bash session, used by both `BashTool` and `KillShellTool`.
+pub(crate) type SharedBashSession = Arc<TokioMutex<Option<BashSession>>>;
 
 impl fmt::Debug for BashSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -213,6 +216,11 @@ impl BashSession {
         matches!(self.child.try_wait(), Ok(None))
     }
 
+    pub(crate) async fn kill(&mut self) {
+        let _ = self.child.kill().await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), self.child.wait()).await;
+    }
+
     fn make_marker(label: &str) -> String {
         use std::sync::atomic::{AtomicU64, Ordering};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -251,9 +259,11 @@ pub struct BashArgs {
     #[serde(default)]
     pub command: Option<String>,
     #[serde(default)]
-    pub restart: Option<bool>,
-    #[serde(default)]
     pub timeout: Option<u64>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub workdir: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -269,7 +279,7 @@ pub struct BashTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     default_cwd: Option<String>,
     #[serde(skip)]
-    session: Arc<TokioMutex<Option<BashSession>>>,
+    session: SharedBashSession,
 }
 
 impl fmt::Debug for BashTool {
@@ -299,6 +309,17 @@ impl BashTool {
             default_cwd: Some(cwd),
             session: Arc::new(TokioMutex::new(None)),
         }
+    }
+
+    pub fn with_session(session: SharedBashSession, cwd: Option<String>) -> Self {
+        Self {
+            default_cwd: cwd,
+            session,
+        }
+    }
+
+    pub fn session_handle(&self) -> SharedBashSession {
+        self.session.clone()
     }
 
     fn resolve_cwd(&self) -> String {
@@ -361,10 +382,14 @@ impl BashTool {
 
     /// Keep the first `TRUNCATE_HEAD_CHARS` and last `TRUNCATE_TAIL_CHARS`,
     /// replacing the middle with a summary line.
-    fn smart_truncate(output: &str) -> String {
+    /// When truncation occurs, saves the full output to a temp file and returns
+    /// `(truncated_text, Some(temp_file_path))`.
+    fn smart_truncate(output: &str) -> (String, Option<String>) {
         if output.len() <= MAX_OUTPUT_CHARS {
-            return output.to_string();
+            return (output.to_string(), None);
         }
+
+        let temp_path = Self::save_full_output_to_temp(output);
 
         let head_end = Self::char_boundary_at_or_before(output, TRUNCATE_HEAD_CHARS);
         let tail_start = Self::char_boundary_at_or_after(
@@ -372,24 +397,47 @@ impl BashTool {
             output.len().saturating_sub(TRUNCATE_TAIL_CHARS),
         );
 
-        if head_end >= tail_start {
+        let truncated = if head_end >= tail_start {
             let end = Self::char_boundary_at_or_before(output, MAX_OUTPUT_CHARS);
-            return format!(
+            format!(
                 "{}...\n[output truncated, {} chars total]",
                 &output[..end],
                 output.len()
-            );
+            )
+        } else {
+            let omitted_lines = output[head_end..tail_start].lines().count();
+            format!(
+                "{}\n\n... [{} lines omitted, {} chars total] ...\n\n{}",
+                output[..head_end].trim_end(),
+                omitted_lines,
+                output.len(),
+                output[tail_start..].trim_start()
+            )
+        };
+
+        (truncated, temp_path)
+    }
+
+    fn save_full_output_to_temp(output: &str) -> Option<String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let filename = format!("chatshell_bash_output_{:x}.txt", nanos);
+        let path = std::env::temp_dir().join(filename);
+        match std::fs::write(&path, output) {
+            Ok(()) => {
+                tracing::info!(
+                    "🖥️ [bash] Full output saved to: {}",
+                    path.display()
+                );
+                Some(path.to_string_lossy().to_string())
+            }
+            Err(e) => {
+                tracing::warn!("🖥️ [bash] Failed to save full output: {}", e);
+                None
+            }
         }
-
-        let omitted_lines = output[head_end..tail_start].lines().count();
-
-        format!(
-            "{}\n\n... [{} lines omitted, {} chars total] ...\n\n{}",
-            output[..head_end].trim_end(),
-            omitted_lines,
-            output.len(),
-            output[tail_start..].trim_start()
-        )
     }
 
     fn char_boundary_at_or_before(s: &str, pos: usize) -> usize {
@@ -439,13 +487,17 @@ impl Tool for BashTool {
                         "type": "string",
                         "description": "The bash command to execute"
                     },
-                    "restart": {
-                        "type": "boolean",
-                        "description": "Set to true to restart the bash session (resets all state). Can be combined with a command."
-                    },
                     "timeout": {
                         "type": "number",
                         "description": "Timeout in seconds (default: 30, max: 300)"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "A concise (5-10 word) human-readable description of what the command does"
+                    },
+                    "workdir": {
+                        "type": "string",
+                        "description": "Working directory to run this command in. The command runs in a sub-shell so the session's cwd is not changed."
                     }
                 },
                 "required": ["command"]
@@ -454,30 +506,15 @@ impl Tool for BashTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let is_restart = args.restart.unwrap_or(false);
-
         tracing::info!(
-            "🔧 [tool-call] bash: command={:?} restart={} timeout={:?}",
+            "🔧 [tool-call] bash: command={:?} timeout={:?} description={:?} workdir={:?}",
             args.command,
-            is_restart,
-            args.timeout
+            args.timeout,
+            args.description,
+            args.workdir
         );
 
         let mut guard = self.session.lock().await;
-
-        // --- restart handling ---
-        if is_restart {
-            if let Some(mut old) = guard.take() {
-                let _ = old.child.kill().await;
-                let _ = tokio::time::timeout(Duration::from_secs(5), old.child.wait()).await;
-                tracing::info!("🖥️ [bash] Session killed for restart");
-            }
-            // If no command follows, just restart and return.
-            if args.command.as_deref().map_or(true, str::is_empty) {
-                self.ensure_session(&mut guard).await?;
-                return Ok("Bash session restarted.".to_string());
-            }
-        }
 
         let command = args
             .command
@@ -491,6 +528,13 @@ impl Tool for BashTool {
             return Err(BashError(msg.to_string()));
         }
 
+        // Wrap in a sub-shell if workdir is specified so the session's cwd is unaffected
+        let effective_command = if let Some(ref dir) = args.workdir {
+            format!("(cd '{}' && {})", dir.replace('\'', "'\\''"), command)
+        } else {
+            command.to_string()
+        };
+
         // --- ensure session ---
         self.ensure_session(&mut guard).await?;
 
@@ -498,7 +542,7 @@ impl Tool for BashTool {
 
         let session = guard.as_mut().unwrap();
         let result = session
-            .execute(command, Duration::from_secs(timeout_secs))
+            .execute(&effective_command, Duration::from_secs(timeout_secs))
             .await;
 
         match result {
@@ -509,20 +553,29 @@ impl Tool for BashTool {
                     cmd.output.len()
                 );
 
-                let text = Self::smart_truncate(cmd.output.trim_end());
+                let (text, temp_file) = Self::smart_truncate(cmd.output.trim_end());
+                let file_notice = temp_file
+                    .map(|p| {
+                        format!(
+                            "\n[full output saved to {} -- use the read tool to view]",
+                            p
+                        )
+                    })
+                    .unwrap_or_default();
 
                 if cmd.exit_code == 0 {
                     if text.is_empty() {
                         Ok("(no output)".to_string())
                     } else {
-                        Ok(text)
+                        Ok(format!("{}{}", text, file_notice))
                     }
+                } else if text.is_empty() {
+                    Ok(format!("[exit code: {}]{}", cmd.exit_code, file_notice))
                 } else {
-                    if text.is_empty() {
-                        Ok(format!("[exit code: {}]", cmd.exit_code))
-                    } else {
-                        Ok(format!("[exit code: {}]\n{}", cmd.exit_code, text))
-                    }
+                    Ok(format!(
+                        "[exit code: {}]\n{}{}",
+                        cmd.exit_code, text, file_notice
+                    ))
                 }
             }
             Err(e) => {
@@ -554,16 +607,7 @@ mod tests {
     fn test_bash_args_command_only() {
         let args: BashArgs = serde_json::from_str(r#"{"command": "echo hello"}"#).unwrap();
         assert_eq!(args.command, Some("echo hello".to_string()));
-        assert_eq!(args.restart, None);
         assert_eq!(args.timeout, None);
-    }
-
-    #[test]
-    fn test_bash_args_with_restart() {
-        let args: BashArgs =
-            serde_json::from_str(r#"{"command": "echo hi", "restart": true}"#).unwrap();
-        assert_eq!(args.command, Some("echo hi".to_string()));
-        assert_eq!(args.restart, Some(true));
     }
 
     #[test]
@@ -572,6 +616,19 @@ mod tests {
             serde_json::from_str(r#"{"command": "sleep 5", "timeout": 10}"#).unwrap();
         assert_eq!(args.command, Some("sleep 5".to_string()));
         assert_eq!(args.timeout, Some(10));
+    }
+
+    #[test]
+    fn test_bash_args_with_description() {
+        let args: BashArgs = serde_json::from_str(
+            r#"{"command": "ls -la", "description": "List directory contents"}"#,
+        )
+        .unwrap();
+        assert_eq!(args.command, Some("ls -la".to_string()));
+        assert_eq!(
+            args.description,
+            Some("List directory contents".to_string())
+        );
     }
 
     #[test]
@@ -600,27 +657,34 @@ mod tests {
     #[test]
     fn test_smart_truncate_short() {
         let short = "hello world\n";
-        assert_eq!(BashTool::smart_truncate(short), short);
+        let (result, temp) = BashTool::smart_truncate(short);
+        assert_eq!(result, short);
+        assert!(temp.is_none());
     }
 
     #[test]
     fn test_smart_truncate_long() {
         let long: String = (0..5000).map(|i| format!("line {}\n", i)).collect();
-        let result = BashTool::smart_truncate(&long);
+        let (result, temp) = BashTool::smart_truncate(&long);
         assert!(result.len() < long.len());
         assert!(result.contains("lines omitted"));
-        // Head and tail should be present
         assert!(result.contains("line 0"));
         assert!(result.contains("line 4999"));
+        assert!(temp.is_some());
+        // Clean up temp file
+        if let Some(ref path) = temp {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]
     fn test_smart_truncate_preserves_char_boundaries() {
-        // Create a string with multi-byte chars
         let piece = "你好世界\n";
         let long: String = std::iter::repeat(piece).take(10_000).collect();
-        let result = BashTool::smart_truncate(&long);
-        // Should not panic and should be valid UTF-8
+        let (result, temp) = BashTool::smart_truncate(&long);
         assert!(result.len() < long.len());
+        if let Some(ref path) = temp {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }

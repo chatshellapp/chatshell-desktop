@@ -136,7 +136,9 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
         if (parsed.server_name && parsed.tool_name) return `${parsed.server_name}/${parsed.tool_name}`
         return parsed.tool_name ?? null
       case 'bash':
-        return parsed.command ? extractCommandNames(parsed.command) : null
+        return parsed.description || (parsed.command ? extractCommandNames(parsed.command) : null)
+      case 'kill_shell':
+        return 'terminate session'
       case 'web_search':
         return parsed.query || null
       case 'web_fetch':
@@ -304,6 +306,11 @@ export function EditWriteOutput({ toolOutput }: ToolOutputProps) {
   return <p className="text-xs text-muted-foreground/70 leading-relaxed">{toolOutput}</p>
 }
 
+export function SimpleTextOutput({ toolOutput }: ToolOutputProps) {
+  if (!toolOutput) return null
+  return <p className="text-xs text-muted-foreground/70 leading-relaxed">{toolOutput}</p>
+}
+
 export function GrepOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const pattern = safeParseField(toolInput, 'pattern') || ''
   const output = toolOutput || ''
@@ -446,6 +453,8 @@ export function ToolOutputRenderer({
       return <LoadMcpSchemaOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'bash':
       return <BashOutput toolInput={toolInput} toolOutput={toolOutput} />
+    case 'kill_shell':
+      return <SimpleTextOutput toolOutput={toolOutput} />
     case 'edit':
     case 'write':
       return <EditWriteOutput toolOutput={toolOutput} />

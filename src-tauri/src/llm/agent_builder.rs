@@ -23,9 +23,10 @@ use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, LoadMcpSchemaTool, LoadSkillTool, McpCallTool, ReadTool,
-    WebFetchTool, WebSearchTool, WriteTool,
+    BashTool, EditTool, GlobTool, GrepTool, KillShellTool, LoadMcpSchemaTool, LoadSkillTool,
+    McpCallTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
 };
+use crate::llm::tools::bash::SharedBashSession;
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
     deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
@@ -79,10 +80,14 @@ pub struct AgentConfig {
     pub enable_grep: bool,
     /// Enable built-in glob (file pattern matching) tool
     pub enable_glob: bool,
+    /// Enable built-in kill_shell tool
+    pub enable_kill_shell: bool,
     /// Default working directory for grep tool
     pub grep_working_directory: Option<String>,
     /// Default working directory for glob tool
     pub glob_working_directory: Option<String>,
+    /// Shared bash session handle (for conversation-level persistence)
+    pub bash_session: Option<SharedBashSession>,
     /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
     pub mcp_call_tool: Option<McpCallTool>,
     /// Optional load_skill tool (when skills are in catalog)
@@ -208,6 +213,18 @@ impl AgentConfig {
     /// Set the default working directory for glob tool
     pub fn with_glob_working_directory(mut self, dir: String) -> Self {
         self.glob_working_directory = Some(dir);
+        self
+    }
+
+    /// Enable the built-in kill_shell tool
+    pub fn with_kill_shell(mut self) -> Self {
+        self.enable_kill_shell = true;
+        self
+    }
+
+    /// Set a shared bash session handle for conversation-level persistence
+    pub fn with_bash_session(mut self, session: SharedBashSession) -> Self {
+        self.bash_session = Some(session);
         self
     }
 
@@ -753,7 +770,10 @@ fn build_agent_with_tools<M: CompletionModel>(
     config: &AgentConfig,
 ) -> Agent<M> {
     let create_bash_tool = || -> BashTool {
-        if let Some(ref dir) = config.bash_working_directory {
+        if let Some(ref session) = config.bash_session {
+            tracing::info!("🖥️ Bash tool using shared conversation session");
+            BashTool::with_session(session.clone(), config.bash_working_directory.clone())
+        } else if let Some(ref dir) = config.bash_working_directory {
             tracing::info!("🖥️ Bash tool configured with working directory: {}", dir);
             BashTool::with_working_directory(dir.clone())
         } else {
@@ -815,8 +835,29 @@ fn build_agent_with_tools<M: CompletionModel>(
         }};
     }
 
-    // Macro to conditionally chain the remaining tools (edit → write → grep → glob)
-    // onto a simple builder, then add MCP tools and build.
+    // Create bash tool once (if enabled) so kill_shell can share its session
+    let bash_tool_instance: Option<BashTool> = if config.enable_bash {
+        Some(create_bash_tool())
+    } else {
+        None
+    };
+
+    // Macro to add kill_shell if enabled (must be called after bash is added)
+    macro_rules! maybe_add_kill_shell {
+        ($sb:expr) => {{
+            let mut sb = $sb;
+            if config.enable_kill_shell {
+                if let Some(ref bash) = bash_tool_instance {
+                    tracing::info!("🔪 Adding kill_shell tool to agent");
+                    sb = sb.tool(KillShellTool::new(bash.session_handle()));
+                }
+            }
+            sb
+        }};
+    }
+
+    // Macro to conditionally chain the remaining tools
+    // (edit -> write -> grep -> glob) onto a simple builder, then add MCP tools and build.
     macro_rules! chain_remaining {
         ($sb:expr) => {{
             let mut sb = $sb;
@@ -843,7 +884,7 @@ fn build_agent_with_tools<M: CompletionModel>(
     // Each block below is an entry point for the first enabled tool.
     // Once we enter a block, all tools listed before it are disabled (otherwise
     // we would have entered their block first). We chain the remaining tools
-    // in order: web_search → web_fetch → bash → read → edit → write → grep → glob.
+    // in order: web_search -> web_fetch -> bash -> kill_shell -> read -> edit -> write -> grep -> glob.
 
     if config.enable_web_search {
         tracing::info!("🔍 Adding web_search tool to agent");
@@ -852,9 +893,10 @@ fn build_agent_with_tools<M: CompletionModel>(
             tracing::info!("🌐 Adding web_fetch tool to agent");
             sb = sb.tool(WebFetchTool::new());
         }
-        if config.enable_bash {
+        if let Some(ref bash) = bash_tool_instance {
             tracing::info!("🖥️ Adding bash tool to agent");
-            sb = sb.tool(create_bash_tool());
+            sb = sb.tool(bash.clone());
+            sb = maybe_add_kill_shell!(sb);
         }
         if config.enable_read {
             tracing::info!("📖 Adding read tool to agent");
@@ -866,9 +908,10 @@ fn build_agent_with_tools<M: CompletionModel>(
     if config.enable_web_fetch {
         tracing::info!("🌐 Adding web_fetch tool to agent");
         let mut sb = builder.tool(WebFetchTool::new());
-        if config.enable_bash {
+        if let Some(ref bash) = bash_tool_instance {
             tracing::info!("🖥️ Adding bash tool to agent");
-            sb = sb.tool(create_bash_tool());
+            sb = sb.tool(bash.clone());
+            sb = maybe_add_kill_shell!(sb);
         }
         if config.enable_read {
             tracing::info!("📖 Adding read tool to agent");
@@ -877,9 +920,10 @@ fn build_agent_with_tools<M: CompletionModel>(
         chain_remaining!(sb);
     }
 
-    if config.enable_bash {
+    if let Some(ref bash) = bash_tool_instance {
         tracing::info!("🖥️ Adding bash tool to agent");
-        let mut sb = builder.tool(create_bash_tool());
+        let mut sb = builder.tool(bash.clone());
+        sb = maybe_add_kill_shell!(sb);
         if config.enable_read {
             tracing::info!("📖 Adding read tool to agent");
             sb = sb.tool(ReadTool::new());

@@ -1,22 +1,13 @@
 import { useMemo, useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
 import {
   Wrench,
   ChevronDown,
   ChevronUp,
   XCircle,
   Loader2,
-  FileText,
-  Pencil,
-  FilePlus2,
-  Terminal,
-  Search,
-  FolderSearch,
-  Globe,
   Plug,
   Braces,
   Ban,
-  BookOpen,
 } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
@@ -28,6 +19,7 @@ import {
   CopyButton,
 } from './tool-output-renderers'
 import { MarkdownContent } from '@/components/markdown-content'
+import { getToolIconByName } from '@/components/builtin-tool-icon'
 
 // Re-export StreamingToolCall from store types for consistency
 export type { StreamingToolCall } from '@/stores/message/types'
@@ -54,19 +46,6 @@ function formatJson(jsonString: string | undefined): string {
   }
 }
 
-const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
-  read: FileText,
-  edit: Pencil,
-  write: FilePlus2,
-  bash: Terminal,
-  grep: Search,
-  glob: FolderSearch,
-  web_fetch: Globe,
-  web_search: Globe,
-  load_skill: BookOpen,
-  load_mcp_schema: Braces,
-}
-
 // Tools that use specialized output renderers instead of generic JSON display
 const SPECIALIZED_TOOLS = new Set([
   'web_search',
@@ -75,15 +54,16 @@ const SPECIALIZED_TOOLS = new Set([
   'load_skill',
   'load_mcp_schema',
   'bash',
+  'kill_shell',
   'edit',
   'write',
   'grep',
   'glob',
 ])
 
-function getToolIcon(parsed: ParsedToolName): LucideIcon {
+function getToolIcon(parsed: ParsedToolName) {
   if (parsed.type === 'mcp') return Plug
-  return BUILTIN_TOOL_ICONS[parsed.toolName] ?? Plug
+  return getToolIconByName(parsed.toolName)
 }
 
 function StatusIcon({

@@ -48,6 +48,9 @@ pub struct GrepArgs {
     /// "content" (default), "files_with_matches", or "count"
     #[serde(default)]
     pub output_mode: Option<String>,
+    /// Show line numbers in content output mode (default: true)
+    #[serde(default)]
+    pub line_numbers: Option<bool>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -143,6 +146,10 @@ impl Tool for GrepTool {
                         "type": "string",
                         "enum": ["content", "files_with_matches", "count"],
                         "description": "Output mode: \"content\" shows matching lines with context (default), \"files_with_matches\" shows only file paths containing matches, \"count\" shows match counts per file"
+                    },
+                    "line_numbers": {
+                        "type": "boolean",
+                        "description": "Show line numbers in content output mode. Defaults to true."
                     }
                 },
                 "required": ["pattern"]
@@ -233,6 +240,7 @@ fn run_search(args: &GrepArgs, search_path: &str) -> Result<String, GrepError> {
 
     let mut output = String::new();
     let mut total_matches: usize = 0;
+    let show_line_numbers = args.line_numbers.unwrap_or(true);
 
     if path.is_file() {
         search_file(
@@ -243,6 +251,7 @@ fn run_search(args: &GrepArgs, search_path: &str) -> Result<String, GrepError> {
             &mut output,
             &mut total_matches,
             head_limit,
+            show_line_numbers,
         );
     } else {
         let mut walk_builder = WalkBuilder::new(search_path);
@@ -283,6 +292,7 @@ fn run_search(args: &GrepArgs, search_path: &str) -> Result<String, GrepError> {
                 &mut output,
                 &mut total_matches,
                 head_limit,
+                show_line_numbers,
             );
         }
     }
@@ -313,6 +323,7 @@ fn search_file(
     output: &mut String,
     total_matches: &mut usize,
     head_limit: usize,
+    show_line_numbers: bool,
 ) {
     let path_display = path.to_string_lossy();
 
@@ -342,6 +353,7 @@ fn search_file(
                     output,
                     total_matches,
                     head_limit,
+                    show_line_numbers,
                     needs_separator: false,
                     had_output: false,
                 },
@@ -364,6 +376,7 @@ struct ContentSink<'a> {
     output: &'a mut String,
     total_matches: &'a mut usize,
     head_limit: usize,
+    show_line_numbers: bool,
     needs_separator: bool,
     had_output: bool,
 }
@@ -384,8 +397,12 @@ impl Sink for ContentSink<'_> {
         self.had_output = true;
 
         let line = String::from_utf8_lossy(mat.bytes());
-        if let Some(n) = mat.line_number() {
-            let _ = write!(self.output, "{}:{}:{}", self.path, n, line);
+        if self.show_line_numbers {
+            if let Some(n) = mat.line_number() {
+                let _ = write!(self.output, "{}:{}:{}", self.path, n, line);
+            } else {
+                let _ = write!(self.output, "{}:{}", self.path, line);
+            }
         } else {
             let _ = write!(self.output, "{}:{}", self.path, line);
         }
@@ -405,8 +422,12 @@ impl Sink for ContentSink<'_> {
         }
 
         let line = String::from_utf8_lossy(ctx.bytes());
-        if let Some(n) = ctx.line_number() {
-            let _ = write!(self.output, "{}-{}-{}", self.path, n, line);
+        if self.show_line_numbers {
+            if let Some(n) = ctx.line_number() {
+                let _ = write!(self.output, "{}-{}-{}", self.path, n, line);
+            } else {
+                let _ = write!(self.output, "{}-{}", self.path, line);
+            }
         } else {
             let _ = write!(self.output, "{}-{}", self.path, line);
         }
