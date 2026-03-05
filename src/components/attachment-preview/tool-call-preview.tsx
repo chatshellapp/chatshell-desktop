@@ -107,13 +107,6 @@ function jsonCodeBlock(text: string): string {
   return '```json\n' + text + '\n```'
 }
 
-function getStatusText(status: string, isStreaming?: boolean): string {
-  if (isStreaming || status === 'running') return 'Running...'
-  if (status === 'pending') return 'Pending'
-  if (status === 'cancelled') return 'Stopped'
-  if (status === 'error') return 'Failed'
-  return ''
-}
 
 export function ToolCallPreview({
   toolCall,
@@ -175,12 +168,6 @@ export function ToolCallPreview({
         {inputSummary && (
           <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
             {inputSummary}
-          </span>
-        )}
-
-        {getStatusText(status, isInProgress) && (
-          <span className="text-xs text-muted-foreground/60 flex-shrink-0">
-            {getStatusText(status, isInProgress)}
           </span>
         )}
 
