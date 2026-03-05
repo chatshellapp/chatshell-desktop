@@ -9,12 +9,12 @@ interface MessageAvatarProps {
 }
 
 export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProps) {
-  const offsetClass = index > 0 && 'ml-[-6px]'
+  const offsetClass = index > 0 && '-ml-1'
 
   // If it's a string, treat it as an image URL (backward compatibility)
   if (typeof avatar === 'string') {
     return (
-      <Avatar className={cn('size-4 ring-1 ring-background', offsetClass)}>
+      <Avatar className={cn('size-4 ring-2 ring-background bg-muted', offsetClass)}>
         <AvatarImage src={avatar} alt={`Avatar ${index + 1}`} />
         <AvatarFallback className="text-[10px]">{fallbackChar}</AvatarFallback>
       </Avatar>
@@ -30,7 +30,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
     // For placeholder avatars, use Tailwind's bg-muted class
     if (isPlaceholder) {
       return (
-        <Avatar className={cn('size-4 ring-1 ring-background bg-muted', offsetClass)}>
+        <Avatar className={cn('size-4 ring-2 ring-background bg-muted', offsetClass)}>
           <AvatarFallback className="text-[10px] bg-muted opacity-0">{displayText}</AvatarFallback>
         </Avatar>
       )
@@ -40,7 +40,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
     if (hasCustomBg) {
       return (
         <Avatar
-          className={cn('size-4 ring-1 ring-background', offsetClass)}
+          className={cn('size-4 ring-2 ring-background', offsetClass)}
           style={{ backgroundColor: avatar.backgroundColor }}
         >
           <AvatarFallback
@@ -55,7 +55,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
 
     // For text avatars without custom background (e.g., models without logo)
     return (
-      <Avatar className={cn('size-4 ring-1 ring-background', offsetClass)}>
+      <Avatar className={cn('size-4 ring-2 ring-background', offsetClass)}>
         <AvatarFallback className="text-[10px]">{displayText}</AvatarFallback>
       </Avatar>
     )
@@ -63,7 +63,7 @@ export function MessageAvatar({ avatar, index, fallbackChar }: MessageAvatarProp
 
   // Image avatar
   return (
-    <Avatar className={cn('size-4 ring-1 ring-background', offsetClass)}>
+    <Avatar className={cn('size-4 ring-2 ring-background bg-muted', offsetClass)}>
       <AvatarImage src={avatar.imageUrl} alt={`Avatar ${index + 1}`} />
       <AvatarFallback className="text-[10px]">{avatar.fallback || fallbackChar}</AvatarFallback>
     </Avatar>
@@ -78,7 +78,7 @@ interface AvatarGroupProps {
 
 export function MessageAvatarGroup({ avatars, summary, maxVisible = 3 }: AvatarGroupProps) {
   return (
-    <div className="flex -space-x-1.5">
+    <div className="flex items-center">
       {avatars.slice(0, maxVisible).map((avatar, index) => (
         <MessageAvatar
           key={index}
@@ -88,7 +88,7 @@ export function MessageAvatarGroup({ avatars, summary, maxVisible = 3 }: AvatarG
         />
       ))}
       {avatars.length > maxVisible && (
-        <Avatar className="size-4 ring-1 ring-background ml-[-6px]">
+        <Avatar className="size-4 ring-2 ring-background -ml-1">
           <AvatarFallback className="text-[10px]">+{avatars.length - maxVisible}</AvatarFallback>
         </Avatar>
       )}
