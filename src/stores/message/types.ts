@@ -7,7 +7,7 @@ export interface StreamingToolCall {
   tool_name: string
   tool_input: string
   tool_output?: string
-  status: 'pending' | 'running' | 'success' | 'error'
+  status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'
   error?: string
   // Order in which this tool call was received (for proper display ordering)
   order: number

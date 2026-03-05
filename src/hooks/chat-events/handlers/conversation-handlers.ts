@@ -29,16 +29,12 @@ export function useConversationHandlers() {
 
   const handleGenerationStopped = useCallback((convId: string) => {
     logger.info('[useChatEvents] Generation stopped for conversation:', convId)
-    // Reset streaming states when generation is stopped
-    // This is needed when stopping before any content arrives,
-    // as chat-complete event won't be emitted in that case
+    // Stop spinners and clear auxiliary states. Keep streaming content visible briefly
+    // until handleChatComplete arrives with the saved message from the backend.
     const store = useMessageStore.getState()
     store.setIsStreaming(convId, false)
     store.setIsWaitingForAI(convId, false)
-    store.setStreamingContent(convId, '')
-    // Clear all pending search decisions for this conversation
     store.clearPendingSearchDecisions(convId)
-    // Reset reasoning state
     store.setIsReasoningActive(convId, false)
   }, [])
 

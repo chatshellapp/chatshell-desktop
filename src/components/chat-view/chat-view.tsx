@@ -82,13 +82,12 @@ export function ChatView() {
     setIsAtBottom,
   })
 
-  // Check if streaming message should be shown
+  // Show streaming message while actively streaming, waiting for AI,
+  // or when there's frozen partial content from a stopped generation.
   const hasStreamingToolCalls = Object.keys(streamingToolCalls).length > 0
-  const showStreamingMessage =
-    isWaitingForAI ||
-    (isStreaming &&
-      (streamingContent || streamingReasoningContent || hasStreamingToolCalls) &&
-      !isWaitingForAI)
+  const hasStreamingData =
+    !!streamingContent || !!streamingReasoningContent || hasStreamingToolCalls
+  const showStreamingMessage = isWaitingForAI || (hasStreamingData && !isWaitingForAI)
 
   return (
     <div ref={rootRef} className="flex flex-col flex-1 overflow-hidden">

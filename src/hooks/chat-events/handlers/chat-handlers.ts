@@ -17,22 +17,23 @@ export function useChatHandlers() {
     useMessageStore.getState().appendStreamingReasoningChunk(convId, chunk)
   }, [])
 
-  const handleChatComplete = useCallback((convId: string, message: Message) => {
+  const handleChatComplete = useCallback((convId: string, message: Message | null) => {
     logger.info('[useChatEvents] handleChatComplete called', { conversation: convId, message })
     const store = useMessageStore.getState()
-    const convState = store.getConversationState(convId)
-    logger.info(
-      '[useChatEvents] Current messages count for conversation:',
-      convState.messages.length
-    )
-    store.addMessage(convId, message)
-    logger.info(
-      '[useChatEvents] After addMessage, messages count:',
-      store.getConversationState(convId).messages.length
-    )
+    if (message) {
+      const convState = store.getConversationState(convId)
+      logger.info(
+        '[useChatEvents] Current messages count for conversation:',
+        convState.messages.length
+      )
+      store.addMessage(convId, message)
+      logger.info(
+        '[useChatEvents] After addMessage, messages count:',
+        store.getConversationState(convId).messages.length
+      )
+    }
     store.setIsStreaming(convId, false)
     store.setStreamingContent(convId, '')
-    // Clear streaming tool calls when chat completes
     store.clearStreamingToolCalls(convId)
   }, [])
 
@@ -40,6 +41,9 @@ export function useChatHandlers() {
     logger.info('[useChatEvents] handleChatError called', { conversation: convId, error })
     const store = useMessageStore.getState()
     store.setApiError(convId, error)
+    store.setIsStreaming(convId, false)
+    store.setStreamingContent(convId, '')
+    store.clearStreamingToolCalls(convId)
   }, [])
 
   const handleReasoningStarted = useCallback((convId: string) => {

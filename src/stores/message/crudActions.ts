@@ -101,7 +101,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           convState.isStreaming = true
           convState.isWaitingForAI = true
           convState.streamingContent = ''
-          convState.streamingReasoningContent = '' // Clear previous reasoning content
+          convState.streamingReasoningContent = ''
+          convState.streamingToolCalls = {}
         }
       })
 

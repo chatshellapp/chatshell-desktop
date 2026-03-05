@@ -58,9 +58,9 @@ export function StreamingMessage({
   // Combine API-provided reasoning (GPT-5, Gemini) with XML-parsed thinking
   // API reasoning takes precedence as it's the native format for reasoning models
   const combinedThinkingContent = streamingReasoningContent || parsedStreaming.thinkingContent
-  const isThinkingInProgress = streamingReasoningContent
-    ? isStreaming // If we have API reasoning, it's in progress while streaming
-    : parsedStreaming.isThinkingInProgress
+  const isThinkingInProgress =
+    isStreaming &&
+    (streamingReasoningContent ? true : parsedStreaming.isThinkingInProgress)
 
   // Get the last user message to show its resources
   const lastUserMessage = messages.filter((m) => m.sender_type === 'user').slice(-1)[0]
@@ -246,7 +246,9 @@ export function StreamingMessage({
               )}
               <ToolCallPreview
                 streamingToolCall={toolCall}
-                isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+                isStreaming={
+                  isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
+                }
               />
             </div>
           )
@@ -383,7 +385,9 @@ export function StreamingMessage({
             <ToolCallPreview
               key={toolCall.id}
               streamingToolCall={toolCall}
-              isStreaming={toolCall.status === 'running' || toolCall.status === 'pending'}
+              isStreaming={
+                isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
+              }
             />
           ))}
         </div>
@@ -417,7 +421,7 @@ export function StreamingMessage({
       userMessageAlign={CHAT_CONFIG.userMessageAlign}
       userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
       isLoading={isWaitingForAI || !searchDecisionResolved}
-      isStreaming={true}
+      isStreaming={isStreaming}
       headerContent={streamingHeaderContent}
       onCopy={onCopy}
       onExportAll={onExportAll}

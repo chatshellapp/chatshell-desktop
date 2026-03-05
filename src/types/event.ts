@@ -14,7 +14,7 @@ export interface ChatStreamReasoningEvent {
 
 export interface ChatCompleteEvent {
   conversation_id: string
-  message: Message
+  message: Message | null
 }
 
 export interface ChatErrorEvent {

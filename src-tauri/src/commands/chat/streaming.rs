@@ -6,7 +6,7 @@ use crate::llm::agent_builder::{
     stream_chat_with_agent,
 };
 use crate::llm::tools::McpCallTool;
-use crate::llm::{ChatMessage, StreamChunkType};
+use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
     CreateContentBlockRequest, CreateMessageRequest, CreateThinkingStepRequest,
@@ -779,118 +779,103 @@ pub(crate) async fn handle_agent_streaming(
     )
     .await;
 
-    // Handle the response
-    let response = match response {
-        Ok(r) => r,
+    // Handle the response: on cancellation build synthetic response so we can save accumulated data
+    let (response, was_stream_error) = match response {
+        Ok(r) => (r, false),
         Err(e) => {
-            // Check if this was a cancellation
             if cancel_token.is_cancelled() {
-                tracing::info!("🛑 [agent_streaming] Generation was cancelled");
-
-                // Get accumulated content
+                tracing::info!("🛑 [agent_streaming] Generation cancelled (stream returned error)");
                 let accumulated = accumulated_content.read().await.clone();
-                let accumulated_reasoning_content = accumulated_reasoning.read().await.clone();
-
-                if !accumulated.trim().is_empty() {
-                    tracing::info!(
-                        "📝 [agent_streaming] Saving partial response ({} chars)",
-                        accumulated.len()
-                    );
-
-                    // Determine sender type and ID
-                    let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
-                        ("model".to_string(), Some(model_id))
-                    } else if let Some(assistant_id) = assistant_db_id.clone() {
-                        ("assistant".to_string(), Some(assistant_id))
-                    } else {
-                        ("assistant".to_string(), None)
-                    };
-
-                    // Save partial response
-                    match state_clone
-                        .db
-                        .create_message(CreateMessageRequest {
-                            conversation_id: Some(conversation_id_clone.clone()),
-                            sender_type: sender_type.clone(),
-                            sender_id: sender_id.clone(),
-                            content: accumulated.clone(),
-                            tokens: None,
-                        })
-                        .await
-                    {
-                        Ok(msg) => {
-                            tracing::info!(
-                                "✅ [agent_streaming] Partial message saved: {}",
-                                msg.id
-                            );
-
-                            // Save thinking content if any
-                            if !accumulated_reasoning_content.is_empty() {
-                                let _ = state_clone
-                                    .db
-                                    .create_thinking_step(CreateThinkingStepRequest {
-                                        message_id: msg.id.clone(),
-                                        content: accumulated_reasoning_content,
-                                        source: Some("llm".to_string()),
-                                        display_order: Some(0),
-                                    })
-                                    .await;
-                            }
-
-                            let completion_payload = serde_json::json!({
-                                "conversation_id": conversation_id_clone,
-                                "message": msg,
-                                "cancelled": true,
-                            });
-                            let _ = app.emit("chat-complete", completion_payload);
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to save partial message: {}", e);
-                            let error_payload = serde_json::json!({
-                                "conversation_id": conversation_id_clone,
-                                "error": format!("Failed to save partial message: {}", e),
-                            });
-                            let _ = app.emit("chat-error", error_payload);
-                        }
-                    }
-                }
+                let accumulated_reason = accumulated_reasoning.read().await.clone();
+                let parsed = crate::thinking_parser::parse_thinking_content(&accumulated);
+                let thinking = if !accumulated_reason.is_empty() {
+                    Some(accumulated_reason)
+                } else {
+                    parsed.thinking_content
+                };
+                (
+                    ChatResponse {
+                        content: parsed.content,
+                        thinking_content: thinking,
+                        tokens: None,
+                    },
+                    true,
+                )
             } else {
                 tracing::error!("❌ [agent_streaming] Stream error: {}", e);
-
-                // Emit error event to frontend so it can reset UI state
                 let error_payload = serde_json::json!({
                     "conversation_id": conversation_id_clone,
                     "error": e.to_string(),
                 });
                 let _ = app.emit("chat-error", error_payload);
+                let mut tasks = state_clone.generation_tasks.write().await;
+                tasks.remove(&conversation_id_clone);
+                return;
             }
-
-            let mut tasks = state_clone.generation_tasks.write().await;
-            tasks.remove(&conversation_id_clone);
-            return;
         }
     };
 
-    // Get the final content
+    let was_cancelled = cancel_token.is_cancelled();
     let final_content = response.content.clone();
-    tracing::info!(
-        "✅ [agent_streaming] Response complete: {} chars",
-        final_content.len()
-    );
 
-    // Don't save empty responses - they cause API errors on subsequent requests
-    // ("all messages must have non-empty content")
-    if final_content.trim().is_empty() {
-        tracing::info!("⚠️ [agent_streaming] Skipping save of empty response");
-        let error_payload = serde_json::json!({
-            "conversation_id": conversation_id_clone,
-            "error": "Model returned empty response",
-        });
-        let _ = app.emit("chat-error", error_payload);
+    if was_cancelled {
+        tracing::info!(
+            "🛑 [agent_streaming] Cancelled. Content: {} chars, stream_error: {}",
+            final_content.len(),
+            was_stream_error
+        );
+    } else {
+        tracing::info!(
+            "✅ [agent_streaming] Response complete: {} chars",
+            final_content.len()
+        );
+    }
+
+    // Check if we have any data worth saving
+    let has_tool_calls = !tool_calls_map.read().await.is_empty();
+    let has_reasoning_blocks = !reasoning_blocks.read().await.is_empty()
+        || !current_reasoning_block.read().await.trim().is_empty();
+    let has_content_blocks = !content_blocks.read().await.is_empty()
+        || !current_content_block.read().await.trim().is_empty();
+    let has_thinking = response
+        .thinking_content
+        .as_ref()
+        .map_or(false, |t| !t.is_empty());
+    let has_any_data = !final_content.trim().is_empty()
+        || has_tool_calls
+        || has_reasoning_blocks
+        || has_content_blocks
+        || has_thinking;
+
+    if !has_any_data {
+        if was_cancelled {
+            tracing::info!("⚠️ [agent_streaming] Cancelled with no data to save");
+            let payload = serde_json::json!({
+                "conversation_id": conversation_id_clone,
+                "message": null,
+                "cancelled": true,
+            });
+            let _ = app.emit("chat-complete", payload);
+        } else {
+            tracing::info!("⚠️ [agent_streaming] Skipping save of empty response");
+            let error_payload = serde_json::json!({
+                "conversation_id": conversation_id_clone,
+                "error": "Model returned empty response",
+            });
+            let _ = app.emit("chat-error", error_payload);
+        }
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
         return;
     }
+
+    // Use a space placeholder when content is empty but we have tool calls/thinking
+    // (API requires non-empty content for subsequent requests)
+    let save_content = if final_content.trim().is_empty() {
+        " ".to_string()
+    } else {
+        final_content.clone()
+    };
 
     // Determine sender type and ID
     let (sender_type, sender_id) = if let Some(model_id) = model_db_id.clone() {
@@ -908,7 +893,7 @@ pub(crate) async fn handle_agent_streaming(
             conversation_id: Some(conversation_id_clone.clone()),
             sender_type,
             sender_id,
-            content: final_content.clone(),
+            content: save_content,
             tokens: response.tokens,
         })
         .await
@@ -998,6 +983,8 @@ pub(crate) async fn handle_agent_streaming(
         {
             let status = if tool_output.is_some() {
                 "success"
+            } else if was_cancelled {
+                "cancelled"
             } else {
                 "pending"
             };

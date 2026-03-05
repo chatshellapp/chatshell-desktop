@@ -15,6 +15,7 @@ import {
   Globe,
   Plug,
   Braces,
+  Ban,
 } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
@@ -92,6 +93,9 @@ function StatusIcon({
   if (isStreaming || status === 'running' || status === 'pending') {
     return <Loader2 className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-spin" />
   }
+  if (status === 'cancelled') {
+    return <Ban className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+  }
   if (status === 'error') {
     return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
   }
@@ -127,7 +131,10 @@ function jsonCodeBlock(text: string): string {
   return '```json\n' + text + '\n```'
 }
 
-function getStatusText(status: string): string {
+function getStatusText(status: string, isStreaming?: boolean): string {
+  if (isStreaming || status === 'running') return 'Running...'
+  if (status === 'pending') return 'Pending'
+  if (status === 'cancelled') return 'Stopped'
   if (status === 'error') return 'Failed'
   return ''
 }
@@ -195,9 +202,9 @@ export function ToolCallPreview({
           </span>
         )}
 
-        {getStatusText(status) && (
+        {getStatusText(status, isInProgress) && (
           <span className="text-xs text-muted-foreground/60 flex-shrink-0">
-            {getStatusText(status)}
+            {getStatusText(status, isInProgress)}
           </span>
         )}
 
