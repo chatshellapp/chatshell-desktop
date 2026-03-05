@@ -231,6 +231,29 @@ struct ApiErrorResponse {
 #[derive(Debug, Deserialize)]
 struct CompatError {
     message: String,
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    code: Option<serde_json::Value>,
+}
+
+impl CompatError {
+    fn format_message(&self) -> String {
+        let code_str = self.code.as_ref().and_then(|c| match c {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
+
+        let mut parts = Vec::new();
+        if let Some(ref code) = code_str {
+            parts.push(format!("[{}]", code));
+        } else if let Some(ref t) = self.r#type {
+            parts.push(format!("[{}]", t));
+        }
+        parts.push(self.message.clone());
+        parts.join(" ")
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -324,13 +347,15 @@ where
                         );
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.message)),
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.format_message())),
                 }
             } else {
-                Err(CompletionError::ProviderError(format!(
-                    "Invalid status code {} with message: {}",
-                    status, response_text
-                )))
+                let formatted = if let Ok(api_err) = serde_json::from_str::<ApiErrorResponse>(&response_text) {
+                    format!("[HTTP {}] {}", status.as_u16(), api_err.error.format_message())
+                } else {
+                    format!("[HTTP {}] {}", status.as_u16(), response_text)
+                };
+                Err(CompletionError::ProviderError(formatted))
             }
         };
 
@@ -437,10 +462,27 @@ struct CompatStreamingChoice {
     finish_reason: Option<CompatFinishReason>,
 }
 
+#[derive(Deserialize, Debug, Default)]
+struct CompatUsage {
+    #[serde(default)]
+    prompt_tokens: usize,
+    #[serde(default)]
+    total_tokens: usize,
+}
+
+impl From<CompatUsage> for openai::completion::Usage {
+    fn from(u: CompatUsage) -> Self {
+        openai::completion::Usage {
+            prompt_tokens: u.prompt_tokens,
+            total_tokens: u.total_tokens,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct CompatStreamingChunk {
     choices: Vec<CompatStreamingChoice>,
-    usage: Option<openai::completion::Usage>,
+    usage: Option<CompatUsage>,
 }
 
 async fn send_compat_streaming_request_with_reasoning<T>(
@@ -479,9 +521,19 @@ where
 
                     let data = match serde_json::from_str::<CompatStreamingChunk>(&message.data) {
                         Ok(data) => data,
-                        Err(error) => {
+                        Err(parse_error) => {
+                            if let Ok(api_err) = serde_json::from_str::<ApiErrorResponse>(&message.data) {
+                                tracing::error!(
+                                    error_message = %api_err.error.message,
+                                    error_type = ?api_err.error.r#type,
+                                    error_code = ?api_err.error.code,
+                                    "API error in SSE stream"
+                                );
+                                yield Err(CompletionError::ProviderError(api_err.error.format_message()));
+                                break;
+                            }
                             tracing::error!(
-                                ?error,
+                                ?parse_error,
                                 message = message.data,
                                 "Failed to parse SSE message"
                             );
@@ -560,8 +612,18 @@ where
                     break;
                 }
                 Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    let error_str = error.to_string();
+                    tracing::error!(%error_str, "SSE error");
+                    let formatted = if let Some(json_start) = error_str.find('{') {
+                        if let Ok(api_err) = serde_json::from_str::<ApiErrorResponse>(&error_str[json_start..]) {
+                            api_err.error.format_message()
+                        } else {
+                            error_str
+                        }
+                    } else {
+                        error_str
+                    };
+                    yield Err(CompletionError::ProviderError(formatted));
                     break;
                 }
             }
@@ -601,7 +663,7 @@ where
             });
         }
 
-        let final_usage = final_usage.unwrap_or_default();
+        let final_usage: openai::completion::Usage = final_usage.unwrap_or_default().into();
 
         yield Ok(streaming::RawStreamingChoice::FinalResponse(
             openai::StreamingCompletionResponse { usage: final_usage },

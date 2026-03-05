@@ -24,25 +24,65 @@ interface ParsedError {
   rawError: string
 }
 
+function getStatusLabel(status: number): string {
+  const labels: Record<number, string> = {
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    408: 'Timeout',
+    413: 'Payload Too Large',
+    422: 'Unprocessable',
+    429: 'Rate Limited',
+    500: 'Server Error',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable',
+    504: 'Gateway Timeout',
+  }
+  return labels[status] || `Error ${status}`
+}
+
 function parseApiError(error: string): ParsedError {
   const result: ParsedError = { summary: error, rawError: error }
+  let remaining = error
 
-  // Extract HTTP status code: "HTTP 401 Unauthorized", "status code 429 Too Many Requests", etc.
-  const statusMatch = error.match(/(?:HTTP|status code)\s+(\d{3})(?:\s+([A-Za-z\s]+?))?(?:\s*[):,]|$)/i)
-  if (statusMatch) {
-    result.statusCode = parseInt(statusMatch[1], 10)
-    result.statusText = statusMatch[2]?.trim()
+  // Extract [HTTP xxx] prefix (from backend format_message)
+  const httpBracketMatch = remaining.match(/^\[HTTP (\d{3})\]\s*/)
+  if (httpBracketMatch) {
+    result.statusCode = parseInt(httpBracketMatch[1], 10)
+    result.statusText = getStatusLabel(result.statusCode)
+    remaining = remaining.slice(httpBracketMatch[0].length)
   }
 
-  // Also match rig's "Invalid status code 401 Unauthorized with message:" pattern
-  const rigStatusMatch = error.match(/Invalid status code (\d{3})\s+(\w[\w\s]*?)\s+with message:/i)
-  if (rigStatusMatch && !result.statusCode) {
-    result.statusCode = parseInt(rigStatusMatch[1], 10)
-    result.statusText = rigStatusMatch[2]?.trim()
+  // Extract [error_code] prefix (from backend format_message)
+  if (!result.providerErrorCode) {
+    const codeBracketMatch = remaining.match(/^\[([^\]]+)\]\s*/)
+    if (codeBracketMatch) {
+      result.providerErrorCode = codeBracketMatch[1]
+      remaining = remaining.slice(codeBracketMatch[0].length)
+    }
+  }
+
+  // Fallback: extract HTTP status from "HTTP 401 Unauthorized", "status code 429", etc.
+  if (!result.statusCode) {
+    const statusMatch = error.match(/(?:HTTP|status code)\s+(\d{3})(?:\s+([A-Za-z\s]+?))?(?:\s*[):,]|$)/i)
+    if (statusMatch) {
+      result.statusCode = parseInt(statusMatch[1], 10)
+      result.statusText = statusMatch[2]?.trim() || getStatusLabel(result.statusCode)
+    }
+  }
+
+  // Fallback: match rig's "Invalid status code 401 Unauthorized with message:" pattern
+  if (!result.statusCode) {
+    const rigStatusMatch = error.match(/Invalid status code (\d{3})\s+(\w[\w\s]*?)\s+with message:/i)
+    if (rigStatusMatch) {
+      result.statusCode = parseInt(rigStatusMatch[1], 10)
+      result.statusText = rigStatusMatch[2]?.trim()
+    }
   }
 
   // Try to find and parse embedded JSON error body
-  const jsonMatch = error.match(/\{[\s\S]*\}/)
+  const jsonMatch = remaining.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0])
@@ -54,7 +94,7 @@ function parseApiError(error: string): ParsedError {
           result.summary = errObj.message
         }
         if (errObj.type) result.providerErrorType = errObj.type
-        if (errObj.code) result.providerErrorCode = String(errObj.code)
+        if (errObj.code && !result.providerErrorCode) result.providerErrorCode = String(errObj.code)
       } else if (typeof errObj === 'string') {
         result.providerMessage = errObj
         result.summary = errObj
@@ -64,15 +104,18 @@ function parseApiError(error: string): ParsedError {
     }
   }
 
-  // If no JSON was found, try to extract a readable message from the error string
-  if (!result.providerMessage) {
-    // Remove common prefixes to get a cleaner summary
+  // If we extracted [HTTP][code] prefixes, use the remaining text as the summary
+  if (!result.providerMessage && remaining !== error) {
+    result.summary = remaining.trim() || error
+  }
+
+  // If still no clean message, try to strip internal prefixes
+  if (!result.providerMessage && remaining === error) {
     let cleaned = error
       .replace(/^Stream error:\s*/i, '')
       .replace(/^Provider error:\s*/i, '')
       .replace(/^Failed to create agent:\s*/i, '')
       .replace(/^CompletionError:\s*/i, '')
-    // Remove "Invalid status code XXX ... with message:" prefix
     cleaned = cleaned.replace(/^Invalid status code \d{3}\s+\w[\w\s]*?\s+with message:\s*/i, '')
     if (cleaned !== error) {
       result.summary = cleaned.trim() || error
@@ -83,6 +126,7 @@ function parseApiError(error: string): ParsedError {
 }
 
 function StatusBadge({ code, text }: { code: number; text?: string }) {
+  const label = text || getStatusLabel(code)
   const colorClass =
     code >= 500
       ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
@@ -93,7 +137,7 @@ function StatusBadge({ code, text }: { code: number; text?: string }) {
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium ${colorClass}`}>
       {code}
-      {text && <span className="ml-1 font-sans">{text}</span>}
+      {label && <span className="ml-1 font-sans">{label}</span>}
     </span>
   )
 }

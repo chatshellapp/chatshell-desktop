@@ -15,6 +15,22 @@ use crate::llm::ChatResponse;
 use crate::llm::common::{StreamChunkType, ToolCallInfo, ToolResultInfo};
 use crate::thinking_parser;
 
+/// Strip internal error prefixes (e.g. "CompletionError: ProviderError: ") to
+/// produce a cleaner user-facing message.
+fn strip_internal_prefixes(error: &str) -> String {
+    let mut s = error;
+    for prefix in &[
+        "CompletionError: ProviderError: ",
+        "Provider error: ",
+        "ProviderError: ",
+    ] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest;
+        }
+    }
+    s.to_string()
+}
+
 /// Generic implementation for streaming with any agent type
 pub async fn stream_agent<M>(
     agent: Agent<M>,
@@ -184,7 +200,7 @@ where
             Err(e) => {
                 consecutive_errors += 1;
                 let error_str = e.to_string();
-                last_error = Some(error_str.clone());
+                last_error = Some(strip_internal_prefixes(&error_str));
 
                 let is_decode_error = error_str.contains("decoding response body")
                     || error_str.contains("error reading a body")
@@ -215,7 +231,7 @@ where
                         );
                         break;
                     }
-                    return Err(anyhow::anyhow!("Stream error: {}", error_str));
+                    return Err(anyhow::anyhow!("{}", strip_internal_prefixes(&error_str)));
                 }
 
                 tracing::error!(
@@ -243,12 +259,13 @@ where
     // If stream ended with no content and there were errors, return the error
     if full_content.is_empty() && !cancelled {
         if let Some(err) = last_error {
+            let clean_err = strip_internal_prefixes(&err);
             tracing::error!(
                 "❌ [{}] Stream ended with no content after error(s), propagating: {}",
                 log_prefix,
-                err
+                clean_err
             );
-            return Err(anyhow::anyhow!("{}", err));
+            return Err(anyhow::anyhow!("{}", clean_err));
         }
     }
 

@@ -86,8 +86,8 @@ pub async fn fetch_openai_models(
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow::anyhow!(
-            "Failed to fetch OpenAI models (HTTP {}): {}",
-            status,
+            "[HTTP {}] Failed to fetch OpenAI models: {}",
+            status.as_u16(),
             body
         ));
     }
@@ -139,9 +139,9 @@ pub async fn fetch_openai_compatible_models(
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow::anyhow!(
-            "Failed to fetch {} models (HTTP {}): {}",
+            "[HTTP {}] Failed to fetch {} models: {}",
+            status.as_u16(),
             provider_name,
-            status,
             body
         ));
     }
@@ -193,8 +193,8 @@ pub async fn fetch_openrouter_models(
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow::anyhow!(
-            "Failed to fetch OpenRouter models (HTTP {}): {}",
-            status,
+            "[HTTP {}] Failed to fetch OpenRouter models: {}",
+            status.as_u16(),
             body
         ));
     }
@@ -260,8 +260,8 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>> {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow::anyhow!(
-            "Failed to fetch Ollama models (HTTP {}): {}",
-            status,
+            "[HTTP {}] Failed to fetch Ollama models: {}",
+            status.as_u16(),
             body
         ));
     }

@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
 import { isCustomProvider } from './types'
@@ -142,6 +143,9 @@ export function useProviderSave({
       onOpenChange(false)
     } catch (error) {
       logger.error('Failed to save provider:', error)
+      toast.error('Failed to save provider settings', {
+        description: error instanceof Error ? error.message : String(error),
+      })
     } finally {
       setIsSaving(false)
     }
