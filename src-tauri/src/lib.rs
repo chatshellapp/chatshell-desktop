@@ -29,20 +29,10 @@ pub fn run() {
     // tools like node/npx. Resolve the full PATH from the user's login shell.
     #[cfg(target_os = "macos")]
     {
-        if let Ok(shell) = std::env::var("SHELL") {
-            if let Ok(output) = std::process::Command::new(&shell)
-                .args(["-lc", "printenv PATH"])
-                .output()
-            {
-                if output.status.success() {
-                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !path.is_empty() {
-                        // SAFETY: Called at process start before any threads are spawned.
-                        unsafe {
-                            std::env::set_var("PATH", &path);
-                        }
-                    }
-                }
+        if let Some(path) = mcp::resolve_shell_path() {
+            // SAFETY: Called at process start before any threads are spawned.
+            unsafe {
+                std::env::set_var("PATH", &path);
             }
         }
     }

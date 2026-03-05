@@ -234,8 +234,17 @@ impl McpConnectionManager {
         // sensitive variables from the parent process. Only include essential system
         // variables and explicitly configured custom variables.
         cmd.env_clear();
-        let essential_vars = ["PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TERM"];
-        for var in essential_vars {
+
+        // Use resolved shell PATH (includes nvm, homebrew, etc.) instead of
+        // the potentially minimal PATH inherited by macOS GUI apps.
+        let path = super::resolve_shell_path()
+            .or_else(|| std::env::var("PATH").ok())
+            .unwrap_or_else(|| "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
+        cmd.env("PATH", &path);
+        tracing::debug!("  PATH for child process: {}", path);
+
+        let other_essential_vars = ["HOME", "USER", "SHELL", "LANG", "LC_ALL", "TERM"];
+        for var in other_essential_vars {
             if let Ok(value) = std::env::var(var) {
                 cmd.env(var, value);
             }
