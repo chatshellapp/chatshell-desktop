@@ -78,8 +78,20 @@ function getLangFromPath(path: string): string {
 // --- Input summary extraction ---
 
 function extractCommandNames(command: string): string {
-  // Strip heredoc/stdin content: remove everything from << (with optional quotes) to EOF
-  const stripped = command.replace(/<<-?\s*'?\w+'?[\s\S]*/, '')
+  let stripped = command.replace(/<<-?\s*'?\w+'?[\s\S]*/, '')
+
+  // Neutralize quoted string contents so we don't split on ; | && inside them
+  stripped = stripped.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/'[^']*'/g, "''")
+  stripped = stripped.replace(/`[^`]*`/g, '``')
+
+  // Neutralize array assignments: VAR=( ... ) → VAR=()
+  stripped = stripped.replace(/=\([^)]*\)/g, '=()')
+
+  const SHELL_KEYWORDS = new Set([
+    'do', 'done', 'then', 'else', 'elif', 'fi', 'esac', 'in',
+    'function', 'time', 'coproc', 'if',
+  ])
+  const LOOP_HEADERS = new Set(['for', 'while', 'until', 'case', 'select'])
 
   const names = stripped
     .split(/\s*(?:&&|\|\||[|;])\s*/)
@@ -89,8 +101,11 @@ function extractCommandNames(command: string): string {
       const parts = trimmed.split(/\s+/)
       for (const part of parts) {
         if (part.includes('=') || part === 'sudo' || part === 'env') continue
-        // Handle redirects like > or >>
         if (part === '>' || part === '>>' || part === '<' || part === '2>') return null
+        if (LOOP_HEADERS.has(part)) return null
+        if (SHELL_KEYWORDS.has(part)) continue
+        if (/^["'`()\[\]{}$\\-]/.test(part)) continue
+        if (/^\d/.test(part)) continue
         return part.replace(/^.*\//, '')
       }
       return null
