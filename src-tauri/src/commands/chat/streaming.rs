@@ -226,10 +226,7 @@ pub(crate) async fn handle_agent_streaming(
         );
         for entry in &skill_entries {
             let desc = entry.description.as_deref().unwrap_or("No description");
-            effective_system_prompt.push_str(&format!(
-                "- **{}** - {}\n",
-                entry.name, desc
-            ));
+            effective_system_prompt.push_str(&format!("- **{}** - {}\n", entry.name, desc));
         }
     }
 
@@ -414,22 +411,18 @@ pub(crate) async fn handle_agent_streaming(
                                 for tool in tools {
                                     let desc =
                                         tool.description.as_deref().unwrap_or("No description");
-                                    mcp_catalog.push_str(&format!(
-                                        "- **{}** - {}\n",
-                                        tool.name,
-                                        desc
-                                    ));
+                                    mcp_catalog
+                                        .push_str(&format!("- **{}** - {}\n", tool.name, desc));
                                     let key = format!("{}/{}", server_name, tool.name);
-                                    client_map.insert(
-                                        key.clone(),
-                                        (server_name.clone(), client.clone()),
-                                    );
+                                    client_map
+                                        .insert(key.clone(), (server_name.clone(), client.clone()));
                                     let definition = serde_json::json!({
                                         "name": key,
                                         "description": tool.description,
                                         "inputSchema": tool.input_schema,
                                     });
-                                    if let Ok(json_str) = serde_json::to_string_pretty(&definition) {
+                                    if let Ok(json_str) = serde_json::to_string_pretty(&definition)
+                                    {
                                         schema_map.insert(key, json_str);
                                     }
                                 }

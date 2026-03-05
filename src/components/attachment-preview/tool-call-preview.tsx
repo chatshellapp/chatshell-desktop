@@ -1,14 +1,5 @@
 import { useMemo, useState } from 'react'
-import {
-  Wrench,
-  ChevronDown,
-  ChevronUp,
-  XCircle,
-  Loader2,
-  Plug,
-  Braces,
-  Ban,
-} from 'lucide-react'
+import { Wrench, ChevronDown, ChevronUp, XCircle, Loader2, Plug, Braces, Ban } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
 import type { ParsedToolName } from '@/lib/tool-name'

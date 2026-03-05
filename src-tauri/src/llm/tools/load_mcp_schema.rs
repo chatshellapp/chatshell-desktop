@@ -44,10 +44,11 @@ impl Tool for LoadMcpSchemaTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "load_mcp_schema".to_string(),
-            description: "Load the definition (parameters and schema) for an MCP tool by server and name. \
+            description:
+                "Load the definition (parameters and schema) for an MCP tool by server and name. \
                 Use this before calling an MCP tool to understand its required parameters. \
                 Pass the server name (section header in the catalog) and the tool name."
-                .to_string(),
+                    .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -76,9 +77,7 @@ impl Tool for LoadMcpSchemaTool {
         let schema = self
             .schemas
             .get(&key)
-            .ok_or_else(|| {
-                LoadMcpSchemaError(format!("Unknown MCP tool: {}", key))
-            })?
+            .ok_or_else(|| LoadMcpSchemaError(format!("Unknown MCP tool: {}", key)))?
             .clone();
 
         Ok(schema)

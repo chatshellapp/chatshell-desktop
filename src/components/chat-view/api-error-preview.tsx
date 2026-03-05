@@ -65,7 +65,9 @@ function parseApiError(error: string): ParsedError {
 
   // Fallback: extract HTTP status from "HTTP 401 Unauthorized", "status code 429", etc.
   if (!result.statusCode) {
-    const statusMatch = error.match(/(?:HTTP|status code)\s+(\d{3})(?:\s+([A-Za-z\s]+?))?(?:\s*[):,]|$)/i)
+    const statusMatch = error.match(
+      /(?:HTTP|status code)\s+(\d{3})(?:\s+([A-Za-z\s]+?))?(?:\s*[):,]|$)/i
+    )
     if (statusMatch) {
       result.statusCode = parseInt(statusMatch[1], 10)
       result.statusText = statusMatch[2]?.trim() || getStatusLabel(result.statusCode)
@@ -74,7 +76,9 @@ function parseApiError(error: string): ParsedError {
 
   // Fallback: match rig's "Invalid status code 401 Unauthorized with message:" pattern
   if (!result.statusCode) {
-    const rigStatusMatch = error.match(/Invalid status code (\d{3})\s+(\w[\w\s]*?)\s+with message:/i)
+    const rigStatusMatch = error.match(
+      /Invalid status code (\d{3})\s+(\w[\w\s]*?)\s+with message:/i
+    )
     if (rigStatusMatch) {
       result.statusCode = parseInt(rigStatusMatch[1], 10)
       result.statusText = rigStatusMatch[2]?.trim()
@@ -135,7 +139,9 @@ function StatusBadge({ code, text }: { code: number; text?: string }) {
         : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
 
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium ${colorClass}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium ${colorClass}`}
+    >
       {code}
       {label && <span className="ml-1 font-sans">{label}</span>}
     </span>

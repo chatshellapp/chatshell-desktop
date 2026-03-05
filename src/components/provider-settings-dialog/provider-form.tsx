@@ -264,7 +264,9 @@ export function ProviderForm({
           <div className="text-xs text-destructive space-y-1">
             <p className="font-medium">Connection failed</p>
             <div className="px-2 py-1.5 bg-destructive/5 rounded max-h-24 overflow-y-auto">
-              <p className="font-mono text-destructive/80 whitespace-pre-wrap break-all">{checkError}</p>
+              <p className="font-mono text-destructive/80 whitespace-pre-wrap break-all">
+                {checkError}
+              </p>
             </div>
           </div>
         )}

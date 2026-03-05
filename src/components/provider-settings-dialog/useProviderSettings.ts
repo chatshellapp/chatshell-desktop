@@ -9,7 +9,6 @@ import { useModelList } from './useModelList'
 import { useFetchModels } from './useFetchModels'
 import { useModelFiltering } from './useModelFiltering'
 import { useProviderSave } from './useProviderSave'
-import { logger } from '@/lib/logger'
 
 /**
  * Main hook that composes all provider settings functionality

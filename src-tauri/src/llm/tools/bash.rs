@@ -427,10 +427,7 @@ impl BashTool {
         let path = std::env::temp_dir().join(filename);
         match std::fs::write(&path, output) {
             Ok(()) => {
-                tracing::info!(
-                    "🖥️ [bash] Full output saved to: {}",
-                    path.display()
-                );
+                tracing::info!("🖥️ [bash] Full output saved to: {}", path.display());
                 Some(path.to_string_lossy().to_string())
             }
             Err(e) => {

@@ -88,8 +88,18 @@ function extractCommandNames(command: string): string {
   stripped = stripped.replace(/=\([^)]*\)/g, '=()')
 
   const SHELL_KEYWORDS = new Set([
-    'do', 'done', 'then', 'else', 'elif', 'fi', 'esac', 'in',
-    'function', 'time', 'coproc', 'if',
+    'do',
+    'done',
+    'then',
+    'else',
+    'elif',
+    'fi',
+    'esac',
+    'in',
+    'function',
+    'time',
+    'coproc',
+    'if',
   ])
   const LOOP_HEADERS = new Set(['for', 'while', 'until', 'case', 'select'])
 
@@ -133,7 +143,8 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'load_skill':
         return parsed.name ?? null
       case 'load_mcp_schema':
-        if (parsed.server_name && parsed.tool_name) return `${parsed.server_name}/${parsed.tool_name}`
+        if (parsed.server_name && parsed.tool_name)
+          return `${parsed.server_name}/${parsed.tool_name}`
         return parsed.tool_name ?? null
       case 'bash':
         return parsed.description || (parsed.command ? extractCommandNames(parsed.command) : null)
@@ -414,15 +425,16 @@ export function LoadMcpSchemaOutput({ toolInput, toolOutput }: ToolOutputProps) 
     <div className="space-y-2">
       {toolName && (
         <div className="flex items-center justify-between min-w-0">
-          <span className="text-xs text-muted-foreground/70 font-mono truncate">
-            {toolName}
-          </span>
+          <span className="text-xs text-muted-foreground/70 font-mono truncate">{toolName}</span>
           {output && <CopyButton text={output} />}
         </div>
       )}
       {codeBlock && (
         <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent content={codeBlock} className="text-xs [&_pre]:!bg-transparent [&_pre]:!p-0" />
+          <MarkdownContent
+            content={codeBlock}
+            className="text-xs [&_pre]:!bg-transparent [&_pre]:!p-0"
+          />
         </div>
       )}
     </div>

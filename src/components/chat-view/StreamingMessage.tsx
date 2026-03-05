@@ -59,8 +59,7 @@ export function StreamingMessage({
   // API reasoning takes precedence as it's the native format for reasoning models
   const combinedThinkingContent = streamingReasoningContent || parsedStreaming.thinkingContent
   const isThinkingInProgress =
-    isStreaming &&
-    (streamingReasoningContent ? true : parsedStreaming.isThinkingInProgress)
+    isStreaming && (streamingReasoningContent ? true : parsedStreaming.isThinkingInProgress)
 
   // Get the last user message to show its resources
   const lastUserMessage = messages.filter((m) => m.sender_type === 'user').slice(-1)[0]

@@ -22,11 +22,11 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
+use crate::llm::tools::bash::SharedBashSession;
 use crate::llm::tools::{
     BashTool, EditTool, GlobTool, GrepTool, KillShellTool, LoadMcpSchemaTool, LoadSkillTool,
     McpCallTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
 };
-use crate::llm::tools::bash::SharedBashSession;
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
     deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
@@ -809,7 +809,11 @@ fn build_agent_with_tools<M: CompletionModel>(
                 && !mcp_config.server_tools.is_empty()
             {
                 let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-                tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
+                tracing::info!(
+                    "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
+                    total,
+                    mcp_config.server_tools.len()
+                );
                 for (tools, client) in &mcp_config.server_tools {
                     if !tools.is_empty() {
                         sb = sb.rmcp_tools(tools.clone(), client.clone());
@@ -1031,10 +1035,17 @@ fn build_agent_with_tools<M: CompletionModel>(
     if let Some(ref mcp_config) = config.mcp_tools
         && !mcp_config.server_tools.is_empty()
     {
-        let mut iter = mcp_config.server_tools.iter().filter(|(t, _)| !t.is_empty());
+        let mut iter = mcp_config
+            .server_tools
+            .iter()
+            .filter(|(t, _)| !t.is_empty());
         if let Some((first_tools, first_client)) = iter.next() {
             let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-            tracing::info!("🔌 Adding {} MCP tool(s) from {} server(s) to agent", total, mcp_config.server_tools.len());
+            tracing::info!(
+                "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
+                total,
+                mcp_config.server_tools.len()
+            );
             let mut sb = builder.rmcp_tools(first_tools.clone(), first_client.clone());
             for (tools, client) in iter {
                 sb = sb.rmcp_tools(tools.clone(), client.clone());

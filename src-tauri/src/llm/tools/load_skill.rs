@@ -68,10 +68,16 @@ impl Tool for LoadSkillTool {
 
         let path = std::path::Path::new(path);
         if !path.exists() {
-            return Err(LoadSkillError(format!("Skill file not found: {}", path.display())));
+            return Err(LoadSkillError(format!(
+                "Skill file not found: {}",
+                path.display()
+            )));
         }
         if !path.is_file() {
-            return Err(LoadSkillError(format!("Skill path is not a file: {}", path.display())));
+            return Err(LoadSkillError(format!(
+                "Skill path is not a file: {}",
+                path.display()
+            )));
         }
 
         let content = tokio::fs::read_to_string(path)

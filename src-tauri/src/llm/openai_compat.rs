@@ -347,14 +347,21 @@ where
                         );
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error.format_message())),
+                    ApiResponse::Err(err) => {
+                        Err(CompletionError::ProviderError(err.error.format_message()))
+                    }
                 }
             } else {
-                let formatted = if let Ok(api_err) = serde_json::from_str::<ApiErrorResponse>(&response_text) {
-                    format!("[HTTP {}] {}", status.as_u16(), api_err.error.format_message())
-                } else {
-                    format!("[HTTP {}] {}", status.as_u16(), response_text)
-                };
+                let formatted =
+                    if let Ok(api_err) = serde_json::from_str::<ApiErrorResponse>(&response_text) {
+                        format!(
+                            "[HTTP {}] {}",
+                            status.as_u16(),
+                            api_err.error.format_message()
+                        )
+                    } else {
+                        format!("[HTTP {}] {}", status.as_u16(), response_text)
+                    };
                 Err(CompletionError::ProviderError(formatted))
             }
         };
