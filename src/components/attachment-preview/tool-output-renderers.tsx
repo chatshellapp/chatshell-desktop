@@ -118,6 +118,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'load_skill':
         return parsed.name ?? null
       case 'load_mcp_schema':
+        if (parsed.server_name && parsed.tool_name) return `${parsed.server_name}/${parsed.tool_name}`
         return parsed.tool_name ?? null
       case 'bash':
         return parsed.command ? extractCommandNames(parsed.command) : null

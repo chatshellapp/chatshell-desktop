@@ -941,24 +941,46 @@ fn build_agent_with_tools<M: CompletionModel>(
         finish_with_simple_builder!(sb);
     }
 
-    // Only load_skill / load_mcp_schema / mcp_call_tool (no other native tools)
+    // Only load_skill / load_mcp_schema / mcp_call_tool (no other native tools).
+    // We must add the first tool to bootstrap `sb`, then chain the rest manually
+    // instead of calling finish_with_simple_builder! (which would re-add all three).
     if config.mcp_call_tool.is_some()
         || config.load_skill_tool.is_some()
         || config.load_mcp_schema_tool.is_some()
     {
-        let sb = if let Some(ref mcp_call) = config.mcp_call_tool {
-            tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-            builder.tool(mcp_call.clone())
-        } else if let Some(ref load_skill) = config.load_skill_tool {
-            tracing::info!("📋 Adding load_skill tool to agent");
-            builder.tool(load_skill.clone())
-        } else if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
-            tracing::info!("📋 Adding load_mcp_schema tool to agent");
-            builder.tool(load_mcp_schema.clone())
-        } else {
-            unreachable!()
-        };
-        finish_with_simple_builder!(sb);
+        let (sb, added_mcp_call, added_load_skill, added_load_mcp_schema) =
+            if let Some(ref mcp_call) = config.mcp_call_tool {
+                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+                (builder.tool(mcp_call.clone()), true, false, false)
+            } else if let Some(ref load_skill) = config.load_skill_tool {
+                tracing::info!("📋 Adding load_skill tool to agent");
+                (builder.tool(load_skill.clone()), false, true, false)
+            } else if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
+                tracing::info!("📋 Adding load_mcp_schema tool to agent");
+                (builder.tool(load_mcp_schema.clone()), false, false, true)
+            } else {
+                unreachable!()
+            };
+        let mut sb = sb;
+        if !added_mcp_call {
+            if let Some(ref mcp_call) = config.mcp_call_tool {
+                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+                sb = sb.tool(mcp_call.clone());
+            }
+        }
+        if !added_load_skill {
+            if let Some(ref load_skill) = config.load_skill_tool {
+                tracing::info!("📋 Adding load_skill tool to agent");
+                sb = sb.tool(load_skill.clone());
+            }
+        }
+        if !added_load_mcp_schema {
+            if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
+                tracing::info!("📋 Adding load_mcp_schema tool to agent");
+                sb = sb.tool(load_mcp_schema.clone());
+            }
+        }
+        return sb.build();
     }
 
     // Only MCP tools (no native tools). First .rmcp_tools() turns AgentBuilder into AgentBuilderSimple.

@@ -27,7 +27,9 @@ pub enum McpCallError {
 
 #[derive(Debug, Deserialize)]
 pub struct McpCallArgs {
-    /// The exact name of the MCP tool to call
+    /// The MCP server name (section header in the Available MCP Tools catalog)
+    pub server_name: String,
+    /// The exact name of the MCP tool to call (as exposed by the server)
     pub tool_name: String,
     /// The arguments to pass to the tool, matching its inputSchema
     #[serde(default)]
@@ -58,38 +60,42 @@ impl Tool for McpCallTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "call_mcp_tool".to_string(),
-            description: "Call an MCP (Model Context Protocol) tool by name. \
-                Before calling, use the `load_mcp_schema` tool to load the tool's definition \
-                (listed in the system prompt under 'Available MCP Tools') \
-                to understand the required parameters and their types."
+            description: "Call an MCP (Model Context Protocol) tool by server and name. \
+                Before calling, use the `load_mcp_schema` tool to load the tool's definition. \
+                Pass the server name (section header in the catalog) and the tool name."
                 .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "The MCP server name (section header in the Available MCP Tools catalog)"
+                    },
                     "tool_name": {
                         "type": "string",
                         "description": "The exact name of the MCP tool to call"
                     },
                     "arguments": {
                         "type": "object",
-                        "description": "The arguments to pass to the tool, as specified in its definition file's inputSchema"
+                        "description": "The arguments to pass to the tool, as specified in its definition's inputSchema"
                     }
                 },
-                "required": ["tool_name"]
+                "required": ["server_name", "tool_name"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let key = format!("{}/{}", args.server_name, args.tool_name);
         let clients = self.clients.read().await;
-        let (server_name, client) = clients
-            .get(&args.tool_name)
-            .ok_or_else(|| McpCallError::UnknownTool(args.tool_name.clone()))?;
+        let (_server_name, client) = clients
+            .get(&key)
+            .ok_or_else(|| McpCallError::UnknownTool(key.clone()))?;
 
         tracing::info!(
             "🔌 [call_mcp_tool] Calling '{}' on server '{}'",
             args.tool_name,
-            server_name
+            args.server_name
         );
 
         let arguments = args.arguments.as_object().cloned().unwrap_or_default();

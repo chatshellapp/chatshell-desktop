@@ -12,7 +12,9 @@ use serde_json::json;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoadMcpSchemaArgs {
-    /// Name of the MCP tool (as listed in the Available MCP Tools catalog)
+    /// Server name (section header in the Available MCP Tools catalog, e.g. "GitHub")
+    pub server_name: String,
+    /// Name of the MCP tool (as listed under that server in the catalog)
     pub tool_name: String,
 }
 
@@ -42,33 +44,40 @@ impl Tool for LoadMcpSchemaTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "load_mcp_schema".to_string(),
-            description: "Load the definition (parameters and schema) for an MCP tool by name. \
-                Use this before calling an MCP tool to understand its required parameters."
+            description: "Load the definition (parameters and schema) for an MCP tool by server and name. \
+                Use this before calling an MCP tool to understand its required parameters. \
+                Pass the server name (section header in the catalog) and the tool name."
                 .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "The MCP server name (section header in the Available MCP Tools catalog, e.g. GitHub)"
+                    },
                     "tool_name": {
                         "type": "string",
-                        "description": "The name of the MCP tool (as listed in the Available MCP Tools catalog)"
+                        "description": "The name of the MCP tool (as listed under that server)"
                     }
                 },
-                "required": ["tool_name"]
+                "required": ["server_name", "tool_name"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let key = format!("{}/{}", args.server_name, args.tool_name);
         tracing::info!(
-            "🔧 [tool-call] load_mcp_schema: tool_name=\"{}\"",
+            "🔧 [tool-call] load_mcp_schema: server_name=\"{}\", tool_name=\"{}\"",
+            args.server_name,
             args.tool_name
         );
 
         let schema = self
             .schemas
-            .get(&args.tool_name)
+            .get(&key)
             .ok_or_else(|| {
-                LoadMcpSchemaError(format!("Unknown MCP tool: {}", args.tool_name))
+                LoadMcpSchemaError(format!("Unknown MCP tool: {}", key))
             })?
             .clone();
 

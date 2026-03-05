@@ -377,8 +377,9 @@ pub(crate) async fn handle_agent_streaming(
                     // Sync tool definitions to files (for debugging) and build in-memory schema map + catalog
                     let mut mcp_catalog = String::from("\n\n## Available MCP Tools\n\n");
                     mcp_catalog.push_str(
-                        "Before calling an MCP tool, use the `load_mcp_schema` tool to load its \
-                         definition to understand the required parameters.\n\n",
+                        "When calling `load_mcp_schema` or `call_mcp_tool`, pass both \
+                         `server_name` (the section header below, e.g. GitHub) and `tool_name`. \
+                         Use `load_mcp_schema` first to load a tool's definition and understand its parameters.\n\n",
                     );
 
                     let mut client_map: HashMap<String, (String, Peer<RoleClient>)> =
@@ -407,17 +408,18 @@ pub(crate) async fn handle_agent_streaming(
                                         tool.name,
                                         desc
                                     ));
+                                    let key = format!("{}/{}", server_name, tool.name);
                                     client_map.insert(
-                                        tool.name.to_string(),
+                                        key.clone(),
                                         (server_name.clone(), client.clone()),
                                     );
                                     let definition = serde_json::json!({
-                                        "name": tool.name,
+                                        "name": key,
                                         "description": tool.description,
                                         "inputSchema": tool.input_schema,
                                     });
                                     if let Ok(json_str) = serde_json::to_string_pretty(&definition) {
-                                        schema_map.insert(tool.name.to_string(), json_str);
+                                        schema_map.insert(key, json_str);
                                     }
                                 }
                                 mcp_catalog.push('\n');
@@ -666,12 +668,16 @@ pub(crate) async fn handle_agent_streaming(
                     let tool_order = display_order_for_callback
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-                    // For call_mcp_tool, extract the real MCP tool name and inner arguments
-                    let (actual_tool_name, display_input) =
+                    // For call_mcp_tool, extract server_name, real MCP tool name, and inner arguments
+                    let (actual_tool_name, display_name, display_input) =
                         if tool_info.tool_name == "call_mcp_tool" {
                             if let Ok(parsed) =
                                 serde_json::from_str::<serde_json::Value>(&tool_info.tool_input)
                             {
+                                let server_name = parsed["server_name"]
+                                    .as_str()
+                                    .unwrap_or("unknown")
+                                    .to_string();
                                 let real_name = parsed["tool_name"]
                                     .as_str()
                                     .unwrap_or("call_mcp_tool")
@@ -680,19 +686,34 @@ pub(crate) async fn handle_agent_streaming(
                                     .get("arguments")
                                     .map(|a| a.to_string())
                                     .unwrap_or_else(|| "{}".to_string());
-                                (real_name, inner_args)
+                                // Store composite key for auth lookup; build display name directly
+                                let composite_key = format!("{}/{}", server_name, real_name);
+                                let display = format!(
+                                    "mcp__{}__{}",
+                                    sanitize_server_name(&server_name),
+                                    real_name
+                                );
+                                (composite_key, display, inner_args)
                             } else {
-                                (tool_info.tool_name.clone(), tool_info.tool_input.clone())
+                                let fallback_name = tool_info.tool_name.clone();
+                                let display = mcp_display_name(
+                                    &fallback_name,
+                                    &mcp_server_name_map_for_callback,
+                                );
+                                (
+                                    fallback_name,
+                                    display,
+                                    tool_info.tool_input.clone(),
+                                )
                             }
                         } else {
-                            (tool_info.tool_name.clone(), tool_info.tool_input.clone())
+                            let name = tool_info.tool_name.clone();
+                            let display = mcp_display_name(
+                                &name,
+                                &mcp_server_name_map_for_callback,
+                            );
+                            (name, display, tool_info.tool_input.clone())
                         };
-
-                    // Build display name: prefix MCP tools with mcp__{server_name}__
-                    let display_name = mcp_display_name(
-                        &actual_tool_name,
-                        &mcp_server_name_map_for_callback,
-                    );
 
                     // Store tool call in tracking map (actual MCP tool name for auth lookup)
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
@@ -745,11 +766,9 @@ pub(crate) async fn handle_agent_streaming(
                             }
                         }
 
-                        // Build display name for frontend
-                        let display_name = mcp_display_name(
-                            name,
-                            &mcp_server_name_map_for_callback,
-                        );
+                        // Build display name for frontend (name may be composite "server/tool" in lazy-load)
+                        let display_name =
+                            mcp_display_name_from_stored(name, &mcp_server_name_map_for_callback);
 
                         // Emit tool result event to frontend
                         let payload = serde_json::json!({
@@ -980,7 +999,8 @@ pub(crate) async fn handle_agent_streaming(
                 "pending"
             };
 
-            let display_name = mcp_display_name(tool_name, &mcp_tool_name_to_server_name);
+            let display_name =
+                mcp_display_name_from_stored(tool_name, &mcp_tool_name_to_server_name);
 
             match state_clone
                 .db
@@ -1245,6 +1265,10 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
 
     for (conn, tools) in result.connections {
         for t in &tools {
+            let key = format!("{}/{}", conn.tool.name, t.name);
+            tool_name_to_server_id.insert(key.clone(), conn.tool.id.clone());
+            tool_name_to_server_name.insert(key.clone(), conn.tool.name.clone());
+            // Also insert raw key so non-lazy path (direct rmcp_tools) auth lookup still works
             tool_name_to_server_id.insert(t.name.to_string(), conn.tool.id.clone());
             tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
         }
@@ -1268,6 +1292,18 @@ fn mcp_display_name(original_name: &str, server_name_map: &HashMap<String, Strin
             format!("mcp__{}__{}", sanitized, original_name)
         }
         None => original_name.to_string(),
+    }
+}
+
+/// Build display name from a stored tool key (composite "server/tool" in lazy-load, or plain name).
+fn mcp_display_name_from_stored(
+    stored_key: &str,
+    server_name_map: &HashMap<String, String>,
+) -> String {
+    if let Some((server, tool)) = stored_key.split_once('/') {
+        format!("mcp__{}__{}", sanitize_server_name(server), tool)
+    } else {
+        mcp_display_name(stored_key, server_name_map)
     }
 }
 
