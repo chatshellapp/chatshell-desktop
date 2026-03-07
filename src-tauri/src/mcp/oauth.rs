@@ -325,7 +325,6 @@ pub async fn exchange_code(
     code: &str,
     _state: &str,
     pkce_verifier: PkceCodeVerifier,
-    http_client: &reqwest::Client,
 ) -> Result<OAuthTokens> {
     let auth_url = AuthUrl::new(discovery.authorization_endpoint.clone())
         .context("Invalid authorization endpoint")?;
@@ -343,11 +342,15 @@ pub async fn exchange_code(
         client = client.set_client_secret(ClientSecret::new(secret.to_string()));
     }
 
+    // Use oauth2's own re-exported reqwest (0.12) to avoid version mismatch
+    // with our direct reqwest 0.13 dependency.
+    let oauth_http_client = oauth2::reqwest::Client::new();
+
     let token_response = client
         .exchange_code(AuthorizationCode::new(code.to_string()))
         .set_pkce_verifier(pkce_verifier)
         .add_extra_param("resource", &discovery.resource_uri)
-        .request_async(http_client)
+        .request_async(&oauth_http_client)
         .await
         .context("Token exchange failed")?;
 

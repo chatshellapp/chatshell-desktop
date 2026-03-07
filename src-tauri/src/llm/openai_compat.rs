@@ -284,7 +284,7 @@ impl<T> CompletionModel<T> {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + Sync + 'static,
 {
     type Response = openai::CompletionResponse;
     type StreamingResponse = openai::StreamingCompletionResponse;
@@ -416,7 +416,7 @@ where
             reqwest::header::HeaderValue::from_static("application/json"),
         );
 
-        send_compat_streaming_request_with_reasoning(self.client.http_client().clone(), req)
+        send_compat_streaming_request_with_reasoning(self.client.clone(), req)
             .instrument(span)
             .await
     }
@@ -482,6 +482,7 @@ impl From<CompatUsage> for openai::completion::Usage {
         openai::completion::Usage {
             prompt_tokens: u.prompt_tokens,
             total_tokens: u.total_tokens,
+            prompt_tokens_details: None,
         }
     }
 }
@@ -566,6 +567,8 @@ where
                                         name: String::new(),
                                         arguments: serde_json::Value::Null,
                                     },
+                                    signature: None,
+                                    additional_params: None,
                                 });
 
                             if let Some(id) = &tool_call.id {
@@ -588,7 +591,8 @@ where
 
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
-                                    delta: chunk.clone(),
+                                    internal_call_id: String::new(),
+                                    content: streaming::ToolCallDeltaContent::Delta(chunk.clone()),
                                 });
                             }
                         }
@@ -598,9 +602,11 @@ where
                     if let Some(reasoning) = &delta.reasoning_content {
                         if !reasoning.is_empty() {
                             yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                reasoning: reasoning.clone(),
                                 id: None,
-                                signature: None,
+                                content: rig::message::ReasoningContent::Text {
+                                    text: reasoning.clone(),
+                                    signature: None,
+                                },
                             });
                         }
                     }
@@ -662,12 +668,13 @@ where
                 continue;
             }
 
-            yield Ok(streaming::RawStreamingChoice::ToolCall {
-                name: tool_call.function.name,
-                id: tool_call.id,
-                arguments: tool_call.function.arguments,
-                call_id: None,
-            });
+            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                streaming::RawStreamingToolCall::new(
+                    tool_call.id,
+                    tool_call.function.name,
+                    tool_call.function.arguments,
+                ),
+            ));
         }
 
         let final_usage: openai::completion::Usage = final_usage.unwrap_or_default().into();

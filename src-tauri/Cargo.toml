@@ -29,7 +29,7 @@ serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream", "gzip", "deflate", "brotli", "zstd"] }
+reqwest = { version = "0.13", features = ["json", "stream", "gzip", "deflate", "brotli", "zstd"] }
 oauth2 = { version = "5.0", default-features = false, features = ["reqwest"] }
 
 # Async runtime
@@ -64,9 +64,9 @@ dirs = "5"
 shell-words = "1"
 
 # LLM framework
-rig-core = { version = "0.25", features = ["rmcp"] }
+rig-core = { version = "0.32", features = ["rmcp"] }
 # Use same version as rig-core to avoid type mismatch
-rmcp = { version = "0.9.1", features = ["client", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
+rmcp = { version = "0.16", features = ["client", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 
 # Logging
 tracing = "0.1"

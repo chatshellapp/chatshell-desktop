@@ -493,7 +493,6 @@ pub async fn complete_mcp_oauth(
         .map_err(|_| "OAuth callback timeout")?
         .map_err(|_| "OAuth callback channel closed")?;
 
-    let http_client = reqwest::Client::new();
     let tokens = oauth::exchange_code(
         &pending.discovery,
         &pending.auth_state.redirect_uri,
@@ -502,7 +501,6 @@ pub async fn complete_mcp_oauth(
         &code,
         &state_param,
         pending.auth_state.pkce_verifier,
-        &http_client,
     )
     .await
     .map_err(|e| e.to_string())?;

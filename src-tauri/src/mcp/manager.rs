@@ -76,6 +76,7 @@ impl McpConnectionManager {
     /// Create the standard client info for MCP connections
     fn create_client_info() -> ClientInfo {
         ClientInfo {
+            meta: None,
             protocol_version: Default::default(),
             capabilities: ClientCapabilities::default(),
             client_info: Implementation {

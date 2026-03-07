@@ -11,7 +11,7 @@ use std::sync::Arc;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use rmcp::RoleClient;
-use rmcp::model::{CallToolRequestParam, RawContent};
+use rmcp::model::{CallToolRequestParams, RawContent};
 use rmcp::service::Peer;
 use serde::Deserialize;
 use serde_json::json;
@@ -101,9 +101,11 @@ impl Tool for McpCallTool {
         let arguments = args.arguments.as_object().cloned().unwrap_or_default();
 
         let result = client
-            .call_tool(CallToolRequestParam {
+            .call_tool(CallToolRequestParams {
                 name: args.tool_name.clone().into(),
                 arguments: Some(arguments),
+                meta: None,
+                task: None,
             })
             .await
             .map_err(|e| McpCallError::CallFailed(format!("Tool returned an error: {e}")))?;

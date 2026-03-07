@@ -101,15 +101,22 @@ where
                 }
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                Reasoning { reasoning, .. },
+                Reasoning { content, .. },
             ))) => {
                 consecutive_errors = 0;
-                // Detect reasoning start
                 if !is_reasoning {
                     is_reasoning = true;
                     tracing::info!("💡 [{}] Reasoning started", log_prefix);
                 }
-                let reasoning_text = reasoning.join("");
+                let reasoning_text: String = content
+                    .iter()
+                    .filter_map(|rc| match rc {
+                        rig::message::ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                        rig::message::ReasoningContent::Summary(s) => Some(s.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
                 if !reasoning_text.is_empty() {
                     full_reasoning.push_str(&reasoning_text);
 
@@ -120,11 +127,11 @@ where
                     }
                 }
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall(
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
                 tool_call,
-            ))) => {
+                ..
+            })) => {
                 consecutive_errors = 0;
-                // Convert tool call arguments to JSON string
                 let tool_input = serde_json::to_string(&tool_call.function.arguments)
                     .unwrap_or_else(|_| "{}".to_string());
 
@@ -147,11 +154,11 @@ where
                     break;
                 }
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(
+            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
-            ))) => {
+                ..
+            })) => {
                 consecutive_errors = 0;
-                // Extract text content from tool result
                 let tool_output = tool_result
                     .content
                     .iter()

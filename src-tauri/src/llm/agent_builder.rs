@@ -762,9 +762,9 @@ fn build_agent<M: CompletionModel>(
 
 /// Build agent with native tools and/or MCP tools.
 ///
-/// The first `.tool()` call transitions `AgentBuilder` into `AgentBuilderSimple`.
-/// We find the first enabled tool to perform that transition, then chain all
-/// remaining enabled tools onto the simple builder.
+/// In rig-core 0.32, `AgentBuilder` uses a typestate pattern: the first `.tool()` call
+/// transitions from `NoToolConfig` to `WithBuilderTools`, and subsequent `.tool()` calls
+/// return `Self`. This eliminates the cascading if-blocks previously needed.
 fn build_agent_with_tools<M: CompletionModel>(
     builder: rig::agent::AgentBuilder<M>,
     config: &AgentConfig,
@@ -799,46 +799,6 @@ fn build_agent_with_tools<M: CompletionModel>(
         }
     };
 
-    // Once we have a simple builder (after the first .tool() call), this macro
-    // chains all remaining enabled tools, adds MCP tools per server if any, and builds.
-    macro_rules! finish_with_simple_builder {
-        ($simple_builder:expr) => {{
-            let mut sb = $simple_builder;
-
-            if let Some(ref mcp_config) = config.mcp_tools
-                && !mcp_config.server_tools.is_empty()
-            {
-                let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-                tracing::info!(
-                    "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
-                    total,
-                    mcp_config.server_tools.len()
-                );
-                for (tools, client) in &mcp_config.server_tools {
-                    if !tools.is_empty() {
-                        sb = sb.rmcp_tools(tools.clone(), client.clone());
-                    }
-                }
-                return sb.build();
-            }
-
-            if let Some(ref mcp_call) = config.mcp_call_tool {
-                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-                sb = sb.tool(mcp_call.clone());
-            }
-            if let Some(ref load_skill) = config.load_skill_tool {
-                tracing::info!("📋 Adding load_skill tool to agent");
-                sb = sb.tool(load_skill.clone());
-            }
-            if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
-                tracing::info!("📋 Adding load_mcp_schema tool to agent");
-                sb = sb.tool(load_mcp_schema.clone());
-            }
-
-            return sb.build();
-        }};
-    }
-
     // Create bash tool once (if enabled) so kill_shell can share its session
     let bash_tool_instance: Option<BashTool> = if config.enable_bash {
         Some(create_bash_tool())
@@ -846,215 +806,181 @@ fn build_agent_with_tools<M: CompletionModel>(
         None
     };
 
-    // Macro to add kill_shell if enabled (must be called after bash is added)
-    macro_rules! maybe_add_kill_shell {
-        ($sb:expr) => {{
-            let mut sb = $sb;
-            if config.enable_kill_shell {
-                if let Some(ref bash) = bash_tool_instance {
-                    tracing::info!("🔪 Adding kill_shell tool to agent");
-                    sb = sb.tool(KillShellTool::new(bash.session_handle()));
-                }
-            }
-            sb
-        }};
-    }
-
-    // Macro to conditionally chain the remaining tools
-    // (edit -> write -> grep -> glob) onto a simple builder, then add MCP tools and build.
-    macro_rules! chain_remaining {
-        ($sb:expr) => {{
-            let mut sb = $sb;
-            if config.enable_edit {
+    // We need a "first tool" to transition the builder from NoToolConfig -> WithBuilderTools.
+    // Collect the first available tool, add it, then chain the rest.
+    macro_rules! first_tool {
+        ($builder:expr) => {{
+            if config.enable_web_search {
+                tracing::info!("🔍 Adding web_search tool to agent");
+                $builder.tool(WebSearchTool::new())
+            } else if config.enable_web_fetch {
+                tracing::info!("🌐 Adding web_fetch tool to agent");
+                $builder.tool(WebFetchTool::new())
+            } else if let Some(ref bash) = bash_tool_instance {
+                tracing::info!("🖥️ Adding bash tool to agent");
+                $builder.tool(bash.clone())
+            } else if config.enable_read {
+                tracing::info!("📖 Adding read tool to agent");
+                $builder.tool(ReadTool::new())
+            } else if config.enable_edit {
                 tracing::info!("✏️ Adding edit tool to agent");
-                sb = sb.tool(EditTool::new());
-            }
-            if config.enable_write {
+                $builder.tool(EditTool::new())
+            } else if config.enable_write {
                 tracing::info!("📝 Adding write tool to agent");
-                sb = sb.tool(WriteTool::new());
-            }
-            if config.enable_grep {
+                $builder.tool(WriteTool::new())
+            } else if config.enable_grep {
                 tracing::info!("🔎 Adding grep tool to agent");
-                sb = sb.tool(create_grep_tool());
-            }
-            if config.enable_glob {
+                $builder.tool(create_grep_tool())
+            } else if config.enable_glob {
                 tracing::info!("📂 Adding glob tool to agent");
-                sb = sb.tool(create_glob_tool());
-            }
-            finish_with_simple_builder!(sb);
-        }};
-    }
-
-    // Each block below is an entry point for the first enabled tool.
-    // Once we enter a block, all tools listed before it are disabled (otherwise
-    // we would have entered their block first). We chain the remaining tools
-    // in order: web_search -> web_fetch -> bash -> kill_shell -> read -> edit -> write -> grep -> glob.
-
-    if config.enable_web_search {
-        tracing::info!("🔍 Adding web_search tool to agent");
-        let mut sb = builder.tool(WebSearchTool::new());
-        if config.enable_web_fetch {
-            tracing::info!("🌐 Adding web_fetch tool to agent");
-            sb = sb.tool(WebFetchTool::new());
-        }
-        if let Some(ref bash) = bash_tool_instance {
-            tracing::info!("🖥️ Adding bash tool to agent");
-            sb = sb.tool(bash.clone());
-            sb = maybe_add_kill_shell!(sb);
-        }
-        if config.enable_read {
-            tracing::info!("📖 Adding read tool to agent");
-            sb = sb.tool(ReadTool::new());
-        }
-        chain_remaining!(sb);
-    }
-
-    if config.enable_web_fetch {
-        tracing::info!("🌐 Adding web_fetch tool to agent");
-        let mut sb = builder.tool(WebFetchTool::new());
-        if let Some(ref bash) = bash_tool_instance {
-            tracing::info!("🖥️ Adding bash tool to agent");
-            sb = sb.tool(bash.clone());
-            sb = maybe_add_kill_shell!(sb);
-        }
-        if config.enable_read {
-            tracing::info!("📖 Adding read tool to agent");
-            sb = sb.tool(ReadTool::new());
-        }
-        chain_remaining!(sb);
-    }
-
-    if let Some(ref bash) = bash_tool_instance {
-        tracing::info!("🖥️ Adding bash tool to agent");
-        let mut sb = builder.tool(bash.clone());
-        sb = maybe_add_kill_shell!(sb);
-        if config.enable_read {
-            tracing::info!("📖 Adding read tool to agent");
-            sb = sb.tool(ReadTool::new());
-        }
-        chain_remaining!(sb);
-    }
-
-    if config.enable_read {
-        tracing::info!("📖 Adding read tool to agent");
-        let sb = builder.tool(ReadTool::new());
-        chain_remaining!(sb);
-    }
-
-    if config.enable_edit {
-        tracing::info!("✏️ Adding edit tool to agent");
-        let mut sb = builder.tool(EditTool::new());
-        if config.enable_write {
-            tracing::info!("📝 Adding write tool to agent");
-            sb = sb.tool(WriteTool::new());
-        }
-        if config.enable_grep {
-            tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(create_grep_tool());
-        }
-        if config.enable_glob {
-            tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(create_glob_tool());
-        }
-        finish_with_simple_builder!(sb);
-    }
-
-    if config.enable_write {
-        tracing::info!("📝 Adding write tool to agent");
-        let mut sb = builder.tool(WriteTool::new());
-        if config.enable_grep {
-            tracing::info!("🔎 Adding grep tool to agent");
-            sb = sb.tool(create_grep_tool());
-        }
-        if config.enable_glob {
-            tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(create_glob_tool());
-        }
-        finish_with_simple_builder!(sb);
-    }
-
-    if config.enable_grep {
-        tracing::info!("🔎 Adding grep tool to agent");
-        let mut sb = builder.tool(create_grep_tool());
-        if config.enable_glob {
-            tracing::info!("📂 Adding glob tool to agent");
-            sb = sb.tool(create_glob_tool());
-        }
-        finish_with_simple_builder!(sb);
-    }
-
-    if config.enable_glob {
-        tracing::info!("📂 Adding glob tool to agent");
-        let sb = builder.tool(create_glob_tool());
-        finish_with_simple_builder!(sb);
-    }
-
-    // Only load_skill / load_mcp_schema / mcp_call_tool (no other native tools).
-    // We must add the first tool to bootstrap `sb`, then chain the rest manually
-    // instead of calling finish_with_simple_builder! (which would re-add all three).
-    if config.mcp_call_tool.is_some()
-        || config.load_skill_tool.is_some()
-        || config.load_mcp_schema_tool.is_some()
-    {
-        let (sb, added_mcp_call, added_load_skill, added_load_mcp_schema) =
-            if let Some(ref mcp_call) = config.mcp_call_tool {
-                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-                (builder.tool(mcp_call.clone()), true, false, false)
+                $builder.tool(create_glob_tool())
+            } else if let Some(ref mcp_call) = config.mcp_call_tool {
+                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent");
+                $builder.tool(mcp_call.clone())
             } else if let Some(ref load_skill) = config.load_skill_tool {
                 tracing::info!("📋 Adding load_skill tool to agent");
-                (builder.tool(load_skill.clone()), false, true, false)
+                $builder.tool(load_skill.clone())
             } else if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
                 tracing::info!("📋 Adding load_mcp_schema tool to agent");
-                (builder.tool(load_mcp_schema.clone()), false, false, true)
+                $builder.tool(load_mcp_schema.clone())
+            } else if let Some(ref mcp_config) = config.mcp_tools {
+                let (first_tools, first_client) = mcp_config
+                    .server_tools
+                    .iter()
+                    .find(|(t, _)| !t.is_empty())
+                    .expect("build_agent_with_tools called but no tools available");
+                $builder.rmcp_tools(first_tools.clone(), first_client.clone())
             } else {
-                unreachable!()
-            };
-        let mut sb = sb;
-        if !added_mcp_call {
-            if let Some(ref mcp_call) = config.mcp_call_tool {
-                tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-                sb = sb.tool(mcp_call.clone());
+                unreachable!("build_agent_with_tools called but no tools available")
             }
-        }
-        if !added_load_skill {
-            if let Some(ref load_skill) = config.load_skill_tool {
-                tracing::info!("📋 Adding load_skill tool to agent");
-                sb = sb.tool(load_skill.clone());
-            }
-        }
-        if !added_load_mcp_schema {
-            if let Some(ref load_mcp_schema) = config.load_mcp_schema_tool {
-                tracing::info!("📋 Adding load_mcp_schema tool to agent");
-                sb = sb.tool(load_mcp_schema.clone());
-            }
-        }
-        return sb.build();
+        }};
     }
 
-    // Only MCP tools (no native tools). First .rmcp_tools() turns AgentBuilder into AgentBuilderSimple.
-    if let Some(ref mcp_config) = config.mcp_tools
-        && !mcp_config.server_tools.is_empty()
+    let mut sb = first_tool!(builder);
+
+    // Now chain all remaining tools (the first of each category was already added above)
+    if config.enable_web_search {
+        // already added as first_tool
+    }
+    if config.enable_web_fetch && !matches!(first_added(config), FirstTool::WebFetch) {
+        tracing::info!("🌐 Adding web_fetch tool to agent");
+        sb = sb.tool(WebFetchTool::new());
+    }
+    if let Some(ref bash) = bash_tool_instance {
+        if !matches!(first_added(config), FirstTool::Bash) {
+            tracing::info!("🖥️ Adding bash tool to agent");
+            sb = sb.tool(bash.clone());
+        }
+        if config.enable_kill_shell {
+            tracing::info!("🔪 Adding kill_shell tool to agent");
+            sb = sb.tool(KillShellTool::new(bash.session_handle()));
+        }
+    }
+    if config.enable_read && !matches!(first_added(config), FirstTool::Read) {
+        tracing::info!("📖 Adding read tool to agent");
+        sb = sb.tool(ReadTool::new());
+    }
+    if config.enable_edit && !matches!(first_added(config), FirstTool::Edit) {
+        tracing::info!("✏️ Adding edit tool to agent");
+        sb = sb.tool(EditTool::new());
+    }
+    if config.enable_write && !matches!(first_added(config), FirstTool::Write) {
+        tracing::info!("📝 Adding write tool to agent");
+        sb = sb.tool(WriteTool::new());
+    }
+    if config.enable_grep && !matches!(first_added(config), FirstTool::Grep) {
+        tracing::info!("🔎 Adding grep tool to agent");
+        sb = sb.tool(create_grep_tool());
+    }
+    if config.enable_glob && !matches!(first_added(config), FirstTool::Glob) {
+        tracing::info!("📂 Adding glob tool to agent");
+        sb = sb.tool(create_glob_tool());
+    }
+    if config.mcp_call_tool.is_some() && !matches!(first_added(config), FirstTool::McpCall) {
+        tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
+        sb = sb.tool(config.mcp_call_tool.clone().unwrap());
+    }
+    if config.load_skill_tool.is_some() && !matches!(first_added(config), FirstTool::LoadSkill) {
+        tracing::info!("📋 Adding load_skill tool to agent");
+        sb = sb.tool(config.load_skill_tool.clone().unwrap());
+    }
+    if config.load_mcp_schema_tool.is_some()
+        && !matches!(first_added(config), FirstTool::LoadMcpSchema)
     {
-        let mut iter = mcp_config
-            .server_tools
-            .iter()
-            .filter(|(t, _)| !t.is_empty());
-        if let Some((first_tools, first_client)) = iter.next() {
-            let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
+        tracing::info!("📋 Adding load_mcp_schema tool to agent");
+        sb = sb.tool(config.load_mcp_schema_tool.clone().unwrap());
+    }
+
+    // Add MCP tools from servers (skip the first server if it was already added as the bootstrap tool)
+    if let Some(ref mcp_config) = config.mcp_tools {
+        let skip_first = matches!(first_added(config), FirstTool::Mcp);
+        let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
+        if total > 0 {
             tracing::info!(
                 "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
                 total,
                 mcp_config.server_tools.len()
             );
-            let mut sb = builder.rmcp_tools(first_tools.clone(), first_client.clone());
-            for (tools, client) in iter {
-                sb = sb.rmcp_tools(tools.clone(), client.clone());
+        }
+        for (i, (tools, client)) in mcp_config
+            .server_tools
+            .iter()
+            .filter(|(t, _)| !t.is_empty())
+            .enumerate()
+        {
+            if skip_first && i == 0 {
+                continue;
             }
-            return sb.build();
+            sb = sb.rmcp_tools(tools.clone(), client.clone());
         }
     }
 
-    builder.build()
+    sb.build()
+}
+
+/// Identifies which tool was used to bootstrap the `NoToolConfig -> WithBuilderTools` transition.
+#[derive(PartialEq)]
+enum FirstTool {
+    WebSearch,
+    WebFetch,
+    Bash,
+    Read,
+    Edit,
+    Write,
+    Grep,
+    Glob,
+    McpCall,
+    LoadSkill,
+    LoadMcpSchema,
+    Mcp,
+}
+
+fn first_added(config: &AgentConfig) -> FirstTool {
+    if config.enable_web_search {
+        FirstTool::WebSearch
+    } else if config.enable_web_fetch {
+        FirstTool::WebFetch
+    } else if config.enable_bash {
+        FirstTool::Bash
+    } else if config.enable_read {
+        FirstTool::Read
+    } else if config.enable_edit {
+        FirstTool::Edit
+    } else if config.enable_write {
+        FirstTool::Write
+    } else if config.enable_grep {
+        FirstTool::Grep
+    } else if config.enable_glob {
+        FirstTool::Glob
+    } else if config.mcp_call_tool.is_some() {
+        FirstTool::McpCall
+    } else if config.load_skill_tool.is_some() {
+        FirstTool::LoadSkill
+    } else if config.load_mcp_schema_tool.is_some() {
+        FirstTool::LoadMcpSchema
+    } else {
+        FirstTool::Mcp
+    }
 }
 
 /// Create a provider agent based on provider type.
