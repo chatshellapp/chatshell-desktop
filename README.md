@@ -7,7 +7,9 @@
 [![Rust](https://img.shields.io/badge/Rust-2024-orange)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-19-blue)](https://react.dev/)
 
-ChatShell is an open-source desktop AI client built with Tauri 2 and React 19. Chat with 20+ cloud and local models, equip agents with built-in tools and MCP servers, search the web, manage skills and prompts, and export conversations — all in a native, privacy-first app.
+ChatShell is a free, open-source desktop AI client that works as a fully capable AI agent right out of the box. No plugins to install, no MCP servers to configure — ChatShell ships with built-in tools for web search, web browsing, file access, and shell execution, so your AI can take real actions from the very first conversation.
+
+Built on Tauri 2 with a Rust backend, ChatShell is fast, lightweight, and runs on macOS, Windows, and Linux.
 
 [Website](https://chatshell.app/) | [GitHub](https://github.com/chatshellapp/chatshell-desktop) | [Issues](https://github.com/chatshellapp/chatshell-desktop/issues)
 
@@ -19,16 +21,86 @@ ChatShell is an open-source desktop AI client built with Tauri 2 and React 19. C
 
 ---
 
+## Why ChatShell?
+
+### Agent-Ready, Out of the Box
+
+Most AI clients are just chat wrappers — you type, the AI replies, end of story. ChatShell ships with **6 built-in tools** (Web Search, Web Fetch, Bash, Read, Grep, Glob) that your AI can use autonomously. Ask it to research a topic, summarize a web page, find a file on your disk, or run a command — it just works. No MCP servers to set up, no plugins to install, no config files to edit.
+
+Other clients like OpenClaw require tedious configuration before your AI can do anything beyond chatting. With ChatShell, you get a working AI agent in under a minute.
+
+### Powerful Skills System
+
+Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. ChatShell ships with built-in skills and lets you create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
+
+### Custom Assistants, Built Locally
+
+Create personalized AI assistants entirely on your machine. Each assistant packages together a model, system prompt, user prompt, tools, skills, and a custom avatar — forming a complete AI persona you can switch between instantly. Organize them into groups, star your favorites, and reuse prompts from your library. No cloud account needed, no sharing of your data.
+
+### Lightweight by Design
+
+Built on **Tauri 2 with a Rust backend** — not Electron. ChatShell uses significantly less memory and disk space while delivering native-level performance on all three platforms (macOS, Windows, Linux).
+
+### True Privacy
+
+API keys encrypted with **AES-256-GCM** and stored in your OS keychain (Apple Keychain, Windows Credential Manager, Secret Service). All data in local SQLite. No telemetry. No cloud dependency with local models.
+
+### Permissive Open Source
+
+**Apache 2.0** — use it commercially, fork it, embed it. No AGPL restrictions, no per-seat pricing, no subscriptions.
+
+---
+
 ## Features
 
-### Multi-Model Support
+### Agent-Ready Built-in Tools
 
-- **20+ Cloud Providers**: OpenAI, Anthropic, Google Gemini, OpenRouter, Azure OpenAI, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, Mira, and more
-- **Local Models**: Ollama — run LLMs entirely on your machine
+Your AI can use these tools autonomously — no user intervention needed:
+
+- **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
+- **Web Fetch**: Intelligent content extraction from URLs (Readability + headless Chrome, or Jina Reader API)
+- **Bash**: Execute shell commands in a per-conversation working directory
+- **Read**: Read file contents from the local filesystem
+- **Grep**: Search file contents with regex support
+- **Glob**: Find files by pattern matching
+
+The AI decides when and how to combine these tools to fulfill your requests.
+
+### Skills
+
+- **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
+- **Built-in & Custom**: Use pre-built skills or create your own (`~/.chatshell/skills/SKILL.md`)
+- **Invocation Control**: Choose whether the AI or the user triggers each skill
+- **Auto-Discovery**: Skill Scanner finds skills from configured directories
+- **Per-Conversation Selection**: Enable different skills for different conversations
+
+### Custom Assistants
+
+- **Full Configuration**: Each assistant combines a model, system/user prompts, tools, skills, and avatar into one reusable persona
+- **Prompt Library Integration**: Select prompts from your library or write custom ones
+- **Tool & Skill Assignment**: Pick which built-in tools, MCP servers, and skills each assistant can use
+- **Groups & Favorites**: Organize assistants by category, star frequently used ones for quick access
+- **Custom Avatars**: Personalize with emoji + color backgrounds
+
+### 40+ AI Providers
+
+- **Major Cloud**: OpenAI, Anthropic, Google Gemini, Azure OpenAI, OpenRouter, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, Mira, GitHub Models, Fireworks AI, NVIDIA NIM, Hugging Face, Cerebras, and more
+- **Chinese Cloud**: Alibaba Qwen, Zhipu AI, Baichuan, Doubao, Tencent Hunyuan, Baidu Cloud, SiliconFlow, ModelScope, StepFun, Xiaomi MiMo, and more
+- **Local**: Ollama, LM Studio, GPUStack, OVMS — run LLMs entirely on your machine
 - **Custom Endpoints**: Connect any OpenAI-compatible or Anthropic-compatible API
-- **Smart Model Discovery**: Automatically fetch available models from providers
+- **Smart Model Discovery**: Automatically fetch available models from 30+ providers
 - **Configurable Parameters**: Temperature, max tokens, top-p, frequency/presence penalty, and more
 - **Parameter Presets**: Save and reuse model configurations across conversations
+
+### MCP (Model Context Protocol) Integration
+
+- **Extensible Tool System**: Connect AI with external tools and data sources
+- **Server Management**: Add, configure, and manage MCP servers from the UI
+- **Dynamic Tool Discovery**: Automatically detect and expose tools from MCP servers
+- **Seamless Integration**: AI can invoke MCP tools naturally during conversations
+- **Dual Transport**: STDIO (local child processes) and Streamable HTTP (remote servers)
+- **Enterprise-Grade Auth**: None, Bearer token, or OAuth 2.0/2.1 (with PKCE) for HTTP servers
+- **Per-Conversation Selection**: Enable different MCP servers for different conversations
 
 ### Rich Conversations
 
@@ -55,42 +127,6 @@ ChatShell is an open-source desktop AI client built with Tauri 2 and React 19. C
 - **Smart Web Fetching**: Extract and summarize content from URLs
 - **Dual Fetch Modes**: Local (Readability + headless Chrome) or API (Jina Reader)
 - **Configurable Local Methods**: Auto, fetch-only, or headless-only
-
-### Built-in Tools
-
-- **Web Search**: Multi-engine web search with stealth mode
-- **Web Fetch**: Intelligent content extraction from URLs
-- **Bash**: Execute shell commands with per-conversation working directory
-- **Read**: Read file contents from the local filesystem
-- **Grep**: Search file contents with regex support
-- **Glob**: Find files by pattern matching
-
-### MCP (Model Context Protocol) Integration
-
-- **Extensible Tool System**: Connect AI with external tools and data sources
-- **Server Management**: Add, configure, and manage MCP servers from the UI
-- **Dynamic Tool Discovery**: Automatically detect and expose tools from MCP servers
-- **Seamless Integration**: AI can invoke MCP tools naturally during conversations
-- **Dual Transport**: STDIO (local child processes) and Streamable HTTP (remote servers)
-- **Authentication**: None, Bearer token, or OAuth 2.0/2.1 (with PKCE) for HTTP servers
-- **Per-Conversation Selection**: Enable different MCP servers for different conversations
-
-### Skills
-
-- **Prompt + Tools**: Combine prompt instructions with required tools for specialized capabilities
-- **Built-in & Custom**: Use pre-built skills or create your own
-- **Invocation Control**: Configure whether the model or user triggers skills
-- **Skill Scanner**: Automatically discover skills from configured directories
-
-### Custom Assistants
-
-- Create personalized AI assistants with custom system prompts
-- **Parameter Presets**: Save and reuse model configurations
-- **Tool Configuration**: Assign built-in tools and MCP servers per assistant
-- **Skill Association**: Attach skills for specialized behavior
-- **Assistant Groups**: Organize assistants by category
-- **Starred Favorites**: Quick access to frequently used assistants
-- **Custom Avatars**: Personalize with text or image avatars
 
 ### Prompt Management
 
