@@ -15,9 +15,18 @@ Built on Tauri 2 with a Rust backend, ChatShell is fast, lightweight, and runs o
 
 ---
 
-## Screenshot
+## Screenshots
 
-![ChatShell Interface](docs/screenshot.png)
+![ChatShell — Travel Planning with Web Search](docs/travel.png)
+
+<details>
+<summary>More screenshots</summary>
+
+![ChatShell — Movie Research with Web Search & Fetch](docs/movies.png)
+
+![ChatShell — Project Structure Analysis with Local Tools](docs/project.png)
+
+</details>
 
 ---
 
