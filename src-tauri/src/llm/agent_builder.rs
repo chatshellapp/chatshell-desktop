@@ -22,7 +22,7 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tool_registry::ToolRegistry;
-use crate::llm::tools::bash::SharedBashSession;
+use crate::llm::tools::bash::{SharedBashSession, TempFileList};
 use crate::llm::tools::{
     BashTool, EditTool, GlobTool, GrepTool, KillShellTool, LoadMcpSchemaTool, LoadSkillTool,
     McpCallTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
@@ -88,6 +88,8 @@ pub struct AgentConfig {
     pub glob_working_directory: Option<String>,
     /// Shared bash session handle (for conversation-level persistence)
     pub bash_session: Option<SharedBashSession>,
+    /// Shared temp file tracker for bash output truncation cleanup
+    pub bash_temp_files: Option<TempFileList>,
     /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
     pub mcp_call_tool: Option<McpCallTool>,
     /// Optional load_skill tool (when skills are in catalog)
@@ -225,6 +227,12 @@ impl AgentConfig {
     /// Set a shared bash session handle for conversation-level persistence
     pub fn with_bash_session(mut self, session: SharedBashSession) -> Self {
         self.bash_session = Some(session);
+        self
+    }
+
+    /// Set a shared temp file tracker for bash output truncation cleanup
+    pub fn with_bash_temp_files(mut self, files: TempFileList) -> Self {
+        self.bash_temp_files = Some(files);
         self
     }
 
@@ -770,7 +778,7 @@ fn build_agent_with_tools<M: CompletionModel>(
     config: &AgentConfig,
 ) -> Agent<M> {
     let create_bash_tool = || -> BashTool {
-        if let Some(ref session) = config.bash_session {
+        let tool = if let Some(ref session) = config.bash_session {
             tracing::info!("🖥️ Bash tool using shared conversation session");
             BashTool::with_session(session.clone(), config.bash_working_directory.clone())
         } else if let Some(ref dir) = config.bash_working_directory {
@@ -778,6 +786,11 @@ fn build_agent_with_tools<M: CompletionModel>(
             BashTool::with_working_directory(dir.clone())
         } else {
             BashTool::new()
+        };
+        if let Some(ref tracker) = config.bash_temp_files {
+            tool.with_temp_file_tracker(tracker.clone())
+        } else {
+            tool
         }
     };
 

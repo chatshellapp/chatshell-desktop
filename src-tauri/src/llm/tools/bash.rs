@@ -8,8 +8,9 @@ use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt;
+use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -27,7 +28,7 @@ const TRUNCATE_TAIL_CHARS: usize = 10_000;
 /// Stop accumulating output beyond this to prevent OOM
 const MAX_CAPTURE_BYTES: usize = 100_000;
 
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
+const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
 /// Patterns checked via simple `contains` (no boundary logic needed).
 const SIMPLE_DANGEROUS_PATTERNS: &[(&str, &str)] = &[
@@ -65,6 +66,9 @@ pub(crate) struct BashSession {
 
 /// Shared handle to a bash session, used by both `BashTool` and `KillShellTool`.
 pub(crate) type SharedBashSession = Arc<TokioMutex<Option<BashSession>>>;
+
+/// Shared list of temp file paths created during output truncation.
+pub type TempFileList = Arc<Mutex<Vec<PathBuf>>>;
 
 impl fmt::Debug for BashSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -221,6 +225,13 @@ impl BashSession {
         let _ = tokio::time::timeout(Duration::from_secs(5), self.child.wait()).await;
     }
 
+    /// Synchronous kill for use in app shutdown hooks where async is unavailable.
+    pub(crate) fn kill_sync(&mut self) {
+        if self.is_alive() {
+            let _ = self.child.start_kill();
+        }
+    }
+
     fn make_marker(label: &str) -> String {
         use std::sync::atomic::{AtomicU64, Ordering};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -280,6 +291,8 @@ pub struct BashTool {
     default_cwd: Option<String>,
     #[serde(skip)]
     session: SharedBashSession,
+    #[serde(skip)]
+    temp_files: TempFileList,
 }
 
 impl fmt::Debug for BashTool {
@@ -295,6 +308,7 @@ impl Default for BashTool {
         Self {
             default_cwd: None,
             session: Arc::new(TokioMutex::new(None)),
+            temp_files: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -308,6 +322,7 @@ impl BashTool {
         Self {
             default_cwd: Some(cwd),
             session: Arc::new(TokioMutex::new(None)),
+            temp_files: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -315,11 +330,23 @@ impl BashTool {
         Self {
             default_cwd: cwd,
             session,
+            temp_files: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Set a shared temp file tracker (call before the tool is consumed by the agent builder).
+    pub fn with_temp_file_tracker(mut self, tracker: TempFileList) -> Self {
+        self.temp_files = tracker;
+        self
     }
 
     pub fn session_handle(&self) -> SharedBashSession {
         self.session.clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn temp_files_handle(&self) -> TempFileList {
+        self.temp_files.clone()
     }
 
     fn resolve_cwd(&self) -> String {
@@ -437,6 +464,21 @@ impl BashTool {
         }
     }
 
+    /// Delete all temp files tracked by the given handle.
+    pub fn cleanup_temp_files(handle: &TempFileList) {
+        if let Ok(mut files) = handle.lock() {
+            for path in files.drain(..) {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    tracing::debug!(
+                        "🧹 [bash] Failed to clean temp file {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+    }
+
     fn char_boundary_at_or_before(s: &str, pos: usize) -> usize {
         let mut i = pos.min(s.len());
         while i > 0 && !s.is_char_boundary(i) {
@@ -486,7 +528,7 @@ impl Tool for BashTool {
                     },
                     "timeout": {
                         "type": "number",
-                        "description": "Timeout in seconds (default: 30, max: 300)"
+                        "description": "Timeout in seconds (default: 120, max: 600)"
                     },
                     "description": {
                         "type": "string",
@@ -535,7 +577,7 @@ impl Tool for BashTool {
         // --- ensure session ---
         self.ensure_session(&mut guard).await?;
 
-        let timeout_secs = args.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS).clamp(1, 300);
+        let timeout_secs = args.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS).clamp(1, 600);
 
         let session = guard.as_mut().unwrap();
         let result = session
@@ -551,6 +593,11 @@ impl Tool for BashTool {
                 );
 
                 let (text, temp_file) = Self::smart_truncate(cmd.output.trim_end());
+                if let Some(ref path_str) = temp_file {
+                    if let Ok(mut files) = self.temp_files.lock() {
+                        files.push(PathBuf::from(path_str));
+                    }
+                }
                 let file_notice = temp_file
                     .map(|p| {
                         format!(

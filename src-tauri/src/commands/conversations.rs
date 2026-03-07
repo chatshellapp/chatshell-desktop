@@ -53,6 +53,14 @@ pub async fn update_conversation(
 
 #[tauri::command]
 pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    // Cancel any active generation for this conversation
+    if let Some(cancel_token) = state.generation_tasks.write().await.remove(&id) {
+        cancel_token.cancel();
+    }
+
+    // Kill any persistent bash session for this conversation
+    state.bash_session_manager.remove(&id);
+
     state
         .db
         .delete_conversation(&id)

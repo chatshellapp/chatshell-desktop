@@ -5,6 +5,7 @@ use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
     stream_chat_with_agent,
 };
+use crate::llm::tools::bash::{BashTool, TempFileList};
 use crate::llm::tools::{LoadMcpSchemaTool, LoadSkillTool, McpCallTool};
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
@@ -32,6 +33,18 @@ use crate::db::tools::{
 /// MCP tool count threshold: above this, use lazy loading via file-based discovery
 /// instead of injecting all tool schemas into every API call.
 const MCP_LAZY_LOAD_THRESHOLD: usize = 8;
+
+/// RAII guard that deletes tracked bash temp files when the streaming task exits
+/// (via any path: success, error, or cancellation).
+struct BashTempFileGuard {
+    files: TempFileList,
+}
+
+impl Drop for BashTempFileGuard {
+    fn drop(&mut self) {
+        BashTool::cleanup_temp_files(&self.files);
+    }
+}
 
 /// Handle streaming using the agent-based approach
 /// This provides built-in support for preamble, temperature, max_tokens, etc.
@@ -252,6 +265,13 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool");
         config = config.with_web_fetch();
     }
+    // Temp file tracker for bash output truncation; the RAII guard ensures cleanup
+    // on any exit path (success, error, cancel).
+    let bash_temp_files: TempFileList = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let _temp_file_guard = BashTempFileGuard {
+        files: bash_temp_files.clone(),
+    };
+
     if bash_enabled {
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
         config = config.with_bash();
@@ -260,6 +280,7 @@ pub(crate) async fn handle_agent_streaming(
             .bash_session_manager
             .get_or_create(&conversation_id_clone);
         config = config.with_bash_session(session);
+        config = config.with_bash_temp_files(bash_temp_files.clone());
 
         if let Some(ref settings) = conv_settings
             && let Some(ref working_dir) = settings.working_directory

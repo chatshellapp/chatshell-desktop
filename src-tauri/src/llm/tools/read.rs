@@ -227,8 +227,16 @@ impl Tool for ReadTool {
         if !path.exists() {
             return Err(ReadError(format!("File not found: {}", args.path)));
         }
+        if path.is_dir() {
+            return Err(ReadError(format!(
+                "Path is a directory, not a file: {}. \
+                 Use the glob tool to list files or the bash tool with ls \
+                 to explore directory contents.",
+                args.path
+            )));
+        }
         if !path.is_file() {
-            return Err(ReadError(format!("Not a file: {}", args.path)));
+            return Err(ReadError(format!("Not a regular file: {}", args.path)));
         }
 
         let ext = path

@@ -115,7 +115,20 @@ pub fn run() {
                 pending_oauth: Arc::new(RwLock::new(HashMap::new())),
                 bash_session_manager: Arc::new(BashSessionManager::new()),
             };
+            // Grab handle before app_state is moved into managed state
+            let manager_for_sweep = app_state.bash_session_manager.clone();
             app.manage(app_state);
+
+            // Spawn background task to sweep idle bash sessions every 5 minutes
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+                loop {
+                    interval.tick().await;
+                    manager_for_sweep
+                        .sweep_idle(std::time::Duration::from_secs(900))
+                        .await;
+                }
+            });
 
             Ok(())
         })
@@ -259,9 +272,16 @@ pub fn run() {
             commands::read_skill_content,
             commands::open_skills_directory,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .unwrap_or_else(|e| {
-            tracing::error!("FATAL: Error while running tauri application: {}", e);
+            tracing::error!("FATAL: Error while building tauri application: {}", e);
             std::process::exit(1);
+        })
+        .run(move |app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                tracing::info!("Application exiting, cleaning up bash sessions");
+                let state: tauri::State<'_, AppState> = app_handle.state();
+                state.bash_session_manager.kill_all_sync();
+            }
         });
 }

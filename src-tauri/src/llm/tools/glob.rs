@@ -153,7 +153,13 @@ fn run_glob(pattern: &str, base_dir: &str) -> Result<String, GlobError> {
             .and_then(|m| m.modified().ok())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        entries.push((entry.path().to_string_lossy().to_string(), mtime));
+        let display_path = entry
+            .path()
+            .strip_prefix(base_path)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .to_string();
+        entries.push((display_path, mtime));
 
         if entries.len() >= MAX_COLLECT {
             break;
@@ -173,11 +179,14 @@ fn run_glob(pattern: &str, base_dir: &str) -> Result<String, GlobError> {
 
     if total_collected >= MAX_RESULTS {
         output.push_str(&format!(
-            "\n\n... (results capped at {} files)",
-            MAX_RESULTS
+            "\n\n... (results capped at {} files, relative to {})",
+            MAX_RESULTS, base_dir
         ));
     } else {
-        output.push_str(&format!("\n\n({} files found)", total_collected));
+        output.push_str(&format!(
+            "\n\n({} files found, relative to {})",
+            total_collected, base_dir
+        ));
     }
 
     tracing::info!("🔧 [tool-result] glob: found {} files", total_collected);
