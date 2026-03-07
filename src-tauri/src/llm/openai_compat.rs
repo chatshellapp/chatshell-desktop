@@ -584,6 +584,8 @@ struct CompatUsage {
     prompt_tokens: usize,
     #[serde(default)]
     total_tokens: usize,
+    #[serde(default)]
+    prompt_tokens_details: Option<openai::completion::PromptTokensDetails>,
 }
 
 impl From<CompatUsage> for openai::completion::Usage {
@@ -591,7 +593,7 @@ impl From<CompatUsage> for openai::completion::Usage {
         openai::completion::Usage {
             prompt_tokens: u.prompt_tokens,
             total_tokens: u.total_tokens,
-            prompt_tokens_details: None,
+            prompt_tokens_details: u.prompt_tokens_details,
         }
     }
 }
@@ -623,6 +625,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
         let mut tool_call_raw_args: HashMap<usize, String> = HashMap::new();
+        let mut tool_call_internal_ids: HashMap<usize, String> = HashMap::new();
         let mut final_usage = None;
 
         while let Some(event_result) = event_source.next().await {
@@ -698,9 +701,13 @@ where
                                     .or_default()
                                     .push_str(chunk);
 
+                                let internal_call_id = tool_call_internal_ids
+                                    .entry(index)
+                                    .or_insert_with(|| nanoid::nanoid!())
+                                    .clone();
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
-                                    internal_call_id: String::new(),
+                                    internal_call_id,
                                     content: streaming::ToolCallDeltaContent::Delta(chunk.clone()),
                                 });
                             }
@@ -777,12 +784,16 @@ where
                 continue;
             }
 
+            let internal_call_id = tool_call_internal_ids
+                .remove(&idx)
+                .unwrap_or_else(|| nanoid::nanoid!());
             yield Ok(streaming::RawStreamingChoice::ToolCall(
                 streaming::RawStreamingToolCall::new(
                     tool_call.id,
                     tool_call.function.name,
                     tool_call.function.arguments,
-                ),
+                )
+                .with_internal_call_id(internal_call_id),
             ));
         }
 
