@@ -826,20 +826,14 @@ fn build_agent_with_tools<M: CompletionModel>(
             match first_added(config) {
                 FirstTool::WebSearch => $builder.tool(WebSearchTool::new()),
                 FirstTool::WebFetch => $builder.tool(WebFetchTool::new()),
-                FirstTool::Bash => {
-                    $builder.tool(bash_tool_instance.as_ref().unwrap().clone())
-                }
+                FirstTool::Bash => $builder.tool(bash_tool_instance.as_ref().unwrap().clone()),
                 FirstTool::Read => $builder.tool(ReadTool::new()),
                 FirstTool::Edit => $builder.tool(EditTool::new()),
                 FirstTool::Write => $builder.tool(WriteTool::new()),
                 FirstTool::Grep => $builder.tool(create_grep_tool()),
                 FirstTool::Glob => $builder.tool(create_glob_tool()),
-                FirstTool::McpCall => {
-                    $builder.tool(config.mcp_call_tool.clone().unwrap())
-                }
-                FirstTool::LoadSkill => {
-                    $builder.tool(config.load_skill_tool.clone().unwrap())
-                }
+                FirstTool::McpCall => $builder.tool(config.mcp_call_tool.clone().unwrap()),
+                FirstTool::LoadSkill => $builder.tool(config.load_skill_tool.clone().unwrap()),
                 FirstTool::LoadMcpSchema => {
                     $builder.tool(config.load_mcp_schema_tool.clone().unwrap())
                 }

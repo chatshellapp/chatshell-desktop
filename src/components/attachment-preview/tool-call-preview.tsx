@@ -108,7 +108,6 @@ function jsonCodeBlock(text: string): string {
   return '```json\n' + text + '\n```'
 }
 
-
 export function ToolCallPreview({
   toolCall,
   streamingToolCall,

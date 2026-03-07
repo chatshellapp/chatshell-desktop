@@ -166,16 +166,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
   }
 }
 
-const WELL_KNOWN_PARAMS = [
-  'query',
-  'path',
-  'url',
-  'input',
-  'prompt',
-  'command',
-  'name',
-  'message',
-]
+const WELL_KNOWN_PARAMS = ['query', 'path', 'url', 'input', 'prompt', 'command', 'name', 'message']
 
 function truncateSummary(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + '\u2026' : s
