@@ -90,7 +90,7 @@ export function useProviderData({
       setCompatibilityType(existing.provider_type === 'custom_anthropic' ? 'anthropic' : 'openai')
 
       const existingModels = storeModels
-        .filter((m) => m.provider_id === existing!.id)
+        .filter((m) => m.provider_id === existing!.id && !m.is_deleted)
         .map((m) => ({
           id: m.id,
           displayName: m.name,
