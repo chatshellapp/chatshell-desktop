@@ -166,6 +166,47 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
   }
 }
 
+const WELL_KNOWN_PARAMS = [
+  'query',
+  'path',
+  'url',
+  'input',
+  'prompt',
+  'command',
+  'name',
+  'message',
+]
+
+function truncateSummary(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + '\u2026' : s
+}
+
+export function getMcpToolInputSummary(toolInput?: string): string | null {
+  if (!toolInput) return null
+  try {
+    const parsed = JSON.parse(toolInput)
+    if (typeof parsed !== 'object' || parsed === null) return null
+
+    for (const key of WELL_KNOWN_PARAMS) {
+      if (typeof parsed[key] === 'string' && parsed[key].length > 0) {
+        return truncateSummary(parsed[key], 80)
+      }
+    }
+
+    let best: string | null = null
+    for (const value of Object.values(parsed)) {
+      if (typeof value === 'string' && value.length > 0 && value.length <= 120) {
+        if (best === null || value.length > best.length) {
+          best = value
+        }
+      }
+    }
+    return best ? truncateSummary(best, 80) : null
+  } catch {
+    return null
+  }
+}
+
 // --- Duration formatting ---
 
 export function formatDuration(ms?: number): string | null {

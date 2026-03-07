@@ -5,6 +5,7 @@ import { parseToolName } from '@/lib/tool-name'
 import type { ParsedToolName } from '@/lib/tool-name'
 import {
   getToolInputSummary,
+  getMcpToolInputSummary,
   formatDuration,
   ToolOutputRenderer,
   CopyButton,
@@ -141,7 +142,10 @@ export function ToolCallPreview({
   const hasSpecializedRenderer = isBuiltin && SPECIALIZED_TOOLS.has(parsed.toolName)
 
   const inputSummary = useMemo(
-    () => (isBuiltin ? getToolInputSummary(parsed.toolName, toolInput) : null),
+    () =>
+      isBuiltin
+        ? getToolInputSummary(parsed.toolName, toolInput)
+        : getMcpToolInputSummary(toolInput),
     [isBuiltin, parsed.toolName, toolInput]
   )
   const duration = formatDuration(durationMs)
