@@ -1155,8 +1155,84 @@ pub fn create_provider_agent(
                 config,
             )?))
         }
-        _ => Err(anyhow::anyhow!("Unknown provider: {}", provider_type)),
+        _ => {
+            if let Some(default_url) = openai_compat_default_url(provider_type) {
+                let is_local = matches!(provider_type, "lmstudio" | "gpustack" | "ovms");
+                let key = if is_local {
+                    api_key.unwrap_or("no-key")
+                } else {
+                    require_key!(provider_type)
+                };
+                let url = base_url.unwrap_or(default_url);
+                Ok(ProviderAgent::OpenAICompat(create_openai_compat_agent(
+                    key,
+                    url,
+                    model_id,
+                    config,
+                    provider_type,
+                )?))
+            } else {
+                Err(anyhow::anyhow!("Unknown provider: {}", provider_type))
+            }
+        }
     }
+}
+
+/// Default base URLs for OpenAI-compatible providers.
+/// Returns `Some(url)` if the provider is known, `None` otherwise.
+fn openai_compat_default_url(provider_type: &str) -> Option<&'static str> {
+    match provider_type {
+        // International
+        "github_models" => Some("https://models.inference.ai.azure.com"),
+        "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
+        "nvidia" => Some("https://integrate.api.nvidia.com/v1"),
+        "huggingface" => Some("https://api-inference.huggingface.co/v1"),
+        "cerebras" => Some("https://api.cerebras.ai/v1"),
+        "lmstudio" => Some("http://localhost:1234/v1"),
+        "gpustack" => Some("http://localhost:80/v1"),
+        "ovms" => Some("http://localhost:8000/v1"),
+        // Chinese AI
+        "zhipu" => Some("https://open.bigmodel.cn/api/paas/v4"),
+        "yi" => Some("https://api.lingyiwanwu.com/v1"),
+        "baichuan" => Some("https://api.baichuan-ai.com/v1"),
+        "dashscope" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        "stepfun" => Some("https://api.stepfun.com/v1"),
+        "doubao" => Some("https://ark.cn-beijing.volces.com/api/v3"),
+        "hunyuan" => Some("https://api.hunyuan.cloud.tencent.com/v1"),
+        "tencent_cloud_ti" => Some("https://api.lkeap.cloud.tencent.com/v1"),
+        "baidu_cloud" => Some("https://qianfan.baidubce.com/v2"),
+        "siliconflow" => Some("https://api.siliconflow.cn/v1"),
+        "modelscope" => Some("https://api-inference.modelscope.cn/v1"),
+        "xirang" => Some("https://wishub-x1.ctyun.cn/v1"),
+        "mimo" => Some("https://api.xiaomimimo.com/v1"),
+        _ => None,
+    }
+}
+
+const STRING_CONTENT_ONLY_PROVIDERS: &[&str] =
+    &["deepseek", "baichuan", "minimax", "minimax_cn", "xirang"];
+
+fn create_openai_compat_agent(
+    api_key: &str,
+    base_url: &str,
+    model_id: &str,
+    config: &AgentConfig,
+    provider_type: &str,
+) -> Result<Agent<OpenAICompatCompletionModel>> {
+    let http_client = create_http_client();
+    let client = moonshot::Client::<reqwest::Client>::builder()
+        .api_key(api_key)
+        .base_url(base_url)
+        .http_client(http_client)
+        .build()?;
+
+    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
+    let model = if STRING_CONTENT_ONLY_PROVIDERS.contains(&provider_type) {
+        model.with_string_content_only()
+    } else {
+        model
+    };
+    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
 }
 
 /// Stream chat with an agent, handling all provider types uniformly.

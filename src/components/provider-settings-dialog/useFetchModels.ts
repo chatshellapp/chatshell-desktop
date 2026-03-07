@@ -25,6 +25,9 @@ interface UseFetchModelsParams {
 // Providers that use the original dedicated fetch commands
 const DEDICATED_FETCH_PROVIDERS = new Set(['openai', 'openrouter', 'ollama'])
 
+// Local providers that don't require API keys for model fetching
+const LOCAL_PROVIDERS = new Set(['lmstudio', 'gpustack', 'ovms'])
+
 /**
  * Handles fetching models from provider APIs.
  * Uses dedicated commands for OpenAI/OpenRouter/Ollama,
@@ -85,6 +88,16 @@ export function useFetchModels({
         throw new Error(
           'Automatic model fetching is not supported for Anthropic-compatible providers. Please add models manually.'
         )
+      } else if (LOCAL_PROVIDERS.has(providerId)) {
+        const baseUrl = apiBaseUrl || selectedProvider.baseUrl
+        if (!baseUrl) {
+          throw new Error(`Base URL is required for ${selectedProvider.name}.`)
+        }
+        fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
+          providerType: providerId,
+          apiKey: apiKey || 'no-key',
+          baseUrl,
+        })
       } else if (!DEDICATED_FETCH_PROVIDERS.has(providerId)) {
         if (!apiKey) {
           throw new Error(

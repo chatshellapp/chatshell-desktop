@@ -1,8 +1,10 @@
 //! OpenAI Chat Completions-compatible CompletionModel.
 //!
-//! Provides a universally compatible implementation that serializes message `content`
-//! as plain strings instead of rig's `OneOrMany<T>` arrays. This ensures compatibility
-//! with providers that only accept the simple string format (e.g. MiniMax CN).
+//! Supports both array-style content (text + images) and plain-string content.
+//! By default, user messages are serialized as an array of content parts so that
+//! multimodal inputs (images) are preserved. Providers that only accept the simple
+//! string format (e.g. DeepSeek, Baichuan, MiniMax, Xirang) can opt out via
+//! `CompletionModel::with_string_content_only()`.
 //!
 //! Uses `moonshot::Client` for HTTP transport and reuses OpenAI response types.
 //! Includes custom streaming implementation with `reasoning_content` support
@@ -10,7 +12,7 @@
 
 use rig::completion::{self, CompletionError, CompletionRequest};
 use rig::http_client::{self, HttpClientExt};
-use rig::message::{self, AssistantContent, DocumentSourceKind, UserContent};
+use rig::message::{self, AssistantContent, DocumentSourceKind, ImageMediaType, UserContent};
 use rig::providers::moonshot;
 use rig::providers::openai;
 use rig::streaming;
@@ -40,8 +42,29 @@ fn merge_json(base: serde_json::Value, overrides: serde_json::Value) -> serde_js
 }
 
 // ================================================================
-// Message types with string content (OpenAI-compatible)
+// Message types (OpenAI-compatible)
 // ================================================================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    Text { text: String },
+    ImageUrl { image_url: ImageUrlContent },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageUrlContent {
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum UserMessageContent {
+    Text(String),
+    Parts(Vec<ContentPart>),
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -50,7 +73,7 @@ pub enum SimpleMessage {
         content: String,
     },
     User {
-        content: String,
+        content: UserMessageContent,
     },
     Assistant {
         content: String,
@@ -76,9 +99,23 @@ impl SimpleMessage {
     }
 }
 
+fn image_media_type_to_mime(mt: &ImageMediaType) -> &'static str {
+    match mt {
+        ImageMediaType::JPEG => "image/jpeg",
+        ImageMediaType::PNG => "image/png",
+        ImageMediaType::GIF => "image/gif",
+        ImageMediaType::WEBP => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Convert a rig `Message` into one or more `SimpleMessage`s.
 /// Tool results are split into separate messages (one per tool result).
-fn convert_message(msg: message::Message) -> Vec<SimpleMessage> {
+///
+/// When `supports_array_content` is true, user messages with images are serialized
+/// as an array of content parts (text + image_url). When false, images are dropped
+/// and content is flattened to a plain string.
+fn convert_message(msg: message::Message, supports_array_content: bool) -> Vec<SimpleMessage> {
     match msg {
         message::Message::User { content } => {
             let (tool_results, other): (Vec<_>, Vec<_>) = content
@@ -108,6 +145,57 @@ fn convert_message(msg: message::Message) -> Vec<SimpleMessage> {
                         }
                     })
                     .collect()
+            } else if supports_array_content {
+                let parts: Vec<ContentPart> = other
+                    .into_iter()
+                    .filter_map(|c| match c {
+                        UserContent::Text(t) => Some(ContentPart::Text { text: t.text }),
+                        UserContent::Image(img) => {
+                            let mime = img
+                                .media_type
+                                .as_ref()
+                                .map(|mt| image_media_type_to_mime(mt))
+                                .unwrap_or("application/octet-stream");
+                            let b64 = match &img.data {
+                                DocumentSourceKind::Base64(s) => s.clone(),
+                                DocumentSourceKind::String(s) => s.clone(),
+                                _ => return None,
+                            };
+                            let url = format!("data:{};base64,{}", mime, b64);
+                            let detail = img.detail.as_ref().map(|d| match d {
+                                message::ImageDetail::Auto => "auto".to_string(),
+                                message::ImageDetail::High => "high".to_string(),
+                                message::ImageDetail::Low => "low".to_string(),
+                                _ => "auto".to_string(),
+                            });
+                            Some(ContentPart::ImageUrl {
+                                image_url: ImageUrlContent { url, detail },
+                            })
+                        }
+                        UserContent::Document(doc) => match &doc.data {
+                            DocumentSourceKind::String(s) | DocumentSourceKind::Base64(s) => {
+                                Some(ContentPart::Text { text: s.clone() })
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect();
+
+                // Optimize: single text part -> use plain string for efficiency
+                if parts.len() == 1 && matches!(&parts[0], ContentPart::Text { .. }) {
+                    if let ContentPart::Text { text } = parts.into_iter().next().unwrap() {
+                        vec![SimpleMessage::User {
+                            content: UserMessageContent::Text(text),
+                        }]
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    vec![SimpleMessage::User {
+                        content: UserMessageContent::Parts(parts),
+                    }]
+                }
             } else {
                 let text = other
                     .iter()
@@ -123,7 +211,9 @@ fn convert_message(msg: message::Message) -> Vec<SimpleMessage> {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                vec![SimpleMessage::User { content: text }]
+                vec![SimpleMessage::User {
+                    content: UserMessageContent::Text(text),
+                }]
             }
         }
         message::Message::Assistant { content, .. } => {
@@ -179,10 +269,12 @@ struct CompatCompletionRequest {
     additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(&str, CompletionRequest)> for CompatCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+impl CompatCompletionRequest {
+    fn from_completion_request(
+        model: &str,
+        req: CompletionRequest,
+        supports_array_content: bool,
+    ) -> Result<Self, CompletionError> {
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
@@ -195,7 +287,7 @@ impl TryFrom<(&str, CompletionRequest)> for CompatCompletionRequest {
         };
 
         for msg in partial_history {
-            full_history.extend(convert_message(msg));
+            full_history.extend(convert_message(msg, supports_array_content));
         }
 
         let tool_choice = req
@@ -271,6 +363,7 @@ enum ApiResponse<T> {
 pub struct CompletionModel<T = reqwest::Client> {
     client: moonshot::Client<T>,
     pub model: String,
+    supports_array_content: bool,
 }
 
 impl<T> CompletionModel<T> {
@@ -278,7 +371,15 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            supports_array_content: true,
         }
+    }
+
+    /// Disable array-style content for providers that only accept plain string content.
+    /// Images will be dropped and all user content flattened to a single string.
+    pub fn with_string_content_only(mut self) -> Self {
+        self.supports_array_content = false;
+        self
     }
 }
 
@@ -299,7 +400,11 @@ where
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<openai::CompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
-        let request = CompatCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let request = CompatCompletionRequest::from_completion_request(
+            self.model.as_ref(),
+            completion_request,
+            self.supports_array_content,
+        )?;
 
         tracing::trace!(
             "OpenAI-compat API input: {request}",
@@ -375,7 +480,11 @@ where
     ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let preamble = request.preamble.clone();
-        let mut request = CompatCompletionRequest::try_from((self.model.as_ref(), request))?;
+        let mut request = CompatCompletionRequest::from_completion_request(
+            self.model.as_ref(),
+            request,
+            self.supports_array_content,
+        )?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(

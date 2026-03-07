@@ -46,6 +46,29 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   custom: 'Custom Provider',
   custom_openai: 'OpenAI Compatible',
   custom_anthropic: 'Anthropic Compatible',
+  // International
+  github_models: 'GitHub Models',
+  fireworks: 'Fireworks AI',
+  nvidia: 'NVIDIA NIM',
+  huggingface: 'Hugging Face',
+  cerebras: 'Cerebras',
+  lmstudio: 'LM Studio',
+  gpustack: 'GPUStack',
+  ovms: 'OVMS',
+  // Chinese AI
+  zhipu: 'Zhipu AI',
+  yi: '01.AI',
+  baichuan: 'Baichuan',
+  dashscope: 'Alibaba Qwen',
+  stepfun: 'StepFun',
+  doubao: 'Doubao',
+  hunyuan: 'Tencent Hunyuan',
+  tencent_cloud_ti: 'Tencent Cloud TI',
+  baidu_cloud: 'Baidu Cloud',
+  siliconflow: 'SiliconFlow',
+  modelscope: 'ModelScope',
+  xirang: 'Xirang',
+  mimo: 'Xiaomi MiMo',
 }
 
 /** Get the logo URL for a provider type. Returns undefined if no logo exists. */
