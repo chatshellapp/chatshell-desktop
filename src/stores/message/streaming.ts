@@ -7,6 +7,7 @@ import {
   pendingReasoningChunks,
   reasoningUpdateScheduled,
   reasoningUpdateTimeoutIds,
+  cleanupThrottleState,
 } from './throttle'
 
 export const createStreamingActions = (
@@ -15,11 +16,13 @@ export const createStreamingActions = (
 ): MessageStoreStreamingActions => ({
   setStreamingContent: (conversationId: string, content: string) => {
     get().getConversationState(conversationId) // Ensure state exists
+    if (content === '') {
+      cleanupThrottleState(conversationId)
+    }
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
         convState.streamingContent = content
-        // When clearing streaming content, also clear reasoning content
         if (content === '') {
           convState.streamingReasoningContent = ''
         }
@@ -29,11 +32,13 @@ export const createStreamingActions = (
 
   setIsStreaming: (conversationId: string, isStreaming: boolean) => {
     get().getConversationState(conversationId) // Ensure state exists
+    if (!isStreaming) {
+      cleanupThrottleState(conversationId)
+    }
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
         convState.isStreaming = isStreaming
-        // Reset reasoning state when streaming ends
         if (!isStreaming) {
           convState.isReasoningActive = false
           convState.streamingReasoningContent = ''
