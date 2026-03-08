@@ -1290,24 +1290,35 @@ impl Message {
 pub enum ReasoningDetails {
     #[serde(rename = "reasoning.summary")]
     Summary {
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
         summary: String,
     },
     #[serde(rename = "reasoning.encrypted")]
     Encrypted {
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
         data: String,
     },
     #[serde(rename = "reasoning.text")]
     Text {
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         text: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
 }
@@ -1603,6 +1614,20 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+
+        // Only Anthropic models require reasoning_details (with signatures) for multi-turn
+        // thinking blocks. Other providers (Azure, OpenAI, etc.) reject unknown fields like
+        // `signature` in reasoning_details. Strip them for non-Anthropic models.
+        if !model.starts_with("anthropic/") {
+            for msg in &mut full_history {
+                if let Message::Assistant {
+                    reasoning_details, ..
+                } = msg
+                {
+                    reasoning_details.clear();
+                }
+            }
+        }
 
         let tool_choice = req
             .tool_choice
