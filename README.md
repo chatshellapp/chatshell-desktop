@@ -52,7 +52,7 @@ Built on **Tauri 2 with a Rust backend** — not Electron. ChatShell uses signif
 
 ### True Privacy
 
-API keys encrypted with **AES-256-GCM** and stored in your OS keychain (Apple Keychain, Windows Credential Manager, Secret Service). All data in local SQLite. No telemetry. No cloud dependency with local models.
+API keys encrypted with **AES-256-GCM** (master key stored in your OS keychain via Apple Keychain, Windows Credential Manager, or Secret Service). All data in local SQLite. No telemetry. No cloud dependency with local models.
 
 ### Permissive Open Source
 
@@ -81,7 +81,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### Skills
 
 - **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
-- **Built-in & Custom**: Use pre-built skills or create your own (`~/.chatshell/skills/<skill-name>/SKILL.md`)
+- **Custom Skills**: Create your own skills (`~/.chatshell/skills/<skill-name>/SKILL.md`)
 - **Invocation Control**: Choose whether the AI or the user triggers each skill
 - **Auto-Discovery**: Skill Scanner finds skills from configured directories
 - **Per-Conversation Selection**: Enable different skills for different conversations
@@ -96,8 +96,8 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 ### 40+ AI Providers
 
-- **Major Cloud**: OpenAI, Anthropic, Google Gemini, Azure OpenAI, OpenRouter, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, Mira, GitHub Models, Fireworks AI, NVIDIA NIM, Hugging Face, Cerebras, and more
-- **Chinese Cloud**: Alibaba Qwen, Zhipu AI, Baichuan, Doubao, Tencent Hunyuan, Baidu Cloud, SiliconFlow, ModelScope, StepFun, Xiaomi MiMo, and more
+- **Major Cloud**: OpenAI, Anthropic, Google Gemini, Azure OpenAI, OpenRouter, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, MiniMax CN, Mira, GitHub Models, Fireworks AI, NVIDIA NIM, Hugging Face, Cerebras, and more
+- **Chinese Cloud**: Alibaba Qwen, Zhipu AI, 01.AI, Baichuan, Doubao, Tencent Hunyuan, Tencent Cloud TI, Baidu Cloud, SiliconFlow, ModelScope, StepFun, Xirang, Xiaomi MiMo, and more
 - **Local**: Ollama, LM Studio, GPUStack, OVMS — run LLMs entirely on your machine
 - **Custom Endpoints**: Connect any OpenAI-compatible or Anthropic-compatible API
 - **Smart Model Discovery**: Automatically fetch available models from 30+ providers
@@ -157,9 +157,8 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### Privacy-First Design
 
 - **Local SQLite Storage**: All data stays on your machine
-- **Encrypted Secrets**: API keys stored securely with AES-256-GCM
-- **Keychain Integration**: Native OS credential storage (Apple Keychain, Windows Credential Manager, Secret Service)
-- **Secure Token Storage**: MCP bearer tokens and OAuth tokens stored in the system keychain
+- **Encrypted Secrets**: API keys and MCP tokens encrypted with AES-256-GCM in local SQLite
+- **Keychain Integration**: Master encryption key stored in native OS credential storage (Apple Keychain, Windows Credential Manager, Secret Service)
 - **No Cloud Dependency**: Works entirely offline with local models
 
 ---
