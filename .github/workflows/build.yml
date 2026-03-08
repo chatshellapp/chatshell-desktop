@@ -115,6 +115,9 @@ jobs:
     runs-on: macos-14
     permissions:
       contents: read
+    env:
+      HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -158,7 +161,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Import Code Signing Certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
         uses: apple-actions/import-codesign-certs@v2
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
@@ -172,12 +175,12 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: Setup API Key for Notarization
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
           echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 -d > api_key.p8
 
       - name: Notarize and Staple DMG
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
           for dmg in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
             echo "Notarizing: $dmg"
