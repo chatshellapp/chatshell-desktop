@@ -117,7 +117,7 @@ jobs:
       contents: read
     env:
       HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_ISSUER != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -172,7 +172,7 @@ jobs:
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Setup API Key for Notarization
         if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
@@ -185,9 +185,9 @@ jobs:
           for dmg in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
             echo "Notarizing: $dmg"
             xcrun notarytool submit "$dmg" \
-              --apple-api-key api_key.p8 \
-              --apple-api-key-id "${{ secrets.APPLE_API_KEY }}" \
-              --apple-api-issuer "${{ secrets.APPLE_API_ISSUER }}" \
+              --key api_key.p8 \
+              --key-id "${{ secrets.APPLE_API_KEY }}" \
+              --issuer "${{ secrets.APPLE_API_ISSUER }}" \
               --wait
             echo "Stapling: $dmg"
             xcrun stapler staple "$dmg"
