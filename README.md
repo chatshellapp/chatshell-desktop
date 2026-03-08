@@ -36,7 +36,7 @@ Built on Tauri 2 with a Rust backend, ChatShell is fast, lightweight, and runs o
 
 Most AI clients are just chat wrappers — you type, the AI replies, end of story. ChatShell ships with **9 built-in tools** (Web Search, Web Fetch, Bash, Read, Edit, Write, Grep, Glob, Kill Shell) that your AI can use autonomously. Ask it to research a topic, summarize a web page, find a file on your disk, edit code, or run a command — it just works. No MCP servers to set up, no plugins to install, no config files to edit.
 
-Other clients like OpenClaw require tedious configuration before your AI can do anything beyond chatting. With ChatShell, you get a working AI agent in under a minute.
+With ChatShell, you get a working AI agent in under a minute.
 
 ### Powerful Skills System
 
@@ -57,6 +57,27 @@ API keys encrypted with **AES-256-GCM** (master key stored in your OS keychain v
 ### Permissive Open Source
 
 **Apache 2.0** — use it commercially, fork it, embed it. No AGPL restrictions, no per-seat pricing, no subscriptions.
+
+---
+
+## What Sets ChatShell Apart
+
+Most AI desktop clients are chat wrappers. ChatShell is built differently — from the engine up.
+
+| Feature | ChatShell | Typical Chat Client |
+|---------|-----------|---------------------|
+| Agent Tools | 9 built-in tools, zero setup | Plugin marketplace or MCP config required |
+| Skills System | Fully custom SKILL.md | Not available |
+| MCP Support | STDIO + HTTP + OAuth 2.1 / PKCE | STDIO or HTTP (no auth) |
+| Privacy | AES-256-GCM · OS keychain · no telemetry | Varies — often opt-out telemetry |
+| Assistants | Full local builder with avatars & prompt library | Basic system prompt only |
+| Engine | Tauri 2 + Rust (not Electron) | Electron or native per platform |
+| Memory Footprint | Low — native Rust binary | High (Electron ships a full browser) |
+| License | Apache 2.0 — permissive open source | AGPL, proprietary, or subscription |
+| Platforms | macOS · Windows · Linux | Often macOS-only or partial support |
+| AI Providers | 40+ with local model support | Varies |
+
+*"Typical chat client" reflects common patterns across the category, not any specific product.*
 
 ---
 
@@ -96,8 +117,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 ### 40+ AI Providers
 
-- **Major Cloud**: OpenAI, Anthropic, Google Gemini, Azure OpenAI, OpenRouter, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, MiniMax CN, Mira, GitHub Models, Fireworks AI, NVIDIA NIM, Hugging Face, Cerebras, and more
-- **Chinese Cloud**: Alibaba Qwen, Zhipu AI, 01.AI, Baichuan, Doubao, Tencent Hunyuan, Tencent Cloud TI, Baidu Cloud, SiliconFlow, ModelScope, StepFun, Xirang, Xiaomi MiMo, and more
+- **Cloud**: OpenAI, Anthropic, Google Gemini, Azure OpenAI, OpenRouter, DeepSeek, Groq, Mistral, Perplexity, Together AI, xAI, Cohere, Moonshot, Hyperbolic, Galadriel, MiniMax, Mira, GitHub Models, Fireworks AI, NVIDIA NIM, Hugging Face, Cerebras, Alibaba Qwen, Zhipu AI, Doubao, SiliconFlow, and more
 - **Local**: Ollama, LM Studio, GPUStack, OVMS — run LLMs entirely on your machine
 - **Custom Endpoints**: Connect any OpenAI-compatible or Anthropic-compatible API
 - **Smart Model Discovery**: Automatically fetch available models from 30+ providers
