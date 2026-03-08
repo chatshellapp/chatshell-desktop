@@ -54,7 +54,7 @@ export function useSidebarHandlers() {
         }
 
         if (!targetConversation) {
-          targetConversation = await createConversation(t('sidebar:newConversation'))
+          targetConversation = await createConversation('')
         }
 
         // Use selectConversation to ensure settings are loaded
@@ -102,7 +102,7 @@ export function useSidebarHandlers() {
         }
 
         if (!targetConversation) {
-          targetConversation = await createConversation(t('sidebar:newConversation'))
+          targetConversation = await createConversation('')
         }
 
         // Use selectConversation to ensure settings are loaded
@@ -258,7 +258,7 @@ export function useSidebarHandlers() {
       }
 
       // Create a new conversation and select it (which loads settings)
-      const newConversation = await createConversation(t('sidebar:newConversation'))
+      const newConversation = await createConversation('')
       await selectConversation(newConversation.id)
     } catch (error) {
       logger.error('Failed to create new conversation:', error)

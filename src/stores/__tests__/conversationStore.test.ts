@@ -114,13 +114,13 @@ describe('useConversationStore', () => {
 
   describe('createConversation', () => {
     it('should create a new conversation and add to store', async () => {
-      const newConversation = createMockConversation('new-conv', 'New Conversation')
+      const newConversation = createMockConversation('new-conv', '')
       mockInvoke.mockResolvedValue(newConversation)
 
-      const result = await useConversationStore.getState().createConversation('New Conversation')
+      const result = await useConversationStore.getState().createConversation('')
 
       expect(mockInvoke).toHaveBeenCalledWith('create_conversation', {
-        req: { title: 'New Conversation' },
+        req: { title: '' },
       })
       expect(result).toEqual(newConversation)
       expect(useConversationStore.getState().conversations).toContainEqual(newConversation)
@@ -130,10 +130,10 @@ describe('useConversationStore', () => {
       const existingConversation = createMockConversation('existing', 'Existing')
       useConversationStore.setState({ conversations: [existingConversation] })
 
-      const newConversation = createMockConversation('new-conv', 'New Conversation')
+      const newConversation = createMockConversation('new-conv', '')
       mockInvoke.mockResolvedValue(newConversation)
 
-      await useConversationStore.getState().createConversation('New Conversation')
+      await useConversationStore.getState().createConversation('')
 
       const conversations = useConversationStore.getState().conversations
       expect(conversations[0]).toEqual(newConversation)

@@ -73,7 +73,7 @@ export function ConversationList({
           <MessageListItem
             key={conversation.id}
             avatars={displayAvatars}
-            summary={conversation.title}
+            summary={conversation.title || t('newConversation')}
             timestamp={formatConversationTimestamp(conversation.updated_at)}
             lastMessage={lastMessage}
             isActive={currentConversation?.id === conversation.id}

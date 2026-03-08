@@ -40,7 +40,7 @@ Other clients like OpenClaw require tedious configuration before your AI can do 
 
 ### Powerful Skills System
 
-Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. ChatShell ships with built-in skills and lets you create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
+Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. Create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
 
 ### Custom Assistants, Built Locally
 

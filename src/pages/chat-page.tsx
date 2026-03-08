@@ -88,9 +88,7 @@ export function ChatPage() {
                 <BreadcrumbItem>
                   <BreadcrumbPage>
                     {currentConversation
-                      ? currentConversation.title === 'New Conversation'
-                        ? t('sidebar:newConversation')
-                        : currentConversation.title
+                      ? currentConversation.title || t('sidebar:newConversation')
                       : t('chat:selectConversation')}
                   </BreadcrumbPage>
                 </BreadcrumbItem>

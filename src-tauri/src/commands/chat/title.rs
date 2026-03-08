@@ -287,7 +287,7 @@ pub(crate) async fn auto_generate_title_if_needed(
     api_style: Option<String>,
 ) {
     if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await
-        && conversation.title == "New Conversation"
+        && conversation.title.is_empty()
     {
         tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
         match generate_conversation_title(
