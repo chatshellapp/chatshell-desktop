@@ -628,6 +628,12 @@ where
         let mut tool_call_internal_ids: HashMap<usize, String> = HashMap::new();
         let mut final_usage = None;
 
+        // Track reasoning state for deduplication (MiniMax sends reasoning
+        // content in both `reasoning_content` AND `content` fields).
+        let mut had_reasoning = false;
+        let mut accumulated_reasoning = String::new();
+        let mut content_after_reasoning = String::new();
+
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(Event::Open) => {
@@ -714,21 +720,63 @@ where
                         }
                     }
 
-                    // Emit reasoning content (MiniMax M1, DeepSeek-R1 style)
-                    if let Some(reasoning) = &delta.reasoning_content {
-                        if !reasoning.is_empty() {
-                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                id: None,
-                                content: rig::message::ReasoningContent::Text {
-                                    text: reasoning.clone(),
-                                    signature: None,
-                                },
-                            });
+                    let has_reasoning = delta
+                        .reasoning_content
+                        .as_ref()
+                        .is_some_and(|r| !r.is_empty());
+                    let has_content =
+                        delta.content.as_ref().is_some_and(|c| !c.is_empty());
+
+                    if has_reasoning {
+                        let reasoning = delta.reasoning_content.as_ref().unwrap();
+                        had_reasoning = true;
+                        accumulated_reasoning.push_str(reasoning);
+                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                            id: None,
+                            content: rig::message::ReasoningContent::Text {
+                                text: reasoning.clone(),
+                                signature: None,
+                            },
+                        });
+
+                        // Skip content in the same chunk as reasoning to avoid
+                        // duplication (MiniMax sends both fields simultaneously).
+                        if has_content {
+                            tracing::trace!(
+                                "Suppressing content in chunk that also has reasoning_content"
+                            );
+                            continue;
                         }
                     }
 
-                    if let Some(content) = &delta.content {
-                        if !content.is_empty() {
+                    if has_content {
+                        let content = delta.content.as_ref().unwrap();
+
+                        // After reasoning ends, some providers replay the
+                        // reasoning text as regular content. Detect and skip
+                        // the overlapping prefix.
+                        if had_reasoning && !accumulated_reasoning.is_empty() {
+                            content_after_reasoning.push_str(content);
+                            let trimmed_reasoning = accumulated_reasoning.trim();
+                            let trimmed_content = content_after_reasoning.trim();
+
+                            if trimmed_reasoning.starts_with(trimmed_content) {
+                                tracing::trace!(
+                                    "Suppressing content chunk that is a prefix of reasoning \
+                                     ({} / {} chars)",
+                                    trimmed_content.len(),
+                                    trimmed_reasoning.len()
+                                );
+                                continue;
+                            }
+
+                            // Content has diverged from reasoning -- emit the
+                            // non-overlapping portion and stop dedup checking.
+                            accumulated_reasoning.clear();
+                            let emit = content_after_reasoning.clone();
+                            content_after_reasoning.clear();
+                            yield Ok(streaming::RawStreamingChoice::Message(emit));
+                        } else {
                             yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
                         }
                     }
