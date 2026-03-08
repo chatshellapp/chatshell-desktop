@@ -14,6 +14,7 @@ import {
 import { MoreVertical, Star, FileText, Database, Boxes } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeleteAssistantDialog } from './assistant-list-item/delete-dialog'
+import { useTranslation } from 'react-i18next'
 
 export interface AssistantCapabilities {
   /**
@@ -128,6 +129,7 @@ export function AssistantListItem({
   isActive = false,
   compact = false,
 }: AssistantListItemProps) {
+  const { t } = useTranslation('common')
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
 
@@ -287,7 +289,7 @@ export function AssistantListItem({
                     onSettingsClick?.(e)
                   }}
                 >
-                  Configuration
+                  {t('configuration')}
                 </DropdownMenuItem>
                 {onDeleteClick && (
                   <>
@@ -299,7 +301,7 @@ export function AssistantListItem({
                       }}
                       className="text-destructive focus:text-destructive"
                     >
-                      Delete
+                      {t('delete')}
                     </DropdownMenuItem>
                   </>
                 )}

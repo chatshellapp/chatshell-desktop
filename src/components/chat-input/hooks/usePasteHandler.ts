@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
 import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
 
@@ -11,6 +12,7 @@ export function usePasteHandler(
   attachments: Attachment[],
   setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
 ): UsePasteHandlerReturn {
+  const { t } = useTranslation('messages')
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const clipboardData = e.clipboardData
@@ -45,13 +47,15 @@ export function usePasteHandler(
         if (unsupportedFiles.length > 0) {
           const fileDesc = unsupportedFiles[0]
           if (unsupportedFiles.length === 1) {
-            toast.error(`Unsupported file format: ${fileDesc}`, {
-              description:
-                'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
+            toast.error(t('unsupportedFileFormat', { file: fileDesc }), {
+              description: t('supportedFormats'),
             })
           } else {
-            toast.error(`${unsupportedFiles.length} unsupported files`, {
-              description: `Including: ${unsupportedFiles.slice(0, 3).join(', ')}${unsupportedFiles.length > 3 ? '...' : ''}`,
+            toast.error(t('unsupportedFilesCount', { count: unsupportedFiles.length }), {
+              description: t('includingFiles', {
+                files: unsupportedFiles.slice(0, 3).join(', '),
+                more: unsupportedFiles.length > 3 ? '...' : '',
+              }),
             })
           }
         }
@@ -71,7 +75,7 @@ export function usePasteHandler(
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
             logger.error(`Failed to read pasted file: ${file.name}`, error)
-            toast.error(`Failed to read: ${file.name}`)
+            toast.error(t('failedToReadFile', { file: file.name }))
           }
         }
 
@@ -106,7 +110,7 @@ export function usePasteHandler(
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
             logger.error(`Failed to read pasted image: ${file.name}`, error)
-            toast.error(`Failed to read image: ${file.name || 'clipboard image'}`)
+            toast.error(t('failedToReadImage', { file: file.name || t('clipboardImage') }))
           }
         }
 

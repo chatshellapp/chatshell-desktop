@@ -1,4 +1,5 @@
 import { MessageSquare } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { MessageListItem } from '@/components/message-list-item'
 import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
@@ -22,6 +23,8 @@ export function ConversationList({
   onEditTitle,
   onDelete,
 }: ConversationListProps) {
+  const { t } = useTranslation('sidebar')
+  const { t: tChat } = useTranslation('chat')
   const conversations = useConversationStore((state) => state.conversations)
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const getModelById = useModelStore((state) => state.getModelById)
@@ -34,8 +37,8 @@ export function ConversationList({
             <EmptyMedia variant="icon">
               <MessageSquare />
             </EmptyMedia>
-            <EmptyTitle>No Conversations Yet</EmptyTitle>
-            <EmptyDescription>Start a new conversation to begin chatting.</EmptyDescription>
+            <EmptyTitle>{t('noConversations')}</EmptyTitle>
+            <EmptyDescription>{t('startChatting')}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -64,7 +67,7 @@ export function ConversationList({
           ? conversation.last_message.length > 50
             ? conversation.last_message.substring(0, 50) + '...'
             : conversation.last_message
-          : 'No messages yet'
+          : tChat('noMessages')
 
         return (
           <MessageListItem

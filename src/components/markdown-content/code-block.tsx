@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Check, Copy } from 'lucide-react'
 import type { CodeBlockProps } from './types'
 
 export function CodeBlock({ language, code }: CodeBlockProps) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(async () => {
@@ -20,17 +22,17 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
         <button
           onClick={handleCopy}
           className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
-          aria-label={copied ? 'Copied!' : 'Copy code'}
+          aria-label={copied ? t('attachments:copied') : t('attachments:copyCode')}
         >
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5" />
-              <span>Copied!</span>
+              <span>{t('attachments:copied')}</span>
             </>
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" />
-              <span>Copy</span>
+              <span>{t('attachments:copy')}</span>
             </>
           )}
         </button>

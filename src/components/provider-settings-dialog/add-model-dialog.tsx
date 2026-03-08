@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -19,6 +20,7 @@ interface AddModelDialogProps {
 }
 
 export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialogProps) {
+  const { t } = useTranslation('providers')
   const [modelId, setModelId] = React.useState('')
   const [displayName, setDisplayName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -28,13 +30,13 @@ export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialo
     setError(null)
 
     if (!modelId.trim()) {
-      setError('Model ID is required')
+      setError(t('modelIdRequired'))
       return
     }
 
     const success = onAddModel(modelId, displayName || undefined)
     if (!success) {
-      setError('A model with this ID already exists')
+      setError(t('modelAlreadyExists'))
       return
     }
 
@@ -55,14 +57,14 @@ export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialo
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogTitle>Add Model Manually</DialogTitle>
-        <DialogDescription>Enter the model identifier used for API calls.</DialogDescription>
+        <DialogTitle>{t('addModelManually')}</DialogTitle>
+        <DialogDescription>{t('enterModelIdentifier')}</DialogDescription>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="model-id">Model ID</Label>
+            <Label htmlFor="model-id">{t('modelId')}</Label>
             <Input
               id="model-id"
-              placeholder="e.g. gpt-4o, claude-3-opus-20240229"
+              placeholder={t('modelIdPlaceholder')}
               value={modelId}
               onChange={(e) => {
                 setModelId(e.target.value)
@@ -72,10 +74,10 @@ export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialo
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="display-name">Display Name (optional)</Label>
+            <Label htmlFor="display-name">{t('displayNameOptional')}</Label>
             <Input
               id="display-name"
-              placeholder="Defaults to Model ID if empty"
+              placeholder={t('displayNamePlaceholder')}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
@@ -83,9 +85,9 @@ export function AddModelDialog({ open, onOpenChange, onAddModel }: AddModelDialo
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
+              {t('common:cancel')}
             </Button>
-            <Button type="submit">Add</Button>
+            <Button type="submit">{t('common:add')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

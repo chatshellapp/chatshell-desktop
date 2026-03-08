@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 interface MorphSpinnerProps extends React.SVGProps<SVGSVGElement> {
@@ -5,6 +6,7 @@ interface MorphSpinnerProps extends React.SVGProps<SVGSVGElement> {
 }
 
 function MorphSpinner({ className, size = 24, ...props }: MorphSpinnerProps) {
+  const { t } = useTranslation('common')
   // All shapes use exactly 4 cubic bezier curves for smooth morphing
   // Format: M startPoint C cp1 cp2 endPoint (x4) then Z
   // Centered at 50,50
@@ -62,7 +64,7 @@ function MorphSpinner({ className, size = 24, ...props }: MorphSpinnerProps) {
       height={size}
       className={cn('', className)}
       role="status"
-      aria-label="Loading"
+      aria-label={t('loading')}
       {...props}
     >
       {/* Brand metadata */}

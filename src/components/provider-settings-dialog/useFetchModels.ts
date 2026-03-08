@@ -2,6 +2,7 @@ import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { LLMProvider, ModelInfo } from './types'
 import { logger } from '@/lib/logger'
+import i18n from '@/lib/i18n'
 
 export interface UseFetchModelsReturn {
   availableModels: ModelInfo[]
@@ -56,13 +57,13 @@ export function useFetchModels({
 
       if (providerId === 'openai') {
         if (!apiKey) {
-          throw new Error('OpenAI API key is required. Please enter your API key above.')
+          throw new Error(i18n.t('fetchModels.openaiApiKeyRequired'))
         }
         const baseUrl = apiBaseUrl || undefined
         fetchedModels = await invoke<ModelInfo[]>('fetch_openai_models', { apiKey, baseUrl })
       } else if (providerId === 'openrouter') {
         if (!apiKey) {
-          throw new Error('OpenRouter API key is required. Please enter your API key above.')
+          throw new Error(i18n.t('fetchModels.openrouterApiKeyRequired'))
         }
         const baseUrl = apiBaseUrl || undefined
         fetchedModels = await invoke<ModelInfo[]>('fetch_openrouter_models', { apiKey, baseUrl })
@@ -74,10 +75,10 @@ export function useFetchModels({
         (providerId === 'custom' && compatibilityType === 'openai')
       ) {
         if (!apiKey) {
-          throw new Error('API key is required. Please enter your API key above.')
+          throw new Error(i18n.t('fetchModels.apiKeyRequired'))
         }
         if (!apiBaseUrl) {
-          throw new Error('Base URL is required for custom providers.')
+          throw new Error(i18n.t('fetchModels.baseUrlRequiredCustom'))
         }
         fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
           providerType: 'openai',
@@ -85,13 +86,13 @@ export function useFetchModels({
           baseUrl: apiBaseUrl,
         })
       } else if (providerId === 'custom_anthropic' || providerId === 'custom') {
-        throw new Error(
-          'Automatic model fetching is not supported for Anthropic-compatible providers. Please add models manually.'
-        )
+        throw new Error(i18n.t('fetchModels.anthropicNotSupported'))
       } else if (LOCAL_PROVIDERS.has(providerId)) {
         const baseUrl = apiBaseUrl || selectedProvider.baseUrl
         if (!baseUrl) {
-          throw new Error(`Base URL is required for ${selectedProvider.name}.`)
+          throw new Error(
+            i18n.t('fetchModels.baseUrlRequired', { provider: selectedProvider.name })
+          )
         }
         fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
           providerType: providerId,
@@ -101,12 +102,14 @@ export function useFetchModels({
       } else if (!DEDICATED_FETCH_PROVIDERS.has(providerId)) {
         if (!apiKey) {
           throw new Error(
-            `${selectedProvider.name} API key is required. Please enter your API key above.`
+            i18n.t('fetchModels.apiKeyRequiredForProvider', { provider: selectedProvider.name })
           )
         }
         const baseUrl = apiBaseUrl || selectedProvider.baseUrl
         if (!baseUrl) {
-          throw new Error(`Base URL is required for ${selectedProvider.name}.`)
+          throw new Error(
+            i18n.t('fetchModels.baseUrlRequired', { provider: selectedProvider.name })
+          )
         }
         fetchedModels = await invoke<ModelInfo[]>('fetch_provider_models', {
           providerType: providerId,
@@ -115,7 +118,7 @@ export function useFetchModels({
         })
       } else {
         throw new Error(
-          `Model fetching is not yet supported for ${selectedProvider.name}. Please add models manually.`
+          i18n.t('fetchModels.modelFetchingNotSupported', { provider: selectedProvider.name })
         )
       }
 

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { useModelStore } from '@/stores/modelStore'
@@ -13,6 +14,7 @@ import type { Message } from '@/types'
 import { logger } from '@/lib/logger'
 
 export function useSidebarHandlers() {
+  const { t } = useTranslation('messages')
   const conversations = useConversationStore((state) => state.conversations)
   const createConversation = useConversationStore((state) => state.createConversation)
   const selectConversation = useConversationStore((state) => state.selectConversation)
@@ -52,7 +54,7 @@ export function useSidebarHandlers() {
         }
 
         if (!targetConversation) {
-          targetConversation = await createConversation('New Conversation')
+          targetConversation = await createConversation(t('sidebar:newConversation'))
         }
 
         // Use selectConversation to ensure settings are loaded
@@ -69,7 +71,7 @@ export function useSidebarHandlers() {
         }
       } catch (error) {
         logger.error('Failed to handle model click:', error)
-        toast.error('Failed to select model', {
+        toast.error(t('failedToSelectModel'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -100,7 +102,7 @@ export function useSidebarHandlers() {
         }
 
         if (!targetConversation) {
-          targetConversation = await createConversation('New Conversation')
+          targetConversation = await createConversation(t('sidebar:newConversation'))
         }
 
         // Use selectConversation to ensure settings are loaded
@@ -117,7 +119,7 @@ export function useSidebarHandlers() {
           )
       } catch (error) {
         logger.error('Failed to handle assistant click:', error)
-        toast.error('Failed to select assistant', {
+        toast.error(t('failedToSelectAssistant'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -179,7 +181,7 @@ export function useSidebarHandlers() {
         await deleteModel(realModel.id)
       } catch (error) {
         logger.error('Failed to delete model:', error)
-        toast.error('Failed to delete model', {
+        toast.error(t('failedToDeleteModel'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -199,7 +201,7 @@ export function useSidebarHandlers() {
         await deleteAssistant(realAssistant.id)
       } catch (error) {
         logger.error('Failed to delete assistant:', error)
-        toast.error('Failed to delete assistant', {
+        toast.error(t('failedToDeleteAssistant'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -219,7 +221,7 @@ export function useSidebarHandlers() {
         await deletePrompt(realPrompt.id)
       } catch (error) {
         logger.error('Failed to delete prompt:', error)
-        toast.error('Failed to delete prompt', {
+        toast.error(t('failedToDeletePrompt'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -256,11 +258,11 @@ export function useSidebarHandlers() {
       }
 
       // Create a new conversation and select it (which loads settings)
-      const newConversation = await createConversation('New Conversation')
+      const newConversation = await createConversation(t('sidebar:newConversation'))
       await selectConversation(newConversation.id)
     } catch (error) {
       logger.error('Failed to create new conversation:', error)
-      toast.error('Failed to create conversation', {
+      toast.error(t('failedToCreateConversation'), {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -275,7 +277,7 @@ export function useSidebarHandlers() {
         await updateConversation(conversationId, newTitle)
       } catch (error) {
         logger.error('Failed to generate title:', error)
-        toast.error('Failed to generate title', {
+        toast.error(t('failedToGenerateTitle'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }

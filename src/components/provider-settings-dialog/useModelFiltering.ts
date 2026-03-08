@@ -1,4 +1,5 @@
 import * as React from 'react'
+import i18n from '@/lib/i18n'
 import type { LLMProvider, ModelInfo } from './types'
 
 export interface UseModelFilteringReturn {
@@ -43,7 +44,7 @@ export function useModelFiltering({
       if (selectedProvider.id === 'openrouter') {
         // For OpenRouter, group by vendor prefix (e.g., "anthropic/claude-3" -> "anthropic")
         const slashIndex = model.id.indexOf('/')
-        groupName = slashIndex > 0 ? model.id.substring(0, slashIndex) : 'Other'
+        groupName = slashIndex > 0 ? model.id.substring(0, slashIndex) : i18n.t('providers:other')
         // Capitalize first letter
         groupName = groupName.charAt(0).toUpperCase() + groupName.slice(1)
       } else {

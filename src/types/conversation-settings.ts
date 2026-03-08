@@ -173,11 +173,17 @@ export const PARAMETER_LIMITS = {
   presence_penalty: { min: -2, max: 2, step: 0.1, defaultValue: 0 },
 } as const
 
-export const CONTEXT_COUNT_OPTIONS = [
-  { value: null, label: 'Unlimited' },
-  { value: 5, label: '5 messages' },
-  { value: 10, label: '10 messages' },
-  { value: 20, label: '20 messages' },
-  { value: 50, label: '50 messages' },
-  { value: 100, label: '100 messages' },
-] as const
+import type { TFunction } from 'i18next'
+
+export function getContextCountOptions(
+  t: TFunction,
+): Array<{ value: number | null; label: string }> {
+  return [
+    { value: null, label: t('settings:contextUnlimited') },
+    { value: 5, label: t('settings:context5Messages') },
+    { value: 10, label: t('settings:context10Messages') },
+    { value: 20, label: t('settings:context20Messages') },
+    { value: 50, label: t('settings:context50Messages') },
+    { value: 100, label: t('settings:context100Messages') },
+  ]
+}

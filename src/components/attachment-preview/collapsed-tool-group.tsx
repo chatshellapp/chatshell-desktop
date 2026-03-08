@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, ListChecks } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ToolWithThinking } from '@/lib/step-grouping'
 import { parseToolName } from '@/lib/tool-name'
 import { ThinkingPreview } from './thinking-preview'
@@ -18,6 +19,7 @@ function formatToolSummaryName(rawName: string): string {
 }
 
 export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
+  const { t } = useTranslation('attachments')
   const [isExpanded, setIsExpanded] = useState(false)
 
   const toolCounts = items.reduce(
@@ -46,7 +48,7 @@ export function CollapsedToolGroup({ items }: CollapsedToolGroupProps) {
         <ListChecks className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
 
         <span className="text-xs text-muted-foreground flex-shrink-0">
-          Used {items.length} tools
+          {t('usedTools', { count: items.length })}
         </span>
 
         <span className="text-xs text-muted-foreground/60 min-w-0 truncate">{summary}</span>

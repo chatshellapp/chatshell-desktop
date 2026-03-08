@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 interface ModelListItemProps {
   /**
@@ -71,6 +72,7 @@ export function ModelListItem({
   isActive = false,
   compact = false,
 }: ModelListItemProps) {
+  const { t } = useTranslation('common')
   const [isHovered, setIsHovered] = React.useState(false)
 
   if (compact) {
@@ -201,7 +203,7 @@ export function ModelListItem({
                     onSettingsClick?.(e)
                   }}
                 >
-                  Remove
+                  {t('remove')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

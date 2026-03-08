@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
 import { logger } from '@/lib/logger'
 
@@ -18,6 +19,7 @@ export interface UseDragDropReturn {
 export function useDragDrop(
   setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
 ): UseDragDropReturn {
+  const { t } = useTranslation('messages')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const dragCounterRef = useRef(0)
 
@@ -74,13 +76,15 @@ export function useDragDrop(
       if (unsupportedFiles.length > 0) {
         const ext = unsupportedFiles[0].split('.').pop()?.toLowerCase() || 'unknown'
         if (unsupportedFiles.length === 1) {
-          toast.error(`Unsupported file format: .${ext}`, {
-            description:
-              'Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)',
+          toast.error(t('unsupportedFileFormat', { file: `.${ext}` }), {
+            description: t('supportedFormats'),
           })
         } else {
-          toast.error(`${unsupportedFiles.length} unsupported files`, {
-            description: `Including: ${unsupportedFiles.slice(0, 3).join(', ')}${unsupportedFiles.length > 3 ? '...' : ''}`,
+          toast.error(t('unsupportedFilesCount', { count: unsupportedFiles.length }), {
+            description: t('includingFiles', {
+              files: unsupportedFiles.slice(0, 3).join(', '),
+              more: unsupportedFiles.length > 3 ? '...' : '',
+            }),
           })
         }
       }
@@ -100,7 +104,7 @@ export function useDragDrop(
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
           logger.error(`Failed to read file: ${file.name}`, error)
-          toast.error(`Failed to read: ${file.name}`)
+          toast.error(t('failedToReadFile', { file: file.name }))
         }
       }
 
@@ -124,7 +128,7 @@ export function useDragDrop(
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
           logger.error(`Failed to read image: ${file.name}`, error)
-          toast.error(`Failed to read image: ${file.name}`)
+          toast.error(t('failedToReadImage', { file: file.name }))
         }
       }
     },

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { Loader2, CheckCircle2, Sparkles, Bot, ArrowRight, BotIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import type { CreateAssistantRequest } from '@/types'
 import { logger } from '@/lib/logger'
 
 export function OnboardingDialog() {
+  const { t } = useTranslation('onboarding')
   const { step, isDialogOpen, ollamaModels, checkOllama, setStep, setDialogOpen } =
     useOnboardingStore()
 
@@ -146,8 +148,8 @@ export function OnboardingDialog() {
 
       // Show success toast
       const count = builtInPrompts.length || 1
-      toast.success('All set!', {
-        description: `${count} assistant${count !== 1 ? 's' : ''} AI assistants ready. Pick one to start chatting!`,
+      toast.success(t('allSet'), {
+        description: t('assistantsReady', { count }),
         duration: 5000,
       })
 
@@ -155,7 +157,7 @@ export function OnboardingDialog() {
       setDialogOpen(false)
     } catch (err) {
       logger.error('Failed to create assistants:', err)
-      toast.error('Failed to create assistants', {
+      toast.error(t('failedToCreateAssistants'), {
         description: String(err),
       })
     } finally {
@@ -169,8 +171,8 @@ export function OnboardingDialog() {
         return (
           <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <Loader2 className="size-12 animate-spin text-primary" />
-            <p className="text-lg font-medium">Setting up ChatShell...</p>
-            <p className="text-sm text-muted-foreground">Checking for local AI models</p>
+            <p className="text-lg font-medium">{t('settingUp')}</p>
+            <p className="text-sm text-muted-foreground">{t('checkingForModels')}</p>
           </div>
         )
 
@@ -181,10 +183,9 @@ export function OnboardingDialog() {
               <CheckCircle2 className="size-12 text-green-500" />
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-semibold">Ollama is ready</h3>
+              <h3 className="text-xl font-semibold">{t('ollamaReady')}</h3>
               <p className="text-muted-foreground max-w-md">
-                Found {ollamaModels.length} local model{ollamaModels.length !== 1 ? 's' : ''}. Your
-                AI runs on your machine - fast and private.
+                {t('ollamaFoundModels', { count: ollamaModels.length })}
               </p>
             </div>
             <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -192,18 +193,18 @@ export function OnboardingDialog() {
                 {isCreatingAssistant ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Creating...
+                    {t('creating')}
                   </>
                 ) : (
                   <>
                     <Sparkles className="size-4 mr-2" />
-                    Create Assistants
+                    {t('createAssistants')}
                   </>
                 )}
               </Button>
               <Button variant="outline" onClick={() => setProviderDialogOpen(true)}>
                 <Bot className="size-4 mr-2" />
-                Add More Providers
+                {t('addMoreProviders')}
               </Button>
             </div>
           </div>
@@ -216,15 +217,12 @@ export function OnboardingDialog() {
               <BotIcon className="size-12 text-cyan-500" />
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-semibold">Configure a provider to get started</h3>
-              <p className="text-muted-foreground max-w-md">
-                To start chatting, you'll need to configure an AI provider. Choose from local
-                options like Ollama or cloud services like OpenAI and OpenRouter.
-              </p>
+              <h3 className="text-xl font-semibold">{t('configureProvider')}</h3>
+              <p className="text-muted-foreground max-w-md">{t('configureProviderDesc')}</p>
             </div>
             <Button onClick={() => setProviderDialogOpen(true)} size="lg">
               <Bot className="size-4 mr-2" />
-              Configure Provider
+              {t('setupProvider')}
               <ArrowRight className="size-4 ml-2" />
             </Button>
           </div>
@@ -237,22 +235,21 @@ export function OnboardingDialog() {
               <Sparkles className="size-12 text-pink-500" />
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-semibold">Ready to create your assistants</h3>
+              <h3 className="text-xl font-semibold">{t('readyToCreateAssistants')}</h3>
               <p className="text-muted-foreground max-w-md">
-                You have {activeModels.length} model{activeModels.length !== 1 ? 's' : ''}{' '}
-                available. Assistants will be created from built-in prompts.
+                {t('modelsAvailable', { count: activeModels.length })}
               </p>
             </div>
             <Button onClick={createDefaultAssistants} disabled={isCreatingAssistant} size="lg">
               {isCreatingAssistant ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Creating...
+                  {t('creating')}
                 </>
               ) : (
                 <>
                   <Sparkles className="size-4 mr-2" />
-                  Create Assistants
+                  {t('createAssistants')}
                 </>
               )}
             </Button>
@@ -268,7 +265,7 @@ export function OnboardingDialog() {
     <>
       <Dialog open={isDialogOpen && step !== 'complete'} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogTitle className="sr-only">Welcome to ChatShell</DialogTitle>
+          <DialogTitle className="sr-only">{t('welcome')}</DialogTitle>
           <DialogDescription className="sr-only">
             Set up your AI assistant to get started
           </DialogDescription>

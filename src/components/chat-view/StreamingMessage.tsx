@@ -12,6 +12,7 @@ import type { Message, ToolCall, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG } from './utils'
 import type { DisplayInfo } from './hooks'
+import { useTranslation } from 'react-i18next'
 
 interface StreamingMessageProps {
   messages: Message[]
@@ -48,6 +49,7 @@ export function StreamingMessage({
   onExportConversation,
   onExportMessage,
 }: StreamingMessageProps) {
+  const { t } = useTranslation('chat')
   const info = getDisplayInfo()
 
   // Parse thinking content from streaming output (XML tags like <think>)
@@ -405,7 +407,7 @@ export function StreamingMessage({
       key={isWaitingForAI ? 'waiting' : 'streaming'}
       role="assistant"
       content={showContent ? finalContent : ''}
-      timestamp="Now"
+      timestamp={t('now')}
       displayName={info.displayName}
       senderType={info.senderType}
       modelLogo={info.modelLogo}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ export function SystemPromptDialog({
   onSelectedSystemPromptIdChange,
   onCustomSystemPromptChange,
 }: SystemPromptDialogProps) {
+  const { t } = useTranslation(['chat', 'common', 'assistants'])
   const { prompts, ensureLoaded } = usePromptStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [isCustomMode, setIsCustomMode] = useState(false)
@@ -153,15 +155,13 @@ export function SystemPromptDialog({
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[600px] max-h-[70vh] flex flex-col gap-0 p-0">
           <DialogHeader className="px-4 pt-4 pb-2">
-            <DialogTitle>Custom System Prompt</DialogTitle>
-            <DialogDescription>
-              Enter a custom system prompt for this conversation
-            </DialogDescription>
+            <DialogTitle>{t('customSystemPrompt')}</DialogTitle>
+            <DialogDescription>{t('enterCustomSystemPrompt')}</DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 px-4 py-3 min-h-0">
             <Textarea
-              placeholder="You are a helpful AI assistant..."
+              placeholder={t('assistants:systemPromptPlaceholder')}
               value={customText}
               onChange={(e) => setCustomText(e.target.value)}
               rows={12}
@@ -175,7 +175,7 @@ export function SystemPromptDialog({
               onClick={handleCancelCustom}
               className="px-3 py-1.5 text-sm rounded-md hover:bg-accent transition-colors"
             >
-              Cancel
+              {t('common:cancel')}
             </button>
             <button
               onClick={handleSaveCustom}
@@ -186,7 +186,7 @@ export function SystemPromptDialog({
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
             >
-              Apply
+              {t('common:apply')}
             </button>
           </div>
         </DialogContent>
@@ -199,8 +199,8 @@ export function SystemPromptDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[500px] max-h-[70vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle>System Prompt</DialogTitle>
-          <DialogDescription>Override the system prompt for this conversation</DialogDescription>
+          <DialogTitle>{t('systemPrompt')}</DialogTitle>
+          <DialogDescription>{t('overrideSystemPrompt')}</DialogDescription>
         </DialogHeader>
 
         {/* Search */}
@@ -208,7 +208,7 @@ export function SystemPromptDialog({
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              placeholder="Search prompts..."
+              placeholder={t('assistants:searchPrompts')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -235,9 +235,9 @@ export function SystemPromptDialog({
                   <div className="flex items-center gap-2">
                     <RotateCcw className="size-4 text-muted-foreground shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm">Default</div>
+                      <div className="font-medium text-sm">{t('common:default')}</div>
                       <div className="text-xs text-muted-foreground">
-                        Use the assistant's default system prompt
+                        {t('defaultSystemPrompt')}
                       </div>
                     </div>
                   </div>
@@ -255,13 +255,13 @@ export function SystemPromptDialog({
                   <div className="flex items-center gap-2">
                     <Pencil className="size-4 text-muted-foreground shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm">Custom</div>
+                      <div className="font-medium text-sm">{t('custom')}</div>
                       <div className="text-xs text-muted-foreground">
                         {systemPromptMode === 'custom' && customSystemPrompt
                           ? customSystemPrompt.length > 60
                             ? customSystemPrompt.substring(0, 60) + '...'
                             : customSystemPrompt
-                          : 'Write your own system prompt'}
+                          : t('writeOwnSystemPrompt')}
                       </div>
                     </div>
                   </div>
@@ -313,15 +313,13 @@ export function SystemPromptDialog({
           ) : searchQuery ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <SquareTerminal className="size-8 text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">No prompts found</p>
+              <p className="text-sm text-muted-foreground">{t('assistants:noPromptsFound')}</p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <SquareTerminal className="size-8 text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">No system prompts available</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">
-                Create system prompts in the Library
-              </p>
+              <p className="text-sm text-muted-foreground">{t('noSystemPromptsAvailable')}</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">{t('createSystemPrompts')}</p>
             </div>
           )}
         </div>

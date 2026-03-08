@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { InputGroup, InputGroupTextarea } from '@/components/ui/input-group'
@@ -29,13 +30,14 @@ import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useSkillStore } from '@/stores/skillStore'
-import { CONTEXT_COUNT_OPTIONS } from '@/types'
+import { getContextCountOptions } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
 
 // interface ChatInputProps {}
 
 export function ChatInput(/* _props: ChatInputProps */) {
+  const { t } = useTranslation('chat')
   // State
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'models' | 'assistants'>('models')
@@ -152,48 +154,49 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
   // Compute display labels
   const modelParametersLabel = useMemo(() => {
-    if (!conversationSettings) return 'Default'
-    if (conversationSettings.useProviderDefaults) return 'Default'
-    if (conversationSettings.useCustomParameters) return 'Custom'
+    if (!conversationSettings) return t('common:default')
+    if (conversationSettings.useProviderDefaults) return t('common:default')
+    if (conversationSettings.useCustomParameters) return t('custom')
     if (conversationSettings.selectedPresetId) {
       const preset = parameterPresets.find((p) => p.id === conversationSettings.selectedPresetId)
-      return preset?.name || 'Preset'
+      return preset?.name || t('preset')
     }
     // No explicit selection - show Default (will use assistant preset if available)
-    return 'Default'
-  }, [conversationSettings, parameterPresets])
+    return t('common:default')
+  }, [conversationSettings, parameterPresets, t])
 
   const contextCountLabel = useMemo(() => {
-    if (!conversationSettings) return 'Unlimited'
+    if (!conversationSettings) return t('settings:contextUnlimited')
     const count = conversationSettings.contextMessageCount
-    if (count === null) return 'Unlimited'
-    const option = CONTEXT_COUNT_OPTIONS.find((opt) => opt.value === count)
-    return option?.label || `${count} msgs`
-  }, [conversationSettings])
+    if (count === null) return t('settings:contextUnlimited')
+    const options = getContextCountOptions(t)
+    const option = options.find((opt) => opt.value === count)
+    return option?.label || t('countMsgs', { count })
+  }, [conversationSettings, t])
 
   // Compute system prompt label based on current settings
   const systemPromptLabel = useMemo(() => {
-    if (!conversationSettings) return 'Default'
+    if (!conversationSettings) return t('common:default')
 
     const { systemPromptMode, selectedSystemPromptId } = conversationSettings
 
     // Default mode
     if (systemPromptMode === 'none') {
-      return 'Default'
+      return t('common:default')
     }
 
     // If system prompt is set, show its name or "Custom"
     if (systemPromptMode === 'existing' && selectedSystemPromptId) {
       const prompt = prompts.find((p) => p.id === selectedSystemPromptId)
-      return prompt?.name || 'Selected'
+      return prompt?.name || t('common:selected')
     }
 
     if (systemPromptMode === 'custom') {
-      return 'Custom'
+      return t('custom')
     }
 
-    return 'Default'
-  }, [conversationSettings, prompts])
+    return t('common:default')
+  }, [conversationSettings, prompts, t])
 
   // Get active system prompt info for tag display
   const activeSystemPromptInfo = useMemo(() => {
@@ -222,27 +225,27 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
   // Compute tools label (includes both builtin and MCP tools)
   const mcpServersLabel = useMemo(() => {
-    if (!conversationSettings) return 'None'
+    if (!conversationSettings) return t('common:none')
     const enabledCount = conversationSettings.enabledMcpServerIds?.length || 0
-    if (enabledCount === 0) return 'None'
+    if (enabledCount === 0) return t('common:none')
     if (enabledCount === 1) {
       const tool = mcpServers.find((s) => s.id === conversationSettings.enabledMcpServerIds[0])
       return tool?.name || '1'
     }
     return `${enabledCount}`
-  }, [conversationSettings, mcpServers])
+  }, [conversationSettings, mcpServers, t])
 
   // Compute skills label
   const skillsLabel = useMemo(() => {
-    if (!conversationSettings) return 'None'
+    if (!conversationSettings) return t('common:none')
     const enabledCount = conversationSettings.enabledSkillIds?.length || 0
-    if (enabledCount === 0) return 'None'
+    if (enabledCount === 0) return t('common:none')
     if (enabledCount === 1) {
       const skill = allSkills.find((s) => s.id === conversationSettings.enabledSkillIds[0])
       return skill?.name || '1'
     }
     return `${enabledCount}`
-  }, [conversationSettings, allSkills])
+  }, [conversationSettings, allSkills, t])
 
   // Handler to change enabled skill IDs
   const handleSkillIdsChange = (skillIds: string[]) => {
@@ -282,7 +285,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Working Directory',
+        title: t('selectWorkingDirectoryTitle'),
       })
 
       if (selected && currentConversation) {
@@ -410,7 +413,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
                   type="button"
                   onClick={handleClearWorkingDirectory}
                   className="hover:text-destructive transition-colors -ml-0.5"
-                  title="Clear working directory"
+                  title={t('clearWorkingDirectory')}
                 >
                   <X className="size-3" />
                 </button>
@@ -440,13 +443,13 @@ export function ChatInput(/* _props: ChatInputProps */) {
                     >
                       <Sparkles className="size-3" />
                       <span className="max-w-[200px] truncate">
-                        {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                        {activeSystemPromptInfo.type === 'custom' ? `${t('custom')}: ` : ''}
                         {activeSystemPromptInfo.name}
                       </span>
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    System prompt can only be changed when conversation is empty
+                    {t('systemPromptDisabledTooltip')}
                   </TooltipContent>
                 </Tooltip>
               ) : (
@@ -458,7 +461,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
                     type="button"
                     onClick={handleClearSystemPrompt}
                     className="hover:text-destructive transition-colors -ml-0.5"
-                    title="Clear system prompt"
+                    title={t('clearSystemPrompt')}
                   >
                     <X className="size-3" />
                   </button>
@@ -475,7 +478,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
                   >
                     <Sparkles className="size-3" />
                     <span className="max-w-[200px] truncate">
-                      {activeSystemPromptInfo.type === 'custom' ? 'Custom: ' : ''}
+                      {activeSystemPromptInfo.type === 'custom' ? `${t('custom')}: ` : ''}
                       {activeSystemPromptInfo.name}
                     </span>
                   </button>
@@ -493,7 +496,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
           />
           <InputGroupTextarea
             ref={textareaRef}
-            placeholder="Ask, Search or Chat..."
+            placeholder={t('typeMessage')}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

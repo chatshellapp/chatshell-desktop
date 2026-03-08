@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslation } from 'react-i18next'
 import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +29,7 @@ interface LLMProviderSettingsProps {
 }
 
 export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
+  const { t } = useTranslation('providers')
   const {
     selectedProvider,
     setSelectedProvider,
@@ -137,7 +139,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
           </SidebarGroup>
 
           <SidebarGroup>
-            <SidebarGroupLabel>Custom</SidebarGroupLabel>
+            <SidebarGroupLabel>{t('common:custom', 'Custom')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {customStoreProviders.map((cp) => (
@@ -170,7 +172,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
                     isActive={selectedProvider.id === 'custom' && !editingCustomProviderId}
                   >
                     <Plus className="size-4" />
-                    <span>Add Provider</span>
+                    <span>{t('addProvider')}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -185,14 +187,14 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
           <div className="space-y-6">
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">
-                {existingProvider ? 'Edit' : 'Add'} {displayName}
+                {existingProvider ? t('common:edit') : t('common:add')} {displayName}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {existingProvider
-                  ? `Manage your ${displayName} configuration and models`
+                  ? t('manageProviderDescription', { name: displayName })
                   : isCustom
-                    ? 'Configure a custom provider endpoint'
-                    : `Configure your ${displayName} API settings`}
+                    ? t('configureCustomEndpoint')
+                    : t('configureApiSettings', { name: displayName })}
               </p>
             </div>
 
@@ -239,12 +241,12 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
             {isSaving ? (
               <>
                 <Loader2 className="size-4 mr-2 animate-spin" />
-                Saving...
+                {t('common:saving')}
               </>
             ) : existingProvider ? (
-              'Save'
+              t('common:save')
             ) : (
-              'Save Configuration'
+              t('saveConfiguration')
             )}
           </Button>
         </div>

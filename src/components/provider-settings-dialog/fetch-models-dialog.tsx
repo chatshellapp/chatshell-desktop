@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslation } from 'react-i18next'
 import { Search, Loader2, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,13 +47,14 @@ export function FetchModelsDialog({
   onRetry,
   onAddManually,
 }: FetchModelsDialogProps) {
+  const { t } = useTranslation('providers')
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[600px] flex flex-col">
         <div className="space-y-2">
-          <DialogTitle>Available Models</DialogTitle>
+          <DialogTitle>{t('availableModels')}</DialogTitle>
           <DialogDescription>
-            Select models from {selectedProvider.name} to add to your configuration
+            {t('selectModelsFrom', { provider: selectedProvider.name })}
           </DialogDescription>
         </div>
 
@@ -61,7 +63,7 @@ export function FetchModelsDialog({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              placeholder="Search models..."
+              placeholder={t('searchModels')}
               value={modelSearchQuery}
               onChange={(e) => onModelSearchQueryChange(e.target.value)}
               className="pl-9"
@@ -76,7 +78,7 @@ export function FetchModelsDialog({
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center min-h-32 py-6 text-center">
-              <p className="text-sm text-destructive mb-1 font-medium">Failed to fetch models</p>
+              <p className="text-sm text-destructive mb-1 font-medium">{t('fetchFailed')}</p>
               <div className="mx-4 mb-3 px-3 py-2 bg-destructive/5 rounded-md max-h-24 overflow-y-auto w-full">
                 <p className="text-xs text-destructive/80 font-mono whitespace-pre-wrap break-all text-left">
                   {fetchError}
@@ -84,10 +86,10 @@ export function FetchModelsDialog({
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={onRetry}>
-                  Retry
+                  {t('common:retry')}
                 </Button>
                 <Button variant="outline" size="sm" onClick={onAddManually}>
-                  Add Manually
+                  {t('addManually')}
                 </Button>
               </div>
             </div>
@@ -95,7 +97,7 @@ export function FetchModelsDialog({
             <div className="space-y-3">
               {Object.keys(groupedModels).length === 0 && modelSearchQuery && (
                 <div className="flex items-center justify-center h-32 text-muted-foreground">
-                  No models matching "{modelSearchQuery}"
+                  {t('noModelsMatching', { query: modelSearchQuery })}
                 </div>
               )}
               {Object.entries(groupedModels).map(([groupName, groupModels]) => (
@@ -109,7 +111,8 @@ export function FetchModelsDialog({
                         <span className="font-semibold">{groupName}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {groupModels.length} {groupModels.length === 1 ? 'model' : 'models'}
+                            {groupModels.length}{' '}
+                            {groupModels.length === 1 ? t('modelUnit') : t('modelsUnit')}
                           </span>
                           <ChevronDown className="size-4" />
                         </div>
@@ -171,14 +174,14 @@ export function FetchModelsDialog({
             </div>
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No models found
+              {t('noModelsFound')}
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            OK
+            {t('common:ok')}
           </Button>
         </DialogFooter>
       </DialogContent>

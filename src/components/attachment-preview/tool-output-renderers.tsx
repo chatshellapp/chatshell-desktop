@@ -3,6 +3,8 @@ import { ExternalLink, Copy, Check } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { MarkdownContent } from '@/components/markdown-content'
 import { getDomain } from './utils'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/lib/i18n'
 
 function useCopyButton(text: string) {
   const [copied, setCopied] = useState(false)
@@ -15,6 +17,7 @@ function useCopyButton(text: string) {
 }
 
 export function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation('tools')
   const { copied, handleCopy } = useCopyButton(text)
   return (
     <button
@@ -23,7 +26,7 @@ export function CopyButton({ text }: { text: string }) {
         handleCopy()
       }}
       className="p-1 rounded hover:bg-muted/50 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-      title="Copy"
+      title={t('copyButton.copy')}
     >
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
     </button>
@@ -114,7 +117,7 @@ function extractCommandNames(command: string): string {
         if (part === '>' || part === '>>' || part === '<' || part === '2>') return null
         if (LOOP_HEADERS.has(part)) return null
         if (SHELL_KEYWORDS.has(part)) continue
-        if (/^["'`()\[\]{}$\\-]/.test(part)) continue
+        if (/^["'`()[\]{}$\\-]/.test(part)) continue
         if (/^\d/.test(part)) continue
         return part.replace(/^.*\//, '')
       }
@@ -149,7 +152,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'bash':
         return parsed.description || (parsed.command ? extractCommandNames(parsed.command) : null)
       case 'kill_shell':
-        return 'terminate session'
+        return i18n.t('toolInput.killShellSummary', { ns: 'tools' })
       case 'web_search':
         return parsed.query || null
       case 'web_fetch':
@@ -235,6 +238,7 @@ export function WebSearchOutput({ toolInput, toolOutput }: ToolOutputProps) {
 }
 
 export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
   const url = safeParseField(toolInput, 'url')
   const domain = url ? getDomain(url) : null
   const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : null
@@ -263,7 +267,7 @@ export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
               openUrl(url)
             }}
             className="p-1 rounded hover:bg-muted/50 text-muted-foreground/50 hover:text-muted-foreground transition-colors flex-shrink-0"
-            title="Open in browser"
+            title={t('webFetch.openInBrowser')}
           >
             <ExternalLink className="h-3 w-3" />
           </button>
@@ -310,6 +314,7 @@ export function ReadOutput({ toolInput, toolOutput }: ToolOutputProps) {
 }
 
 export function BashOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
   const command = safeParseField(toolInput, 'command') || ''
   const output = toolOutput || ''
 
@@ -326,7 +331,9 @@ export function BashOutput({ toolInput, toolOutput }: ToolOutputProps) {
     <div className="space-y-1">
       <div className="flex items-center justify-end gap-2">
         {exitCode !== null && exitCode !== 0 && (
-          <span className="text-xs text-red-400/80 flex-shrink-0 mr-auto">exit {exitCode}</span>
+          <span className="text-xs text-red-400/80 flex-shrink-0 mr-auto">
+            {t('bashOutput.exitCode', { exitCode })}
+          </span>
         )}
         {cleanOutput && <CopyButton text={cleanOutput} />}
       </div>
@@ -374,6 +381,7 @@ export function GrepOutput({ toolInput, toolOutput }: ToolOutputProps) {
 }
 
 export function GlobOutput({ toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
   const output = toolOutput || ''
   const files = output.split('\n').filter(Boolean)
   const fileCount = files.length
@@ -382,7 +390,7 @@ export function GlobOutput({ toolOutput }: ToolOutputProps) {
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground/60">
-          {fileCount} {fileCount === 1 ? 'file' : 'files'}
+          {fileCount} {fileCount === 1 ? t('globOutput.file') : t('globOutput.files')}
         </span>
         {output && <CopyButton text={output} />}
       </div>

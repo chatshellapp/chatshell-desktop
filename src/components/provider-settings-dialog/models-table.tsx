@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslation } from 'react-i18next'
 import { MoreHorizontal, ListChecks, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,14 +43,16 @@ export function ModelsTable({
   onDeleteModel,
   onModelSettings,
 }: ModelsTableProps) {
+  const { t } = useTranslation('providers')
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>Models</Label>
+        <Label>{t('models')}</Label>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onOpenAddModelDialog}>
             <Plus className="size-4 mr-2" />
-            Add Model
+            {t('addModel')}
           </Button>
           <Button
             type="button"
@@ -62,7 +65,7 @@ export function ModelsTable({
             }
           >
             <ListChecks className="size-4 mr-2" />
-            Manage Models
+            {t('manageModels')}
           </Button>
         </div>
       </div>
@@ -70,8 +73,8 @@ export function ModelsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">ID</TableHead>
-              <TableHead>Name</TableHead>
+              <TableHead className="w-[200px]">{t('modelId')}</TableHead>
+              <TableHead>{t('modelName')}</TableHead>
               <TableHead className="w-[100px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -101,13 +104,13 @@ export function ModelsTable({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onModelSettings(model)}>
-                          Edit
+                          {t('common:edit')}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => onDeleteModel(model.id)}
                         >
-                          Delete
+                          {t('common:delete')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -117,7 +120,7 @@ export function ModelsTable({
             ) : (
               <TableRow>
                 <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                  No models added yet
+                  {t('noModelsAdded')}
                 </TableCell>
               </TableRow>
             )}

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Plug,
   RotateCcw,
@@ -43,6 +44,7 @@ export function McpServersDialog({
   enabledServerIds,
   onServerIdsChange,
 }: McpServersDialogProps) {
+  const { t } = useTranslation('tools')
   const servers = useMcpStore((state) => state.servers)
   const ensureLoaded = useMcpStore((state) => state.ensureLoaded)
   const connectServer = useMcpStore((state) => state.connectServer)
@@ -144,16 +146,16 @@ export function McpServersDialog({
                     return (
                       <span
                         className={`${dotClass} bg-yellow-500 animate-pulse`}
-                        title="Connecting..."
+                        title={t('connecting')}
                       />
                     )
                   if (status === 'connected')
-                    return <span className={`${dotClass} bg-green-500`} title="Connected" />
+                    return <span className={`${dotClass} bg-green-500`} title={t('connected')} />
                   if (status === 'needs_auth')
                     return (
                       <span
                         className={`${dotClass} bg-yellow-500`}
-                        title="Authorization required"
+                        title={t('authorizationRequired')}
                       />
                     )
                   if (status === 'error')
@@ -168,7 +170,10 @@ export function McpServersDialog({
                       </Tooltip>
                     )
                   return (
-                    <span className={`${dotClass} bg-muted-foreground/30`} title="Not connected" />
+                    <span
+                      className={`${dotClass} bg-muted-foreground/30`}
+                      title={t('notConnected')}
+                    />
                   )
                 })()}
               <Label
@@ -187,7 +192,7 @@ export function McpServersDialog({
               </p>
             )}
             {isGloballyDisabled && (
-              <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+              <p className="text-xs text-muted-foreground/70 italic">{t('disabledInSettings')}</p>
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -198,7 +203,7 @@ export function McpServersDialog({
                 className="h-7 w-7"
                 onClick={() => connectServer(tool.id)}
                 disabled={rawStatus === 'connecting'}
-                title="Refresh connection"
+                title={t('refreshConnection')}
               >
                 {rawStatus === 'connecting' ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -228,7 +233,7 @@ export function McpServersDialog({
                     <Switch id={tool.id} checked={false} disabled />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>Enable this tool in Settings first</TooltipContent>
+                <TooltipContent>{t('enableInSettingsFirst')}</TooltipContent>
               </Tooltip>
             ) : (
               <Switch
@@ -286,19 +291,14 @@ export function McpServersDialog({
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5" />
-            Tools & MCP
+            {t('toolsAndMcp')}
           </DialogTitle>
-          <DialogDescription>
-            Select which tools to enable for this conversation. Tools give the AI additional
-            capabilities like searching the web or reading web pages.
-          </DialogDescription>
+          <DialogDescription>{t('toolsMcpDescription')}</DialogDescription>
         </DialogHeader>
 
         {hasNoTools ? (
           <div className="px-6 py-8">
-            <p className="text-sm text-muted-foreground text-center">
-              No tools available. Enable builtin tools or configure MCP servers in Settings.
-            </p>
+            <p className="text-sm text-muted-foreground text-center">{t('noToolsAvailable')}</p>
           </div>
         ) : (
           <Tabs
@@ -319,7 +319,7 @@ export function McpServersDialog({
                 </TabsTrigger>
                 <TabsTrigger value="builtin-tools" className="gap-1.5">
                   <Wrench className="h-3.5 w-3.5" />
-                  Built-in Tools
+                  {t('builtinTools')}
                   {builtinTools.length > 0 && (
                     <span className="text-xs text-muted-foreground ml-0.5">
                       ({builtinTools.length})
@@ -339,7 +339,7 @@ export function McpServersDialog({
                   className="gap-1.5"
                 >
                   <ToggleRight className="h-3.5 w-3.5" />
-                  Enable All
+                  {t('enableAll')}
                 </Button>
                 <Button
                   variant="outline"
@@ -349,7 +349,7 @@ export function McpServersDialog({
                   className="gap-1.5"
                 >
                   <ToggleLeft className="h-3.5 w-3.5" />
-                  Disable All
+                  {t('disableAll')}
                 </Button>
               </div>
             )}

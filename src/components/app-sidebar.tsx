@@ -27,8 +27,9 @@ import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
 import { useConversationStore } from '@/stores/conversation'
 import { useAssistantStore } from '@/stores/assistantStore'
+import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
-import { SIDEBAR_DATA } from '@/lib/sidebar-data'
+import { SIDEBAR_DATA, getNavItems } from '@/lib/sidebar-data'
 import type { Prompt as PromptListItem, PromptGroup } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
@@ -37,7 +38,9 @@ import type { Prompt as PromptDB } from '@/types/prompt'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [activeItem, setActiveItem] = React.useState<NavItem>(SIDEBAR_DATA.navMain[0])
+  const { t } = useTranslation()
+  const navItems = React.useMemo(() => getNavItems(t), [t])
+  const [activeItem, setActiveItem] = React.useState<NavItem>(() => getNavItems(t)[0])
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
   const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
@@ -60,6 +63,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const togglePromptStar = usePromptStore((state) => state.togglePromptStar)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+
+  React.useEffect(() => {
+    const updated = navItems.find((item) => item.id === activeItem.id)
+    if (updated && updated.title !== activeItem.title) {
+      setActiveItem(updated)
+    }
+  }, [navItems, activeItem])
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
@@ -97,8 +107,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const handlers = useSidebarHandlers()
 
   const renderContent = () => {
-    switch (activeItem.title) {
-      case 'Conversations':
+    switch (activeItem.id) {
+      case 'conversations':
         return (
           <ConversationList
             conversationParticipantsMap={conversationParticipantsMap}
@@ -108,7 +118,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onDelete={handlers.handleDeleteConversation}
           />
         )
-      case 'Contacts':
+      case 'contacts':
         return (
           <ContactsContent
             activeTab={activeContactsTab}
@@ -125,7 +135,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               handlers.handleAssistantClick(assistant)
             }
             onAssistantSettings={(assistant: AssistantListItem) => {
-              // Find the full assistant from the store
               const fullAssistant = assistants.find((a) => a.id === assistant.id)
               if (fullAssistant) {
                 setEditingAssistant(fullAssistant)
@@ -141,7 +150,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onGroupSettings={() => {}}
           />
         )
-      case 'Library':
+      case 'library':
         return (
           <LibraryContent
             activeTab={activeLibraryTab}
@@ -150,7 +159,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             selectedPromptId={selectedPromptId || undefined}
             onPromptClick={(prompt: PromptListItem) => setSelectedPromptId(prompt.id)}
             onPromptSettings={(prompt: PromptListItem) => {
-              // Find the full prompt from the store
               const fullPrompt = prompts.find((p) => p.id === prompt.id)
               if (fullPrompt) {
                 setEditingPrompt(fullPrompt)
@@ -165,12 +173,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onPromptGroupSettings={() => {}}
           />
         )
-      case 'Artifacts':
+      case 'artifacts':
         return <ArtifactsContent />
-      case 'Settings':
+      case 'settings':
         return (
           <div className="p-4">
-            <p className="text-sm text-muted-foreground">Settings panel coming soon...</p>
+            <p className="text-sm text-muted-foreground">{t('settingsComingSoon')}</p>
           </div>
         )
       default:
@@ -179,8 +187,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   }
 
   const renderFooter = () => {
-    switch (activeItem.title) {
-      case 'Conversations':
+    switch (activeItem.id) {
+      case 'conversations':
         return (
           <div className="px-3 pt-2 pb-2">
             <Button
@@ -190,11 +198,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               onClick={handlers.handleNewConversation}
             >
               <MessageSquarePlus className="size-4" />
-              New Conversation
+              {t('sidebar:newConversation')}
             </Button>
           </div>
         )
-      case 'Contacts':
+      case 'contacts':
         switch (activeContactsTab) {
           case 'models':
             return (
@@ -206,7 +214,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   onClick={() => setProviderDialogOpen(true)}
                 >
                   <Plus className="size-4" />
-                  Add Models
+                  {t('sidebar:addModels')}
                 </Button>
               </div>
             )
@@ -223,28 +231,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   }}
                 >
                   <Plus className="size-4" />
-                  Add Assistant
+                  {t('sidebar:addAssistant')}
                 </Button>
               </div>
             )
           case 'people':
-            return (
-              <></>
-              // <div className="px-3 pt-2 pb-2">
-              //   <Button
-              //     variant="outline"
-              //     size="sm"
-              //     className="w-full justify-center gap-2 h-9"
-              //     onClick={() => {}}
-              //   >
-              //     <Plus className="size-4" />
-              //     Add Contact
-              //   </Button>
-              // </div>
-            )
+            return <></>
         }
         break
-      case 'Library':
+      case 'library':
         if (activeLibraryTab === 'prompts') {
           return (
             <div className="px-3 pt-2 pb-2">
@@ -259,13 +254,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 }}
               >
                 <Plus className="size-4" />
-                Add Prompt
+                {t('sidebar:addPrompt')}
               </Button>
             </div>
           )
         }
         break
-      case 'Settings':
+      case 'settings':
         return null
       default:
         return null
@@ -280,7 +275,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {...props}
     >
       <SidebarNavigation
-        navItems={SIDEBAR_DATA.navMain}
+        navItems={navItems}
         activeItem={activeItem}
         onItemClick={(item) => {
           setActiveItem(item)

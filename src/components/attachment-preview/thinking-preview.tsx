@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
 import { MarkdownContent } from '@/components/markdown-content'
 
@@ -14,6 +15,7 @@ export function ThinkingPreview({
   /** Override initial expanded state (useful for completed segments that should stay visible) */
   defaultExpanded?: boolean
 }) {
+  const { t } = useTranslation('attachments')
   const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? isStreaming)
 
   // Refs for auto-scroll
@@ -105,7 +107,7 @@ export function ThinkingPreview({
         />
 
         <span className="text-xs text-muted-foreground truncate">
-          {isStreaming ? 'Thinking...' : 'Thought process'}
+          {isStreaming ? t('thinking') : t('thoughtProcess')}
         </span>
 
         <span className="flex items-center text-muted-foreground/60 flex-shrink-0">
@@ -128,7 +130,7 @@ export function ThinkingPreview({
             {content ? (
               <MarkdownContent content={content} className="text-xs" />
             ) : isStreaming ? (
-              <span className="text-muted-foreground/50 italic">Processing...</span>
+              <span className="text-muted-foreground/50 italic">{t('processing')}</span>
             ) : null}
           </div>
           {/* Scroll anchor */}

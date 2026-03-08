@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -69,6 +70,7 @@ export function PromptSelectDialog({
   onSelectedUserPromptIdChange,
   onCustomUserPromptChange,
 }: PromptSelectDialogProps) {
+  const { t } = useTranslation('prompts')
   const { prompts, ensureLoaded } = usePromptStore()
 
   // Search queries for filtering
@@ -189,17 +191,15 @@ export function PromptSelectDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Prompt Settings</DialogTitle>
-          <DialogDescription>
-            Override the system and user prompts for this conversation
-          </DialogDescription>
+          <DialogTitle>{t('promptSettings')}</DialogTitle>
+          <DialogDescription>{t('overrideSystemAndUserPrompts')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* System Prompt Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">System Prompt</Label>
+              <Label className="text-sm font-medium">{t('systemPrompt')}</Label>
               <div className="flex gap-3">
                 <div className="flex items-center gap-1.5">
                   <input
@@ -214,7 +214,7 @@ export function PromptSelectDialog({
                     htmlFor="system-prompt-none"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Default
+                    {t('default')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -230,7 +230,7 @@ export function PromptSelectDialog({
                     htmlFor="system-prompt-existing"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Select Existing
+                    {t('selectExisting')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -246,7 +246,7 @@ export function PromptSelectDialog({
                     htmlFor="system-prompt-custom"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Custom
+                    {t('custom')}
                   </Label>
                 </div>
               </div>
@@ -266,7 +266,7 @@ export function PromptSelectDialog({
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Search prompts..."
+                        placeholder={t('searchPrompts')}
                         value={systemPromptSearchQuery}
                         onChange={(e) => setSystemPromptSearchQuery(e.target.value)}
                         className="h-8 pl-8 text-sm"
@@ -295,7 +295,7 @@ export function PromptSelectDialog({
                       ))
                     ) : (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        No prompts found
+                        {t('noPromptsFound')}
                       </div>
                     )}
                   </div>
@@ -314,7 +314,7 @@ export function PromptSelectDialog({
             )}
             {systemPromptMode === 'custom' && (
               <Textarea
-                placeholder="You are a helpful AI assistant..."
+                placeholder={t('aiAssistantPlaceholder')}
                 value={customSystemPrompt}
                 onChange={(e) => updateSystemPrompt('custom', null, e.target.value)}
                 rows={6}
@@ -323,16 +323,14 @@ export function PromptSelectDialog({
             )}
 
             {systemPromptMode === 'none' && (
-              <p className="text-xs text-muted-foreground">
-                Uses the assistant's default system prompt
-              </p>
+              <p className="text-xs text-muted-foreground">{t('usesAssistantDefaultPrompt')}</p>
             )}
           </div>
 
           {/* User Prompt Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">User Prompt (Optional)</Label>
+              <Label className="text-sm font-medium">{t('userPromptOptional')}</Label>
               <div className="flex gap-3">
                 <div className="flex items-center gap-1.5">
                   <input
@@ -344,7 +342,7 @@ export function PromptSelectDialog({
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="user-prompt-none" className="cursor-pointer font-normal text-xs">
-                    None
+                    {t('none')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -360,7 +358,7 @@ export function PromptSelectDialog({
                     htmlFor="user-prompt-existing"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Select Existing
+                    {t('selectExisting')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -376,7 +374,7 @@ export function PromptSelectDialog({
                     htmlFor="user-prompt-custom"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Custom
+                    {t('custom')}
                   </Label>
                 </div>
               </div>
@@ -396,7 +394,7 @@ export function PromptSelectDialog({
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Search prompts..."
+                        placeholder={t('searchPrompts')}
                         value={userPromptSearchQuery}
                         onChange={(e) => setUserPromptSearchQuery(e.target.value)}
                         className="h-8 pl-8 text-sm"
@@ -425,7 +423,7 @@ export function PromptSelectDialog({
                       ))
                     ) : (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        No prompts found
+                        {t('noPromptsFound')}
                       </div>
                     )}
                   </div>
@@ -445,20 +443,18 @@ export function PromptSelectDialog({
             {userPromptMode === 'custom' && (
               <>
                 <Textarea
-                  placeholder="Additional context or instructions..."
+                  placeholder={t('additionalContextPlaceholder')}
                   value={customUserPrompt}
                   onChange={(e) => updateUserPrompt('custom', null, e.target.value)}
                   rows={4}
                   className="font-mono text-sm"
                 />
-                <p className="text-xs text-muted-foreground">
-                  This will be prepended to user messages
-                </p>
+                <p className="text-xs text-muted-foreground">{t('prependToUserMessages')}</p>
               </>
             )}
 
             {userPromptMode === 'none' && (
-              <p className="text-xs text-muted-foreground">No user prompt will be applied</p>
+              <p className="text-xs text-muted-foreground">{t('noUserPromptApplied')}</p>
             )}
           </div>
         </div>

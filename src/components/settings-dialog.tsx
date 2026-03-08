@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Bot,
   Check,
@@ -8,6 +9,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
+  Globe,
   Heading,
   Loader2,
   Plug,
@@ -76,20 +78,22 @@ import {
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { logger } from '@/lib/logger'
+import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 const data = {
   nav: [
-    { name: 'LLM Provider', icon: Bot },
-    { name: 'Built-in Tools', icon: Wrench },
-    { name: 'MCP Servers', icon: Plug },
-    { name: 'Skills', icon: Zap },
-    { name: 'Conversation Title', icon: Heading },
-    { name: 'Web Fetch', icon: FileDown },
-    { name: 'Web Search', icon: Search },
-    { name: 'Advanced', icon: Settings },
+    { name: 'llmProvider', icon: Bot },
+    { name: 'builtInTools', icon: Wrench },
+    { name: 'mcpServers', icon: Plug },
+    { name: 'skills', icon: Zap },
+    { name: 'conversationTitle', icon: Heading },
+    { name: 'webFetch', icon: FileDown },
+    { name: 'webSearch', icon: Search },
+    { name: 'language', icon: Globe },
+    { name: 'advanced', icon: Settings },
     // { name: 'Navigation', icon: Menu },
     // { name: 'Home', icon: Home },
     // { name: 'Appearance', icon: Paintbrush },
@@ -110,7 +114,9 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const [activeSection, setActiveSection] = React.useState('LLM Provider')
+  const { t } = useTranslation('settings')
+  const { t: tc } = useTranslation('common')
+  const [activeSection, setActiveSection] = React.useState('llmProvider')
   const [summaryModelId, setSummaryModelId] = React.useState('')
   const [searchProviderId, setSearchProviderId] = React.useState<SearchProviderId>('duckduckgo')
 
@@ -119,6 +125,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [webFetchLocalMethod, setWebFetchLocalMethod] = React.useState<WebFetchLocalMethod>('auto')
   const [jinaApiKey, setJinaApiKey] = React.useState('')
   const [showJinaApiKey, setShowJinaApiKey] = React.useState(false)
+
+  // Language state
+  const [currentLanguage, setCurrentLanguage] = React.useState(getCurrentLanguage)
 
   // Logging state
   const [logLevelRust, setLogLevelRustState] = React.useState<LogLevel>('info')
@@ -350,21 +359,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }
 
   const renderContent = () => {
-    if (activeSection === 'LLM Provider') {
+    if (activeSection === 'llmProvider') {
       return <LLMProviderSettings open={open} />
     }
 
-    if (activeSection === 'Built-in Tools') {
+    if (activeSection === 'builtInTools') {
       const allBuiltinEnabled = builtinTools.length > 0 && builtinTools.every((t) => t.is_enabled)
       const allBuiltinDisabled = builtinTools.length > 0 && builtinTools.every((t) => !t.is_enabled)
 
       return (
         <div className="grid gap-6">
           <div className="grid gap-3">
-            <p className="text-sm text-muted-foreground">
-              Built-in tools provide core capabilities that enhance your AI assistant. Enable the
-              tools you want to use globally, then configure them per conversation.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('builtinToolsDescription')}</p>
             {builtinTools.length > 0 && (
               <div className="flex gap-2">
                 <Button
@@ -374,7 +380,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   disabled={allBuiltinEnabled}
                 >
                   <ToggleRight className="mr-2 h-4 w-4" />
-                  Enable All
+                  {t('enableAll')}
                 </Button>
                 <Button
                   variant="outline"
@@ -383,7 +389,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   disabled={allBuiltinDisabled}
                 >
                   <ToggleLeft className="mr-2 h-4 w-4" />
-                  Disable All
+                  {t('disableAll')}
                 </Button>
               </div>
             )}
@@ -417,28 +423,25 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              {mcpLoading ? 'Loading built-in tools...' : 'No built-in tools available.'}
+              {mcpLoading ? t('loadingBuiltInTools') : t('noBuiltInToolsAvailable')}
             </div>
           )}
         </div>
       )
     }
 
-    if (activeSection === 'MCP Servers') {
+    if (activeSection === 'mcpServers') {
       const allMcpEnabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => s.is_enabled)
       const allMcpDisabled = mcpServersOnly.length > 0 && mcpServersOnly.every((s) => !s.is_enabled)
 
       return (
         <div className="grid gap-6">
           <div className="grid gap-3">
-            <p className="text-sm text-muted-foreground">
-              Configure MCP (Model Context Protocol) servers to extend your AI assistant with
-              external tools and capabilities. Supports both HTTP and STDIO transports.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('mcpServersDescription')}</p>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleAddMcpServer}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Server
+                {t('addServer')}
               </Button>
               {mcpServersOnly.length > 0 && (
                 <>
@@ -449,7 +452,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={allMcpEnabled}
                   >
                     <ToggleRight className="mr-2 h-4 w-4" />
-                    Enable All
+                    {t('enableAll')}
                   </Button>
                   <Button
                     variant="outline"
@@ -458,7 +461,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={allMcpDisabled}
                   >
                     <ToggleLeft className="mr-2 h-4 w-4" />
-                    Disable All
+                    {t('disableAll')}
                   </Button>
                 </>
               )}
@@ -487,31 +490,34 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                                 return (
                                   <span
                                     className={`${dotClass} bg-yellow-500 animate-pulse`}
-                                    title="Connecting..."
+                                    title={t('connecting')}
                                   />
                                 )
                               if (status === 'connected')
                                 return (
-                                  <span className={`${dotClass} bg-green-500`} title="Connected" />
+                                  <span
+                                    className={`${dotClass} bg-green-500`}
+                                    title={t('connected')}
+                                  />
                                 )
                               if (status === 'needs_auth')
                                 return (
                                   <span
                                     className={`${dotClass} bg-yellow-500`}
-                                    title="Authorization required"
+                                    title={t('authorizationRequired')}
                                   />
                                 )
                               if (status === 'error')
                                 return (
                                   <span
                                     className={`${dotClass} bg-red-500`}
-                                    title="Connection failed"
+                                    title={t('connectionFailed')}
                                   />
                                 )
                               return (
                                 <span
                                   className={`${dotClass} bg-muted-foreground/30`}
-                                  title="Not connected"
+                                  title={t('notConnected')}
                                 />
                               )
                             })()}
@@ -535,7 +541,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             size="icon"
                             onClick={() => connectServer(server.id)}
                             disabled={status === 'connecting'}
-                            title="Refresh connection"
+                            title={t('refreshConnection')}
                           >
                             <RefreshCw
                               className={`h-4 w-4 ${status === 'connecting' ? 'animate-spin' : ''}`}
@@ -554,7 +560,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               ) : (
                                 <LogIn className="h-4 w-4 mr-1" />
                               )}
-                              Connect
+                              {t('connect')}
                             </Button>
                           ) : (
                             <Switch
@@ -583,9 +589,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       {/* OAuth discovery info */}
                       {isNeedsAuth && probe?.status === 'needs_oauth' && (
                         <p className="text-xs text-muted-foreground bg-yellow-500/10 rounded px-2 py-1.5">
-                          Server requires OAuth authorization.
+                          {t('serverRequiresOauth')}
                           {probe.scopes_supported?.length
-                            ? ` Scopes: ${probe.scopes_supported.join(', ')}`
+                            ? t('scopes', { scopes: probe.scopes_supported.join(', ') })
                             : ''}
                         </p>
                       )}
@@ -615,8 +621,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               <ChevronDown
                                 className={`h-3.5 w-3.5 transition-transform ${expandedToolsId === server.id ? '' : '-rotate-90'}`}
                               />
-                              {serverTools[server.id].length} tool
-                              {serverTools[server.id].length !== 1 ? 's' : ''}
+                              {serverTools[server.id].length} {t('tools')}
                             </button>
                             {expandedToolsId === server.id && (
                               <div className="mt-2 space-y-1 pl-5">
@@ -644,9 +649,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           )}
 
           {mcpServersOnly.length === 0 && !mcpLoading && (
-            <div className="text-sm text-muted-foreground">
-              No MCP servers configured yet. Click "Add Server" to get started.
-            </div>
+            <div className="text-sm text-muted-foreground">{t('noMcpServersConfigured')}</div>
           )}
 
           {/* Config Modal */}
@@ -659,7 +662,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       )
     }
 
-    if (activeSection === 'Skills') {
+    if (activeSection === 'skills') {
       const hasSkills = builtinSkills.length > 0 || userSkills.length > 0
       const allSkillsArr = [...builtinSkills, ...userSkills]
       const allSkillsEnabled = allSkillsArr.length > 0 && allSkillsArr.every((s) => s.is_enabled)
@@ -685,7 +688,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             )}
             {skill.required_tool_ids.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                Requires {skill.required_tool_ids.length} tool(s)
+                {t('settings:requiresTools', { count: skill.required_tool_ids.length })}
               </p>
             )}
           </div>
@@ -696,10 +699,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       return (
         <div className="grid gap-6">
           <div className="grid gap-3">
-            <p className="text-sm text-muted-foreground">
-              Skills are prompt instruction bundles that enhance your AI assistant with specialized
-              capabilities. Enable or disable them globally here, then fine-tune per conversation.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('settings:skillsDescription')}</p>
             <div className="flex gap-2 flex-wrap">
               {hasSkills && (
                 <>
@@ -710,7 +710,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={allSkillsEnabled}
                   >
                     <ToggleRight className="mr-2 h-4 w-4" />
-                    Enable All
+                    {t('settings:enableAll')}
                   </Button>
                   <Button
                     variant="outline"
@@ -719,13 +719,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={allSkillsDisabled}
                   >
                     <ToggleLeft className="mr-2 h-4 w-4" />
-                    Disable All
+                    {t('settings:disableAll')}
                   </Button>
                 </>
               )}
               <Button variant="outline" size="sm" onClick={handleOpenSkillsDirectory}>
                 <FolderOpen className="mr-2 h-4 w-4" />
-                Open Directory
+                {t('settings:openDirectory')}
               </Button>
               <Button variant="outline" size="sm" onClick={scanSkills} disabled={skillsLoading}>
                 {skillsLoading ? (
@@ -733,7 +733,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-                Rescan
+                {t('settings:rescan')}
               </Button>
             </div>
           </div>
@@ -742,46 +742,44 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <div className="grid gap-6 max-w-lg">
               {builtinSkills.length > 0 && (
                 <div className="grid gap-3">
-                  <h4 className="text-sm font-medium">Built-in Skills</h4>
+                  <h4 className="text-sm font-medium">{t('settings:builtInSkills')}</h4>
                   <div className="grid gap-3">{builtinSkills.map(renderSkillItem)}</div>
                 </div>
               )}
 
               {userSkills.length > 0 && (
                 <div className="grid gap-3">
-                  <h4 className="text-sm font-medium">User Skills</h4>
+                  <h4 className="text-sm font-medium">{t('settings:userSkills')}</h4>
                   <div className="grid gap-3">{userSkills.map(renderSkillItem)}</div>
                 </div>
               )}
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              {skillsLoading
-                ? 'Loading skills...'
-                : 'No skills available. Place SKILL.md files in ~/.chatshell/skills/ to add custom skills.'}
+              {skillsLoading ? t('settings:loadingSkills') : t('settings:noSkillsAvailable')}
             </div>
           )}
         </div>
       )
     }
 
-    if (activeSection === 'Conversation Title') {
+    if (activeSection === 'conversationTitle') {
       return (
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="summary-model">Conversation Title Model</Label>
+            <Label htmlFor="summary-model">{t('conversationTitleModel')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
                   <span className="truncate">
-                    {selectedModel ? selectedModel.name : 'Use current conversation model'}
+                    {selectedModel ? selectedModel.name : t('useCurrentConversationModel')}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-[400px] max-h-[300px] overflow-y-auto">
                 <DropdownMenuItem onClick={() => handleSaveSummaryModel('')}>
-                  <span>Use current conversation model (default)</span>
+                  <span>{t('useCurrentConversationModelDefault')}</span>
                 </DropdownMenuItem>
                 {models.map((model) => (
                   <DropdownMenuItem key={model.id} onClick={() => handleSaveSummaryModel(model.id)}>
@@ -790,25 +788,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <p className="text-xs text-muted-foreground max-w-md">
-              Choose a model for generating conversation titles. Defaults to the current
-              conversation model if not set.
-            </p>
+            <p className="text-xs text-muted-foreground max-w-md">{t('chooseModelForTitles')}</p>
           </div>
         </div>
       )
     }
 
-    if (activeSection === 'Web Fetch') {
+    if (activeSection === 'webFetch') {
       return (
         <div className="grid gap-6">
           {/* Mode Selection */}
           <div className="grid gap-2">
-            <Label>Fetch Mode</Label>
+            <Label>{t('fetchMode')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
-                  <span>{webFetchMode === 'local' ? 'Local' : 'API'}</span>
+                  <span>{webFetchMode === 'local' ? t('local') : t('api')}</span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
@@ -816,33 +811,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <DropdownMenuItem onClick={() => handleSaveWebFetchMode('local')}>
                   <div className="flex items-center gap-2">
                     {webFetchMode === 'local' && <Check className="h-4 w-4 text-primary" />}
-                    <span className={webFetchMode === 'local' ? 'font-medium' : ''}>Local</span>
+                    <span className={webFetchMode === 'local' ? 'font-medium' : ''}>
+                      {t('local')}
+                    </span>
                   </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSaveWebFetchMode('api')}>
                   <div className="flex items-center gap-2">
                     {webFetchMode === 'api' && <Check className="h-4 w-4 text-primary" />}
-                    <span className={webFetchMode === 'api' ? 'font-medium' : ''}>API</span>
+                    <span className={webFetchMode === 'api' ? 'font-medium' : ''}>{t('api')}</span>
                   </div>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <p className="text-xs text-muted-foreground max-w-md">
-              Choose whether to fetch web pages locally or via an API service.
-            </p>
+            <p className="text-xs text-muted-foreground max-w-md">{t('fetchModeDescription')}</p>
           </div>
 
           {/* Fetch Strategy Selection */}
           {webFetchMode === 'local' && (
             <div className="grid gap-2">
-              <Label>Fetch Strategy</Label>
+              <Label>{t('fetchStrategy')}</Label>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full max-w-md justify-between">
                     <span>
-                      {webFetchLocalMethod === 'auto' && 'Auto'}
-                      {webFetchLocalMethod === 'fetch' && 'Always use Fetch'}
-                      {webFetchLocalMethod === 'headless' && 'Always use Headless Chrome'}
+                      {webFetchLocalMethod === 'auto' && t('auto')}
+                      {webFetchLocalMethod === 'fetch' && t('alwaysUseFetch')}
+                      {webFetchLocalMethod === 'headless' && t('alwaysUseHeadlessChrome')}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -853,11 +848,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       {webFetchLocalMethod === 'auto' && <Check className="h-4 w-4 text-primary" />}
                       <div>
                         <span className={webFetchLocalMethod === 'auto' ? 'font-medium' : ''}>
-                          Auto
+                          {t('auto')}
                         </span>
-                        <p className="text-xs text-muted-foreground">
-                          Try HTTP first, fallback to headless Chrome
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('tryHttpFirst')}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -868,11 +861,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       )}
                       <div>
                         <span className={webFetchLocalMethod === 'fetch' ? 'font-medium' : ''}>
-                          Always use Fetch
+                          {t('alwaysUseFetch')}
                         </span>
-                        <p className="text-xs text-muted-foreground">
-                          Faster but may fail on protected sites
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('fasterMayFail')}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -883,11 +874,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       )}
                       <div>
                         <span className={webFetchLocalMethod === 'headless' ? 'font-medium' : ''}>
-                          Always use Headless Chrome
+                          {t('alwaysUseHeadlessChrome')}
                         </span>
-                        <p className="text-xs text-muted-foreground">
-                          Slower but handles JavaScript-rendered content
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('slowerHandlesJs')}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -900,11 +889,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {webFetchMode === 'api' && (
             <>
               <div className="grid gap-2">
-                <Label>API Provider</Label>
+                <Label>{t('apiProvider')}</Label>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="w-full max-w-md justify-between">
-                      <span>Jina Reader</span>
+                      <span>{t('jinaReader')}</span>
                       <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -913,7 +902,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       <div className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-primary" />
                         <div>
-                          <span className="font-medium">Jina Reader</span>
+                          <span className="font-medium">{t('jinaReader')}</span>
                           <p className="text-xs text-muted-foreground">https://r.jina.ai/</p>
                         </div>
                       </div>
@@ -923,12 +912,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="jina-api-key">Jina API Key (Optional)</Label>
+                <Label htmlFor="jina-api-key">{t('jinaApiKeyOptional')}</Label>
                 <div className="relative max-w-md">
                   <Input
                     id="jina-api-key"
                     type={showJinaApiKey ? 'text' : 'password'}
-                    placeholder="Enter your Jina API key for higher rate limits"
+                    placeholder={t('enterJinaApiKey')}
                     value={jinaApiKey}
                     onChange={(e) => setJinaApiKey(e.target.value)}
                     onBlur={handleSaveJinaApiKey}
@@ -949,7 +938,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground max-w-md">
-                  Jina Reader works without an API key, but providing one gives higher rate limits.
+                  {t('jinaApiKeyDescription')}
                 </p>
               </div>
             </>
@@ -958,11 +947,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       )
     }
 
-    if (activeSection === 'Web Search') {
+    if (activeSection === 'webSearch') {
       return (
         <div className="grid gap-6">
           <div className="grid gap-2">
-            <Label htmlFor="search-provider">Search Engine</Label>
+            <Label htmlFor="search-provider">{t('searchEngine')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
@@ -988,30 +977,60 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <p className="text-xs text-muted-foreground max-w-md">
-              Choose the search engine to use when web search is enabled. Different search engines
-              may provide different results for the same query.
-            </p>
+            <p className="text-xs text-muted-foreground max-w-md">{t('chooseSearchEngine')}</p>
           </div>
         </div>
       )
     }
 
-    if (activeSection === 'Advanced') {
+    if (activeSection === 'language') {
+      return (
+        <div className="grid gap-6">
+          <div className="grid gap-2">
+            <Label>{t('language')}</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span>
+                    {supportedLanguages.find((l) => l.code === currentLanguage)?.name ??
+                      currentLanguage}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                {supportedLanguages.map((lang) => (
+                  <DropdownMenuItem
+                    key={lang.code}
+                    onClick={async () => {
+                      await changeLanguage(lang.code)
+                      setCurrentLanguage(lang.code)
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {lang.code === currentLanguage && <Check className="h-4 w-4 text-primary" />}
+                      <span className={lang.code === currentLanguage ? 'font-medium' : ''}>
+                        {lang.name}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">{t('languageDescription')}</p>
+          </div>
+        </div>
+      )
+    }
+
+    if (activeSection === 'advanced') {
       const logLevels: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error']
-      const logLevelDescriptions: Record<LogLevel, string> = {
-        trace: 'Most verbose - all logs including detailed traces',
-        debug: 'Debug information for troubleshooting',
-        info: 'General informational messages (recommended)',
-        warn: 'Warning messages only',
-        error: 'Error messages only',
-      }
 
       return (
         <div className="grid gap-6">
           {/* Rust Log Level */}
           <div className="grid gap-2">
-            <Label>Backend Log Level</Label>
+            <Label>{t('backendLogLevel')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
@@ -1032,9 +1051,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         >
                           {level}
                         </span>
-                        <p className="text-xs text-muted-foreground">
-                          {logLevelDescriptions[level]}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('logLevels.' + level)}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -1042,13 +1059,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </DropdownMenuContent>
             </DropdownMenu>
             <p className="text-xs text-muted-foreground max-w-md">
-              Controls the verbosity of backend logs written to disk.
+              {t('logLevelDescription', { type: t('backendType') })}
             </p>
           </div>
 
           {/* TypeScript Log Level */}
           <div className="grid gap-2">
-            <Label>Frontend Log Level</Label>
+            <Label>{t('frontendLogLevel')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full max-w-md justify-between">
@@ -1069,9 +1086,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         >
                           {level}
                         </span>
-                        <p className="text-xs text-muted-foreground">
-                          {logLevelDescriptions[level]}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('logLevels.' + level)}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -1079,16 +1094,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </DropdownMenuContent>
             </DropdownMenu>
             <p className="text-xs text-muted-foreground max-w-md">
-              Controls the verbosity of frontend logs written to disk.
+              {t('logLevelDescription', { type: t('frontendType') })}
             </p>
           </div>
 
           <div className="grid gap-2">
-            <p className="text-sm text-muted-foreground max-w-md">
-              Log files are stored in the application data directory under the{' '}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">logs/</code> folder. Both
-              frontend and backend logs are written to separate files and rotated daily.
-            </p>
+            <p className="text-sm text-muted-foreground max-w-md">{t('logFilesLocation')}</p>
           </div>
         </div>
       )
@@ -1107,8 +1118,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
-        <DialogTitle className="sr-only">Settings</DialogTitle>
-        <DialogDescription className="sr-only">Customize your settings here.</DialogDescription>
+        <DialogTitle className="sr-only">{tc('settings')}</DialogTitle>
+        <DialogDescription className="sr-only">{tc('settings')}</DialogDescription>
         <SidebarProvider className="items-start">
           <Sidebar collapsible="none" className="hidden md:flex">
             <SidebarContent>
@@ -1122,7 +1133,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                           onClick={() => setActiveSection(item.name)}
                         >
                           <item.icon />
-                          <span>{item.name}</span>
+                          <span>{t(item.name)}</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
@@ -1137,18 +1148,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Breadcrumb>
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#">Settings</BreadcrumbLink>
+                      <BreadcrumbLink href="#">{tc('settings')}</BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>{activeSection}</BreadcrumbPage>
+                      <BreadcrumbPage>{t(activeSection)}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
               </div>
             </header>
             <div
-              className={`flex flex-1 flex-col overflow-hidden ${activeSection === 'LLM Provider' ? '' : 'gap-4 overflow-y-auto p-4 pt-0'}`}
+              className={`flex flex-1 flex-col overflow-hidden ${activeSection === 'llmProvider' ? '' : 'gap-4 overflow-y-auto p-4 pt-0'}`}
             >
               {renderContent()}
             </div>

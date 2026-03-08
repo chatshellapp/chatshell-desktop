@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,18 +23,19 @@ export function DeleteAssistantDialog({
   onConfirm,
   assistantName,
 }: DeleteAssistantDialogProps) {
+  const { t } = useTranslation('assistants')
+  const { t: tCommon } = useTranslation('common')
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent onClick={(e) => e.stopPropagation()}>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Assistant</AlertDialogTitle>
+          <AlertDialogTitle>{t('deleteAssistant')}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete{' '}
-            {assistantName ? `"${assistantName}"` : 'this assistant'}? This action cannot be undone.
+            {t('confirmDelete', { name: assistantName ? `"${assistantName}"` : 'this assistant' })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               onConfirm()
@@ -41,7 +43,7 @@ export function DeleteAssistantDialog({
             }}
             className="bg-destructive text-white hover:bg-destructive/90"
           >
-            Delete
+            {tCommon('delete')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

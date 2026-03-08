@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import {
@@ -128,6 +129,7 @@ export function AssistantList({
   className,
   compact = false,
 }: AssistantListProps) {
+  const { t } = useTranslation('assistants')
   // Collect all starred assistants from all groups
   const starredAssistants = React.useMemo(() => {
     const assistants: Assistant[] = []
@@ -161,10 +163,8 @@ export function AssistantList({
           <EmptyMedia variant="icon">
             <Drama />
           </EmptyMedia>
-          <EmptyTitle>No Assistants Yet</EmptyTitle>
-          <EmptyDescription>
-            Create an assistant to customize your chat experience.
-          </EmptyDescription>
+          <EmptyTitle>{t('noAssistants')}</EmptyTitle>
+          <EmptyDescription>{t('createFirstAssistant')}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -242,6 +242,8 @@ function AssistantGroupComponent({
   const initialOpenState = forceDefaultOpen || (!ignoreGroupDefault && (group.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
+  const { t } = useTranslation('sidebar')
+  const { t: tCommon } = useTranslation('common')
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -266,7 +268,9 @@ function AssistantGroupComponent({
                 !isOpen && '-rotate-90'
               )}
             />
-            <span className="flex-1 text-left">{group.name}</span>
+            <span className="flex-1 text-left">
+              {group.name === 'Ungrouped' ? t('ungrouped') : group.name}
+            </span>
           </Button>
         </CollapsibleTrigger>
 
@@ -298,7 +302,7 @@ function AssistantGroupComponent({
                     onGroupSettings?.(group)
                   }}
                 >
-                  Configuration
+                  {tCommon('configuration')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

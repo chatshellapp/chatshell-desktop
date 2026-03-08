@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FileText, Image, FileIcon as FileIconLucide } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import {
@@ -27,6 +28,7 @@ export function FilePreviewDialog({
   mimeType,
   size,
 }: FilePreviewDialogProps) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [loadedContent, setLoadedContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -74,7 +76,7 @@ export function FilePreviewDialog({
         {/* Content preview area */}
         <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <p className="text-sm text-muted-foreground">{t('loading')}</p>
           ) : content ? (
             isMarkdown ? (
               <MarkdownContent content={content} className="text-sm" />
@@ -82,7 +84,7 @@ export function FilePreviewDialog({
               <pre className="text-sm whitespace-pre-wrap font-mono">{content}</pre>
             )
           ) : (
-            <p className="text-sm text-muted-foreground">No content available</p>
+            <p className="text-sm text-muted-foreground">{t('attachments:noContent')}</p>
           )}
         </div>
 

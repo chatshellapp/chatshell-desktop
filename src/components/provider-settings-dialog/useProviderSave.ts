@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import type { CreateProviderRequest, CreateModelRequest, Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
 import { isCustomProvider } from './types'
@@ -45,6 +46,7 @@ export function useProviderSave({
   loadExistingData,
   onOpenChange,
 }: UseProviderSaveParams): UseProviderSaveReturn {
+  const { t } = useTranslation('messages')
   const [isSaving, setIsSaving] = React.useState(false)
 
   const handleSave = React.useCallback(async () => {
@@ -147,7 +149,7 @@ export function useProviderSave({
       onOpenChange(false)
     } catch (error) {
       logger.error('Failed to save provider:', error)
-      toast.error('Failed to save provider settings', {
+      toast.error(t('failedToSaveProvider'), {
         description: error instanceof Error ? error.message : String(error),
       })
     } finally {

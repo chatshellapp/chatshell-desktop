@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ interface PromptDialogProps {
 }
 
 export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: PromptDialogProps) {
+  const { t } = useTranslation('prompts')
   const { prompts, createPrompt, updatePrompt, ensureLoaded } = usePromptStore()
 
   // Form state
@@ -98,12 +100,12 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError('Name is required')
+      setError(t('nameIsRequired'))
       return
     }
 
     if (!content.trim()) {
-      setError('Content is required')
+      setError(t('contentIsRequired'))
       return
     }
 
@@ -142,11 +144,11 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{mode === 'edit' ? 'Edit Prompt' : 'Create New Prompt'}</DialogTitle>
+          <DialogTitle>{mode === 'edit' ? t('editPrompt') : t('newPrompt')}</DialogTitle>
           <DialogDescription>
             {mode === 'edit'
-              ? 'Modify the prompt details below.'
-              : 'Add a new prompt to your library for quick reuse.'}
+              ? t('editPromptDescription', 'Modify the prompt details below.')
+              : t('newPromptDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -156,10 +158,10 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t('name', { ns: 'common' })} *</Label>
             <Input
               id="name"
-              placeholder="e.g., Code Review Assistant"
+              placeholder={t('promptNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
@@ -167,7 +169,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
           </div>
 
           <div className="space-y-2">
-            <Label>Prompt Type *</Label>
+            <Label>{t('promptType')} *</Label>
             <RadioGroup
               value={isSystem ? 'system' : 'user'}
               onValueChange={(value) => setIsSystem(value === 'system')}
@@ -176,25 +178,23 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="system" id="prompt-type-system" />
                 <Label htmlFor="prompt-type-system" className="font-normal cursor-pointer">
-                  System Prompt
+                  {t('systemPrompt')}
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="user" id="prompt-type-user" />
                 <Label htmlFor="prompt-type-user" className="font-normal cursor-pointer">
-                  User Prompt
+                  {t('userPrompt')}
                 </Label>
               </div>
             </RadioGroup>
             <p className="text-xs text-muted-foreground">
-              {isSystem
-                ? 'Will be used as a system instruction for the AI'
-                : 'Will be used as a user message'}
+              {isSystem ? t('willBeUsedAsSystemInstruction') : t('willBeUsedAsUserMessage')}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category">{t('category')}</Label>
             <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -203,14 +203,14 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
                   aria-expanded={categoryComboboxOpen}
                   className="w-full justify-between"
                 >
-                  <span className="truncate">{category || 'Select or create category...'}</span>
+                  <span className="truncate">{category || t('selectCategory')}</span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-full p-0" align="start">
                 <Command>
                   <CommandInput
-                    placeholder="Search or type new category..."
+                    placeholder={t('searchOrTypeNewCategory')}
                     value={categoryInputValue}
                     onValueChange={setCategoryInputValue}
                   />
@@ -227,11 +227,11 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
                               setCategoryInputValue('')
                             }}
                           >
-                            Create "{categoryInputValue.trim()}"
+                            {t('createNewCategory', { name: categoryInputValue.trim() })}
                           </Button>
                         ) : (
                           <div className="text-sm text-muted-foreground text-center">
-                            Type to create a new category
+                            {t('typeToCreateCategory')}
                           </div>
                         )}
                       </div>
@@ -260,49 +260,47 @@ export function PromptDialog({ open, onOpenChange, prompt, mode = 'create' }: Pr
                 </Command>
               </PopoverContent>
             </Popover>
-            <p className="text-xs text-muted-foreground">Organize prompts by category (optional)</p>
+            <p className="text-xs text-muted-foreground">{t('organizeByCategory')}</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t('description', { ns: 'common' })}</Label>
             <Input
               id="description"
-              placeholder="Brief description of this prompt"
+              placeholder={t('descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="content">Content *</Label>
+            <Label htmlFor="content">{t('promptContent')} *</Label>
             <Textarea
               id="content"
-              placeholder="Enter your prompt content here..."
+              placeholder={t('contentPlaceholder')}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={10}
               className="font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              This is the actual prompt text that will be used
-            </p>
+            <p className="text-xs text-muted-foreground">{t('contentHelp')}</p>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? (
               <>
                 <Loader2 className="size-4 mr-2 animate-spin" />
-                Saving...
+                {t('saving', { ns: 'common' })}
               </>
             ) : mode === 'edit' ? (
-              'Save Changes'
+              t('saveChanges', { ns: 'common' })
             ) : (
-              'Create Prompt'
+              t('createPrompt')
             )}
           </Button>
         </DialogFooter>

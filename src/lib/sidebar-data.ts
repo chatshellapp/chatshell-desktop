@@ -1,6 +1,7 @@
 import { MessagesSquare, Users, Library, Package, Settings } from 'lucide-react'
 import type { PromptGroup } from '@/components/prompt-list'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
+import type { TFunction } from 'i18next'
 
 export interface Artifact {
   id: string
@@ -46,38 +47,7 @@ export const SIDEBAR_DATA: {
     email: 'm@example.com',
     avatar: '/avatars/shadcn.jpg',
   },
-  navMain: [
-    {
-      title: 'Conversations',
-      url: '#',
-      icon: MessagesSquare,
-      isActive: true,
-    },
-    {
-      title: 'Contacts',
-      url: '#',
-      icon: Users,
-      isActive: false,
-    },
-    {
-      title: 'Library',
-      url: '#',
-      icon: Library,
-      isActive: false,
-    },
-    {
-      title: 'Artifacts',
-      url: '#',
-      icon: Package,
-      isActive: false,
-    },
-    {
-      title: 'Settings',
-      url: '#',
-      icon: Settings,
-      isActive: false,
-    },
-  ] as NavItem[],
+  navMain: [] as NavItem[],
   peopleGroups: [
     {
       id: 'team',
@@ -355,4 +325,44 @@ export const SIDEBAR_DATA: {
       ],
     },
   ],
+}
+
+export function getNavItems(t: TFunction): NavItem[] {
+  return [
+    {
+      id: 'conversations',
+      title: t('sidebar:conversations'),
+      url: '#',
+      icon: MessagesSquare,
+      isActive: true,
+    },
+    {
+      id: 'contacts',
+      title: t('sidebar:contacts'),
+      url: '#',
+      icon: Users,
+      isActive: false,
+    },
+    {
+      id: 'library',
+      title: t('sidebar:library'),
+      url: '#',
+      icon: Library,
+      isActive: false,
+    },
+    {
+      id: 'artifacts',
+      title: t('sidebar:artifacts'),
+      url: '#',
+      icon: Package,
+      isActive: false,
+    },
+    {
+      id: 'settings',
+      title: t('common:settings'),
+      url: '#',
+      icon: Settings,
+      isActive: false,
+    },
+  ]
 }

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Search, MessageSquare } from 'lucide-react'
 import { usePromptStore } from '@/stores/promptStore'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 interface UserPromptQuickSelectDialogProps {
   isOpen: boolean
@@ -22,6 +23,7 @@ export function UserPromptQuickSelectDialog({
   onOpenChange,
   onSelectPrompt,
 }: UserPromptQuickSelectDialogProps) {
+  const { t } = useTranslation('prompts')
   const { prompts, ensureLoaded } = usePromptStore()
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -83,8 +85,8 @@ export function UserPromptQuickSelectDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[500px] max-h-[70vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle>Select User Prompt</DialogTitle>
-          <DialogDescription>Choose a prompt template to fill in the input</DialogDescription>
+          <DialogTitle>{t('selectUserPrompt')}</DialogTitle>
+          <DialogDescription>{t('choosePromptTemplate')}</DialogDescription>
         </DialogHeader>
 
         {/* Search */}
@@ -92,7 +94,7 @@ export function UserPromptQuickSelectDialog({
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              placeholder="Search prompts..."
+              placeholder={t('searchPrompts')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -143,10 +145,10 @@ export function UserPromptQuickSelectDialog({
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <MessageSquare className="size-8 text-muted-foreground/50 mb-2" />
               <p className="text-sm text-muted-foreground">
-                {searchQuery ? 'No prompts found' : 'No user prompts available'}
+                {searchQuery ? t('noPromptsFound') : t('noUserPromptsAvailable')}
               </p>
               <p className="text-xs text-muted-foreground/70 mt-1">
-                Create user prompts in the Library
+                {t('createUserPromptsInLibrary')}
               </p>
             </div>
           )}

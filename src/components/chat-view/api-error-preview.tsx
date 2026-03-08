@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Copy, Check } from 'lucide-react'
 import {
   Dialog,
@@ -24,25 +25,25 @@ interface ParsedError {
   rawError: string
 }
 
-function getStatusLabel(status: number): string {
+function getStatusLabel(status: number, t: (key: string) => string): string {
   const labels: Record<number, string> = {
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    408: 'Timeout',
-    413: 'Payload Too Large',
-    422: 'Unprocessable',
-    429: 'Rate Limited',
-    500: 'Server Error',
-    502: 'Bad Gateway',
-    503: 'Service Unavailable',
-    504: 'Gateway Timeout',
+    400: t('messages:apiErrorBadRequest'),
+    401: t('messages:apiErrorUnauthorized'),
+    403: t('messages:apiErrorForbidden'),
+    404: t('messages:apiErrorNotFound'),
+    408: t('messages:apiErrorTimeout'),
+    413: t('messages:apiErrorPayloadTooLarge'),
+    422: t('messages:apiErrorUnprocessable'),
+    429: t('messages:apiErrorRateLimited'),
+    500: t('messages:apiErrorServerError'),
+    502: t('messages:apiErrorBadGateway'),
+    503: t('messages:apiErrorServiceUnavailable'),
+    504: t('messages:apiErrorGatewayTimeout'),
   }
   return labels[status] || `Error ${status}`
 }
 
-function parseApiError(error: string): ParsedError {
+function parseApiError(error: string, t: (key: string) => string): ParsedError {
   const result: ParsedError = { summary: error, rawError: error }
   let remaining = error
 
@@ -50,7 +51,7 @@ function parseApiError(error: string): ParsedError {
   const httpBracketMatch = remaining.match(/^\[HTTP (\d{3})\]\s*/)
   if (httpBracketMatch) {
     result.statusCode = parseInt(httpBracketMatch[1], 10)
-    result.statusText = getStatusLabel(result.statusCode)
+    result.statusText = getStatusLabel(result.statusCode, t)
     remaining = remaining.slice(httpBracketMatch[0].length)
   }
 
@@ -70,7 +71,7 @@ function parseApiError(error: string): ParsedError {
     )
     if (statusMatch) {
       result.statusCode = parseInt(statusMatch[1], 10)
-      result.statusText = statusMatch[2]?.trim() || getStatusLabel(result.statusCode)
+      result.statusText = statusMatch[2]?.trim() || getStatusLabel(result.statusCode, t)
     }
   }
 
@@ -129,8 +130,16 @@ function parseApiError(error: string): ParsedError {
   return result
 }
 
-function StatusBadge({ code, text }: { code: number; text?: string }) {
-  const label = text || getStatusLabel(code)
+function StatusBadge({
+  code,
+  text,
+  t,
+}: {
+  code: number
+  text?: string
+  t: (key: string) => string
+}) {
+  const label = text || getStatusLabel(code, t)
   const colorClass =
     code >= 500
       ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
@@ -149,9 +158,10 @@ function StatusBadge({ code, text }: { code: number; text?: string }) {
 }
 
 export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
+  const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  const parsed = useMemo(() => parseApiError(error), [error])
+  const parsed = useMemo(() => parseApiError(error, t), [error, t])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(error)
@@ -167,10 +177,10 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
       >
         <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
         <span className="flex-1 text-sm truncate">
-          <span className="font-medium text-destructive">API Error</span>
+          <span className="font-medium text-destructive">{t('messages:apiError')}</span>
           {parsed.statusCode && (
             <span className="ml-2">
-              <StatusBadge code={parsed.statusCode} text={parsed.statusText} />
+              <StatusBadge code={parsed.statusCode} text={parsed.statusText} t={t} />
             </span>
           )}
           <span className="text-muted-foreground ml-2 truncate">{parsed.summary}</span>
@@ -182,9 +192,9 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
-              API Error
+              {t('messages:apiError')}
               {parsed.statusCode && (
-                <StatusBadge code={parsed.statusCode} text={parsed.statusText} />
+                <StatusBadge code={parsed.statusCode} text={parsed.statusText} t={t} />
               )}
             </DialogTitle>
           </DialogHeader>
@@ -215,7 +225,7 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
 
             {/* Full raw error */}
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Full error</p>
+              <p className="text-xs text-muted-foreground mb-1">{t('attachments:fullError')}</p>
               <div className="px-3 py-2 bg-muted/50 rounded-md max-h-48 overflow-y-auto">
                 <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">
                   {error}
@@ -227,7 +237,7 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
           <DialogFooter className="flex-row justify-between sm:justify-between">
             <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5">
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('common:copied') : t('common:copy')}
             </Button>
             <Button
               variant="outline"
@@ -236,7 +246,7 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
                 onDismiss?.()
               }}
             >
-              Dismiss
+              {t('common:dismiss')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Globe, ExternalLink, AlertTriangle } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
@@ -17,6 +18,7 @@ import { logger } from '@/lib/logger'
 
 // FetchResult preview component
 export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [faviconError, setFaviconError] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
           )}
 
           <span className="text-xs text-muted-foreground truncate max-w-xs">
-            <span className="text-destructive/80">Failed</span>
+            <span className="text-destructive/80">{t('attachments:failed')}</span>
             <span className="ml-1">{domain}</span>
           </span>
 
@@ -82,7 +84,7 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
                 ) : (
                   <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                 )}
-                Failed to fetch
+                {t('attachments:failedToFetch')}
               </DialogTitle>
             </DialogHeader>
 
@@ -98,11 +100,11 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
+                {t('cancel')}
               </Button>
               <Button onClick={handleOpenLink}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open Link
+                {t('attachments:openLink')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -130,7 +132,7 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
         )}
 
         <span className="text-xs text-muted-foreground truncate max-w-xs">
-          <span>Fetched</span>
+          <span>{t('attachments:fetched')}</span>
           <span className="ml-1">{title}</span>
         </span>
 
@@ -156,21 +158,21 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
 
           <div className="flex-1 overflow-y-auto border rounded-md p-4 min-h-[200px]">
             {loadingContent ? (
-              <p className="text-sm text-muted-foreground">Loading content...</p>
+              <p className="text-sm text-muted-foreground">{t('attachments:loadingContent')}</p>
             ) : content ? (
               <MarkdownContent content={content} className="text-sm" />
             ) : (
-              <p className="text-sm text-muted-foreground">No content available</p>
+              <p className="text-sm text-muted-foreground">{t('attachments:noContentAvailable')}</p>
             )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button onClick={handleOpenLink}>
               <ExternalLink className="h-4 w-4 mr-2" />
-              Open Link
+              {t('attachments:openLink')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -181,6 +183,7 @@ export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }
 
 // Inline FetchResult item for search results - reuses the same dialog as FetchResultPreview
 export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResult }) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [faviconError, setFaviconError] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -233,12 +236,12 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
         <span className="flex-1 text-xs text-muted-foreground truncate">
           {isFailed ? (
             <>
-              <span className="text-destructive/80">Failed</span>
+              <span className="text-destructive/80">{t('attachments:failed')}</span>
               <span className="ml-1">{title}</span>
             </>
           ) : (
             <>
-              <span>Fetched</span>
+              <span>{t('attachments:fetched')}</span>
               <span className="ml-1">{title}</span>
             </>
           )}
@@ -258,7 +261,7 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
               ) : (
                 <Globe className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               )}
-              {isFailed ? 'Failed to fetch' : title}
+              {isFailed ? t('attachments:failedToFetch') : title}
             </DialogTitle>
           </DialogHeader>
 
@@ -275,22 +278,24 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
           {!isFailed && (
             <div className="flex-1 overflow-y-auto border rounded-md p-4 min-h-[200px]">
               {loadingContent ? (
-                <p className="text-sm text-muted-foreground">Loading content...</p>
+                <p className="text-sm text-muted-foreground">{t('attachments:loadingContent')}</p>
               ) : content ? (
                 <MarkdownContent content={content} className="text-sm" />
               ) : (
-                <p className="text-sm text-muted-foreground">No content available</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('attachments:noContentAvailable')}
+                </p>
               )}
             </div>
           )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button onClick={handleOpenLink}>
               <ExternalLink className="h-4 w-4 mr-2" />
-              Open Link
+              {t('attachments:openLink')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -301,12 +306,15 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
 
 // Processing URL item - shown while fetching
 export function ProcessingUrlItem({ url }: { url: string }) {
+  const { t } = useTranslation(['common', 'attachments'])
   const domain = getDomain(url)
 
   return (
     <div className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left">
       <Globe className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-pulse" />
-      <span className="flex-1 text-xs text-muted-foreground/70 truncate">Fetching {domain}</span>
+      <span className="flex-1 text-xs text-muted-foreground/70 truncate">
+        {t('attachments:fetching', { domain })}
+      </span>
     </div>
   )
 }

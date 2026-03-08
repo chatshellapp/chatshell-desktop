@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 interface ActionsMenuProps {
   isVisible: boolean
@@ -16,6 +17,8 @@ interface ActionsMenuProps {
 }
 
 export function ActionsMenu({ isVisible, onGenerateTitle, onRename, onDelete }: ActionsMenuProps) {
+  const { t } = useTranslation('chat')
+  const { t: tCommon } = useTranslation('common')
   const hasActions = onGenerateTitle || onRename || onDelete
 
   if (!hasActions) {
@@ -50,7 +53,7 @@ export function ActionsMenu({ isVisible, onGenerateTitle, onRename, onDelete }: 
                 onGenerateTitle()
               }}
             >
-              Auto Title
+              {t('autoTitle')}
             </DropdownMenuItem>
           )}
           {onRename && (
@@ -60,7 +63,7 @@ export function ActionsMenu({ isVisible, onGenerateTitle, onRename, onDelete }: 
                 onRename()
               }}
             >
-              Rename
+              {t('rename')}
             </DropdownMenuItem>
           )}
           {onDelete && (
@@ -71,7 +74,7 @@ export function ActionsMenu({ isVisible, onGenerateTitle, onRename, onDelete }: 
               }}
               className="text-destructive focus:text-destructive"
             >
-              Delete
+              {tCommon('delete')}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>

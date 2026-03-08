@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +35,7 @@ export function WebPageDialog({
   onSubmit,
   existingAttachments,
 }: WebPageDialogProps) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
 
@@ -41,12 +43,12 @@ export function WebPageDialog({
     const trimmedUrl = url.trim()
 
     if (!trimmedUrl) {
-      setError('Please enter a URL')
+      setError(t('attachments:enterUrl'))
       return
     }
 
     if (!validateUrl(trimmedUrl)) {
-      setError('Please enter a valid URL (e.g., https://example.com)')
+      setError(t('attachments:invalidUrl'))
       return
     }
 
@@ -55,7 +57,7 @@ export function WebPageDialog({
       (att) => att.type === 'webpage' && att.name === trimmedUrl
     )
     if (isDuplicate) {
-      setError('This URL has already been added')
+      setError(t('attachments:urlAlreadyAdded'))
       return
     }
 
@@ -83,11 +85,9 @@ export function WebPageDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link className="size-5" />
-            Add Web Page
+            {t('attachments:addWebPage')}
           </DialogTitle>
-          <DialogDescription>
-            Enter a URL to attach web page content to your message.
-          </DialogDescription>
+          <DialogDescription>{t('attachments:enterUrlToAttach')}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
           <Input
@@ -110,10 +110,10 @@ export function WebPageDialog({
         </div>
         <DialogFooter className="sm:justify-end">
           <Button type="button" variant="ghost" onClick={handleClose}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button type="button" onClick={handleSubmit}>
-            Add
+            {t('add')}
           </Button>
         </DialogFooter>
       </DialogContent>

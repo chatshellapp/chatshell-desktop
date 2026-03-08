@@ -1,4 +1,5 @@
 import { MessageSquarePlus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
   SidebarContent,
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/sidebar'
 
 export interface NavItem {
+  id: string
   title: string
   url: string
   icon: React.ComponentType<{ className?: string }>
@@ -35,6 +37,7 @@ export function SidebarNavigation({
   onNewConversation,
 }: SidebarNavigationProps) {
   const { state } = useSidebar()
+  const { t } = useTranslation()
   const isCollapsed = state === 'collapsed'
 
   return (
@@ -61,20 +64,20 @@ export function SidebarNavigation({
           <SidebarGroupContent className="px-1.5 md:px-0">
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     tooltip={{
                       children: item.title,
                       hidden: false,
                     }}
                     onClick={() => {
-                      if (item.title === 'Settings') {
+                      if (item.id === 'settings') {
                         onSettingsClick()
                       } else {
                         onItemClick(item)
                       }
                     }}
-                    isActive={activeItem?.title === item.title}
+                    isActive={activeItem?.id === item.id}
                     className="px-2.5 md:px-2"
                   >
                     <item.icon />
@@ -91,7 +94,7 @@ export function SidebarNavigation({
           <button
             onClick={onNewConversation}
             className="mx-auto flex size-8 items-center justify-center rounded-full bg-black text-white hover:bg-black/80 transition-colors"
-            title="New Conversation"
+            title={t('sidebar:newConversation')}
           >
             <MessageSquarePlus className="size-4" />
           </button>

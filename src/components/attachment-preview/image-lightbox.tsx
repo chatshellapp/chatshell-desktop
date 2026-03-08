@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
@@ -16,6 +17,7 @@ export function ImageLightbox({
   initialIndex: number
   onClose: () => void
 }) {
+  const { t } = useTranslation(['common', 'attachments'])
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -101,7 +103,7 @@ export function ImageLightbox({
       <button
         onClick={onClose}
         className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-        aria-label="Close"
+        aria-label={t('attachments:close')}
       >
         <X className="h-6 w-6 text-white" />
       </button>
@@ -109,7 +111,7 @@ export function ImageLightbox({
       {/* Image counter */}
       {hasMultiple && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm">
-          {currentIndex + 1} / {images.length}
+          {t('attachments:imageOf', { current: currentIndex + 1, total: images.length })}
         </div>
       )}
 
@@ -126,7 +128,7 @@ export function ImageLightbox({
               ? 'bg-white/10 hover:bg-white/20 text-white cursor-pointer'
               : 'bg-white/5 text-white/30 cursor-not-allowed'
           }`}
-          aria-label="Previous image"
+          aria-label={t('attachments:previous')}
         >
           <ChevronLeft className="h-8 w-8" />
         </button>
@@ -145,7 +147,7 @@ export function ImageLightbox({
               ? 'bg-white/10 hover:bg-white/20 text-white cursor-pointer'
               : 'bg-white/5 text-white/30 cursor-not-allowed'
           }`}
-          aria-label="Next image"
+          aria-label={t('attachments:next')}
         >
           <ChevronRight className="h-8 w-8" />
         </button>
@@ -157,7 +159,7 @@ export function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
       >
         {loading ? (
-          <div className="text-white/50 text-lg">Loading...</div>
+          <div className="text-white/50 text-lg">{t('loading')}</div>
         ) : imageSrc ? (
           <img
             src={imageSrc}
@@ -166,7 +168,7 @@ export function ImageLightbox({
             draggable={false}
           />
         ) : (
-          <div className="text-white/50 text-lg">Failed to load image</div>
+          <div className="text-white/50 text-lg">{t('attachments:failedToLoadImage')}</div>
         )}
       </div>
 

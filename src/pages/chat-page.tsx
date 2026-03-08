@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
@@ -18,6 +19,7 @@ import { useAppInit } from '@/hooks/useAppInit'
 import { OnboardingDialog } from '@/components/onboarding-dialog'
 
 export function ChatPage() {
+  const { t } = useTranslation()
   // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError, keychainAvailable } = useAppInit()
   const [showKeychainWarning, setShowKeychainWarning] = useState(true)
@@ -45,7 +47,7 @@ export function ChatPage() {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-lg">Loading ChatShell...</p>
+          <p className="text-lg">{t('common:loading')}</p>
         </div>
       </div>
     )
@@ -56,7 +58,7 @@ export function ChatPage() {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-lg text-red-500">Failed to initialize app</p>
+          <p className="text-lg text-red-500">{t('common:failedToInitialize')}</p>
           <p className="text-sm text-muted-foreground">{initError}</p>
         </div>
       </div>
@@ -80,12 +82,16 @@ export function ChatPage() {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Conversations</BreadcrumbLink>
+                  <BreadcrumbLink href="#">{t('sidebar:conversations')}</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
                   <BreadcrumbPage>
-                    {currentConversation?.title || 'Select a conversation'}
+                    {currentConversation
+                      ? currentConversation.title === 'New Conversation'
+                        ? t('sidebar:newConversation')
+                        : currentConversation.title
+                      : t('chat:selectConversation')}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -95,10 +101,7 @@ export function ChatPage() {
             <div className="flex items-center justify-between gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>
-                  Keychain access denied. API keys are stored temporarily and will need to be
-                  re-entered after restarting the app.
-                </span>
+                <span>{t('common:keychainWarning')}</span>
               </div>
               <button
                 onClick={() => setShowKeychainWarning(false)}

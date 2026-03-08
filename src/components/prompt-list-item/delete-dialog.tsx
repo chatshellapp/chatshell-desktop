@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,18 +23,18 @@ export function DeletePromptDialog({
   onConfirm,
   promptName,
 }: DeletePromptDialogProps) {
+  const { t } = useTranslation('prompts')
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent onClick={(e) => e.stopPropagation()}>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Prompt</AlertDialogTitle>
+          <AlertDialogTitle>{t('deletePrompt')}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete {promptName ? `"${promptName}"` : 'this prompt'}? This
-            action cannot be undone.
+            {t('confirmDelete', { name: promptName ? `"${promptName}"` : 'this prompt' })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               onConfirm()
@@ -41,7 +42,7 @@ export function DeletePromptDialog({
             }}
             className="bg-destructive text-white hover:bg-destructive/90"
           >
-            Delete
+            {t('delete')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

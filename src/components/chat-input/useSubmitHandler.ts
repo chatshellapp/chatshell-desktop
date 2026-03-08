@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
@@ -23,6 +24,7 @@ export function useSubmitHandler({
   clearAttachments,
   webSearchEnabled,
 }: UseSubmitHandlerOptions) {
+  const { t } = useTranslation('messages')
   // Store hooks - use granular selectors to avoid unnecessary re-renders
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
@@ -64,7 +66,7 @@ export function useSubmitHandler({
 
     // Check if we have either a model or assistant selected
     if (!selectedModel && !selectedAssistant) {
-      toast.error('Please select a model or assistant first')
+      toast.error(t('pleaseSelectModelOrAssistant'))
       return
     }
 
@@ -76,14 +78,14 @@ export function useSubmitHandler({
       modelToUse = getModelById(selectedAssistant.model_id)
       if (!modelToUse) {
         logger.error('Model not found for assistant:', selectedAssistant.model_id)
-        toast.error('Error: Model configuration not found for assistant')
+        toast.error(t('assistantConfigNotFound'))
         return
       }
     } else if (selectedModel) {
       // Use selected model directly
       modelToUse = selectedModel
     } else {
-      toast.error('Please select a model or assistant first')
+      toast.error(t('pleaseSelectModelOrAssistant'))
       return
     }
 
@@ -91,7 +93,7 @@ export function useSubmitHandler({
     const provider = getProviderById(modelToUse.provider_id)
     if (!provider) {
       logger.error('Provider not found for model:', modelToUse.provider_id)
-      toast.error('Error: Provider configuration not found')
+      toast.error(t('providerConfigNotFound'))
       return
     }
 
@@ -230,7 +232,7 @@ export function useSubmitHandler({
       logger.info('Message sent successfully')
     } catch (error) {
       logger.error('Failed to send message:', error)
-      toast.error('Failed to send message', {
+      toast.error(t('failedMessageToSend'), {
         description: error instanceof Error ? error.message : String(error),
       })
     }

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Zap, RotateCcw, ToggleLeft, ToggleRight } from 'lucide-react'
 import {
   Dialog,
@@ -29,6 +30,7 @@ export function SkillsDialog({
   enabledSkillIds,
   onSkillIdsChange,
 }: SkillsDialogProps) {
+  const { t } = useTranslation(['chat', 'common'])
   const skills = useSkillStore((state) => state.skills)
   const ensureLoaded = useSkillStore((state) => state.ensureLoaded)
 
@@ -106,7 +108,9 @@ export function SkillsDialog({
             <p className="text-xs text-muted-foreground max-w-[280px]">{skill.description}</p>
           )}
           {isGloballyDisabled && (
-            <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+            <p className="text-xs text-muted-foreground/70 italic">
+              {t('skillsDisabledInSettings')}
+            </p>
           )}
         </div>
         {isGloballyDisabled ? (
@@ -116,7 +120,7 @@ export function SkillsDialog({
                 <Switch id={skill.id} checked={false} disabled />
               </div>
             </TooltipTrigger>
-            <TooltipContent>Enable this skill in Settings first</TooltipContent>
+            <TooltipContent>{t('skillsEnableInSettingsFirst')}</TooltipContent>
           </Tooltip>
         ) : (
           <Switch
@@ -135,12 +139,9 @@ export function SkillsDialog({
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5" />
-            Skills
+            {t('skills')}
           </DialogTitle>
-          <DialogDescription>
-            Select which skills to enable for this conversation. Skills inject specialized
-            instructions and can auto-enable required tools.
-          </DialogDescription>
+          <DialogDescription>{t('skillsDescription')}</DialogDescription>
         </DialogHeader>
 
         {/* Enable All / Disable All buttons */}
@@ -154,7 +155,7 @@ export function SkillsDialog({
               className="gap-1.5"
             >
               <ToggleRight className="h-3.5 w-3.5" />
-              Enable All
+              {t('common:enableAll')}
             </Button>
             <Button
               variant="outline"
@@ -164,7 +165,7 @@ export function SkillsDialog({
               className="gap-1.5"
             >
               <ToggleLeft className="h-3.5 w-3.5" />
-              Disable All
+              {t('common:disableAll')}
             </Button>
           </div>
         )}
@@ -172,8 +173,7 @@ export function SkillsDialog({
         <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 grid gap-4">
           {hasNoSkills ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No skills available. Add skill files to the skills directory or enable existing ones
-              in Settings.
+              {t('noSkillsAvailable')}
             </p>
           ) : (
             <>
@@ -182,7 +182,7 @@ export function SkillsDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    Built-in Skills
+                    {t('builtinSkills')}
                   </h4>
                   {builtinSkills.map(renderSkillItem)}
                 </div>
@@ -196,7 +196,7 @@ export function SkillsDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    User Skills
+                    {t('userSkills')}
                   </h4>
                   {userSkills.map(renderSkillItem)}
                 </div>
@@ -211,7 +211,7 @@ export function SkillsDialog({
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={handleResetToGlobal} className="gap-2">
                 <RotateCcw className="h-4 w-4" />
-                Reset to Global Settings
+                {t('resetToGlobalSettings')}
               </Button>
             </DialogFooter>
           </div>

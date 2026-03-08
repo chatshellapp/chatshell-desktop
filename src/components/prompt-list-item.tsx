@@ -12,6 +12,7 @@ import { MoreVertical, Star, SquareTerminal, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeletePromptDialog } from './prompt-list-item/delete-dialog'
 import { logger } from '@/lib/logger'
+import { useTranslation } from 'react-i18next'
 
 interface PromptListItemProps {
   /**
@@ -73,6 +74,8 @@ export function PromptListItem({
   className,
   isActive = false,
 }: PromptListItemProps) {
+  const { t } = useTranslation('prompts')
+  const { t: tCommon } = useTranslation('common')
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
 
@@ -161,7 +164,7 @@ export function PromptListItem({
                     onSettingsClick?.(e)
                   }}
                 >
-                  Edit Prompt
+                  {t('editPrompt')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={(e) => {
@@ -169,7 +172,7 @@ export function PromptListItem({
                     handleCopyContent()
                   }}
                 >
-                  Copy Content
+                  {t('copyContent')}
                 </DropdownMenuItem>
                 {onDeleteClick && (
                   <>
@@ -181,7 +184,7 @@ export function PromptListItem({
                       }}
                       className="text-destructive focus:text-destructive"
                     >
-                      Delete
+                      {tCommon('delete')}
                     </DropdownMenuItem>
                   </>
                 )}

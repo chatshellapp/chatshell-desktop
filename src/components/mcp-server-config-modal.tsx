@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, ChevronDown, Plus, Trash2, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ export function McpServerConfigModal({
   onOpenChange,
   editingServer,
 }: McpServerConfigModalProps) {
+  const { t } = useTranslation('tools')
   const [name, setName] = React.useState('')
   const [transport, setTransport] = React.useState<McpTransportType>('http')
   const [endpoint, setEndpoint] = React.useState('')
@@ -199,19 +201,17 @@ export function McpServerConfigModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit MCP Server' : 'Add MCP Server'}</DialogTitle>
-          <DialogDescription>
-            Configure an MCP server to extend your AI assistant with external tools.
-          </DialogDescription>
+          <DialogTitle>{isEditing ? t('editServer') : t('addServer')}</DialogTitle>
+          <DialogDescription>{t('configureMcpServer')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
           {/* Name */}
           <div className="grid gap-2">
-            <Label htmlFor="mcp-modal-name">Name</Label>
+            <Label htmlFor="mcp-modal-name">{t('name')}</Label>
             <Input
               id="mcp-modal-name"
-              placeholder="My MCP Server"
+              placeholder={t('serverNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -219,12 +219,12 @@ export function McpServerConfigModal({
 
           {/* Transport */}
           <div className="grid gap-2">
-            <Label>Transport</Label>
+            <Label>{t('transport')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full justify-between">
                   <span>
-                    {transport === 'http' ? 'HTTP (Streamable)' : 'STDIO (Local Process)'}
+                    {transport === 'http' ? t('httpStreamable') : t('stdioLocalProcess')}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -235,11 +235,9 @@ export function McpServerConfigModal({
                     {transport === 'http' && <Check className="h-4 w-4 text-primary" />}
                     <div>
                       <span className={transport === 'http' ? 'font-medium' : ''}>
-                        HTTP (Streamable)
+                        {t('httpStreamable')}
                       </span>
-                      <p className="text-xs text-muted-foreground">
-                        Connect to a remote MCP server via HTTP
-                      </p>
+                      <p className="text-xs text-muted-foreground">{t('connectRemoteMcp')}</p>
                     </div>
                   </div>
                 </DropdownMenuItem>
@@ -248,11 +246,9 @@ export function McpServerConfigModal({
                     {transport === 'stdio' && <Check className="h-4 w-4 text-primary" />}
                     <div>
                       <span className={transport === 'stdio' ? 'font-medium' : ''}>
-                        STDIO (Local Process)
+                        {t('stdioLocalProcess')}
                       </span>
-                      <p className="text-xs text-muted-foreground">
-                        Run a local MCP server as a subprocess
-                      </p>
+                      <p className="text-xs text-muted-foreground">{t('runLocalMcp')}</p>
                     </div>
                   </div>
                 </DropdownMenuItem>
@@ -264,10 +260,10 @@ export function McpServerConfigModal({
           {transport === 'http' && (
             <>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-modal-endpoint">Endpoint URL</Label>
+                <Label htmlFor="mcp-modal-endpoint">{t('endpoint')}</Label>
                 <Input
                   id="mcp-modal-endpoint"
-                  placeholder="http://localhost:8080/mcp"
+                  placeholder={t('endpointUrlPlaceholder')}
                   value={endpoint}
                   onChange={(e) => setEndpoint(e.target.value)}
                 />
@@ -276,7 +272,7 @@ export function McpServerConfigModal({
               {/* Headers */}
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
-                  <Label>Headers</Label>
+                  <Label>{t('headers')}</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -285,25 +281,22 @@ export function McpServerConfigModal({
                     className="h-7 px-2 text-xs"
                   >
                     <Plus className="h-3 w-3 mr-1" />
-                    Add Header
+                    {t('addHeader')}
                   </Button>
                 </div>
                 {headers.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No custom headers. Click "Add Header" to add request headers (e.g.
-                    Authorization, X-API-Key).
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t('noCustomHeaders')}</p>
                 )}
                 {headers.map((header, index) => (
                   <div key={index} className="flex gap-2 items-start">
                     <Input
-                      placeholder="Header name"
+                      placeholder={t('headerNamePlaceholder')}
                       value={header.key}
                       onChange={(e) => updateHeader(index, 'key', e.target.value)}
                       className="flex-1 font-mono text-sm"
                     />
                     <Input
-                      placeholder="Value"
+                      placeholder={t('headerValuePlaceholder')}
                       value={header.value}
                       onChange={(e) => updateHeader(index, 'value', e.target.value)}
                       className="flex-1 font-mono text-sm"
@@ -327,19 +320,17 @@ export function McpServerConfigModal({
           {transport === 'stdio' && (
             <>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-modal-command">Command</Label>
+                <Label htmlFor="mcp-modal-command">{t('command')}</Label>
                 <Input
                   id="mcp-modal-command"
                   placeholder="npx -y @modelcontextprotocol/server-filesystem"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Full command with arguments, or just the executable
-                </p>
+                <p className="text-xs text-muted-foreground">{t('commandHelp')}</p>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-modal-args">Arguments (one per line)</Label>
+                <Label htmlFor="mcp-modal-args">{t('argsOnePerLine')}</Label>
                 <Textarea
                   id="mcp-modal-args"
                   placeholder={'/path/to/allowed/directory\n/another/directory'}
@@ -350,7 +341,7 @@ export function McpServerConfigModal({
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-modal-env">Environment Variables (KEY=VALUE per line)</Label>
+                <Label htmlFor="mcp-modal-env">{t('envVarsKeyValue')}</Label>
                 <Textarea
                   id="mcp-modal-env"
                   placeholder={'API_KEY=your-api-key\nDEBUG=true'}
@@ -359,31 +350,27 @@ export function McpServerConfigModal({
                   rows={2}
                   className="font-mono text-sm"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Custom environment variables (system environment is inherited)
-                </p>
+                <p className="text-xs text-muted-foreground">{t('envVarsInheritHelp')}</p>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-modal-cwd">Working Directory (optional)</Label>
+                <Label htmlFor="mcp-modal-cwd">{t('workingDirectoryOptional')}</Label>
                 <Input
                   id="mcp-modal-cwd"
                   placeholder="~/projects/my-project"
                   value={cwd}
                   onChange={(e) => setCwd(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Defaults to home directory if not specified
-                </p>
+                <p className="text-xs text-muted-foreground">{t('cwdHelp')}</p>
               </div>
             </>
           )}
 
           {/* Description */}
           <div className="grid gap-2">
-            <Label htmlFor="mcp-modal-description">Description (optional)</Label>
+            <Label htmlFor="mcp-modal-description">{t('descriptionOptional')}</Label>
             <Input
               id="mcp-modal-description"
-              placeholder="A brief description of this MCP server"
+              placeholder={t('descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -393,11 +380,11 @@ export function McpServerConfigModal({
         {/* Footer actions */}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleSave} disabled={!canSave || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEditing ? 'Save' : 'Add Server'}
+            {isEditing ? t('save') : t('addServer')}
           </Button>
         </div>
       </DialogContent>

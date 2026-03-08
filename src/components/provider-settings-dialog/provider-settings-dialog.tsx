@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import {
   Breadcrumb,
@@ -30,6 +31,7 @@ import { AddModelDialog } from './add-model-dialog'
 import { EditModelDialog } from './edit-model-dialog'
 
 export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
+  const { t } = useTranslation('providers')
   const {
     selectedProvider,
     setSelectedProvider,
@@ -123,10 +125,8 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 gap-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
-        <DialogTitle className="sr-only">Add Models</DialogTitle>
-        <DialogDescription className="sr-only">
-          Configure your LLM provider settings here.
-        </DialogDescription>
+        <DialogTitle className="sr-only">{t('dialogTitle')}</DialogTitle>
+        <DialogDescription className="sr-only">{t('dialogDescription')}</DialogDescription>
         <SidebarProvider className="items-start">
           <ProviderSidebar
             selectedProvider={selectedProvider}
@@ -146,7 +146,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                 <Breadcrumb>
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#">Providers</BreadcrumbLink>
+                      <BreadcrumbLink href="#">{t('providers')}</BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
@@ -160,14 +160,14 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
               <div className="space-y-6">
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold">
-                    {existingProvider ? 'Edit' : 'Add'} {displayName}
+                    {existingProvider ? t('common:edit') : t('common:add')} {displayName}
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {existingProvider
-                      ? `Manage your ${displayName} configuration and models`
+                      ? t('manageProviderDescription', { name: displayName })
                       : isCustom
-                        ? 'Configure a custom provider endpoint'
-                        : `Configure your ${displayName} API settings`}
+                        ? t('configureCustomEndpoint')
+                        : t('configureApiSettings', { name: displayName })}
                   </p>
                 </div>
 
@@ -204,7 +204,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
             </div>
             <DialogFooter className="shrink-0 border-t p-4 sm:justify-end">
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 onClick={handleSave}
@@ -215,12 +215,12 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                 {isSaving ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Saving...
+                    {t('common:saving')}
                   </>
                 ) : existingProvider ? (
-                  'Save'
+                  t('common:save')
                 ) : (
-                  'Save Configuration'
+                  t('saveConfiguration')
                 )}
               </Button>
             </DialogFooter>

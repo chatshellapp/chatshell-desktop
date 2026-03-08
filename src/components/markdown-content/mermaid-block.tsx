@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Copy, AlertTriangle, Download } from 'lucide-react'
 import mermaid from 'mermaid'
 import { save } from '@tauri-apps/plugin-dialog'
@@ -46,6 +47,7 @@ function cleanupMermaidElements(elementId: string) {
 const MERMAID_RENDER_DEBOUNCE_MS = 300
 
 export function MermaidBlock({ code }: MermaidBlockProps) {
+  const { t } = useTranslation(['common', 'attachments'])
   const uniqueId = useId()
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -136,13 +138,15 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
         <div className="flex items-center justify-between px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/50">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <span className="text-xs text-amber-700 font-medium">Mermaid Diagram Error</span>
+            <span className="text-xs text-amber-700 font-medium">
+              {t('attachments:failedToRenderDiagram')}
+            </span>
           </div>
           <button
             onClick={handleRetry}
             className="text-xs text-amber-700 hover:text-amber-900 hover:underline"
           >
-            Retry
+            {t('retry')}
           </button>
         </div>
         <div className="p-3 bg-amber-50/50">
@@ -151,7 +155,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
           </pre>
           <details className="mt-2">
             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-              Show source code
+              {t('attachments:showSourceCode')}
             </summary>
             <pre className="mt-2 p-2 bg-muted rounded text-xs font-mono overflow-x-auto max-h-40 overflow-y-auto">
               {code}
@@ -166,7 +170,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   if (isWaiting && !svg) {
     return (
       <div className="my-2 border border-border rounded-md p-4 flex items-center justify-center bg-muted/30">
-        <span className="text-sm text-muted-foreground">Rendering diagram...</span>
+        <span className="text-sm text-muted-foreground">{t('attachments:renderingDiagram')}</span>
       </div>
     )
   }
@@ -175,7 +179,9 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   if (!svg) {
     return (
       <div className="my-2 border border-border rounded-md p-4 flex items-center justify-center bg-muted/30">
-        <span className="text-sm text-muted-foreground">Waiting for diagram code...</span>
+        <span className="text-sm text-muted-foreground">
+          {t('attachments:waitingForDiagramCode')}
+        </span>
       </div>
     )
   }
@@ -186,36 +192,38 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-mono">mermaid</span>
           {isWaiting && (
-            <span className="text-xs text-muted-foreground/60 italic">updating...</span>
+            <span className="text-xs text-muted-foreground/60 italic">
+              {t('attachments:updating')}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
-            aria-label={copied ? 'Copied!' : 'Copy source'}
-            title="Copy source code"
+            aria-label={copied ? t('attachments:copied') : t('attachments:copyCode')}
+            title={t('attachments:copyCode')}
           >
             {copied ? (
               <>
                 <Check className="h-3.5 w-3.5" />
-                <span>Copied!</span>
+                <span>{t('attachments:copied')}</span>
               </>
             ) : (
               <>
                 <Copy className="h-3.5 w-3.5" />
-                <span>Copy</span>
+                <span>{t('attachments:copy')}</span>
               </>
             )}
           </button>
           <button
             onClick={handleDownload}
             className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
-            aria-label="Download SVG"
-            title="Download as SVG"
+            aria-label={t('attachments:downloadSvg')}
+            title={t('attachments:downloadSvg')}
           >
             <Download className="h-3.5 w-3.5" />
-            <span>Download</span>
+            <span>{t('attachments:download')}</span>
           </button>
         </div>
       </div>

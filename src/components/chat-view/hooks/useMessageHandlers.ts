@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
 import { saveScreenshot, findMessageElement } from '@/lib/screenshot'
 import { useMessageStore } from '@/stores/message'
@@ -21,6 +22,7 @@ export function useMessageHandlers({
   messagesContentRef,
   setIsAtBottom,
 }: UseMessageHandlersOptions) {
+  const { t } = useTranslation('messages')
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
@@ -40,14 +42,14 @@ export function useMessageHandlers({
   const handleRevert = useCallback(
     async (messageId: string) => {
       if (!currentConversation) {
-        toast.error('No active conversation')
+        toast.error(t('noActiveConversation'))
         return
       }
 
       const convState = getConversationState(currentConversation.id)
       const message = convState.messages.find((m) => m.id === messageId)
       if (!message || message.sender_type !== 'user') {
-        toast.error('Cannot revert: message not found')
+        toast.error(t('cannotRevertMessage'))
         return
       }
 
@@ -58,13 +60,13 @@ export function useMessageHandlers({
         : selectedModel
 
       if (!modelToUse) {
-        toast.error('Please select a model or assistant first')
+        toast.error(t('pleaseSelectModelOrAssistant'))
         return
       }
 
       const provider = getProviderById(modelToUse.provider_id)
       if (!provider) {
-        toast.error('Error: Provider configuration not found')
+        toast.error(t('providerConfigNotFound'))
         return
       }
 
@@ -117,7 +119,7 @@ export function useMessageHandlers({
         )
       } catch (error) {
         logger.error('Failed to revert message:', error)
-        toast.error('Failed to revert message', {
+        toast.error(t('failedToRevertMessage'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -142,7 +144,7 @@ export function useMessageHandlers({
   const handleFork = useCallback(
     async (messageId: string) => {
       if (!currentConversation) {
-        toast.error('No active conversation')
+        toast.error(t('noActiveConversation'))
         return
       }
 
@@ -153,10 +155,10 @@ export function useMessageHandlers({
         })
         await loadConversations()
         await selectConversation(newConversation.id)
-        toast.success('Conversation forked')
+        toast.success(t('conversationForked'))
       } catch (error) {
         logger.error('Failed to fork conversation:', error)
-        toast.error('Failed to fork conversation', {
+        toast.error(t('failedToForkConversation'), {
           description: error instanceof Error ? error.message : String(error),
         })
       }
@@ -167,33 +169,33 @@ export function useMessageHandlers({
   const handleExportAll = useCallback(() => {
     const el = messagesContentRef.current
     if (!el) {
-      toast.error('No messages to capture')
+      toast.error(t('noMessagesToCapture'))
       return
     }
     saveScreenshot(el).then((ok) => {
-      if (ok) toast.success('Screenshot saved')
+      if (ok) toast.success(t('screenshotSaved'))
     })
   }, [messagesContentRef])
 
   const handleExportConversation = useCallback(() => {
     const el = messagesContentRef.current
     if (!el) {
-      toast.error('No messages to capture')
+      toast.error(t('noMessagesToCapture'))
       return
     }
     saveScreenshot(el).then((ok) => {
-      if (ok) toast.success('Screenshot saved')
+      if (ok) toast.success(t('screenshotSaved'))
     })
   }, [messagesContentRef])
 
   const handleExportMessage = useCallback((messageId: string) => {
     const el = findMessageElement(messageId)
     if (!el) {
-      toast.error('Could not find message element')
+      toast.error(t('couldNotFindMessage'))
       return
     }
     saveScreenshot(el).then((ok) => {
-      if (ok) toast.success('Screenshot saved')
+      if (ok) toast.success(t('screenshotSaved'))
     })
   }, [])
 

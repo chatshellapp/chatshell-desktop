@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,17 +17,17 @@ interface DeleteDialogProps {
 }
 
 export function DeleteDialog({ open, onOpenChange, onConfirm }: DeleteDialogProps) {
+  const { t } = useTranslation('chat')
+  const { t: tCommon } = useTranslation('common')
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent onClick={(e) => e.stopPropagation()}>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete this conversation? This action cannot be undone.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t('deleteConversation')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('confirmDeleteConversation')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               onConfirm()
@@ -34,7 +35,7 @@ export function DeleteDialog({ open, onOpenChange, onConfirm }: DeleteDialogProp
             }}
             className="bg-destructive text-white hover:bg-destructive/90"
           >
-            Delete
+            {tCommon('delete')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -21,6 +22,7 @@ interface EditModelDialogProps {
 }
 
 export function EditModelDialog({ open, model, onOpenChange, onSave }: EditModelDialogProps) {
+  const { t } = useTranslation('providers')
   const [modelId, setModelId] = React.useState('')
   const [displayName, setDisplayName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -38,12 +40,12 @@ export function EditModelDialog({ open, model, onOpenChange, onSave }: EditModel
     setError(null)
 
     if (!modelId.trim()) {
-      setError('Model ID is required')
+      setError(t('modelIdRequired'))
       return
     }
 
     if (!displayName.trim()) {
-      setError('Display name is required')
+      setError(t('displayNameRequired'))
       return
     }
 
@@ -63,11 +65,11 @@ export function EditModelDialog({ open, model, onOpenChange, onSave }: EditModel
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogTitle>Edit Model</DialogTitle>
-        <DialogDescription>Modify the model identifier and display name.</DialogDescription>
+        <DialogTitle>{t('editModel')}</DialogTitle>
+        <DialogDescription>{t('modifyModelDetails')}</DialogDescription>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-model-id">Model ID</Label>
+            <Label htmlFor="edit-model-id">{t('modelId')}</Label>
             <Input
               id="edit-model-id"
               value={modelId}
@@ -79,7 +81,7 @@ export function EditModelDialog({ open, model, onOpenChange, onSave }: EditModel
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-display-name">Display Name</Label>
+            <Label htmlFor="edit-display-name">{t('displayName')}</Label>
             <Input
               id="edit-display-name"
               value={displayName}
@@ -92,9 +94,9 @@ export function EditModelDialog({ open, model, onOpenChange, onSave }: EditModel
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
+              {t('common:cancel')}
             </Button>
-            <Button type="submit">Save</Button>
+            <Button type="submit">{t('common:save')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

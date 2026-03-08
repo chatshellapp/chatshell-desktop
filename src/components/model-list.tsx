@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import {
@@ -103,6 +104,7 @@ export function ModelList({
   className,
   compact = false,
 }: ModelListProps) {
+  const { t } = useTranslation('providers')
   // Collect all starred models from all vendors
   const starredModels = React.useMemo(() => {
     const models: Model[] = []
@@ -136,8 +138,8 @@ export function ModelList({
           <EmptyMedia variant="icon">
             <Bot />
           </EmptyMedia>
-          <EmptyTitle>No Models Yet</EmptyTitle>
-          <EmptyDescription>Add a provider to start using models.</EmptyDescription>
+          <EmptyTitle>{t('noModelsFound')}</EmptyTitle>
+          <EmptyDescription>{t('addYourFirstProvider')}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   Breadcrumb,
@@ -84,6 +85,7 @@ export function AssistantDialog({
   assistant,
   mode = 'create',
 }: AssistantDialogProps) {
+  const { t } = useTranslation(['assistants', 'common'])
   const { models, loadModels, getProviderById } = useModelStore()
   const { assistants, createAssistant, updateAssistant, lastCreatedModelId } = useAssistantStore()
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
@@ -119,7 +121,7 @@ export function AssistantDialog({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState('')
-  const [activeSection, setActiveSection] = useState('Basic')
+  const [activeSection, setActiveSection] = useState('general')
   const [groupComboboxOpen, setGroupComboboxOpen] = useState(false)
   const [groupInputValue, setGroupInputValue] = useState('')
 
@@ -194,7 +196,7 @@ export function AssistantDialog({
       const provider = getProviderById(providerId)
       return {
         id: providerId,
-        name: provider?.name || 'Unknown Provider',
+        name: provider?.name || t('unknownProvider'),
         models: models.sort((a, b) => a.name.localeCompare(b.name)),
       }
     })
@@ -251,7 +253,7 @@ export function AssistantDialog({
   // Initialize form when assistant changes or dialog opens
   useEffect(() => {
     if (open) {
-      setActiveSection('Basic')
+      setActiveSection('general')
       if (mode === 'edit' && assistant) {
         setName(assistant.name)
         setRole(assistant.role || '')
@@ -301,7 +303,7 @@ export function AssistantDialog({
         setName(randomName)
         setRole('')
         setDescription('')
-        setSystemPrompt('You are a helpful AI assistant.')
+        setSystemPrompt(t('defaultSystemPrompt'))
         setUserPrompt('')
 
         // Select default model based on:
@@ -349,12 +351,12 @@ export function AssistantDialog({
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError('Name is required')
+      setError(t('common:nameIsRequired'))
       return
     }
 
     if (!selectedModelId) {
-      setError('Please select a model')
+      setError(t('common:selectModel'))
       return
     }
 
@@ -398,11 +400,11 @@ export function AssistantDialog({
   }
 
   const navItems = [
-    { name: 'Basic', icon: User },
-    { name: 'Prompts', icon: Sparkles },
-    { name: 'Models', icon: Bot },
-    { name: 'Tools', icon: Wrench },
-    { name: 'Skills', icon: Zap },
+    { id: 'general', name: t('common:general'), icon: User },
+    { id: 'prompts', name: t('common:prompts'), icon: Sparkles },
+    { id: 'model', name: t('common:model'), icon: Bot },
+    { id: 'tools', name: t('common:tools'), icon: Wrench },
+    { id: 'skills', name: t('common:skills'), icon: Zap },
   ]
 
   const handleToggleTool = (toolId: string, checked: boolean) => {
@@ -422,15 +424,15 @@ export function AssistantDialog({
   }
 
   const renderContent = () => {
-    if (activeSection === 'Basic') {
+    if (activeSection === 'general') {
       return (
         <div className="space-y-4">
           {/* Basic Info */}
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t('common:name')} *</Label>
             <Input
               id="name"
-              placeholder="e.g., Sam"
+              placeholder={t('assistantNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -438,17 +440,17 @@ export function AssistantDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
+              <Label htmlFor="role">{t('role')}</Label>
               <Input
                 id="role"
-                placeholder="e.g., Coding Expert"
+                placeholder={t('rolePlaceholder')}
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="group">Group</Label>
+              <Label htmlFor="group">{t('group')}</Label>
               <Popover open={groupComboboxOpen} onOpenChange={setGroupComboboxOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -457,14 +459,14 @@ export function AssistantDialog({
                     aria-expanded={groupComboboxOpen}
                     className="w-full justify-between"
                   >
-                    <span className="truncate">{groupName || 'Select or create group...'}</span>
+                    <span className="truncate">{groupName || t('selectOrCreateGroup')}</span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-full p-0" align="start">
                   <Command>
                     <CommandInput
-                      placeholder="Search or type new group..."
+                      placeholder={t('searchOrTypeNewGroup')}
                       value={groupInputValue}
                       onValueChange={setGroupInputValue}
                     />
@@ -481,11 +483,11 @@ export function AssistantDialog({
                                 setGroupInputValue('')
                               }}
                             >
-                              Create "{groupInputValue.trim()}"
+                              {t('createNewGroup', { name: groupInputValue.trim() })}
                             </Button>
                           ) : (
                             <div className="text-sm text-muted-foreground text-center">
-                              Type to create a new group
+                              {t('typeToCreateGroup')}
                             </div>
                           )}
                         </div>
@@ -518,10 +520,10 @@ export function AssistantDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t('assistantDescription')}</Label>
             <Input
               id="description"
-              placeholder="Brief description of what this assistant does"
+              placeholder={t('assistantDescriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -530,7 +532,7 @@ export function AssistantDialog({
           {/* Avatar */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="avatar-text">Avatar Emoji</Label>
+              <Label htmlFor="avatar-text">{t('avatarEmoji')}</Label>
               <Input
                 id="avatar-text"
                 placeholder="🧑‍💼"
@@ -541,7 +543,7 @@ export function AssistantDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="avatar-bg">Avatar Background</Label>
+              <Label htmlFor="avatar-bg">{t('avatarBackground')}</Label>
               <div className="flex gap-2">
                 <Input
                   id="avatar-bg"
@@ -569,20 +571,20 @@ export function AssistantDialog({
               className="size-4"
             />
             <Label htmlFor="is-starred" className="cursor-pointer">
-              Add to favorites
+              {t('addToFavorites')}
             </Label>
           </div>
         </div>
       )
     }
 
-    if (activeSection === 'Prompts') {
+    if (activeSection === 'prompts') {
       return (
         <div className="space-y-6">
           {/* System Prompt Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">System Prompt *</Label>
+              <Label className="text-sm font-medium">{t('systemPromptRequired')}</Label>
               <div className="flex gap-3">
                 <div className="flex items-center gap-1.5">
                   <input
@@ -597,7 +599,7 @@ export function AssistantDialog({
                     htmlFor="system-prompt-existing"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Select Existing
+                    {t('selectExisting')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -613,7 +615,7 @@ export function AssistantDialog({
                     htmlFor="system-prompt-custom"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Custom
+                    {t('custom')}
                   </Label>
                 </div>
               </div>
@@ -627,8 +629,8 @@ export function AssistantDialog({
                     <span className="truncate">
                       {selectedSystemPromptId
                         ? prompts.find((p) => p.id === selectedSystemPromptId)?.name ||
-                          'Select a prompt'
-                        : 'Select a prompt'}
+                          t('selectPrompt')
+                        : t('selectPrompt')}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -638,7 +640,7 @@ export function AssistantDialog({
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Search prompts..."
+                        placeholder={t('searchPrompts')}
                         value={systemPromptSearchQuery}
                         onChange={(e) => setSystemPromptSearchQuery(e.target.value)}
                         className="h-8 pl-8 text-sm"
@@ -668,7 +670,7 @@ export function AssistantDialog({
                       ))
                     ) : (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        No prompts found
+                        {t('noPromptsFound')}
                       </div>
                     )}
                   </div>
@@ -678,21 +680,19 @@ export function AssistantDialog({
 
             <Textarea
               id="system-prompt"
-              placeholder="You are a helpful AI assistant..."
+              placeholder={t('systemPromptPlaceholder')}
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               rows={systemPromptMode === 'existing' ? 4 : 6}
               className="font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              Defines the assistant's behavior and personality (sent as system message)
-            </p>
+            <p className="text-xs text-muted-foreground">{t('definesBehavior')}</p>
           </div>
 
           {/* User Prompt Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">User Prompt (Optional)</Label>
+              <Label className="text-sm font-medium">{t('userPromptOptional')}</Label>
               <div className="flex gap-3">
                 <div className="flex items-center gap-1.5">
                   <input
@@ -708,7 +708,7 @@ export function AssistantDialog({
                     className="size-3.5 cursor-pointer"
                   />
                   <Label htmlFor="user-prompt-none" className="cursor-pointer font-normal text-xs">
-                    None
+                    {t('none')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -724,7 +724,7 @@ export function AssistantDialog({
                     htmlFor="user-prompt-existing"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Select Existing
+                    {t('selectExisting')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -740,7 +740,7 @@ export function AssistantDialog({
                     htmlFor="user-prompt-custom"
                     className="cursor-pointer font-normal text-xs"
                   >
-                    Custom
+                    {t('custom')}
                   </Label>
                 </div>
               </div>
@@ -754,8 +754,8 @@ export function AssistantDialog({
                     <span className="truncate">
                       {selectedUserPromptId
                         ? prompts.find((p) => p.id === selectedUserPromptId)?.name ||
-                          'Select a prompt'
-                        : 'Select a prompt'}
+                          t('selectPrompt')
+                        : t('selectPrompt')}
                     </span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -765,7 +765,7 @@ export function AssistantDialog({
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Search prompts..."
+                        placeholder={t('searchPrompts')}
                         value={userPromptSearchQuery}
                         onChange={(e) => setUserPromptSearchQuery(e.target.value)}
                         className="h-8 pl-8 text-sm"
@@ -795,7 +795,7 @@ export function AssistantDialog({
                       ))
                     ) : (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        No prompts found
+                        {t('noPromptsFound')}
                       </div>
                     )}
                   </div>
@@ -807,15 +807,13 @@ export function AssistantDialog({
               <>
                 <Textarea
                   id="user-prompt"
-                  placeholder="Additional context or instructions..."
+                  placeholder={t('userPromptPlaceholder')}
                   value={userPrompt}
                   onChange={(e) => setUserPrompt(e.target.value)}
                   rows={userPromptMode === 'existing' ? 3 : 4}
                   className="font-mono text-sm"
                 />
-                <p className="text-xs text-muted-foreground">
-                  This will be prepended to user messages
-                </p>
+                <p className="text-xs text-muted-foreground">{t('prependedToUserMessages')}</p>
               </>
             )}
           </div>
@@ -823,18 +821,18 @@ export function AssistantDialog({
       )
     }
 
-    if (activeSection === 'Models') {
+    if (activeSection === 'model') {
       return (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="model">Model *</Label>
+            <Label htmlFor="model">{t('modelRequired')}</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full justify-between">
                   <span className="truncate">
                     {selectedModelId
-                      ? models.find((m) => m.id === selectedModelId)?.name || 'Select a model'
-                      : 'Select a model'}
+                      ? models.find((m) => m.id === selectedModelId)?.name || t('selectModel')
+                      : t('selectModel')}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -845,7 +843,7 @@ export function AssistantDialog({
                   <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                     <Input
-                      placeholder="Search models..."
+                      placeholder={t('searchModels')}
                       value={modelSearchQuery}
                       onChange={(e) => setModelSearchQuery(e.target.value)}
                       className="h-8 pl-8 text-sm"
@@ -881,21 +879,19 @@ export function AssistantDialog({
                     ))
                   ) : (
                     <div className="py-6 text-center text-sm text-muted-foreground">
-                      No models found
+                      {t('noModelsFound')}
                     </div>
                   )}
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
-            <p className="text-xs text-muted-foreground">
-              Select the AI model that will power this assistant
-            </p>
+            <p className="text-xs text-muted-foreground">{t('selectAiModel')}</p>
           </div>
         </div>
       )
     }
 
-    if (activeSection === 'Tools') {
+    if (activeSection === 'tools') {
       const hasNoTools = builtinTools.length === 0 && mcpServers.length === 0
       const allToolsEnabled =
         globalEnabledToolIds.length > 0 && globalEnabledToolIds.every((id) => toolIds.includes(id))
@@ -939,7 +935,7 @@ export function AssistantDialog({
                 </p>
               )}
               {isGloballyDisabled && (
-                <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+                <p className="text-xs text-muted-foreground/70 italic">{t('disabledInSettings')}</p>
               )}
             </div>
             {isGloballyDisabled ? (
@@ -949,7 +945,7 @@ export function AssistantDialog({
                     <Switch id={`tool-${tool.id}`} checked={false} disabled />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>Enable this tool in Settings first</TooltipContent>
+                <TooltipContent>{t('enableToolInSettings')}</TooltipContent>
               </Tooltip>
             ) : (
               <Switch
@@ -964,10 +960,7 @@ export function AssistantDialog({
 
       return (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Select which tools and MCP servers this assistant can use. These tools will be available
-            when using this assistant in conversations.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('toolsDescription')}</p>
 
           {!hasNoTools && globalEnabledToolIds.length > 0 && (
             <div className="flex gap-2 flex-wrap">
@@ -979,7 +972,7 @@ export function AssistantDialog({
                 className="gap-1.5"
               >
                 <ToggleRight className="h-3.5 w-3.5" />
-                Enable All
+                {t('enableAll')}
               </Button>
               <Button
                 variant="outline"
@@ -989,7 +982,7 @@ export function AssistantDialog({
                 className="gap-1.5"
               >
                 <ToggleLeft className="h-3.5 w-3.5" />
-                Disable All
+                {t('disableAll')}
               </Button>
               {isToolsDifferentFromGlobal && (
                 <Button
@@ -999,7 +992,7 @@ export function AssistantDialog({
                   className="gap-1.5"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset to Global
+                  {t('resetToGlobal')}
                 </Button>
               )}
             </div>
@@ -1008,9 +1001,7 @@ export function AssistantDialog({
           {hasNoTools ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Wrench className="h-8 w-8 text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground">
-                No tools available. Enable built-in tools or configure MCP servers in Settings.
-              </p>
+              <p className="text-sm text-muted-foreground">{t('noToolsAvailable2')}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1018,7 +1009,7 @@ export function AssistantDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Wrench className="h-4 w-4" />
-                    Built-in Tools
+                    {t('builtinTools')}
                   </h4>
                   {builtinTools.map(renderToolItem)}
                 </div>
@@ -1030,7 +1021,7 @@ export function AssistantDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Plug className="h-4 w-4" />
-                    MCP Servers
+                    {t('mcpServers')}
                   </h4>
                   {mcpServers.map(renderToolItem)}
                 </div>
@@ -1040,14 +1031,14 @@ export function AssistantDialog({
 
           {toolIds.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {toolIds.length} tool{toolIds.length !== 1 ? 's' : ''} selected
+              {t('toolsSelected', { count: toolIds.length })}
             </p>
           )}
         </div>
       )
     }
 
-    if (activeSection === 'Skills') {
+    if (activeSection === 'skills') {
       const hasNoSkills = builtinSkillsList.length === 0 && userSkillsList.length === 0
       const allSkillsEnabled =
         globalEnabledSkillIds.length > 0 &&
@@ -1082,12 +1073,11 @@ export function AssistantDialog({
               )}
               {skill.required_tool_ids.length > 0 && (
                 <p className="text-xs text-muted-foreground/60">
-                  Requires {skill.required_tool_ids.length} tool
-                  {skill.required_tool_ids.length !== 1 ? 's' : ''}
+                  {t('requiresTool', { count: skill.required_tool_ids.length })}
                 </p>
               )}
               {isGloballyDisabled && (
-                <p className="text-xs text-muted-foreground/70 italic">Disabled in Settings</p>
+                <p className="text-xs text-muted-foreground/70 italic">{t('disabledInSettings')}</p>
               )}
             </div>
             {isGloballyDisabled ? (
@@ -1097,7 +1087,7 @@ export function AssistantDialog({
                     <Switch id={`skill-${skill.id}`} checked={false} disabled />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>Enable this skill in Settings first</TooltipContent>
+                <TooltipContent>{t('enableSkillInSettings')}</TooltipContent>
               </Tooltip>
             ) : (
               <Switch
@@ -1112,12 +1102,7 @@ export function AssistantDialog({
 
       return (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Select which skills this assistant should have. Skills add specialized instructions and
-            may require specific tools to function. Place SKILL.md files in{' '}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">~/.chatshell/skills/</code> to
-            create custom skills.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('skillsDescription')}</p>
 
           {!hasNoSkills && globalEnabledSkillIds.length > 0 && (
             <div className="flex gap-2 flex-wrap">
@@ -1129,7 +1114,7 @@ export function AssistantDialog({
                 className="gap-1.5"
               >
                 <ToggleRight className="h-3.5 w-3.5" />
-                Enable All
+                {t('enableAll')}
               </Button>
               <Button
                 variant="outline"
@@ -1139,7 +1124,7 @@ export function AssistantDialog({
                 className="gap-1.5"
               >
                 <ToggleLeft className="h-3.5 w-3.5" />
-                Disable All
+                {t('disableAll')}
               </Button>
               {isSkillsDifferentFromGlobal && (
                 <Button
@@ -1149,7 +1134,7 @@ export function AssistantDialog({
                   className="gap-1.5"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset to Global
+                  {t('resetToGlobal')}
                 </Button>
               )}
             </div>
@@ -1158,11 +1143,7 @@ export function AssistantDialog({
           {hasNoSkills ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Zap className="h-8 w-8 text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground">
-                No skills available yet. Create a directory under{' '}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">~/.chatshell/skills/</code>{' '}
-                with a SKILL.md file to get started.
-              </p>
+              <p className="text-sm text-muted-foreground">{t('noSkillsAvailable')}</p>
             </div>
           ) : (
             <>
@@ -1170,7 +1151,7 @@ export function AssistantDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    Built-in Skills
+                    {t('builtinSkills')}
                   </h4>
                   {builtinSkillsList.map(renderSkillItem)}
                 </div>
@@ -1182,7 +1163,7 @@ export function AssistantDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    User Skills
+                    {t('userSkills')}
                   </h4>
                   {userSkillsList.map(renderSkillItem)}
                 </div>
@@ -1192,7 +1173,7 @@ export function AssistantDialog({
 
           {skillIds.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {skillIds.length} skill{skillIds.length !== 1 ? 's' : ''} selected
+              {t('skillsSelected', { count: skillIds.length })}
             </p>
           )}
         </div>
@@ -1206,12 +1187,10 @@ export function AssistantDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 gap-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
         <DialogTitle className="sr-only">
-          {mode === 'edit' ? 'Edit Assistant' : 'Create New Assistant'}
+          {mode === 'edit' ? t('editAssistant') : t('newAssistant')}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          {mode === 'edit'
-            ? 'Modify the assistant configuration below.'
-            : 'Configure your new AI assistant with custom prompts and settings.'}
+          {mode === 'edit' ? t('editDescription') : t('createDescription')}
         </DialogDescription>
 
         <SidebarProvider className="items-start">
@@ -1221,10 +1200,10 @@ export function AssistantDialog({
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {navItems.map((item) => (
-                      <SidebarMenuItem key={item.name}>
+                      <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
-                          isActive={item.name === activeSection}
-                          onClick={() => setActiveSection(item.name)}
+                          isActive={item.id === activeSection}
+                          onClick={() => setActiveSection(item.id)}
                         >
                           <item.icon />
                           <span>{item.name}</span>
@@ -1244,12 +1223,18 @@ export function AssistantDialog({
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
                       <BreadcrumbLink href="#">
-                        {mode === 'edit' ? 'Edit Assistant' : 'Create Assistant'}
+                        {mode === 'edit' ? t('editAssistant') : t('createAssistant')}
                       </BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>{activeSection}</BreadcrumbPage>
+                      <BreadcrumbPage>
+                        {activeSection === 'general' && t('common:general')}
+                        {activeSection === 'prompts' && t('common:prompts')}
+                        {activeSection === 'model' && t('common:model')}
+                        {activeSection === 'tools' && t('common:tools')}
+                        {activeSection === 'skills' && t('common:skills')}
+                      </BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
@@ -1267,18 +1252,18 @@ export function AssistantDialog({
 
             <footer className="flex shrink-0 items-center justify-end gap-2 border-t p-4">
               <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-                Cancel
+                {t('cancel')}
               </Button>
               <Button onClick={handleSave} disabled={isSaving}>
                 {isSaving ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Saving...
+                    {t('saving')}
                   </>
                 ) : mode === 'edit' ? (
-                  'Save Changes'
+                  t('common:saveChanges')
                 ) : (
-                  'Create Assistant'
+                  t('createAssistant')
                 )}
               </Button>
             </footer>

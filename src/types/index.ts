@@ -140,5 +140,5 @@ export {
   fromBackendSettings,
   toBackendRequest,
   PARAMETER_LIMITS,
-  CONTEXT_COUNT_OPTIONS,
+  getContextCountOptions,
 } from './conversation-settings'

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 interface ScrollToBottomButtonProps {
   isVisible: boolean
   inputAreaHeight: number
@@ -11,6 +13,7 @@ export function ScrollToBottomButton({
   buttonLeft,
   onScrollToBottom,
 }: ScrollToBottomButtonProps) {
+  const { t } = useTranslation('chat')
   return (
     <div
       className={`fixed z-20 pointer-events-none transition-opacity duration-150 ease-in-out ${
@@ -29,7 +32,7 @@ export function ScrollToBottomButton({
         }`}
       >
         <span className="text-sm">↓</span>
-        <span>New messages</span>
+        <span>{t('newMessages')}</span>
       </button>
     </div>
   )

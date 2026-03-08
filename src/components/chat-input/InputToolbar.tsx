@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   ArrowUpIcon,
   Plus,
@@ -96,6 +97,7 @@ export function InputToolbar({
   skillsLabel,
   onWorkingDirectorySelect,
 }: InputToolbarProps) {
+  const { t } = useTranslation('chat')
   return (
     <InputGroupAddon align="block-end">
       {/* Add attachment dropdown */}
@@ -108,20 +110,20 @@ export function InputToolbar({
         <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem]">
           <DropdownMenuItem onClick={onUserPromptSelect} className="gap-2">
             <Sparkles className="size-4" />
-            <span>User Prompt</span>
+            <span>{t('userPrompt')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onWebPageSelect} className="gap-2">
             <Globe className="size-4" />
-            <span>Web Page</span>
+            <span>{t('attachWebPage')}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onFileSelect} className="gap-2">
             <FileText className="size-4" />
-            <span>Document</span>
+            <span>{t('attachFile')}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onImageSelect} className="gap-2">
             <Image className="size-4" />
-            <span>Image</span>
+            <span>{t('attachImage')}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -137,14 +139,14 @@ export function InputToolbar({
           {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Search className="size-4" />
-              <span>Pre Web Search</span>
+              <span>{t('preWebSearch')}</span>
             </div>
             <Switch checked={webSearchEnabled} onCheckedChange={onWebSearchEnabledChange} />
           </DropdownMenuItem> */}
           {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">
               <Package className="size-4" />
-              <span>Artifacts</span>
+              <span>{t('artifacts')}</span>
             </div>
             <Switch checked={artifactsEnabled} onCheckedChange={onArtifactsEnabledChange} />
           </DropdownMenuItem> */}
@@ -156,21 +158,19 @@ export function InputToolbar({
                   <DropdownMenuItem className="gap-2 justify-between pointer-events-none opacity-50">
                     <div className="flex items-center gap-2">
                       <Sparkles className="size-4" />
-                      <span>System Prompt</span>
+                      <span>{t('systemPrompt')}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
                   </DropdownMenuItem>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="left">
-                System prompt can only be changed when conversation is empty
-              </TooltipContent>
+              <TooltipContent side="left">{t('systemPromptDisabledTooltip')}</TooltipContent>
             </Tooltip>
           ) : (
             <DropdownMenuItem onClick={onSystemPromptClick} className="gap-2 justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4" />
-                <span>System Prompt</span>
+                <span>{t('systemPrompt')}</span>
               </div>
               <span className="text-xs text-muted-foreground">{systemPromptLabel}</span>
             </DropdownMenuItem>
@@ -178,14 +178,14 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onModelParametersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="size-4" />
-              <span>Parameters</span>
+              <span>{t('parameters')}</span>
             </div>
             <span className="text-xs text-muted-foreground">{modelParametersLabel}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onContextCountClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare className="size-4" />
-              <span>Context</span>
+              <span>{t('context')}</span>
             </div>
             <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
@@ -193,25 +193,25 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onMcpServersClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <Wrench className="size-4" />
-              <span>Tools & MCP</span>
+              <span>{t('toolsAndMcp')}</span>
             </div>
             <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onSkillsClick} className="gap-2 justify-between">
             <div className="flex items-center gap-2">
               <Zap className="size-4" />
-              <span>Skills</span>
+              <span>{t('skills')}</span>
             </div>
             <span className="text-xs text-muted-foreground">{skillsLabel}</span>
           </DropdownMenuItem>
           {/* <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
             <BookOpen className="size-4" />
-            <span>Knowledge</span>
+            <span>{t('knowledge')}</span>
           </DropdownMenuItem> */}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
             <FolderOpen className="size-4" />
-            <span>Working Directory</span>
+            <span>{t('workingDirectory')}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -239,7 +239,7 @@ export function InputToolbar({
           onClick={onStop}
         >
           <Square className="size-3 fill-current" />
-          <span className="sr-only">Stop</span>
+          <span className="sr-only">{t('stop')}</span>
         </InputGroupButton>
       ) : (
         <InputGroupButton
@@ -250,7 +250,7 @@ export function InputToolbar({
           onClick={onSend}
         >
           <ArrowUpIcon />
-          <span className="sr-only">Send</span>
+          <span className="sr-only">{t('send')}</span>
         </InputGroupButton>
       )}
     </InputGroupAddon>

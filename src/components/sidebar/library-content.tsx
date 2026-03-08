@@ -1,4 +1,5 @@
 import { Sparkles, BookOpen } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PromptList, type Prompt, type PromptGroup } from '@/components/prompt-list'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
@@ -26,16 +27,18 @@ export function LibraryContent({
   onPromptDelete,
   onPromptGroupSettings,
 }: LibraryContentProps) {
+  const { t } = useTranslation('sidebar')
+
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full p-2">
       <TabsList className="w-full grid grid-cols-2 h-9">
         <TabsTrigger value="prompts" className="text-xs gap-1 px-2">
           <Sparkles className="size-3.5" />
-          Prompts
+          {t('prompts')}
         </TabsTrigger>
         <TabsTrigger value="knowledge" className="text-xs gap-1 px-2">
           <BookOpen className="size-3.5" />
-          Knowledge
+          {t('knowledge')}
         </TabsTrigger>
       </TabsList>
       <TabsContent value="prompts" className="mt-2">
@@ -55,8 +58,8 @@ export function LibraryContent({
             <EmptyMedia variant="icon">
               <BookOpen />
             </EmptyMedia>
-            <EmptyTitle>No Knowledge Yet</EmptyTitle>
-            <EmptyDescription>You haven&apos;t added any knowledge base yet.</EmptyDescription>
+            <EmptyTitle>{t('noKnowledge')}</EmptyTitle>
+            <EmptyDescription>{t('noKnowledgeDescription')}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TabsContent>

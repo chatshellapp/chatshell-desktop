@@ -1,4 +1,5 @@
 import { Bot, Drama, Users } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModelList, type Model, type ModelVendor } from '@/components/model-list'
 import { AssistantList, type Assistant, type AssistantGroup } from '@/components/assistant-list'
@@ -39,20 +40,22 @@ export function ContactsContent({
   onAssistantDelete,
   onGroupSettings,
 }: ContactsContentProps) {
+  const { t } = useTranslation('sidebar')
+
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full p-2">
       <TabsList className="w-full grid grid-cols-3 h-9">
         <TabsTrigger value="models" className="text-xs gap-1 px-2">
           <Bot className="size-3.5" />
-          Models
+          {t('models')}
         </TabsTrigger>
         <TabsTrigger value="assistants" className="text-xs gap-1 px-2">
           <Drama className="size-3.5" />
-          Assistants
+          {t('assistants')}
         </TabsTrigger>
         <TabsTrigger value="people" className="text-xs gap-1 px-2">
           <Users className="size-3.5" />
-          People
+          {t('people')}
         </TabsTrigger>
       </TabsList>
       <TabsContent value="models" className="mt-2">
@@ -82,8 +85,8 @@ export function ContactsContent({
             <EmptyMedia variant="icon">
               <Users />
             </EmptyMedia>
-            <EmptyTitle>No People Yet</EmptyTitle>
-            <EmptyDescription>You haven&apos;t added any contacts yet.</EmptyDescription>
+            <EmptyTitle>{t('noPeople')}</EmptyTitle>
+            <EmptyDescription>{t('noContactsDescription')}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TabsContent>

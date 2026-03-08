@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import {
@@ -99,6 +100,7 @@ export function PromptList({
   onGroupSettings,
   className,
 }: PromptListProps) {
+  const { t } = useTranslation('prompts')
   // Collect all starred prompts from all groups
   const starredPrompts = React.useMemo(() => {
     const prompts: Prompt[] = []
@@ -132,10 +134,8 @@ export function PromptList({
           <EmptyMedia variant="icon">
             <Sparkles />
           </EmptyMedia>
-          <EmptyTitle>No Prompts Yet</EmptyTitle>
-          <EmptyDescription>
-            Create a prompt to save and reuse your favorite messages.
-          </EmptyDescription>
+          <EmptyTitle>{t('noPrompts')}</EmptyTitle>
+          <EmptyDescription>{t('createFirstPrompt')}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -209,6 +209,7 @@ function PromptGroupComponent({
   const initialOpenState = forceDefaultOpen || (!ignoreGroupDefault && (group.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
+  const { t: tCommon } = useTranslation('common')
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -258,7 +259,7 @@ function PromptGroupComponent({
                     onGroupSettings?.(group)
                   }}
                 >
-                  Configuration
+                  {tCommon('configuration')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

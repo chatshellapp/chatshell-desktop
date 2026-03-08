@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import {
   Sidebar,
@@ -30,6 +31,7 @@ export function ProviderSidebar({
   storeProviders,
   editingCustomProviderId,
 }: ProviderSidebarProps) {
+  const { t } = useTranslation('providers')
   const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
 
   return (
@@ -60,7 +62,7 @@ export function ProviderSidebar({
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Custom</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('custom')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {customStoreProviders.map((cp) => (
@@ -89,7 +91,7 @@ export function ProviderSidebar({
                   isActive={selectedProvider.id === 'custom' && !editingCustomProviderId}
                 >
                   <Plus className="size-4" />
-                  <span>Add Provider</span>
+                  <span>{t('addProvider')}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

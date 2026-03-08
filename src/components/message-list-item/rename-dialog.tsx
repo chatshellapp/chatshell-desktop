@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,8 @@ interface RenameDialogProps {
 }
 
 export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: RenameDialogProps) {
+  const { t } = useTranslation('chat')
+  const { t: tCommon } = useTranslation('common')
   const [value, setValue] = React.useState(currentTitle)
 
   // Sync value when dialog opens
@@ -38,13 +41,13 @@ export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: Ren
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>Rename Conversation</DialogTitle>
-          <DialogDescription>Enter a new title for this conversation.</DialogDescription>
+          <DialogTitle>{t('renameConversation')}</DialogTitle>
+          <DialogDescription>{t('enterNewTitle')}</DialogDescription>
         </DialogHeader>
         <Input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Conversation title"
+          placeholder={t('conversationTitlePlaceholder')}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -55,9 +58,9 @@ export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: Ren
         />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tCommon('cancel')}
           </Button>
-          <Button onClick={handleSubmit}>Save</Button>
+          <Button onClick={handleSubmit}>{tCommon('save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

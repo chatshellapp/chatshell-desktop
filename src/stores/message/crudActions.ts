@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import i18n from '@/lib/i18n'
 import type { Message, Conversation } from '@/types'
 import type {
   ImmerSet,
@@ -81,7 +82,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       if (!targetId) {
         logger.info('[messageStore] No conversation ID provided, creating new conversation...')
         const newConversation = await invoke<Conversation>('create_conversation', {
-          req: { title: 'New Conversation' },
+          req: { title: i18n.t('sidebar:newConversation') },
         })
         targetId = newConversation.id
         logger.info('[messageStore] Created new conversation:', newConversation)

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { CONTEXT_COUNT_OPTIONS } from '@/types'
+import { getContextCountOptions } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface ContextCountDialogProps {
@@ -26,6 +27,8 @@ export function ContextCountDialog({
   contextMessageCount,
   onSave,
 }: ContextCountDialogProps) {
+  const { t } = useTranslation(['chat', 'common'])
+  const contextCountOptions = getContextCountOptions(t)
   const [selectedValue, setSelectedValue] = useState<number | null>(contextMessageCount)
   const [customValue, setCustomValue] = useState<string>('')
   const [isCustom, setIsCustom] = useState(false)
@@ -34,8 +37,7 @@ export function ContextCountDialog({
   useEffect(() => {
     if (isOpen) {
       setSelectedValue(contextMessageCount)
-      // Check if current value is a preset option
-      const isPresetValue = CONTEXT_COUNT_OPTIONS.some((opt) => opt.value === contextMessageCount)
+      const isPresetValue = contextCountOptions.some((opt) => opt.value === contextMessageCount)
       setIsCustom(!isPresetValue && contextMessageCount !== null)
       if (!isPresetValue && contextMessageCount !== null) {
         setCustomValue(String(contextMessageCount))
@@ -78,14 +80,12 @@ export function ContextCountDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Context Message Count</DialogTitle>
-          <DialogDescription>
-            Set how many previous messages to include as context. Unlimited includes all messages.
-          </DialogDescription>
+          <DialogTitle>{t('contextMessageCount')}</DialogTitle>
+          <DialogDescription>{t('setContextMessages')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-2 py-4">
-          {CONTEXT_COUNT_OPTIONS.map((option) => (
+          {contextCountOptions.map((option) => (
             <button
               key={option.value ?? 'unlimited'}
               onClick={() => handleOptionSelect(option.value)}
@@ -98,7 +98,7 @@ export function ContextCountDialog({
             >
               <span className="font-medium">{option.label}</span>
               {option.value === null && (
-                <span className="text-xs text-muted-foreground">Default</span>
+                <span className="text-xs text-muted-foreground">{t('common:default')}</span>
               )}
             </button>
           ))}
@@ -111,13 +111,13 @@ export function ContextCountDialog({
               isCustom ? 'border-primary bg-accent' : 'border-border'
             )}
           >
-            <span className="font-medium">Custom</span>
+            <span className="font-medium">{t('custom')}</span>
           </button>
 
           {isCustom && (
             <div className="flex items-center gap-2 px-3 py-2">
               <Label htmlFor="custom-count" className="shrink-0">
-                Messages:
+                {t('messages')}
               </Label>
               <Input
                 id="custom-count"
@@ -125,7 +125,7 @@ export function ContextCountDialog({
                 min={1}
                 value={customValue}
                 onChange={(e) => setCustomValue(e.target.value)}
-                placeholder="Enter number"
+                placeholder={t('enterNumber')}
                 className="h-8"
                 autoFocus
               />
@@ -135,10 +135,10 @@ export function ContextCountDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button onClick={handleApply} disabled={!isValidCustomValue()}>
-            Apply
+            {t('common:apply')}
           </Button>
         </DialogFooter>
       </DialogContent>

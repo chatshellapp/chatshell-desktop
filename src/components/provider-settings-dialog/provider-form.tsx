@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { Eye, EyeOff, Loader2, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -75,6 +76,7 @@ export function ProviderForm({
   onCompatibilityTypeChange,
   models,
 }: ProviderFormProps) {
+  const { t } = useTranslation('providers')
   const isCustom = isCustomProvider(selectedProvider)
 
   const [checkStatus, setCheckStatus] = React.useState<CheckStatus>('idle')
@@ -104,7 +106,7 @@ export function ProviderForm({
     const testModelId = getTestModelId(selectedProvider, compatibilityType, models)
     if (!testModelId) {
       setCheckStatus('failed')
-      setCheckError('No model available for testing. Add a model first.')
+      setCheckError(t('noModelForTesting'))
       return
     }
 
@@ -145,18 +147,18 @@ export function ProviderForm({
       {isCustom && (
         <>
           <div className="space-y-2">
-            <Label htmlFor="provider-name">Provider Name</Label>
+            <Label htmlFor="provider-name">{t('providerName')}</Label>
             <Input
               id="provider-name"
               type="text"
-              placeholder="e.g. My Local LLM"
+              placeholder={t('customProviderPlaceholder')}
               value={providerName}
               onChange={(e) => onProviderNameChange(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>API Compatibility</Label>
+            <Label>{t('apiCompatibility')}</Label>
             <RadioGroup
               value={compatibilityType}
               onValueChange={onCompatibilityTypeChange}
@@ -165,13 +167,13 @@ export function ProviderForm({
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="openai" id="compat-openai" />
                 <Label htmlFor="compat-openai" className="font-normal cursor-pointer">
-                  OpenAI Compatible
+                  {t('openaiCompatible')}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="anthropic" id="compat-anthropic" />
                 <Label htmlFor="compat-anthropic" className="font-normal cursor-pointer">
-                  Anthropic Compatible
+                  {t('anthropicCompatible')}
                 </Label>
               </div>
             </RadioGroup>
@@ -179,37 +181,35 @@ export function ProviderForm({
 
           {compatibilityType === 'openai' && (
             <div className="space-y-2">
-              <Label>API Style</Label>
+              <Label>{t('apiStyle')}</Label>
               <RadioGroup value={apiStyle} onValueChange={onApiStyleChange} className="flex gap-4">
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="chat_completions" id="api-style-cc" />
                   <Label htmlFor="api-style-cc" className="font-normal cursor-pointer">
-                    Chat Completions API
+                    {t('chatCompletionsApi')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="responses" id="api-style-resp" />
                   <Label htmlFor="api-style-resp" className="font-normal cursor-pointer">
-                    Responses API
+                    {t('responsesApi')}
                   </Label>
                 </div>
               </RadioGroup>
-              <p className="text-xs text-muted-foreground">
-                Most providers use Chat Completions API. Responses API is an OpenAI-specific format.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('apiStyleDescription')}</p>
             </div>
           )}
         </>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="api-key">API Key</Label>
+        <Label htmlFor="api-key">{t('apiKey')}</Label>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input
               id="api-key"
               type={showApiKey ? 'text' : 'password'}
-              placeholder="Enter your API key"
+              placeholder={t('apiKeyPlaceholder')}
               value={apiKey}
               onChange={(e) => onApiKeyChange(e.target.value)}
               className="pr-10"
@@ -253,16 +253,16 @@ export function ProviderForm({
             ) : checkStatus === 'failed' ? (
               <>
                 <AlertTriangle className="size-4" />
-                <span className="ml-1">Failed</span>
+                <span className="ml-1">{t('failed')}</span>
               </>
             ) : (
-              'Check'
+              t('testConnection')
             )}
           </Button>
         </div>
         {checkStatus === 'failed' && checkError && (
           <div className="text-xs text-destructive space-y-1">
-            <p className="font-medium">Connection failed</p>
+            <p className="font-medium">{t('connectionFailed')}</p>
             <div className="px-2 py-1.5 bg-destructive/5 rounded max-h-24 overflow-y-auto">
               <p className="font-mono text-destructive/80 whitespace-pre-wrap break-all">
                 {checkError}
@@ -271,16 +271,17 @@ export function ProviderForm({
           </div>
         )}
         {checkStatus === 'success' && (
-          <p className="text-xs text-green-600 dark:text-green-400">Connection successful</p>
+          <p className="text-xs text-green-600 dark:text-green-400">{t('connectionSuccessful')}</p>
         )}
         {checkStatus !== 'failed' && checkStatus !== 'success' && (
-          <p className="text-xs text-muted-foreground">Your API key will be stored securely</p>
+          <p className="text-xs text-muted-foreground">{t('yourApiKeyWillBeStored')}</p>
         )}
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="api-base-url">
-          API Base URL{isCustom && <span className="text-destructive ml-0.5">*</span>}
+          {t('apiBaseUrl')}
+          {isCustom && <span className="text-destructive ml-0.5">*</span>}
         </Label>
         <Input
           id="api-base-url"
@@ -291,10 +292,10 @@ export function ProviderForm({
         />
         <p className="text-xs text-muted-foreground">
           {isCustom ? (
-            'Required: The API endpoint for this provider'
+            t('apiBaseUrlRequired')
           ) : (
             <>
-              Optional: Override the default API endpoint
+              {t('apiBaseUrlOptional')}
               {apiBaseUrl !== selectedProvider.baseUrl && (
                 <>
                   {' · '}
@@ -303,7 +304,7 @@ export function ProviderForm({
                     className="text-primary hover:underline"
                     onClick={() => onApiBaseUrlChange(selectedProvider.baseUrl)}
                   >
-                    Restore default
+                    {t('restoreDefault')}
                   </button>
                 </>
               )}

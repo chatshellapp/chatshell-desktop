@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -35,6 +36,8 @@ export function ModelSelectorDropdown({
   activeTab,
   onActiveTabChange,
 }: ModelSelectorDropdownProps) {
+  const { t } = useTranslation('chat')
+
   // Store hooks
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
@@ -59,7 +62,7 @@ export function ModelSelectorDropdown({
       const provider = getProviderById(selectedModel.provider_id)
       return provider ? `${selectedModel.name} - ${provider.name}` : selectedModel.name
     } else {
-      return 'Select model or assistant'
+      return t('selectModelOrAssistant')
     }
   }
 
@@ -173,18 +176,18 @@ export function ModelSelectorDropdown({
       const provider = getProviderById(vendorId)
       return {
         id: vendorId,
-        name: provider?.name || 'Unknown',
+        name: provider?.name || t('unknown'),
         models,
       }
     })
-  }, [models, getProviderById])
+  }, [models, getProviderById, t])
 
   // Transform assistants to AssistantGroup groups
   const assistantGroups = useMemo((): AssistantGroup[] => {
     const groupMap = new Map<string, AssistantListAssistant[]>()
 
     assistants.forEach((assistant) => {
-      const groupName = assistant.group_name || 'Default'
+      const groupName = assistant.group_name || t('default')
       if (!groupMap.has(groupName)) {
         groupMap.set(groupName, [])
       }
@@ -211,7 +214,7 @@ export function ModelSelectorDropdown({
       name: groupName,
       assistants,
     }))
-  }, [assistants, getModelById])
+  }, [assistants, getModelById, t])
 
   // Get model info for the selected assistant
   const selectedAssistantModel = selectedAssistant ? getModelById(selectedAssistant.model_id) : null
@@ -313,10 +316,10 @@ export function ModelSelectorDropdown({
         >
           <TabsList className="grid w-full grid-cols-2 mb-2">
             <TabsTrigger value="models" className="text-xs">
-              Models
+              {t('models')}
             </TabsTrigger>
             <TabsTrigger value="assistants" className="text-xs">
-              Assistants
+              {t('assistants')}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="models" className="mt-0">
@@ -330,7 +333,7 @@ export function ModelSelectorDropdown({
               />
             ) : (
               <div className="text-xs text-muted-foreground px-2 py-4 text-center">
-                No models available
+                {t('noModelsAvailable')}
               </div>
             )}
           </TabsContent>
@@ -345,7 +348,7 @@ export function ModelSelectorDropdown({
               />
             ) : (
               <div className="text-xs text-muted-foreground px-2 py-4 text-center">
-                No assistants available
+                {t('noAssistantsAvailable')}
               </div>
             )}
           </TabsContent>

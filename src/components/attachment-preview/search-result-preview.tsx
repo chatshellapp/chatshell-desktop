@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Search,
   ChevronDown,
@@ -36,6 +37,8 @@ export function SearchResultPreview({
   urlStatuses?: Record<string, 'fetching' | 'fetched'>
   messageId?: string
 }) {
+  const { t } = useTranslation(['attachments', 'common'])
+
   // Use module-level state to check if already auto-collapsed (survives remounts)
   const searchId = searchResult.id
   const collapseState = collapseStateMap.get(searchId) || 'initial'
@@ -162,7 +165,7 @@ export function SearchResultPreview({
 
             <span className="text-xs text-muted-foreground/60 flex-shrink-0 flex items-center gap-1">
               {loading ? (
-                'Loading...'
+                t('common:loading')
               ) : (
                 <>
                   {`${resultCount} results`}
@@ -203,12 +206,14 @@ export function SearchResultPreview({
           {/* Loading state when no URL statuses and no results */}
           {!hasUrlStatuses && fetchResults.length === 0 && loading && (
             <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">
-              Loading search results...
+              {t('loadingSearchResults')}
             </p>
           )}
           {/* Empty state */}
           {!hasUrlStatuses && fetchResults.length === 0 && !loading && (
-            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">No results fetched.</p>
+            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">
+              {t('noResults')}
+            </p>
           )}
         </div>
       )}
@@ -218,6 +223,7 @@ export function SearchResultPreview({
 
 // SearchDecision preview component - shows AI reasoning for search decision
 export function SearchDecisionPreview({ decision }: { decision: SearchDecision }) {
+  const { t } = useTranslation(['attachments', 'common'])
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Dynamic container styles based on state
@@ -256,7 +262,9 @@ export function SearchDecisionPreview({ decision }: { decision: SearchDecision }
         <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
           {/* Reasoning */}
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">Reasoning</p>
+            <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+              {t('reasoning')}
+            </p>
             <p className="text-xs text-foreground/70 leading-relaxed">{decision.reasoning}</p>
           </div>
 
@@ -277,11 +285,12 @@ export function SearchDecisionPreview({ decision }: { decision: SearchDecision }
 
 // Pending SearchDecision preview - shown while AI is deciding
 export function PendingSearchDecisionPreview() {
+  const { t } = useTranslation(['attachments', 'common'])
   return (
     <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <CircleQuestionMark className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-pulse" />
-        <span className="text-xs text-muted-foreground">Deciding if search needed...</span>
+        <span className="text-xs text-muted-foreground">{t('decidingSearch')}</span>
       </div>
     </div>
   )

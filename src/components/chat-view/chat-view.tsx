@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ChatInput } from '@/components/chat-input'
 import { ApiErrorPreview } from './api-error-preview'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
@@ -13,6 +14,8 @@ import {
 } from './hooks'
 
 export function ChatView() {
+  const { t } = useTranslation('chat')
+
   // Get conversation state from stores
   const {
     conversationId,
@@ -99,7 +102,7 @@ export function ChatView() {
       >
         {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p>No messages yet. Start a conversation!</p>
+            <p>{t('noMessagesStart')}</p>
           </div>
         ) : (
           <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
@@ -169,7 +172,7 @@ export function ChatView() {
         <div
           className="absolute top-0 left-0 right-0 h-3 -mt-1.5 cursor-ns-resize z-50 flex items-center justify-center hover:bg-accent/10 transition-colors group"
           onMouseDown={handleDragStart}
-          title="Drag to resize"
+          title={t('dragToResize')}
         >
           <div className="w-12 h-1 bg-muted-foreground/20 rounded-full backdrop-blur-sm group-hover:bg-muted-foreground/40 transition-colors" />
         </div>

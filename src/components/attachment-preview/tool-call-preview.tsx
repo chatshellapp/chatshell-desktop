@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Wrench, ChevronDown, ChevronUp, XCircle, Loader2, Plug, Braces, Ban } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
@@ -113,6 +114,7 @@ export function ToolCallPreview({
   streamingToolCall,
   isStreaming = false,
 }: ToolCallPreviewProps) {
+  const { t } = useTranslation('tools')
   const [isExpanded, setIsExpanded] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
 
@@ -201,14 +203,18 @@ export function ToolCallPreview({
               />
               {hasError && (
                 <div className="space-y-1">
-                  <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
+                  <p className="text-xs text-red-500/80 uppercase tracking-wider">
+                    {t('toolCallPreview.error')}
+                  </p>
                   <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
                     {error}
                   </pre>
                 </div>
               )}
               {isInProgress && !hasOutput && !hasError && (
-                <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
+                <p className="text-xs text-muted-foreground/50 italic">
+                  {t('toolCallPreview.waitingForResult')}
+                </p>
               )}
             </>
           ) : (
@@ -217,7 +223,7 @@ export function ToolCallPreview({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                      Input
+                      {t('toolCallPreview.input')}
                     </p>
                     <CopyButton text={formattedInput} />
                   </div>
@@ -239,7 +245,7 @@ export function ToolCallPreview({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                      Output
+                      {t('toolCallPreview.output')}
                     </p>
                     <CopyButton text={toolOutput} />
                   </div>
@@ -256,7 +262,9 @@ export function ToolCallPreview({
               )}
               {hasError && (
                 <div className="space-y-1">
-                  <p className="text-xs text-red-500/80 uppercase tracking-wider">Error</p>
+                  <p className="text-xs text-red-500/80 uppercase tracking-wider">
+                    {t('toolCallPreview.error')}
+                  </p>
                   <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
                     {error}
                   </pre>
@@ -265,9 +273,11 @@ export function ToolCallPreview({
               {isInProgress && !hasOutput && !hasError && (
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                    Output
+                    {t('toolCallPreview.output')}
                   </p>
-                  <p className="text-xs text-muted-foreground/50 italic">Waiting for result...</p>
+                  <p className="text-xs text-muted-foreground/50 italic">
+                    {t('toolCallPreview.waitingForResult')}
+                  </p>
                 </div>
               )}
             </>
@@ -277,10 +287,12 @@ export function ToolCallPreview({
               <button
                 onClick={() => setShowRaw(!showRaw)}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30 transition-colors"
-                title={showRaw ? 'Show formatted' : 'Show raw'}
+                title={showRaw ? t('toolCallPreview.showFormatted') : t('toolCallPreview.showRaw')}
               >
                 <Braces className="h-3 w-3" />
-                <span className="text-[10px]">{showRaw ? 'Formatted' : 'Raw'}</span>
+                <span className="text-[10px]">
+                  {showRaw ? t('toolCallPreview.formatted') : t('toolCallPreview.raw')}
+                </span>
               </button>
             </div>
           )}
@@ -291,12 +303,13 @@ export function ToolCallPreview({
 }
 
 export function PendingToolCallPreview({ toolName }: { toolName: string }) {
+  const { t } = useTranslation('tools')
   return (
     <div className="w-fit rounded bg-muted/30 border border-muted/40 overflow-hidden">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <Loader2 className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0 animate-spin" />
         <ToolNameDisplay rawName={toolName} />
-        <span className="text-xs text-muted-foreground/60">Calling...</span>
+        <span className="text-xs text-muted-foreground/60">{t('toolCallPreview.calling')}</span>
       </div>
     </div>
   )

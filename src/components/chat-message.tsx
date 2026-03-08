@@ -8,6 +8,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Copy, Undo, Scan, Check, GitFork } from 'lucide-react'
 import { useState, memo, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { ModelAvatar } from '@/components/model-avatar'
 import { AssistantAvatar } from '@/components/assistant-avatar'
@@ -110,6 +111,9 @@ export const ChatMessage = memo(function ChatMessage({
   onExportConversation,
   onExportMessage,
 }: ChatMessageProps) {
+  const { t } = useTranslation('messages')
+  const { t: tCommon } = useTranslation('common')
+  const { t: tChat } = useTranslation('chat')
   const [isExportOpen, setIsExportOpen] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
 
@@ -192,7 +196,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{isCopied ? 'Copied!' : 'Copy'}</p>
+                <p>{isCopied ? tCommon('copied') : tCommon('copy')}</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -202,7 +206,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Resend</p>
+                <p>{tChat('resend')}</p>
               </TooltipContent>
             </Tooltip>
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
@@ -215,16 +219,16 @@ export const ChatMessage = memo(function ChatMessage({
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Screenshot</p>
+                  <p>{tChat('screenshot')}</p>
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={onExportAll}>Export All Messages</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportAll}>{tChat('exportAllMessages')}</DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportConversation}>
-                  Export Current Conversation
+                  {tChat('exportCurrentConversation')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportMessage}>
-                  Export Current Message
+                  {tChat('exportCurrentMessage')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -276,7 +280,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{isCopied ? 'Copied!' : 'Copy'}</p>
+                <p>{isCopied ? tCommon('copied') : tCommon('copy')}</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -286,7 +290,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Fork</p>
+                <p>{tChat('fork')}</p>
               </TooltipContent>
             </Tooltip>
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
@@ -299,16 +303,16 @@ export const ChatMessage = memo(function ChatMessage({
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Screenshot</p>
+                  <p>{tChat('screenshot')}</p>
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={onExportAll}>Export All Messages</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportAll}>{tChat('exportAllMessages')}</DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportConversation}>
-                  Export Current Conversation
+                  {tChat('exportCurrentConversation')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportMessage}>
-                  Export Current Message
+                  {tChat('exportCurrentMessage')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
