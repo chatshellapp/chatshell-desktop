@@ -47,6 +47,12 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
 
   build-windows:
     name: Build Windows
@@ -84,24 +90,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Frontend
-        run: pnpm build
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Install WebView2
-        run: |
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "MicrosoftEdgeWebView2RuntimeInstaller.exe" -UseBasicParsing
-          Start-Process -FilePath "MicrosoftEdgeWebView2RuntimeInstaller.exe" -ArgumentList "/silent", "/install" -Wait
-          Remove-Item "MicrosoftEdgeWebView2RuntimeInstaller.exe"
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Build App
-        working-directory: src-tauri
-        run: |
-          pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi
+        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -115,8 +115,6 @@ jobs:
     runs-on: macos-14
     permissions:
       contents: read
-      security-events: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,83 +147,55 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Frontend
-        run: pnpm build
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Build Universal Binary (Intel + Apple Silicon)
-        working-directory: src-tauri
-        run: |
-          pnpm tauri build --target aarch64-apple-darwin --bundles dmg
-          pnpm tauri build --target x86_64-apple-darwin --bundles dmg
-
-      - name: Organize DMG files
-        run: |
-          mkdir -p dist
-          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist/
-          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg dist/
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Import Code Signing Certificate
-        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         uses: apple-actions/import-codesign-certs@v2
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        env:
-          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
 
-      - name: Sign Universal DMG
-        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
-        run: |
-          for dmg in dist/*.dmg; do
-            echo "Signing: $dmg"
-            codesign --sign "${{ secrets.APPLE_CERTIFICATE }}" --timestamp --options runtime "$dmg"
-          done
+      - name: Build Universal App
+        run: pnpm tauri build --target universal-apple-darwin --bundles dmg
         env:
-          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       - name: Setup API Key for Notarization
-        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
           echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 -d > api_key.p8
-          echo "API key saved to api_key.p8"
-        env:
-          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
 
-      - name: Notarize App
-        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
+      - name: Notarize and Staple DMG
+        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
-          for dmg in dist/*.dmg; do
+          for dmg in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
             echo "Notarizing: $dmg"
             xcrun notarytool submit "$dmg" \
               --apple-api-key api_key.p8 \
               --apple-api-key-id "${{ secrets.APPLE_API_KEY }}" \
               --apple-api-issuer "${{ secrets.APPLE_API_ISSUER }}" \
               --wait
-          done
-          rm -f api_key.p8
-        env:
-          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
-
-      - name: Staple Notarization
-        if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
-        run: |
-          for dmg in dist/*.dmg; do
             echo "Stapling: $dmg"
             xcrun stapler staple "$dmg"
           done
-        env:
-          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+          rm -f api_key.p8
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-macos
-          path: dist/*.dmg
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
   release:
     name: Create Release
