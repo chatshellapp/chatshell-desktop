@@ -754,28 +754,55 @@ where
 
                         // After reasoning ends, some providers replay the
                         // reasoning text as regular content. Detect and skip
-                        // the overlapping prefix.
+                        // the duplicate. Two known patterns:
+                        //   1. MiniMax: wraps reasoning in <think> tags within
+                        //      the content field.
+                        //   2. Other providers: replay reasoning as plain text.
                         if had_reasoning && !accumulated_reasoning.is_empty() {
                             content_after_reasoning.push_str(content);
-                            let trimmed_reasoning = accumulated_reasoning.trim();
-                            let trimmed_content = content_after_reasoning.trim();
+                            let trimmed = content_after_reasoning.trim();
 
-                            if trimmed_reasoning.starts_with(trimmed_content) {
-                                tracing::trace!(
-                                    "Suppressing content chunk that is a prefix of reasoning \
-                                     ({} / {} chars)",
-                                    trimmed_content.len(),
-                                    trimmed_reasoning.len()
-                                );
+                            // Pattern 1: content uses <think> tags (MiniMax).
+                            // Suppress everything up to and including </think>.
+                            if trimmed.starts_with("<think") {
+                                if let Some(end) = content_after_reasoning.find("</think>") {
+                                    let after = content_after_reasoning
+                                        [end + "</think>".len()..]
+                                        .trim_start()
+                                        .to_string();
+                                    accumulated_reasoning.clear();
+                                    content_after_reasoning.clear();
+                                    if !after.is_empty() {
+                                        yield Ok(
+                                            streaming::RawStreamingChoice::Message(after),
+                                        );
+                                    }
+                                }
+                                // Still inside <think> block — suppress.
                                 continue;
                             }
 
-                            // Content has diverged from reasoning -- emit the
-                            // non-overlapping portion and stop dedup checking.
+                            // Pattern 2: plain-text replay of reasoning.
+                            let trimmed_reasoning = accumulated_reasoning.trim();
+                            if trimmed_reasoning.starts_with(trimmed) {
+                                continue;
+                            }
+
+                            // Content diverged — strip reasoning prefix if
+                            // present, then emit only the new portion.
+                            let reasoning_owned = trimmed_reasoning.to_string();
+                            let emit = if trimmed.starts_with(trimmed_reasoning) {
+                                trimmed[reasoning_owned.len()..]
+                                    .trim_start()
+                                    .to_string()
+                            } else {
+                                content_after_reasoning.clone()
+                            };
                             accumulated_reasoning.clear();
-                            let emit = content_after_reasoning.clone();
                             content_after_reasoning.clear();
-                            yield Ok(streaming::RawStreamingChoice::Message(emit));
+                            if !emit.is_empty() {
+                                yield Ok(streaming::RawStreamingChoice::Message(emit));
+                            }
                         } else {
                             yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
                         }
