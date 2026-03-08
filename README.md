@@ -165,7 +165,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 ## Installation
 
-Download **signed binaries** from [chatshell.app](https://chatshell.app/) or build from source.
+Download from [chatshell.app](https://chatshell.app/) or build from source. The macOS build is code-signed and notarized.
 
 ## Development
 
