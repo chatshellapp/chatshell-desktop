@@ -34,13 +34,13 @@ Built on Tauri 2 with a Rust backend, ChatShell is fast, lightweight, and runs o
 
 ### Agent-Ready, Out of the Box
 
-Most AI clients are just chat wrappers — you type, the AI replies, end of story. ChatShell ships with **6 built-in tools** (Web Search, Web Fetch, Bash, Read, Grep, Glob) that your AI can use autonomously. Ask it to research a topic, summarize a web page, find a file on your disk, or run a command — it just works. No MCP servers to set up, no plugins to install, no config files to edit.
+Most AI clients are just chat wrappers — you type, the AI replies, end of story. ChatShell ships with **9 built-in tools** (Web Search, Web Fetch, Bash, Read, Edit, Write, Grep, Glob, Kill Shell) that your AI can use autonomously. Ask it to research a topic, summarize a web page, find a file on your disk, edit code, or run a command — it just works. No MCP servers to set up, no plugins to install, no config files to edit.
 
 Other clients like OpenClaw require tedious configuration before your AI can do anything beyond chatting. With ChatShell, you get a working AI agent in under a minute.
 
 ### Powerful Skills System
 
-Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. ChatShell ships with built-in skills and lets you create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
+Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. ChatShell ships with built-in skills and lets you create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
 
 ### Custom Assistants, Built Locally
 
@@ -69,16 +69,19 @@ Your AI can use these tools autonomously — no user intervention needed:
 - **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
 - **Web Fetch**: Intelligent content extraction from URLs (Readability + headless Chrome, or Jina Reader API)
 - **Bash**: Execute shell commands in a per-conversation working directory
-- **Read**: Read file contents from the local filesystem
+- **Read**: Read file contents from the local filesystem (text, images, PDFs)
+- **Edit**: Make precise text replacements in files
+- **Write**: Create or overwrite files with provided content
 - **Grep**: Search file contents with regex support
 - **Glob**: Find files by pattern matching
+- **Kill Shell**: Terminate the current bash session and start fresh
 
 The AI decides when and how to combine these tools to fulfill your requests.
 
 ### Skills
 
 - **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
-- **Built-in & Custom**: Use pre-built skills or create your own (`~/.chatshell/skills/SKILL.md`)
+- **Built-in & Custom**: Use pre-built skills or create your own (`~/.chatshell/skills/<skill-name>/SKILL.md`)
 - **Invocation Control**: Choose whether the AI or the user triggers each skill
 - **Auto-Discovery**: Skill Scanner finds skills from configured directories
 - **Per-Conversation Selection**: Enable different skills for different conversations
@@ -211,7 +214,7 @@ pnpm tauri build
 | Markdown | react-markdown, remark-gfm, KaTeX, Mermaid |
 | Backend | Rust (Edition 2024), Tokio |
 | LLM | [rig-core](https://rig.rs/) |
-| MCP | [rmcp](https://github.com/anthropics/rmcp) (HTTP + STDIO transports) |
+| MCP | [rmcp](https://github.com/modelcontextprotocol/rust-sdk) (HTTP + STDIO transports) |
 | Database | SQLite via sqlx |
 | Security | AES-256-GCM, keyring, Blake3 |
 | Web Scraping | Readability, headless Chrome, htmd |
@@ -249,7 +252,7 @@ Built on the shoulders of giants:
 
 - [Tauri](https://tauri.app/) — Build smaller, faster, and more secure desktop applications
 - [Rig](https://rig.rs/) — Modular LLM application framework
-- [rmcp](https://github.com/anthropics/rmcp) — Model Context Protocol SDK for Rust
+- [rmcp](https://github.com/modelcontextprotocol/rust-sdk) — Model Context Protocol SDK for Rust
 - [Radix UI](https://www.radix-ui.com/) — Unstyled, accessible UI components
 - [shadcn/ui](https://ui.shadcn.com/) — Beautiful, customizable components built with Radix UI and TailwindCSS
 - [React](https://react.dev/) — The library for web and native user interfaces
