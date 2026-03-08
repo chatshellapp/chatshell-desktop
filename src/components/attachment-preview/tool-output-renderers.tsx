@@ -117,7 +117,7 @@ function extractCommandNames(command: string): string {
         if (part === '>' || part === '>>' || part === '<' || part === '2>') return null
         if (LOOP_HEADERS.has(part)) return null
         if (SHELL_KEYWORDS.has(part)) continue
-        if (/^["'`(){}$\\-]/.test(part) || part[0] === '[' || part[0] === ']') continue
+        if (/^["'`()[\]{}$\\-]/.test(part)) continue
         if (/^\d/.test(part)) continue
         return part.replace(/^.*\//, '')
       }

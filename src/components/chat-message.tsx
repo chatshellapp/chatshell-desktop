@@ -111,7 +111,6 @@ export const ChatMessage = memo(function ChatMessage({
   onExportConversation,
   onExportMessage,
 }: ChatMessageProps) {
-  const { t } = useTranslation('messages')
   const { t: tCommon } = useTranslation('common')
   const { t: tChat } = useTranslation('chat')
   const [isExportOpen, setIsExportOpen] = useState(false)
