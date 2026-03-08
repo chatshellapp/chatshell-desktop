@@ -211,9 +211,7 @@ export function SearchResultPreview({
           )}
           {/* Empty state */}
           {!hasUrlStatuses && fetchResults.length === 0 && !loading && (
-            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">
-              {t('noResults')}
-            </p>
+            <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">{t('noResults')}</p>
           )}
         </div>
       )}

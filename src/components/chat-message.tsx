@@ -222,7 +222,9 @@ export const ChatMessage = memo(function ChatMessage({
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={onExportAll}>{tChat('exportAllMessages')}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportAll}>
+                  {tChat('exportAllMessages')}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportConversation}>
                   {tChat('exportCurrentConversation')}
                 </DropdownMenuItem>
@@ -306,7 +308,9 @@ export const ChatMessage = memo(function ChatMessage({
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={onExportAll}>{tChat('exportAllMessages')}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportAll}>
+                  {tChat('exportAllMessages')}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportConversation}>
                   {tChat('exportCurrentConversation')}
                 </DropdownMenuItem>

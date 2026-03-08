@@ -448,9 +448,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
                       </span>
                     </Badge>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    {t('systemPromptDisabledTooltip')}
-                  </TooltipContent>
+                  <TooltipContent>{t('systemPromptDisabledTooltip')}</TooltipContent>
                 </Tooltip>
               ) : (
                 <Badge

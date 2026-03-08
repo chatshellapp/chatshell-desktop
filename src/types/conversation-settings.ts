@@ -176,7 +176,7 @@ export const PARAMETER_LIMITS = {
 import type { TFunction } from 'i18next'
 
 export function getContextCountOptions(
-  t: TFunction,
+  t: TFunction
 ): Array<{ value: number | null; label: string }> {
   return [
     { value: null, label: t('settings:contextUnlimited') },

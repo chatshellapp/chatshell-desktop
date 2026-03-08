@@ -223,9 +223,7 @@ export function McpServerConfigModal({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full justify-between">
-                  <span>
-                    {transport === 'http' ? t('httpStreamable') : t('stdioLocalProcess')}
-                  </span>
+                  <span>{transport === 'http' ? t('httpStreamable') : t('stdioLocalProcess')}</span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
