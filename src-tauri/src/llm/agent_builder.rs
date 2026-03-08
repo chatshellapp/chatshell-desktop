@@ -378,12 +378,33 @@ pub fn create_openrouter_agent(
         .http_client(http_client)
         .build()?;
 
-    // Add default reasoning param if user hasn't set additional_params
     let mut openrouter_config = config.clone();
     if openrouter_config.model_params.additional_params.is_none() {
-        openrouter_config.model_params.additional_params = Some(serde_json::json!({
-            "reasoning": { "effort": "medium" }
-        }));
+        // Extended thinking (reasoning.effort) can cause "Invalid signature in thinking
+        // block" errors during multi-turn tool use if the streaming provider doesn't
+        // supply reasoning signatures. Only enable by default for tool-free agents.
+        let has_tools = config.enable_web_search
+            || config.enable_web_fetch
+            || config.enable_bash
+            || config.enable_read
+            || config.enable_edit
+            || config.enable_write
+            || config.enable_grep
+            || config.enable_glob
+            || config.enable_kill_shell
+            || config.mcp_call_tool.is_some()
+            || config.load_skill_tool.is_some()
+            || config.load_mcp_schema_tool.is_some()
+            || config
+                .mcp_tools
+                .as_ref()
+                .is_some_and(|m| m.server_tools.iter().any(|(t, _)| !t.is_empty()));
+
+        if !has_tools {
+            openrouter_config.model_params.additional_params = Some(serde_json::json!({
+                "reasoning": { "effort": "medium" }
+            }));
+        }
     }
 
     Ok(build_agent(client.agent(model_id), &openrouter_config))

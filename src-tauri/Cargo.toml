@@ -88,3 +88,10 @@ headless_chrome = "1"
 async-stream = "0.3.6"
 http = "1"
 
+# Patch rig-core to fix OpenRouter thinking block signature handling.
+# The upstream OpenRouter streaming code doesn't capture reasoning signatures,
+# causing "Invalid signature in thinking block" errors during multi-turn tool use.
+# Remove this patch when rig-core upstream fixes the issue.
+[patch.crates-io]
+rig-core = { path = "../patches/rig-core" }
+
