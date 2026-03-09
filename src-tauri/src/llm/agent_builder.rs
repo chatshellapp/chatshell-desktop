@@ -407,6 +407,21 @@ pub fn create_openrouter_agent(
         }
     }
 
+    // Auto-inject modalities for image-capable models (e.g. gemini-3.1-flash-image-preview)
+    if model_id.contains("image-preview") || model_id.contains("image-generation") {
+        let mut params = openrouter_config
+            .model_params
+            .additional_params
+            .unwrap_or(serde_json::json!({}));
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert(
+                "modalities".to_string(),
+                serde_json::json!(["image", "text"]),
+            );
+        }
+        openrouter_config.model_params.additional_params = Some(params);
+    }
+
     Ok(build_agent(client.agent(model_id), &openrouter_config))
 }
 

@@ -122,6 +122,7 @@ export type {
 export type {
   ChatStreamEvent,
   ChatStreamReasoningEvent,
+  ChatStreamImageEvent,
   ChatCompleteEvent,
   ChatErrorEvent,
   AttachmentProcessingStartedEvent,

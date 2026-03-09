@@ -59,6 +59,7 @@ pub enum StreamChunkType {
     Reasoning,
     ToolCall(ToolCallInfo),
     ToolResult(ToolResultInfo),
+    Image(String),
 }
 
 /// Convert MIME type string to rig's ImageMediaType

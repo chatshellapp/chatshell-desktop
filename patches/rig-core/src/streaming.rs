@@ -105,6 +105,9 @@ where
     /// `response` field to be populated on the `StreamingCompletionResponse`
     FinalResponse(R),
 
+    /// A generated image (base64 data URL)
+    Image(String),
+
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Captured silently into `StreamingCompletionResponse::message_id`.
     MessageId(String),
@@ -401,6 +404,11 @@ where
                         internal_call_id,
                     })))
                 }
+                RawStreamingChoice::Image(data_url) => {
+                    stream.text_item_index = None;
+                    stream.reasoning_item_index = None;
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Image(data_url))))
+                }
                 RawStreamingChoice::FinalResponse(response) => {
                     if stream
                         .final_response_yielded
@@ -551,6 +559,7 @@ where
             RawStreamingChoice::ReasoningDelta { id, reasoning }
         }
         RawStreamingChoice::ToolCall(tool_call) => RawStreamingChoice::ToolCall(tool_call),
+        RawStreamingChoice::Image(data_url) => RawStreamingChoice::Image(data_url),
         RawStreamingChoice::MessageId(id) => RawStreamingChoice::MessageId(id),
     }
 }
@@ -937,6 +946,8 @@ pub enum StreamedAssistantContent<R> {
         id: Option<String>,
         reasoning: String,
     },
+    /// A generated image (base64 data URL)
+    Image(String),
     Final(R),
 }
 

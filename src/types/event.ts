@@ -52,6 +52,11 @@ export interface AttachmentUpdateEvent {
   }
 }
 
+export interface ChatStreamImageEvent {
+  conversation_id: string
+  image_url: string
+}
+
 export interface SearchDecisionCompleteEvent {
   message_id: string
   conversation_id: string

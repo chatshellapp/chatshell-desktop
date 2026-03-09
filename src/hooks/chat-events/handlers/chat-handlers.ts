@@ -52,11 +52,17 @@ export function useChatHandlers() {
     store.setIsReasoningActive(convId, true)
   }, [])
 
+  const handleStreamImage = useCallback((convId: string, imageUrl: string) => {
+    logger.info('[useChatEvents] Received generated image for conversation:', convId)
+    useMessageStore.getState().appendStreamingImage(convId, imageUrl)
+  }, [])
+
   return {
     handleStreamChunk,
     handleStreamReasoningChunk,
     handleChatComplete,
     handleChatError,
     handleReasoningStarted,
+    handleStreamImage,
   }
 }

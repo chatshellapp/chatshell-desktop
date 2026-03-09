@@ -1,10 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Copy, Check, Download } from 'lucide-react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
+import { writeFile } from '@tauri-apps/plugin-fs'
 import type { ImageAttachmentData } from './types'
 import { logger } from '@/lib/logger'
+
+function base64ToBytes(base64: string): Uint8Array {
+  const raw = atob(base64)
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
+}
+
+function resolveImageBytesSync(image: ImageAttachmentData): Uint8Array | null {
+  if (image.base64) {
+    const [, data] = image.base64.split(',')
+    if (data) return base64ToBytes(data)
+  }
+  return null
+}
 
 // Fullscreen Image Lightbox component with keyboard navigation
 // Exported for reuse in other components (e.g., chat-input)
@@ -22,10 +39,55 @@ export function ImageLightbox({
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [copied, setCopied] = useState(false)
+
   const currentImage = images[currentIndex]
   const hasMultiple = images.length > 1
   const canGoPrev = currentIndex > 0
   const canGoNext = currentIndex < images.length - 1
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await invoke('copy_image_to_clipboard', {
+        storagePath: currentImage.storagePath ?? null,
+        base64Data: currentImage.base64 ?? null,
+      })
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      logger.error('Failed to copy image:', err)
+    }
+  }, [currentImage])
+
+  const handleDownload = useCallback(async () => {
+    try {
+      let bytes: Uint8Array
+      if (currentImage.storagePath) {
+        const b64 = await invoke<string>('read_image_base64', {
+          storagePath: currentImage.storagePath,
+        })
+        bytes = base64ToBytes(b64)
+      } else if (currentImage.base64) {
+        const result = resolveImageBytesSync(currentImage)
+        if (!result) return
+        bytes = result
+      } else {
+        return
+      }
+
+      const defaultName = currentImage.fileName.includes('.')
+        ? currentImage.fileName
+        : `${currentImage.fileName}.png`
+      const filePath = await save({
+        defaultPath: defaultName,
+        filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      })
+      if (!filePath) return
+      await writeFile(filePath, bytes)
+    } catch (err) {
+      logger.error('Failed to download image:', err)
+    }
+  }, [currentImage])
 
   // Load current image - supports both storage paths and base64 data
   useEffect(() => {
@@ -60,12 +122,14 @@ export function ImageLightbox({
   const goToPrev = useCallback(() => {
     if (canGoPrev) {
       setCurrentIndex((i) => i - 1)
+      setCopied(false)
     }
   }, [canGoPrev])
 
   const goToNext = useCallback(() => {
     if (canGoNext) {
       setCurrentIndex((i) => i + 1)
+      setCopied(false)
     }
   }, [canGoNext])
 
@@ -172,9 +236,32 @@ export function ImageLightbox({
         )}
       </div>
 
-      {/* File name */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-lg bg-white/10 text-white text-sm max-w-[80%] truncate">
-        {currentImage.fileName}
+      {/* Bottom toolbar */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10">
+        <span className="text-white text-sm max-w-[50vw] truncate">
+          {currentImage.fileName}
+        </span>
+        <div className="h-4 w-px bg-white/20" />
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleCopy()
+          }}
+          className="p-1.5 rounded hover:bg-white/10 transition-colors text-white cursor-pointer"
+          aria-label={t('attachments:copy')}
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDownload()
+          }}
+          className="p-1.5 rounded hover:bg-white/10 transition-colors text-white cursor-pointer"
+          aria-label={t('attachments:download')}
+        >
+          <Download className="h-4 w-4" />
+        </button>
       </div>
     </div>,
     document.body

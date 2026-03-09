@@ -10,8 +10,8 @@ use crate::llm::tools::{LoadMcpSchemaTool, LoadSkillTool, McpCallTool};
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
-    CreateContentBlockRequest, CreateMessageRequest, CreateThinkingStepRequest,
-    CreateToolCallRequest, ModelParameters,
+    CreateContentBlockRequest, CreateFileAttachmentRequest, CreateMessageRequest,
+    CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
 };
 use rig::completion::Message as RigMessage;
 use rmcp::RoleClient;
@@ -542,6 +542,7 @@ pub(crate) async fn handle_agent_streaming(
     // Track accumulated content for events
     let accumulated_content = Arc::new(RwLock::new(String::new()));
     let accumulated_reasoning = Arc::new(RwLock::new(String::new()));
+    let accumulated_images: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let reasoning_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     // Track display order for proper interleaving of thinking, tool calls, and content
@@ -568,6 +569,7 @@ pub(crate) async fn handle_agent_streaming(
 
     let accumulated_content_for_callback = accumulated_content.clone();
     let accumulated_reasoning_for_callback = accumulated_reasoning.clone();
+    let accumulated_images_for_callback = accumulated_images.clone();
     let reasoning_started_for_callback = reasoning_started.clone();
     let display_order_for_callback = display_order_counter.clone();
     let current_content_for_callback = current_content_block.clone();
@@ -806,6 +808,17 @@ pub(crate) async fn handle_agent_streaming(
                         let _ = app_for_stream.emit("tool-call-completed", payload);
                     }
                 }
+                StreamChunkType::Image(data_url) => {
+                    if let Ok(mut images) = accumulated_images_for_callback.try_write() {
+                        images.push(data_url.clone());
+                    }
+
+                    let payload = serde_json::json!({
+                        "conversation_id": conversation_id_for_stream,
+                        "image_url": data_url,
+                    });
+                    let _ = app_for_stream.emit("chat-stream-image", payload);
+                }
             }
 
             true // Continue streaming
@@ -876,11 +889,13 @@ pub(crate) async fn handle_agent_streaming(
         .thinking_content
         .as_ref()
         .map_or(false, |t| !t.is_empty());
+    let has_images = !accumulated_images.read().await.is_empty();
     let has_any_data = !final_content.trim().is_empty()
         || has_tool_calls
         || has_reasoning_blocks
         || has_content_blocks
-        || has_thinking;
+        || has_thinking
+        || has_images;
 
     if !has_any_data {
         if was_cancelled {
@@ -904,9 +919,8 @@ pub(crate) async fn handle_agent_streaming(
         return;
     }
 
-    // Use a space placeholder when content is empty but we have tool calls/thinking
-    // (API requires non-empty content for subsequent requests)
-    let save_content = if final_content.trim().is_empty() {
+    let images_snapshot = accumulated_images.read().await.clone();
+    let save_content = if final_content.trim().is_empty() && images_snapshot.is_empty() {
         " ".to_string()
     } else {
         final_content.clone()
@@ -946,6 +960,103 @@ pub(crate) async fn handle_agent_streaming(
             return;
         }
     };
+
+    // Save generated images as file attachments linked to the assistant message
+    if !images_snapshot.is_empty() {
+        for (i, data_url) in images_snapshot.iter().enumerate() {
+            // Parse data URL: "data:image/png;base64,<base64data>"
+            let (mime_type, base64_data) = match data_url.strip_prefix("data:") {
+                Some(rest) => match rest.split_once(",") {
+                    Some((header, data)) => {
+                        let mime = header
+                            .split(';')
+                            .next()
+                            .unwrap_or("image/png")
+                            .to_string();
+                        (mime, data)
+                    }
+                    None => {
+                        tracing::error!("Invalid data URL format for generated image {}", i + 1);
+                        continue;
+                    }
+                },
+                None => {
+                    tracing::error!(
+                        "Generated image {} is not a data URL, skipping",
+                        i + 1
+                    );
+                    continue;
+                }
+            };
+
+            let bytes = match base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                base64_data,
+            ) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!("Failed to decode generated image {}: {}", i + 1, e);
+                    continue;
+                }
+            };
+
+            let content_hash = crate::storage::hash_bytes(&bytes);
+            let ext = crate::storage::get_extension_for_content_type(&mime_type);
+            let file_name = format!("generated-image-{}.{}", i + 1, ext);
+
+            // Check for deduplication
+            let storage_path =
+                if let Ok(Some(existing)) = state_clone.db.find_file_by_hash(&content_hash).await {
+                    existing.storage_path.clone()
+                } else {
+                    let path = crate::storage::generate_file_storage_path(&content_hash, ext);
+                    if let Err(e) = crate::storage::write_binary(&app, &path, &bytes) {
+                        tracing::error!("Failed to save generated image {}: {}", i + 1, e);
+                        continue;
+                    }
+                    path
+                };
+
+            match state_clone
+                .db
+                .create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: file_name.clone(),
+                    file_size: bytes.len() as i64,
+                    mime_type: mime_type.clone(),
+                    storage_path: storage_path.clone(),
+                    content_hash,
+                })
+                .await
+            {
+                Ok(file_attachment) => {
+                    if let Err(e) = state_clone
+                        .db
+                        .link_message_attachment(
+                            &assistant_message.id,
+                            &file_attachment.id,
+                            Some(i as i32),
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to link generated image to message: {}", e);
+                    } else {
+                        tracing::info!(
+                            "🖼️ [streaming] Saved generated image attachment: {} -> {}",
+                            file_name,
+                            file_attachment.id
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to create file record for generated image {}: {}",
+                        i + 1,
+                        e
+                    );
+                }
+            }
+        }
+    }
 
     // Flush any remaining reasoning block
     {

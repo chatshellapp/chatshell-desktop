@@ -41,6 +41,8 @@ export interface ConversationState {
   apiError: string | null
   // Track streaming tool calls (MCP): { toolCallId: StreamingToolCall }
   streamingToolCalls: Record<string, StreamingToolCall>
+  // Track streaming generated images (base64 data URLs)
+  streamingImages: string[]
 }
 
 // Default state for a new conversation
@@ -58,6 +60,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   pendingSearchDecisions: {},
   apiError: null,
   streamingToolCalls: {},
+  streamingImages: [],
 })
 
 // Message store state (without actions)
@@ -87,6 +90,8 @@ export interface MessageStoreStreamingActions {
   appendStreamingReasoningChunk: (conversationId: string, chunk: string) => void
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => void
   setIsReasoningActive: (conversationId: string, isActive: boolean) => void
+  // Image streaming actions
+  appendStreamingImage: (conversationId: string, imageUrl: string) => void
   // Tool call streaming actions (MCP)
   addStreamingToolCall: (
     conversationId: string,

@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import type {
   ChatStreamEvent,
   ChatStreamReasoningEvent,
+  ChatStreamImageEvent,
   ChatCompleteEvent,
   ChatErrorEvent,
   AttachmentProcessingStartedEvent,
@@ -44,6 +45,7 @@ export function useChatEvents(conversationId: string | null) {
     handleChatComplete,
     handleChatError,
     handleReasoningStarted,
+    handleStreamImage,
   } = useChatHandlers()
 
   const {
@@ -84,6 +86,12 @@ export function useChatEvents(conversationId: string | null) {
         handleStreamReasoningChunk(event.payload.conversation_id, event.payload.content)
       }
     )
+
+    // Listen for streaming generated images
+    const unlistenStreamImage = listen<ChatStreamImageEvent>('chat-stream-image', (event) => {
+      logger.info('[useChatEvents] Received chat-stream-image event:', event.payload)
+      handleStreamImage(event.payload.conversation_id, event.payload.image_url)
+    })
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
@@ -215,6 +223,7 @@ export function useChatEvents(conversationId: string | null) {
       logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
       unlistenStream.then((fn) => fn())
       unlistenStreamReasoning.then((fn) => fn())
+      unlistenStreamImage.then((fn) => fn())
       unlistenComplete.then((fn) => fn())
       unlistenChatError.then((fn) => fn())
       unlistenAttachmentStarted.then((fn) => fn())
@@ -234,6 +243,7 @@ export function useChatEvents(conversationId: string | null) {
     conversationId,
     handleStreamChunk,
     handleStreamReasoningChunk,
+    handleStreamImage,
     handleChatComplete,
     handleChatError,
     handleAttachmentProcessingStarted,

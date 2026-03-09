@@ -1,5 +1,11 @@
+import { useState, useMemo } from 'react'
 import { ChatMessage } from '@/components/chat-message'
-import { AttachmentPreview, ThinkingPreview } from '@/components/attachment-preview'
+import {
+  AttachmentPreview,
+  ThinkingPreview,
+  ImageLightbox,
+  type ImageAttachmentData,
+} from '@/components/attachment-preview'
 import {
   ToolCallPreview,
   type StreamingToolCall,
@@ -20,6 +26,7 @@ interface StreamingMessageProps {
   urlStatuses: Record<string, Record<string, UrlStatus>>
   pendingSearchDecisions: Record<string, boolean>
   streamingToolCalls: Record<string, StreamingToolCall>
+  streamingImages: string[]
   isWaitingForAI: boolean
   isStreaming: boolean
   streamingContent: string
@@ -38,6 +45,7 @@ export function StreamingMessage({
   urlStatuses,
   pendingSearchDecisions,
   streamingToolCalls,
+  streamingImages,
   isWaitingForAI,
   isStreaming,
   streamingContent,
@@ -402,11 +410,53 @@ export function StreamingMessage({
   // This ensures the "No search needed" UI appears BEFORE the response content
   const showContent = !isWaitingForAI && searchDecisionResolved
 
+  const contentWithImages = showContent ? finalContent : ''
+
+  const streamingImageData: ImageAttachmentData[] = useMemo(
+    () =>
+      streamingImages.map((url, i) => ({
+        id: `streaming-${i}`,
+        fileName: `generated-image-${i + 1}.png`,
+        base64: url,
+      })),
+    [streamingImages]
+  )
+
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+
+  const streamingImagesContent =
+    streamingImageData.length > 0 ? (
+      <div className="flex flex-wrap gap-3 mt-3">
+        {streamingImageData.map((img, index) => (
+          <button
+            key={img.id}
+            type="button"
+            onClick={() => setLightboxIndex(index)}
+            className="cursor-pointer rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
+          >
+            <img
+              src={img.base64}
+              alt={img.fileName}
+              className="max-w-full md:max-w-[512px] h-auto rounded-lg shadow-sm"
+              loading="lazy"
+            />
+          </button>
+        ))}
+        {lightboxIndex !== null && (
+          <ImageLightbox
+            images={streamingImageData}
+            initialIndex={lightboxIndex}
+            onClose={() => setLightboxIndex(null)}
+          />
+        )}
+      </div>
+    ) : null
+
   return (
     <ChatMessage
       key={isWaitingForAI ? 'waiting' : 'streaming'}
       role="assistant"
-      content={showContent ? finalContent : ''}
+      content={contentWithImages}
       timestamp={t('now')}
       displayName={info.displayName}
       senderType={info.senderType}
@@ -424,6 +474,7 @@ export function StreamingMessage({
       isLoading={isWaitingForAI || !searchDecisionResolved}
       isStreaming={isStreaming}
       headerContent={streamingHeaderContent}
+      footerContent={streamingImagesContent}
       onCopy={onCopy}
       onExportAll={onExportAll}
       onExportConversation={onExportConversation}

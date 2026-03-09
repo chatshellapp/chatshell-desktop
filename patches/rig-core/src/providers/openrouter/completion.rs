@@ -602,6 +602,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 tool_calls,
                 reasoning,
                 reasoning_details,
+                images,
                 ..
             } => {
                 let mut content = content
@@ -615,6 +616,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         }
                     })
                     .collect::<Vec<_>>();
+
+                for img in images {
+                    content.push(completion::AssistantContent::image_base64(
+                        img.image_url.url.clone(),
+                        None,
+                        None,
+                    ));
+                }
 
                 content.extend(tool_calls.iter().map(|call| {
                     completion::AssistantContent::tool_call(
@@ -1230,6 +1239,16 @@ pub struct Choice {
 /// Almost identical to OpenAI's Message, but supports more parameters
 /// for some providers like `reasoning`, and uses OpenRouter-specific
 /// content types that support images, PDFs, and other file types.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ResponseImageUrl {
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ResponseImage {
+    pub image_url: ResponseImageUrl,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -1268,6 +1287,8 @@ pub enum Message {
         reasoning: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ResponseImage>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -1375,6 +1396,7 @@ impl From<openai::Message> for Message {
                 tool_calls,
                 reasoning: None,
                 reasoning_details: Vec::new(),
+                images: Vec::new(),
             },
             openai::Message::ToolResult {
                 tool_call_id,
@@ -1480,9 +1502,8 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     }
                 }
                 message::AssistantContent::Image(_) => {
-                    return Err(Self::Error::ConversionError(
-                        "OpenRouter currently doesn't support images.".into(),
-                    ));
+                    // Skip images in multi-turn history; they don't need to be
+                    // sent back to the provider.
                 }
             }
         }
@@ -1500,6 +1521,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
             tool_calls,
             reasoning,
             reasoning_details,
+            images: Vec::new(),
         }])
     }
 }

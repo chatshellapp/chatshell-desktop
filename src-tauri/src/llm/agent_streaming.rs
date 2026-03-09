@@ -154,6 +154,21 @@ where
                     break;
                 }
             }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(
+                StreamedAssistantContent::Image(data_url),
+            )) => {
+                consecutive_errors = 0;
+                tracing::info!(
+                    "🖼️ [{}] Image received ({} bytes)",
+                    log_prefix,
+                    data_url.len()
+                );
+                if !callback(data_url.clone(), StreamChunkType::Image(data_url)) {
+                    tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                    cancelled = true;
+                    break;
+                }
+            }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
                 ..

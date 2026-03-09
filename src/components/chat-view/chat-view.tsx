@@ -35,6 +35,7 @@ export function ChatView() {
     urlStatuses,
     pendingSearchDecisions,
     streamingToolCalls,
+    streamingImages,
     handleClearApiError,
   } = useConversationState()
 
@@ -90,8 +91,9 @@ export function ChatView() {
   // Show streaming message while actively streaming, waiting for AI,
   // or when there's frozen partial content from a stopped generation.
   const hasStreamingToolCalls = Object.keys(streamingToolCalls).length > 0
+  const hasStreamingImages = streamingImages.length > 0
   const hasStreamingData =
-    !!streamingContent || !!streamingReasoningContent || hasStreamingToolCalls
+    !!streamingContent || !!streamingReasoningContent || hasStreamingToolCalls || hasStreamingImages
   const showStreamingMessage = isWaitingForAI || (hasStreamingData && !isWaitingForAI)
 
   const targetMessageId = useSearchStore((s) => s.targetMessageId)
@@ -151,6 +153,7 @@ export function ChatView() {
                 urlStatuses={urlStatuses}
                 pendingSearchDecisions={pendingSearchDecisions}
                 streamingToolCalls={streamingToolCalls}
+                streamingImages={streamingImages}
                 isWaitingForAI={isWaitingForAI}
                 isStreaming={isStreaming}
                 streamingContent={streamingContent}

@@ -94,6 +94,16 @@ struct ThinkingState {
 }
 
 #[derive(Deserialize, Debug)]
+struct StreamingImageUrl {
+    pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct StreamingImage {
+    pub image_url: StreamingImageUrl,
+}
+
+#[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 struct StreamingDelta {
     pub role: Option<String>,
@@ -103,6 +113,8 @@ struct StreamingDelta {
     pub reasoning: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     pub reasoning_details: Vec<ReasoningDetails>,
+    #[serde(default)]
+    pub images: Option<Vec<StreamingImage>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -340,6 +352,15 @@ where
                     // Streamed text content
                     if let Some(content) = &delta.content && !content.is_empty() {
                         yield Ok(streaming::RawStreamingChoice::Message(content.clone()));
+                    }
+
+                    // Streamed image content
+                    if let Some(images) = &delta.images {
+                        for image in images {
+                            yield Ok(streaming::RawStreamingChoice::Image(
+                                image.image_url.url.clone(),
+                            ));
+                        }
                     }
 
                     // Usage updates

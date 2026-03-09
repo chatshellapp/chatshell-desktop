@@ -76,6 +76,16 @@ interface ChatMessageProps {
    * Used for assistant attachments like search_decision and search_result.
    */
   headerContent?: React.ReactNode
+  /**
+   * Content to render after the message text but before action buttons.
+   * Used for generated images during streaming.
+   */
+  footerContent?: React.ReactNode
+  /**
+   * Override the default text copy behavior (e.g., to copy an image instead).
+   * Should return a Promise; the component handles isCopied state.
+   */
+  onCopyOverride?: () => Promise<void>
   onCopy?: () => void
   onRevert?: () => void
   onFork?: () => void
@@ -104,6 +114,8 @@ export const ChatMessage = memo(function ChatMessage({
   isLoading = false,
   isStreaming = false,
   headerContent,
+  footerContent,
+  onCopyOverride,
   onCopy,
   onRevert,
   onFork,
@@ -158,12 +170,16 @@ export const ChatMessage = memo(function ChatMessage({
     return <ModelAvatar logo={modelLogo} name={modelName} size="xs" />
   }
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content)
+  const handleCopy = useCallback(async () => {
+    if (onCopyOverride) {
+      await onCopyOverride()
+    } else {
+      navigator.clipboard.writeText(content)
+    }
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 2000)
     onCopy?.()
-  }, [content, onCopy])
+  }, [content, onCopy, onCopyOverride])
 
   if (role === 'user') {
     const alignClass = userMessageAlign === 'right' ? 'justify-end' : 'justify-start'
@@ -268,6 +284,7 @@ export const ChatMessage = memo(function ChatMessage({
           </>
         )}
       </div>
+      {footerContent}
       {!isStreaming && (
         <TooltipProvider delayDuration={300}>
           <div

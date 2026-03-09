@@ -574,6 +574,9 @@ where
                             }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
+                        Ok(StreamedAssistantContent::Image(data_url)) => {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Image(data_url)));
+                        },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {

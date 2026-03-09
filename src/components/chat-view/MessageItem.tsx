@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { ChatMessage } from '@/components/chat-message'
 import {
   AttachmentPreview,
@@ -13,6 +15,7 @@ import type { MessageResources } from '@/types/message-resources'
 import { groupOrderedSteps } from '@/lib/step-grouping'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
+import { GeneratedImageGallery } from './GeneratedImageGallery'
 
 interface MessageItemProps {
   message: Message
@@ -56,8 +59,11 @@ export function MessageItem({
     steps: [],
   }
 
-  // User attachments (files, user links) - shown right-aligned after user message
-  const userAttachments = resources.attachments
+  // Separate user vs assistant attachments
+  const userAttachments = isUserMessage ? resources.attachments : []
+  const assistantImageAttachments = isAssistantMessage
+    ? resources.attachments.filter((a) => a.type === 'file' && a.mime_type?.startsWith('image/'))
+    : []
 
   // Get fetch results for user message - only user-initiated ones (not from search)
   // Search-initiated fetch results should be shown inside SearchResultPreview
@@ -167,6 +173,20 @@ export function MessageItem({
       </div>
     ) : undefined
 
+  const generatedImagesContent =
+    assistantImageAttachments.length > 0 ? (
+      <GeneratedImageGallery attachments={assistantImageAttachments} />
+    ) : undefined
+
+  const handleCopyImage = useCallback(async () => {
+    if (assistantImageAttachments.length === 0) return
+    const firstImage = assistantImageAttachments[0]
+    await invoke('copy_image_to_clipboard', {
+      storagePath: firstImage.storage_path,
+      base64Data: null,
+    })
+  }, [assistantImageAttachments])
+
   return (
     <div key={message.id} id={`message-${message.id}`} data-message-id={message.id}>
       <ChatMessage
@@ -187,6 +207,8 @@ export function MessageItem({
         userMessageAlign={CHAT_CONFIG.userMessageAlign}
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
         headerContent={headerContent}
+        footerContent={generatedImagesContent}
+        onCopyOverride={assistantImageAttachments.length > 0 ? handleCopyImage : undefined}
         onCopy={onCopy}
         onRevert={() => onRevert(message.id)}
         onFork={() => onFork(message.id)}
@@ -200,7 +222,6 @@ export function MessageItem({
         <div className="flex justify-end px-4 my-1">
           <div className="max-w-[80%] space-y-1.5">
             {(() => {
-              // Collect all image attachments for lightbox navigation
               const imageAttachments = userAttachments.filter(
                 (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
               )
@@ -211,7 +232,6 @@ export function MessageItem({
               }))
 
               return userAttachments.map((attachment) => {
-                // Check if this is an image to determine index
                 const isImage =
                   attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
                 const imageIndex = isImage
@@ -228,11 +248,9 @@ export function MessageItem({
                 )
               })
             })()}
-            {/* User-provided fetch results (webpage attachments) */}
             {userFetchResults.map((context) => (
               <AttachmentPreview key={context.id} context={context} />
             ))}
-            {/* Standalone processing URLs (no search result) */}
             {urls.map((url) => (
               <AttachmentPreview key={url} processingUrl={url} />
             ))}

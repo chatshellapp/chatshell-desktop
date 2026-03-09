@@ -25,6 +25,7 @@ export const createStreamingActions = (
         convState.streamingContent = content
         if (content === '') {
           convState.streamingReasoningContent = ''
+          convState.streamingImages = []
         }
       }
     })
@@ -42,6 +43,7 @@ export const createStreamingActions = (
         if (!isStreaming) {
           convState.isReasoningActive = false
           convState.streamingReasoningContent = ''
+          convState.streamingImages = []
         }
       }
     })
@@ -129,6 +131,17 @@ export const createStreamingActions = (
 
       reasoningUpdateTimeoutIds.set(conversationId, timeoutId)
     }
+  },
+
+  appendStreamingImage: (conversationId: string, imageUrl: string) => {
+    get().getConversationState(conversationId)
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.streamingImages.push(imageUrl)
+        convState.isWaitingForAI = false
+      }
+    })
   },
 
   setIsWaitingForAI: (conversationId: string, isWaiting: boolean) => {

@@ -1,6 +1,7 @@
 import { toPng } from 'html-to-image'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeFile } from '@tauri-apps/plugin-fs'
+import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@/lib/logger'
 
 const SCREENSHOT_PADDING = 24
@@ -108,28 +109,62 @@ async function drawBrandFooter(
   ctx.fillText(urlText, x, centerY)
 }
 
+async function inlineAssetImages(
+  element: HTMLElement
+): Promise<Array<{ img: HTMLImageElement; originalSrc: string }>> {
+  const restorations: Array<{ img: HTMLImageElement; originalSrc: string }> = []
+  const images = element.querySelectorAll<HTMLImageElement>('img[data-storage-path]')
+
+  await Promise.all(
+    Array.from(images).map(async (img) => {
+      const storagePath = img.dataset.storagePath
+      if (!storagePath) return
+      try {
+        const b64 = await invoke<string>('read_image_base64', { storagePath })
+        const ext = storagePath.split('.').pop()?.toLowerCase() ?? 'png'
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
+        restorations.push({ img, originalSrc: img.src })
+        img.src = `data:${mime};base64,${b64}`
+      } catch {
+        // leave original src if base64 load fails
+      }
+    })
+  )
+
+  return restorations
+}
+
 async function captureElement(element: HTMLElement): Promise<Uint8Array | null> {
   try {
+    const restorations = await inlineAssetImages(element)
+
     const rect = element.getBoundingClientRect()
     const contentWidth = rect.width + SCREENSHOT_PADDING * 2
     const contentHeight = rect.height + SCREENSHOT_PADDING * 2
     const bg = getBackgroundColor()
 
-    const dataUrl = await toPng(element, {
-      pixelRatio: SCREENSHOT_SCALE,
-      backgroundColor: bg,
-      width: contentWidth,
-      height: contentHeight,
-      style: {
-        margin: '0',
-        padding: `${SCREENSHOT_PADDING}px`,
-        width: `${contentWidth}px`,
-      },
-      filter: (node: HTMLElement) => {
-        if (node.dataset?.screenshotExclude === 'true') return false
-        return true
-      },
-    })
+    let dataUrl: string
+    try {
+      dataUrl = await toPng(element, {
+        pixelRatio: SCREENSHOT_SCALE,
+        backgroundColor: bg,
+        width: contentWidth,
+        height: contentHeight,
+        style: {
+          margin: '0',
+          padding: `${SCREENSHOT_PADDING}px`,
+          width: `${contentWidth}px`,
+        },
+        filter: (node: HTMLElement) => {
+          if (node.dataset?.screenshotExclude === 'true') return false
+          return true
+        },
+      })
+    } finally {
+      for (const { img, originalSrc } of restorations) {
+        img.src = originalSrc
+      }
+    }
 
     const img = await loadImage(dataUrl)
 
