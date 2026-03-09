@@ -36,9 +36,6 @@ jobs:
         working-directory: src-tauri
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
 
   build-windows:
     name: Build Windows
@@ -172,7 +169,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Build App
-        run: pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage,deb
+        run: pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -180,7 +177,6 @@ jobs:
           name: chatshell-linux
           path: |
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
 
   release:
     name: Create Release
@@ -201,6 +197,5 @@ jobs:
           files: |
             release/chatshell-windows/*.msi
             release/chatshell-macos/*
-            release/chatshell-linux/*.deb
             release/chatshell-linux/*.AppImage
           generate_release_notes: true

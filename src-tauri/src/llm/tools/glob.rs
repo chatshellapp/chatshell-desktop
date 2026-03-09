@@ -105,8 +105,6 @@ impl Tool for GlobTool {
 
         let pattern = args.pattern;
 
-        
-
         tokio::time::timeout(
             std::time::Duration::from_secs(GLOB_TIMEOUT_SECS),
             tokio::task::spawn_blocking(move || run_glob(&pattern, &base_dir)),

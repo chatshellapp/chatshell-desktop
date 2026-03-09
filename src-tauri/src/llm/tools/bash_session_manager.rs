@@ -81,13 +81,14 @@ impl BashSessionManager {
         let mut map = self.sessions.lock().unwrap();
         for (conv_id, entry) in map.drain() {
             if let Ok(mut guard) = entry.session.try_lock()
-                && let Some(ref mut s) = *guard {
-                    s.kill_sync();
-                    tracing::info!(
-                        "🖥️ [bash] Killed session for conversation {} on shutdown",
-                        conv_id
-                    );
-                }
+                && let Some(ref mut s) = *guard
+            {
+                s.kill_sync();
+                tracing::info!(
+                    "🖥️ [bash] Killed session for conversation {} on shutdown",
+                    conv_id
+                );
+            }
         }
     }
 

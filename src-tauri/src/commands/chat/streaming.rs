@@ -1296,32 +1296,33 @@ pub(crate) async fn handle_agent_streaming(
 
             // Save extracted thinking as a separate thinking_step
             if let Some(ref thinking) = parsed.thinking_content
-                && !thinking.trim().is_empty() {
-                    match state_clone
-                        .db
-                        .create_thinking_step(CreateThinkingStepRequest {
-                            message_id: assistant_message.id.clone(),
-                            content: thinking.clone(),
-                            source: Some("llm".to_string()),
-                            display_order: Some(*order),
-                        })
-                        .await
-                    {
-                        Ok(_) => {
-                            tracing::info!(
-                                "✅ [agent_streaming] XML thinking extracted from content block, saved with display_order: {}",
-                                order
-                            );
-                            xml_thinking_saved = true;
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "❌ [agent_streaming] Failed to save XML thinking step: {}",
-                                e
-                            );
-                        }
+                && !thinking.trim().is_empty()
+            {
+                match state_clone
+                    .db
+                    .create_thinking_step(CreateThinkingStepRequest {
+                        message_id: assistant_message.id.clone(),
+                        content: thinking.clone(),
+                        source: Some("llm".to_string()),
+                        display_order: Some(*order),
+                    })
+                    .await
+                {
+                    Ok(_) => {
+                        tracing::info!(
+                            "✅ [agent_streaming] XML thinking extracted from content block, saved with display_order: {}",
+                            order
+                        );
+                        xml_thinking_saved = true;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "❌ [agent_streaming] Failed to save XML thinking step: {}",
+                            e
+                        );
                     }
                 }
+            }
 
             // Save cleaned content (with <think> tags stripped)
             if !parsed.content.trim().is_empty() {

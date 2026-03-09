@@ -65,10 +65,11 @@ fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     let mut merged: Vec<(usize, usize)> = Vec::new();
     for (start, end) in ranges {
         if let Some(last) = merged.last_mut()
-            && start <= last.1 + 1 {
-                last.1 = last.1.max(end);
-                continue;
-            }
+            && start <= last.1 + 1
+        {
+            last.1 = last.1.max(end);
+            continue;
+        }
         merged.push((start, end));
     }
     merged
@@ -204,13 +205,15 @@ fn build_line_snippet(line: &str, terms: &[&str], max_len: usize) -> String {
     let result_joined = result.join(" ... ");
     let mut out = result_joined;
     if let Some(&(s, _)) = limited.first()
-        && s > 0 {
-            out = format!("...{}", out);
-        }
+        && s > 0
+    {
+        out = format!("...{}", out);
+    }
     if let Some(&(_, e)) = limited.last()
-        && e < line.len() {
-            out = format!("{}...", out);
-        }
+        && e < line.len()
+    {
+        out = format!("{}...", out);
+    }
     if out.len() > max_len {
         let truncate_at = floor_char_boundary(&out, max_len);
         out = format!("{}...", &out[..truncate_at]);

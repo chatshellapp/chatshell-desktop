@@ -73,10 +73,11 @@ impl Tool for WriteTool {
 
         // Create parent directories if needed
         if let Some(parent) = path.parent()
-            && !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| WriteError(format!("Failed to create directories: {}", e)))?;
-            }
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| WriteError(format!("Failed to create directories: {}", e)))?;
+        }
 
         let is_new = !path.exists();
 

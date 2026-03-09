@@ -37,9 +37,10 @@ pub fn set_secret(key: &str, secret: &str) -> Result<()> {
 /// to avoid triggering the macOS keychain authorization dialog repeatedly.
 pub fn get_secret(key: &str) -> Result<Option<String>> {
     if let Ok(c) = cache().read()
-        && let Some(v) = c.get(key) {
-            return Ok(Some(v.clone()));
-        }
+        && let Some(v) = c.get(key)
+    {
+        return Ok(Some(v.clone()));
+    }
 
     let entry = Entry::new(SERVICE_NAME, key)
         .map_err(|e| anyhow!("Failed to create keyring entry: {}", e))?;
