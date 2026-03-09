@@ -224,6 +224,32 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
+    // Append environment info block to system prompt
+    {
+        use chrono::Local;
+
+        let today = Local::now().format("%a %b %d %Y").to_string();
+        let platform = match std::env::consts::OS {
+            "macos" => "darwin",
+            other => other,
+        };
+
+        let mut env_block = format!(
+            "\n\nYou are running on model {provider_type}/{model_id}\n\n## Environment\n\n- Platform: {platform}\n- Today's date: {today}",
+        );
+
+        // Only include working directory info when explicitly set in conversation settings
+        if let Some(working_dir) = conv_settings.as_ref().and_then(|s| s.working_directory.as_deref()) {
+            let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
+            env_block.push_str(&format!(
+                "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
+                if is_git_repo { "yes" } else { "no" },
+            ));
+        }
+
+        effective_system_prompt.push_str(&env_block);
+    }
+
     // Check model capabilities and strip unsupported features
     let capabilities = state_clone
         .capabilities_cache
