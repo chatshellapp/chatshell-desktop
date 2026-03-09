@@ -856,15 +856,44 @@ pub(crate) async fn handle_agent_streaming(
                     }
                 }
                 StreamChunkType::Image(data_url) => {
-                    if let Ok(mut images) = accumulated_images_for_callback.try_write() {
-                        images.push(data_url.clone());
-                    }
+                    let is_duplicate = if let Ok(mut images) =
+                        accumulated_images_for_callback.try_write()
+                    {
+                        let new_len = data_url.len();
+                        // The API may re-send the same image with slightly
+                        // different encoding (e.g. OpenRouter Gemini streams
+                        // the image once, then echoes a re-encoded copy with
+                        // the finish chunk).  Exact string match catches
+                        // identical re-sends; size-based comparison catches
+                        // re-encoded duplicates (typically <1% size diff).
+                        if images.iter().any(|existing: &String| {
+                            if *existing == data_url {
+                                return true;
+                            }
+                            let existing_len = existing.len();
+                            let diff = new_len.abs_diff(existing_len);
+                            diff * 100 < existing_len.max(1) * 2
+                        }) {
+                            tracing::info!(
+                                "🖼️ [streaming] Skipping duplicate image ({} bytes, similar to existing)",
+                                new_len
+                            );
+                            true
+                        } else {
+                            images.push(data_url.clone());
+                            false
+                        }
+                    } else {
+                        false
+                    };
 
-                    let payload = serde_json::json!({
-                        "conversation_id": conversation_id_for_stream,
-                        "image_url": data_url,
-                    });
-                    let _ = app_for_stream.emit("chat-stream-image", payload);
+                    if !is_duplicate {
+                        let payload = serde_json::json!({
+                            "conversation_id": conversation_id_for_stream,
+                            "image_url": data_url,
+                        });
+                        let _ = app_for_stream.emit("chat-stream-image", payload);
+                    }
                 }
             }
 

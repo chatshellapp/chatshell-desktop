@@ -138,7 +138,15 @@ export const createStreamingActions = (
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
-        convState.streamingImages.push(imageUrl)
+        const newLen = imageUrl.length
+        const isDuplicate = convState.streamingImages.some((existing) => {
+          if (existing === imageUrl) return true
+          const diff = Math.abs(newLen - existing.length)
+          return diff * 100 < Math.max(existing.length, 1) * 2
+        })
+        if (!isDuplicate) {
+          convState.streamingImages.push(imageUrl)
+        }
         convState.isWaitingForAI = false
       }
     })
