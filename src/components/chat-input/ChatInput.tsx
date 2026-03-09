@@ -30,6 +30,8 @@ import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useSkillStore } from '@/stores/skillStore'
+import { useModelStore } from '@/stores/modelStore'
+import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { getContextCountOptions } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
@@ -126,6 +128,18 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // Skill store for getting skill names
   const allSkills = useSkillStore((state) => state.skills)
   const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
+
+  // Get provider for the selected model (needed for capability detection)
+  const getProviderById = useModelStore((state) => state.getProviderById)
+  const selectedProvider = useMemo(
+    () => (selectedModel ? getProviderById(selectedModel.provider_id) : null),
+    [selectedModel, getProviderById]
+  )
+
+  // Model capability awareness
+  const capabilities = useModelCapabilities(selectedModel, selectedProvider ?? null)
+  const toolsDisabled = capabilities.supports_tool_use === false
+  const visionDisabled = capabilities.supports_vision === false
 
   // Get message count from message store to determine if system prompt can be changed
   const conversationState = useMessageStore((state) =>
@@ -565,6 +579,9 @@ export function ChatInput(/* _props: ChatInputProps */) {
             }}
             skillsLabel={skillsLabel}
             onWorkingDirectorySelect={handleWorkingDirectorySelect}
+            toolsDisabled={toolsDisabled}
+            skillsDisabled={toolsDisabled}
+            imageAttachDisabled={visionDisabled}
           />
         </InputGroup>
       </div>
@@ -641,6 +658,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
         enabledServerIds={conversationSettings?.enabledMcpServerIds ?? []}
         onServerIdsChange={handleMcpServerIdsChange}
         enabledSkillIds={conversationSettings?.enabledSkillIds ?? []}
+        modelSupportsToolUse={capabilities.supports_tool_use}
       />
 
       {/* Skills Dialog */}
@@ -649,6 +667,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
         onOpenChange={setIsSkillsDialogOpen}
         enabledSkillIds={conversationSettings?.enabledSkillIds ?? []}
         onSkillIdsChange={handleSkillIdsChange}
+        modelSupportsToolUse={capabilities.supports_tool_use}
       />
     </div>
   )

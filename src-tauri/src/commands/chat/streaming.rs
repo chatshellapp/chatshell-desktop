@@ -224,6 +224,25 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
+    // Check model capabilities and strip unsupported features
+    let capabilities = state_clone
+        .capabilities_cache
+        .resolve(&provider_type, &model_id)
+        .await;
+
+    if capabilities.supports_tool_use == Some(false) {
+        if !all_enabled_tool_ids.is_empty() || !skill_entries.is_empty() {
+            tracing::info!(
+                "🚫 [agent_streaming] Model '{}' does not support tool use; skipping {} tool(s) and {} skill(s)",
+                model_id,
+                all_enabled_tool_ids.len(),
+                skill_entries.len()
+            );
+        }
+        all_enabled_tool_ids.clear();
+        skill_entries.clear();
+    }
+
     // Build skill catalog and inject into system prompt (lazy-load approach)
     if !skill_entries.is_empty() {
         let mut skill_name_to_path: HashMap<String, String> = HashMap::new();
@@ -506,6 +525,34 @@ pub(crate) async fn handle_agent_streaming(
             tasks.remove(&conversation_id_clone);
             return;
         }
+    };
+
+    // Strip images if model does not support vision
+    let chat_messages = if capabilities.supports_vision == Some(false) {
+        let image_count: usize = chat_messages.iter().map(|m| m.images.len()).sum();
+        if image_count > 0 {
+            tracing::warn!(
+                "🚫 [agent_streaming] Model '{}' does not support vision; dropping {} image(s) from messages",
+                model_id,
+                image_count
+            );
+            let _ = app.emit(
+                "chat-warning",
+                serde_json::json!({
+                    "conversation_id": conversation_id_clone,
+                    "warning": "model_no_vision",
+                }),
+            );
+        }
+        chat_messages
+            .into_iter()
+            .map(|mut m| {
+                m.images.clear();
+                m
+            })
+            .collect::<Vec<_>>()
+    } else {
+        chat_messages
     };
 
     // Convert ChatMessages to rig's Message format for history

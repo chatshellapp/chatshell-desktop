@@ -2,7 +2,14 @@
 export type { Provider, CreateProviderRequest } from './provider'
 
 // Model types
-export type { Model, CreateModelRequest, ModelParameters, ModelInfo, ModelPricing } from './model'
+export type {
+  Model,
+  CreateModelRequest,
+  ModelParameters,
+  ModelInfo,
+  ModelPricing,
+  ModelCapabilities,
+} from './model'
 
 // Model Parameter Preset types
 export type {

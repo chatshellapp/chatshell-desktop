@@ -99,5 +99,6 @@
   "workingDirectoryOptional": "Working Directory (optional)",
   "cwdHelp": "Defaults to home directory if not specified",
   "descriptionOptional": "Description (optional)",
-  "descriptionPlaceholder": "A brief description of this MCP server"
+  "descriptionPlaceholder": "A brief description of this MCP server",
+  "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools will not be used."
 }

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Zap, RotateCcw, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Zap, RotateCcw, ToggleLeft, ToggleRight, Info } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ interface SkillsDialogProps {
   onOpenChange: (open: boolean) => void
   enabledSkillIds: string[]
   onSkillIdsChange: (skillIds: string[]) => void
+  modelSupportsToolUse?: boolean | null
 }
 
 export function SkillsDialog({
@@ -29,6 +30,7 @@ export function SkillsDialog({
   onOpenChange,
   enabledSkillIds,
   onSkillIdsChange,
+  modelSupportsToolUse,
 }: SkillsDialogProps) {
   const { t } = useTranslation(['chat', 'common'])
   const skills = useSkillStore((state) => state.skills)
@@ -143,6 +145,13 @@ export function SkillsDialog({
           </DialogTitle>
           <DialogDescription>{t('skillsDescription')}</DialogDescription>
         </DialogHeader>
+
+        {modelSupportsToolUse === false && (
+          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{t('toolsUnsupportedByModelBanner')}</span>
+          </div>
+        )}
 
         {/* Enable All / Disable All buttons */}
         {!hasNoSkills && allAvailableIds.length > 0 && (

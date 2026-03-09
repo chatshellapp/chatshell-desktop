@@ -17,6 +17,7 @@ mod web_search;
 
 use commands::AppState;
 use db::Database;
+use llm::capabilities::CapabilitiesCache;
 use llm::tools::BashSessionManager;
 use mcp::McpConnectionManager;
 use std::collections::HashMap;
@@ -116,12 +117,33 @@ pub fn run() {
                 }
             });
 
+            // Load bundled model capabilities data
+            let capabilities_cache = {
+                let resource_path = app
+                    .path()
+                    .resolve("resources/models_dev.json", tauri::path::BaseDirectory::Resource)
+                    .expect("FATAL: Failed to resolve bundled models_dev.json path");
+                rt.block_on(async {
+                    match CapabilitiesCache::load_from_file(&resource_path).await {
+                        Ok(cache) => Arc::new(cache),
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to load model capabilities from {:?}: {}. Using empty cache.",
+                                resource_path, e
+                            );
+                            Arc::new(CapabilitiesCache::new())
+                        }
+                    }
+                })
+            };
+
             let app_state = AppState {
                 db,
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
                 mcp_manager: Arc::new(McpConnectionManager::new()),
                 pending_oauth: Arc::new(RwLock::new(HashMap::new())),
                 bash_session_manager: Arc::new(BashSessionManager::new()),
+                capabilities_cache,
             };
             // Grab handle before app_state is moved into managed state
             let manager_for_sweep = app_state.bash_session_manager.clone();
@@ -281,6 +303,9 @@ pub fn run() {
             commands::scan_skills,
             commands::read_skill_content,
             commands::open_skills_directory,
+            // Model capabilities commands
+            commands::get_model_capabilities,
+            commands::refresh_capabilities_cache,
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| {

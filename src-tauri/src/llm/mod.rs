@@ -1,6 +1,7 @@
 pub mod agent_builder;
 pub mod agent_streaming;
 pub mod anthropic;
+pub mod capabilities;
 pub mod azure;
 pub mod cohere;
 pub mod common;

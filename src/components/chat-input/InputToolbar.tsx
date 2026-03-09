@@ -65,6 +65,10 @@ interface InputToolbarProps {
   skillsLabel: string
   // Working Directory
   onWorkingDirectorySelect: () => void
+  // Model capability flags
+  toolsDisabled?: boolean
+  skillsDisabled?: boolean
+  imageAttachDisabled?: boolean
 }
 
 export function InputToolbar({
@@ -96,6 +100,9 @@ export function InputToolbar({
   onSkillsClick,
   skillsLabel,
   onWorkingDirectorySelect,
+  toolsDisabled = false,
+  skillsDisabled = false,
+  imageAttachDisabled = false,
 }: InputToolbarProps) {
   const { t } = useTranslation('chat')
   return (
@@ -121,10 +128,24 @@ export function InputToolbar({
             <FileText className="size-4" />
             <span>{t('attachFile')}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onImageSelect} className="gap-2">
-            <Image className="size-4" />
-            <span>{t('attachImage')}</span>
-          </DropdownMenuItem>
+          {imageAttachDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-not-allowed">
+                  <DropdownMenuItem className="gap-2 pointer-events-none opacity-50">
+                    <Image className="size-4" />
+                    <span>{t('attachImage')}</span>
+                  </DropdownMenuItem>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t('imageUnsupportedByModel')}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem onClick={onImageSelect} className="gap-2">
+              <Image className="size-4" />
+              <span>{t('attachImage')}</span>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -190,20 +211,54 @@ export function InputToolbar({
             <span className="text-xs text-muted-foreground">{contextCountLabel}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onMcpServersClick} className="gap-2 justify-between">
-            <div className="flex items-center gap-2">
-              <Wrench className="size-4" />
-              <span>{t('toolsAndMcp')}</span>
-            </div>
-            <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onSkillsClick} className="gap-2 justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="size-4" />
-              <span>{t('skills')}</span>
-            </div>
-            <span className="text-xs text-muted-foreground">{skillsLabel}</span>
-          </DropdownMenuItem>
+          {toolsDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-not-allowed">
+                  <DropdownMenuItem className="gap-2 justify-between pointer-events-none opacity-50">
+                    <div className="flex items-center gap-2">
+                      <Wrench className="size-4" />
+                      <span>{t('toolsAndMcp')}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
+                  </DropdownMenuItem>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">{t('toolsUnsupportedByModel')}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem onClick={onMcpServersClick} className="gap-2 justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="size-4" />
+                <span>{t('toolsAndMcp')}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{mcpServersLabel}</span>
+            </DropdownMenuItem>
+          )}
+          {skillsDisabled ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-not-allowed">
+                  <DropdownMenuItem className="gap-2 justify-between pointer-events-none opacity-50">
+                    <div className="flex items-center gap-2">
+                      <Zap className="size-4" />
+                      <span>{t('skills')}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{skillsLabel}</span>
+                  </DropdownMenuItem>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">{t('toolsUnsupportedByModel')}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem onClick={onSkillsClick} className="gap-2 justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="size-4" />
+                <span>{t('skills')}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{skillsLabel}</span>
+            </DropdownMenuItem>
+          )}
           {/* <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
             <BookOpen className="size-4" />
             <span>{t('knowledge')}</span>

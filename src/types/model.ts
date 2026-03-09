@@ -56,3 +56,16 @@ export interface ModelPricing {
   prompt?: number
   completion?: number
 }
+
+/**
+ * Model capabilities resolved from models.dev data.
+ * `null` means unknown (assume capable); `false` means confirmed unsupported.
+ */
+export interface ModelCapabilities {
+  supports_tool_use: boolean | null
+  supports_vision: boolean | null
+  supports_image_generation: boolean | null
+  supports_reasoning: boolean | null
+  max_context_length: number | null
+  max_output_length: number | null
+}

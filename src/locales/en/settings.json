@@ -76,5 +76,10 @@
   "context10Messages": "10 messages",
   "context20Messages": "20 messages",
   "context50Messages": "50 messages",
-  "context100Messages": "100 messages"
+  "context100Messages": "100 messages",
+  "modelCapabilitiesDatabase": "Model Capabilities Database",
+  "modelCapabilitiesDatabaseDescription": "The model capabilities database determines which features (tool use, vision, image generation) each model supports. It ships bundled with the app and can be refreshed from models.dev.",
+  "refreshFromModelsDev": "Refresh from models.dev",
+  "capabilitiesRefreshSuccess": "Model capabilities updated ({{count}} entries loaded)",
+  "capabilitiesRefreshError": "Failed to refresh model capabilities. Check your internet connection."
 }

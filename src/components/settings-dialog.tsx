@@ -77,6 +77,7 @@ import {
   isUserSkill,
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
+import { invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { logger } from '@/lib/logger'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
@@ -1028,6 +1029,36 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
       return (
         <div className="grid gap-6">
+          {/* Model Capabilities Database */}
+          <div className="grid gap-2">
+            <Label>{t('modelCapabilitiesDatabase')}</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const count = await invoke<number>('refresh_capabilities_cache')
+                    invalidateCapabilitiesCache()
+                    logger.info(`Refreshed capabilities: ${count} entries`)
+                    const { toast } = await import('sonner')
+                    toast.success(t('capabilitiesRefreshSuccess', { count }))
+                  } catch (error) {
+                    logger.error('Failed to refresh capabilities:', error)
+                    const { toast } = await import('sonner')
+                    toast.error(t('capabilitiesRefreshError'))
+                  }
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {t('refreshFromModelsDev')}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground max-w-md">
+              {t('modelCapabilitiesDatabaseDescription')}
+            </p>
+          </div>
+
           {/* Rust Log Level */}
           <div className="grid gap-2">
             <Label>{t('backendLogLevel')}</Label>

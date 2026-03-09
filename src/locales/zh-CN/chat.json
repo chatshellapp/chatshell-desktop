@@ -109,5 +109,8 @@
   "skillsDisabledInSettings": "已在设置中禁用",
   "skillsEnableInSettingsFirst": "请先在设置中启用此技能",
   "userSkills": "用户技能",
-  "resetToGlobalSettings": "重置为全局设置"
+  "resetToGlobalSettings": "重置为全局设置",
+  "toolsUnsupportedByModel": "所选模型不支持工具调用",
+  "imageUnsupportedByModel": "所选模型不支持图片输入",
+  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具和技能将不会被使用。"
 }

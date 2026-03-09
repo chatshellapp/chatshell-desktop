@@ -1,5 +1,6 @@
 mod assistants;
 mod attachments;
+pub(crate) mod capabilities;
 pub mod chat;
 mod contexts;
 mod conversation_settings;
@@ -20,6 +21,7 @@ mod steps;
 mod users;
 
 use crate::db::Database;
+use crate::llm::capabilities::CapabilitiesCache;
 use crate::llm::tools::BashSessionManager;
 use crate::mcp::McpConnectionManager;
 use std::collections::HashMap;
@@ -43,11 +45,13 @@ pub struct AppState {
     pub mcp_manager: Arc<McpConnectionManager>,
     pub pending_oauth: PendingOAuthMap,
     pub bash_session_manager: Arc<BashSessionManager>,
+    pub capabilities_cache: Arc<CapabilitiesCache>,
 }
 
 // Re-export all commands
 pub use assistants::*;
 pub use attachments::*;
+pub use capabilities::*;
 pub use chat::*;
 pub use contexts::*;
 pub use conversation_settings::*;

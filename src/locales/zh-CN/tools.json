@@ -99,5 +99,6 @@
   "workingDirectoryOptional": "工作目录（可选）",
   "cwdHelp": "未指定时默认使用主目录",
   "descriptionOptional": "描述（可选）",
-  "descriptionPlaceholder": "对此 MCP 服务器的简要描述"
+  "descriptionPlaceholder": "对此 MCP 服务器的简要描述",
+  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具将不会被使用。"
 }

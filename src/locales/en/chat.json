@@ -109,5 +109,8 @@
   "skillsDisabledInSettings": "Disabled in Settings",
   "skillsEnableInSettingsFirst": "Enable this skill in Settings first",
   "userSkills": "User Skills",
-  "resetToGlobalSettings": "Reset to Global Settings"
+  "resetToGlobalSettings": "Reset to Global Settings",
+  "toolsUnsupportedByModel": "The selected model does not support tool use",
+  "imageUnsupportedByModel": "The selected model does not support image input",
+  "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools and skills will not be used."
 }

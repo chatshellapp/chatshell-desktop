@@ -10,6 +10,7 @@ import {
   ChevronDown,
   LogIn,
   Loader2,
+  Info,
 } from 'lucide-react'
 import {
   Dialog,
@@ -36,6 +37,7 @@ interface McpServersDialogProps {
   enabledServerIds: string[]
   onServerIdsChange: (serverIds: string[]) => void
   enabledSkillIds?: string[]
+  modelSupportsToolUse?: boolean | null
 }
 
 export function McpServersDialog({
@@ -43,6 +45,7 @@ export function McpServersDialog({
   onOpenChange,
   enabledServerIds,
   onServerIdsChange,
+  modelSupportsToolUse,
 }: McpServersDialogProps) {
   const { t } = useTranslation('tools')
   const servers = useMcpStore((state) => state.servers)
@@ -295,6 +298,13 @@ export function McpServersDialog({
           </DialogTitle>
           <DialogDescription>{t('toolsMcpDescription')}</DialogDescription>
         </DialogHeader>
+
+        {modelSupportsToolUse === false && (
+          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{t('toolsUnsupportedByModelBanner')}</span>
+          </div>
+        )}
 
         {hasNoTools ? (
           <div className="px-6 py-8">

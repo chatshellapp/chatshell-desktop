@@ -76,5 +76,10 @@
   "context10Messages": "10 条消息",
   "context20Messages": "20 条消息",
   "context50Messages": "50 条消息",
-  "context100Messages": "100 条消息"
+  "context100Messages": "100 条消息",
+  "modelCapabilitiesDatabase": "模型能力数据库",
+  "modelCapabilitiesDatabaseDescription": "模型能力数据库决定每个模型支持哪些功能（工具调用、视觉、图片生成）。它与应用程序一起打包，并可从 models.dev 刷新。",
+  "refreshFromModelsDev": "从 models.dev 刷新",
+  "capabilitiesRefreshSuccess": "模型能力已更新（加载了 {{count}} 个条目）",
+  "capabilitiesRefreshError": "刷新模型能力失败。请检查网络连接。"
 }
