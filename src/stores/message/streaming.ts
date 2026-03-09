@@ -50,7 +50,9 @@ export const createStreamingActions = (
   },
 
   appendStreamingChunk: (conversationId: string, chunk: string) => {
-    // Initialize arrays for this conversation if needed
+    const convState = get().getConversationState(conversationId)
+    if (!convState.isStreaming) return
+
     if (!pendingChunks.has(conversationId)) {
       pendingChunks.set(conversationId, [])
     }
@@ -92,7 +94,9 @@ export const createStreamingActions = (
   },
 
   appendStreamingReasoningChunk: (conversationId: string, chunk: string) => {
-    // Initialize arrays for this conversation if needed
+    const convState = get().getConversationState(conversationId)
+    if (!convState.isStreaming) return
+
     if (!pendingReasoningChunks.has(conversationId)) {
       pendingReasoningChunks.set(conversationId, [])
     }

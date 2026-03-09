@@ -94,7 +94,7 @@ export function ChatView() {
   const hasStreamingImages = streamingImages.length > 0
   const hasStreamingData =
     !!streamingContent || !!streamingReasoningContent || hasStreamingToolCalls || hasStreamingImages
-  const showStreamingMessage = isWaitingForAI || (hasStreamingData && !isWaitingForAI)
+  const showStreamingMessage = isWaitingForAI || (isStreaming && hasStreamingData)
 
   const targetMessageId = useSearchStore((s) => s.targetMessageId)
   useEffect(() => {
