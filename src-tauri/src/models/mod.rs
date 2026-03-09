@@ -83,6 +83,4 @@ pub use skill::{CreateSkillRequest, Skill};
 pub use setting::Setting;
 
 // Search
-pub use search::{
-    ConversationSearchResult, MessageSearchResult, SearchResults,
-};
+pub use search::{ConversationSearchResult, MessageSearchResult, SearchResults};

@@ -55,9 +55,7 @@ export function SearchDialog() {
         onValueChange={handleValueChange}
       />
       <CommandList className="max-h-[400px]">
-        {showEmpty && (
-          <CommandEmpty>{t('noResults')}</CommandEmpty>
-        )}
+        {showEmpty && <CommandEmpty>{t('noResults')}</CommandEmpty>}
         {conversations.length > 0 && (
           <CommandGroup heading={t('conversations')}>
             {conversations.map((c) => (

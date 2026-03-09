@@ -1,5 +1,5 @@
 use super::AppState;
-use crate::llm::capabilities::{ModelCapabilities, MODELS_DEV_URL};
+use crate::llm::capabilities::{MODELS_DEV_URL, ModelCapabilities};
 use tauri::State;
 
 #[tauri::command]
@@ -15,9 +15,7 @@ pub async fn get_model_capabilities(
 }
 
 #[tauri::command]
-pub async fn refresh_capabilities_cache(
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn refresh_capabilities_cache(state: State<'_, AppState>) -> Result<usize, String> {
     let count = state
         .capabilities_cache
         .refresh_from_url(MODELS_DEV_URL)

@@ -239,7 +239,10 @@ pub(crate) async fn handle_agent_streaming(
         );
 
         // Only include working directory info when explicitly set in conversation settings
-        if let Some(working_dir) = conv_settings.as_ref().and_then(|s| s.working_directory.as_deref()) {
+        if let Some(working_dir) = conv_settings
+            .as_ref()
+            .and_then(|s| s.working_directory.as_deref())
+        {
             let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
             env_block.push_str(&format!(
                 "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
@@ -1070,11 +1073,7 @@ pub(crate) async fn handle_agent_streaming(
             let (mime_type, base64_data) = match data_url.strip_prefix("data:") {
                 Some(rest) => match rest.split_once(",") {
                     Some((header, data)) => {
-                        let mime = header
-                            .split(';')
-                            .next()
-                            .unwrap_or("image/png")
-                            .to_string();
+                        let mime = header.split(';').next().unwrap_or("image/png").to_string();
                         (mime, data)
                     }
                     None => {
@@ -1083,10 +1082,7 @@ pub(crate) async fn handle_agent_streaming(
                     }
                 },
                 None => {
-                    tracing::error!(
-                        "Generated image {} is not a data URL, skipping",
-                        i + 1
-                    );
+                    tracing::error!("Generated image {} is not a data URL, skipping", i + 1);
                     continue;
                 }
             };

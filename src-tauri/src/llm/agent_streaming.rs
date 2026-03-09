@@ -154,9 +154,9 @@ where
                     break;
                 }
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Image(data_url),
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Image(
+                data_url,
+            ))) => {
                 consecutive_errors = 0;
                 tracing::info!(
                     "🖼️ [{}] Image received ({} bytes)",

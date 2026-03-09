@@ -1,7 +1,6 @@
 pub mod commands;
 mod crypto;
 pub mod db;
-mod tokenizer;
 mod keychain;
 mod llm;
 mod logger;
@@ -12,6 +11,7 @@ mod search;
 pub mod skills;
 pub mod storage;
 mod thinking_parser;
+mod tokenizer;
 mod web_fetch;
 mod web_search;
 

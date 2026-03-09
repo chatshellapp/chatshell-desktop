@@ -100,11 +100,7 @@ impl CapabilitiesCache {
         let data = resp.bytes().await?;
         let cache = Self::new();
         let count = cache.load_from_bytes(&data).await?;
-        tracing::info!(
-            "Loaded {} model capability entries from {}",
-            count,
-            url
-        );
+        tracing::info!("Loaded {} model capability entries from {}", count, url);
         Ok(cache)
     }
 
@@ -137,16 +133,13 @@ impl CapabilitiesCache {
             let bare_model = &model_id[slash_pos + 1..];
 
             // Try org_provider / bare_model (e.g. "google" / "gemini-2.5-flash")
-            if let Some(caps) =
-                entries.get(&(org_provider_key.to_string(), bare_model.to_string()))
+            if let Some(caps) = entries.get(&(org_provider_key.to_string(), bare_model.to_string()))
             {
                 return caps.clone();
             }
 
             // Try org_provider / full_id (e.g. "google" / "google/gemini-2.5-flash")
-            if let Some(caps) =
-                entries.get(&(org_provider_key.to_string(), model_id.to_string()))
-            {
+            if let Some(caps) = entries.get(&(org_provider_key.to_string(), model_id.to_string())) {
                 return caps.clone();
             }
         }
@@ -164,10 +157,10 @@ impl CapabilitiesCache {
 }
 
 fn convert_raw_model(raw: &RawModel) -> ModelCapabilities {
-    let supports_vision = raw.modalities.as_ref().map(|m| {
-        m.input.iter().any(|s| s == "image")
-            || m.input.iter().any(|s| s == "video")
-    });
+    let supports_vision = raw
+        .modalities
+        .as_ref()
+        .map(|m| m.input.iter().any(|s| s == "image") || m.input.iter().any(|s| s == "video"));
 
     let supports_image_generation = raw
         .modalities

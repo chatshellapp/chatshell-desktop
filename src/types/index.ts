@@ -108,11 +108,7 @@ export type { MessageResources, Attachment } from './message-resources'
 export type { Prompt, CreatePromptRequest } from './prompt'
 
 // Search types
-export type {
-  MessageSearchResult,
-  ConversationSearchResult,
-  SearchResults,
-} from './search'
+export type { MessageSearchResult, ConversationSearchResult, SearchResults } from './search'
 
 // Setting types
 export type {

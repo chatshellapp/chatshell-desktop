@@ -4,9 +4,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
-use crate::models::{
-    ConversationSearchResult, CreateMessageRequest, Message, MessageSearchResult,
-};
+use crate::models::{ConversationSearchResult, CreateMessageRequest, Message, MessageSearchResult};
 use crate::search;
 use crate::tokenizer;
 
@@ -158,11 +156,10 @@ impl Database {
             content: String,
         }
 
-        let rows = sqlx::query_as::<_, MessageRow>(
-            "SELECT id, conversation_id, content FROM messages",
-        )
-        .fetch_all(self.pool.as_ref())
-        .await?;
+        let rows =
+            sqlx::query_as::<_, MessageRow>("SELECT id, conversation_id, content FROM messages")
+                .fetch_all(self.pool.as_ref())
+                .await?;
 
         sqlx::query("DELETE FROM messages_fts")
             .execute(self.pool.as_ref())

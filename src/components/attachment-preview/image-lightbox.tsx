@@ -238,9 +238,7 @@ export function ImageLightbox({
 
       {/* Bottom toolbar */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10">
-        <span className="text-white text-sm max-w-[50vw] truncate">
-          {currentImage.fileName}
-        </span>
+        <span className="text-white text-sm max-w-[50vw] truncate">{currentImage.fileName}</span>
         <div className="h-4 w-px bg-white/20" />
         <button
           onClick={(e) => {

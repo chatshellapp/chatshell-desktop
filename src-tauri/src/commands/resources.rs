@@ -87,16 +87,16 @@ pub fn copy_image_to_clipboard(
         return Err("No image data provided".to_string());
     };
 
-    let img = image::load_from_memory(&bytes)
-        .map_err(|e| format!("Failed to decode image: {}", e))?;
+    let img =
+        image::load_from_memory(&bytes).map_err(|e| format!("Failed to decode image: {}", e))?;
     let rgba = img.to_rgba8();
     let (w, h) = {
         use image::GenericImageView;
         img.dimensions()
     };
 
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
     clipboard
         .set_image(arboard::ImageData {
             width: w as usize,
