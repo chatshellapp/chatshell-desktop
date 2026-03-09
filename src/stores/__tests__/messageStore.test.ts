@@ -169,6 +169,7 @@ describe('useMessageStore', () => {
 
   describe('appendStreamingChunk', () => {
     it('should append chunk to streaming content after throttle', () => {
+      useMessageStore.getState().setIsStreaming('conv-1', true)
       useMessageStore.getState().appendStreamingChunk('conv-1', 'Hello')
       useMessageStore.getState().appendStreamingChunk('conv-1', ' World')
 
@@ -182,6 +183,7 @@ describe('useMessageStore', () => {
     it('should set isWaitingForAI to false after append', () => {
       const initialState = {
         ...createDefaultConversationState(),
+        isStreaming: true,
         isWaitingForAI: true,
       }
       useMessageStore.setState({
