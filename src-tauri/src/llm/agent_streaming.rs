@@ -279,8 +279,8 @@ where
     }
 
     // If stream ended with no content and there were errors, return the error
-    if full_content.is_empty() && !cancelled {
-        if let Some(err) = last_error {
+    if full_content.is_empty() && !cancelled
+        && let Some(err) = last_error {
             let clean_err = strip_internal_prefixes(&err);
             tracing::error!(
                 "❌ [{}] Stream ended with no content after error(s), propagating: {}",
@@ -289,7 +289,6 @@ where
             );
             return Err(anyhow::anyhow!("{}", clean_err));
         }
-    }
 
     // Parse thinking content from XML tags in the text
     let parsed = thinking_parser::parse_thinking_content(&full_content);

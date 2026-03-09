@@ -848,8 +848,8 @@ pub(crate) async fn handle_agent_streaming(
                         *output = Some(result_info.tool_output.clone());
 
                         // Detect 401 auth errors from MCP tool calls (uses original name)
-                        if is_auth_error(&result_info.tool_output) {
-                            if let Some(server_id) = mcp_tool_map_for_callback.get(name.as_str()) {
+                        if is_auth_error(&result_info.tool_output)
+                            && let Some(server_id) = mcp_tool_map_for_callback.get(name.as_str()) {
                                 tracing::warn!(
                                     "🔐 [agent_streaming] MCP tool '{}' returned auth error, server: {}",
                                     name, server_id
@@ -867,7 +867,6 @@ pub(crate) async fn handle_agent_streaming(
                                     let _ = app_handle.emit("mcp-auth-required", payload);
                                 });
                             }
-                        }
 
                         // Build display name for frontend (name may be composite "server/tool" in lazy-load)
                         let display_name =
@@ -993,7 +992,7 @@ pub(crate) async fn handle_agent_streaming(
     let has_thinking = response
         .thinking_content
         .as_ref()
-        .map_or(false, |t| !t.is_empty());
+        .is_some_and(|t| !t.is_empty());
     let has_images = !accumulated_images.read().await.is_empty();
     let has_any_data = !final_content.trim().is_empty()
         || has_tool_calls
@@ -1296,8 +1295,8 @@ pub(crate) async fn handle_agent_streaming(
             let parsed = crate::thinking_parser::parse_thinking_content(content);
 
             // Save extracted thinking as a separate thinking_step
-            if let Some(ref thinking) = parsed.thinking_content {
-                if !thinking.trim().is_empty() {
+            if let Some(ref thinking) = parsed.thinking_content
+                && !thinking.trim().is_empty() {
                     match state_clone
                         .db
                         .create_thinking_step(CreateThinkingStepRequest {
@@ -1323,7 +1322,6 @@ pub(crate) async fn handle_agent_streaming(
                         }
                     }
                 }
-            }
 
             // Save cleaned content (with <think> tags stripped)
             if !parsed.content.trim().is_empty() {

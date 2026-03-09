@@ -80,15 +80,14 @@ impl BashSessionManager {
     pub(crate) fn kill_all_sync(&self) {
         let mut map = self.sessions.lock().unwrap();
         for (conv_id, entry) in map.drain() {
-            if let Ok(mut guard) = entry.session.try_lock() {
-                if let Some(ref mut s) = *guard {
+            if let Ok(mut guard) = entry.session.try_lock()
+                && let Some(ref mut s) = *guard {
                     s.kill_sync();
                     tracing::info!(
                         "🖥️ [bash] Killed session for conversation {} on shutdown",
                         conv_id
                     );
                 }
-            }
         }
     }
 

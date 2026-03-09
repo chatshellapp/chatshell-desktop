@@ -177,7 +177,9 @@ impl Tool for GrepTool {
                     .unwrap_or_else(|| ".".to_string())
             });
 
-        let result = tokio::time::timeout(
+        
+
+        tokio::time::timeout(
             std::time::Duration::from_secs(SEARCH_TIMEOUT_SECS),
             tokio::task::spawn_blocking(move || run_search(&args, &search_path)),
         )
@@ -188,9 +190,7 @@ impl Tool for GrepTool {
                 SEARCH_TIMEOUT_SECS
             ))
         })?
-        .map_err(|e| GrepError(format!("Search task failed: {}", e)))?;
-
-        result
+        .map_err(|e| GrepError(format!("Search task failed: {}", e)))?
     }
 }
 

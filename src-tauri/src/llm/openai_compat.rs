@@ -689,17 +689,15 @@ where
                                     additional_params: None,
                                 });
 
-                            if let Some(id) = &tool_call.id {
-                                if !id.is_empty() {
+                            if let Some(id) = &tool_call.id
+                                && !id.is_empty() {
                                     existing_tool_call.id = id.clone();
                                 }
-                            }
 
-                            if let Some(name) = &tool_call.function.name {
-                                if !name.is_empty() {
+                            if let Some(name) = &tool_call.function.name
+                                && !name.is_empty() {
                                     existing_tool_call.function.name = name.clone();
                                 }
-                            }
 
                             if let Some(chunk) = &tool_call.function.arguments {
                                 tool_call_raw_args

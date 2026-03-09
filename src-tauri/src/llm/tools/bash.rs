@@ -593,11 +593,10 @@ impl Tool for BashTool {
                 );
 
                 let (text, temp_file) = Self::smart_truncate(cmd.output.trim_end());
-                if let Some(ref path_str) = temp_file {
-                    if let Ok(mut files) = self.temp_files.lock() {
+                if let Some(ref path_str) = temp_file
+                    && let Ok(mut files) = self.temp_files.lock() {
                         files.push(PathBuf::from(path_str));
                     }
-                }
                 let file_notice = temp_file
                     .map(|p| {
                         format!(
@@ -624,12 +623,11 @@ impl Tool for BashTool {
             }
             Err(e) => {
                 // Mark the session dead so it gets recreated next time.
-                if let Some(ref mut s) = *guard {
-                    if !s.is_alive() {
+                if let Some(ref mut s) = *guard
+                    && !s.is_alive() {
                         tracing::warn!("🖥️ [bash] Session dead after error, will recreate");
                         *guard = None;
                     }
-                }
                 Err(e)
             }
         }

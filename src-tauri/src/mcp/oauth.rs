@@ -97,7 +97,8 @@ pub async fn discover(
         // Fallback: well-known URI (RFC 9728)
         let base = Url::parse(mcp_endpoint).context("Invalid MCP endpoint URL")?;
         let path = base.path().trim_end_matches('/');
-        let well_known = if path.is_empty() || path == "/" {
+        
+        if path.is_empty() || path == "/" {
             format!(
                 "{}/.well-known/oauth-protected-resource",
                 base.origin().ascii_serialization()
@@ -108,8 +109,7 @@ pub async fn discover(
                 base.origin().ascii_serialization(),
                 path
             )
-        };
-        well_known
+        }
     };
 
     // 2. Fetch Protected Resource Metadata
@@ -242,13 +242,11 @@ async fn fetch_as_metadata(
         format!("{}/.well-known/openid-configuration", base),
     ];
     for url in &endpoints {
-        if let Ok(resp) = client.get(url).send().await {
-            if resp.status().is_success() {
-                if let Ok(meta) = resp.json().await {
+        if let Ok(resp) = client.get(url).send().await
+            && resp.status().is_success()
+                && let Ok(meta) = resp.json().await {
                     return Ok(meta);
                 }
-            }
-        }
     }
     anyhow::bail!(
         "Could not fetch Authorization Server Metadata from {}",

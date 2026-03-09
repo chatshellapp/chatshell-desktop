@@ -132,7 +132,7 @@ pub async fn open_skills_directory(app: tauri::AppHandle) -> Result<(), String> 
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
     let user_dir = dirs::home_dir()
-        .unwrap_or_else(|| app_data_dir)
+        .unwrap_or(app_data_dir)
         .join(".chatshell")
         .join("skills");
 

@@ -58,6 +58,12 @@ struct RawLimit {
     output: Option<i64>,
 }
 
+impl Default for CapabilitiesCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CapabilitiesCache {
     pub fn new() -> Self {
         Self {

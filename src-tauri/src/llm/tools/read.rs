@@ -107,13 +107,12 @@ fn parse_jpeg_dimensions(b: &[u8]) -> Option<(u32, u32)> {
             break;
         }
         // SOF markers: 0xC0..=0xCF except 0xC4 (DHT) and 0xCC (DAC)
-        if (0xC0..=0xCF).contains(&marker) && marker != 0xC4 && marker != 0xCC {
-            if i + 9 < b.len() {
+        if (0xC0..=0xCF).contains(&marker) && marker != 0xC4 && marker != 0xCC
+            && i + 9 < b.len() {
                 let h = u16::from_be_bytes([b[i + 5], b[i + 6]]) as u32;
                 let w = u16::from_be_bytes([b[i + 7], b[i + 8]]) as u32;
                 return Some((w, h));
             }
-        }
         let seg_len = u16::from_be_bytes([b[i + 2], b[i + 3]]) as usize;
         i += 2 + seg_len;
     }

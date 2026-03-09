@@ -236,10 +236,7 @@ fn parse_yaml_frontmatter(yaml: &str) -> SkillFrontmatter {
         // Flush any pending list
         if let Some(ref key) = current_list_key {
             if !list_items.is_empty() {
-                match key.as_str() {
-                    "required_tools" => fm.required_tools = Some(list_items.clone()),
-                    _ => {}
-                }
+                if key.as_str() == "required_tools" { fm.required_tools = Some(list_items.clone()) }
                 list_items.clear();
             }
             current_list_key = None;
@@ -268,14 +265,10 @@ fn parse_yaml_frontmatter(yaml: &str) -> SkillFrontmatter {
     }
 
     // Flush any remaining list
-    if let Some(ref key) = current_list_key {
-        if !list_items.is_empty() {
-            match key.as_str() {
-                "required_tools" => fm.required_tools = Some(list_items),
-                _ => {}
-            }
+    if let Some(ref key) = current_list_key
+        && !list_items.is_empty() {
+            if key.as_str() == "required_tools" { fm.required_tools = Some(list_items) }
         }
-    }
 
     fm
 }

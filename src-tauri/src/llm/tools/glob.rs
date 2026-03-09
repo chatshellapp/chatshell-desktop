@@ -105,7 +105,9 @@ impl Tool for GlobTool {
 
         let pattern = args.pattern;
 
-        let result = tokio::time::timeout(
+        
+
+        tokio::time::timeout(
             std::time::Duration::from_secs(GLOB_TIMEOUT_SECS),
             tokio::task::spawn_blocking(move || run_glob(&pattern, &base_dir)),
         )
@@ -116,9 +118,7 @@ impl Tool for GlobTool {
                 GLOB_TIMEOUT_SECS
             ))
         })?
-        .map_err(|e| GlobError(format!("Glob task failed: {}", e)))?;
-
-        result
+        .map_err(|e| GlobError(format!("Glob task failed: {}", e)))?
     }
 }
 
