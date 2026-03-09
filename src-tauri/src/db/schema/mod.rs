@@ -9,13 +9,14 @@ mod messages;
 mod model_parameter_presets;
 mod prompts;
 mod providers;
+mod search;
 mod settings;
 mod skills;
 mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 8;
+const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -92,6 +93,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         migrate_v7_to_v8(pool).await?;
         set_user_version(pool, 8).await?;
         tracing::info!("Migration to v8 completed");
+    }
+
+    if current_version < 9 {
+        migrate_v8_to_v9(pool).await?;
+        set_user_version(pool, 9).await?;
+        tracing::info!("Migration to v9 completed");
     }
 
     // Ensure columns exist (idempotent, fixes databases
@@ -265,5 +272,13 @@ async fn ensure_auth_token_column(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Added auth_token column to tools table");
     }
 
+    Ok(())
+}
+
+/// Migration v8 -> v9: Add FTS5 virtual table for chat history search.
+/// Backfill of existing messages is done in Database::backfill_fts() after init.
+async fn migrate_v8_to_v9(pool: &SqlitePool) -> Result<()> {
+    search::create_messages_fts_table(pool).await?;
+    tracing::info!("Created messages_fts FTS5 table for search");
     Ok(())
 }

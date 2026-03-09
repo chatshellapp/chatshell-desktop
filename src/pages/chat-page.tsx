@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
+import { SearchDialog } from '@/components/search/search-dialog'
+import { useSearchStore } from '@/stores/searchStore'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -38,6 +40,18 @@ export function ChatPage() {
       document.removeEventListener('dragover', preventDefaultDrag)
       document.removeEventListener('drop', preventDefaultDrag)
     }
+  }, [])
+
+  // Global shortcut: Cmd+K / Ctrl+K to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        useSearchStore.getState().toggle()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   const currentConversation = useConversationStore((state) => state.currentConversation)
@@ -115,6 +129,7 @@ export function ChatPage() {
       </SidebarProvider>
       <Toaster position="top-center" />
       <OnboardingDialog />
+      <SearchDialog />
     </>
   )
 }

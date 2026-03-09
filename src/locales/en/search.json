@@ -1,0 +1,8 @@
+{
+  "placeholder": "Search chat history...",
+  "conversations": "Conversations",
+  "messages": "Messages",
+  "noResults": "No matching results",
+  "stats": "Found {{count}} results in {{time}}s",
+  "inConversation": "in: {{title}}"
+}

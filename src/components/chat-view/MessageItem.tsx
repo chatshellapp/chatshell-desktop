@@ -168,7 +168,7 @@ export function MessageItem({
     ) : undefined
 
   return (
-    <div key={message.id} data-message-id={message.id}>
+    <div key={message.id} id={`message-${message.id}`} data-message-id={message.id}>
       <ChatMessage
         role={role}
         content={hasContentBlocks ? '' : message.content}

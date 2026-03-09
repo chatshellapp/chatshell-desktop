@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, MessageSquarePlus } from 'lucide-react'
+import { Plus, MessageSquarePlus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sidebar,
@@ -26,6 +26,7 @@ import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
 import { useConversationStore } from '@/stores/conversation'
+import { useSearchStore } from '@/stores/searchStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
@@ -290,6 +291,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarHeader className="gap-3.5 border-b p-4">
           <div className="flex w-full items-center justify-between h-7">
             <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={() => useSearchStore.getState().setOpen(true)}
+              aria-label="Search chat history"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
           </div>
         </SidebarHeader>
         <SidebarContent>

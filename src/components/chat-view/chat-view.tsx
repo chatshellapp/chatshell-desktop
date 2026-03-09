@@ -1,9 +1,11 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChatInput } from '@/components/chat-input'
 import { ApiErrorPreview } from './api-error-preview'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { MessageItem } from './MessageItem'
 import { StreamingMessage } from './StreamingMessage'
+import { useSearchStore } from '@/stores/searchStore'
 import {
   useScrollBehavior,
   useInputResize,
@@ -91,6 +93,25 @@ export function ChatView() {
   const hasStreamingData =
     !!streamingContent || !!streamingReasoningContent || hasStreamingToolCalls
   const showStreamingMessage = isWaitingForAI || (hasStreamingData && !isWaitingForAI)
+
+  const targetMessageId = useSearchStore((s) => s.targetMessageId)
+  useEffect(() => {
+    if (!targetMessageId) return
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`message-${targetMessageId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('search-highlight')
+        setTimeout(() => {
+          el.classList.remove('search-highlight')
+          useSearchStore.getState().clearTarget()
+        }, 2500)
+      } else {
+        useSearchStore.getState().clearTarget()
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [targetMessageId])
 
   return (
     <div ref={rootRef} className="flex flex-col flex-1 overflow-hidden">

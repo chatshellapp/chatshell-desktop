@@ -141,3 +141,18 @@
     @apply cursor-not-allowed;
   }
 }
+
+/* Search result highlight: brief ring then fade out */
+@keyframes search-highlight-fade {
+  0% {
+    box-shadow: 0 0 0 2px var(--color-primary);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+.search-highlight {
+  animation: search-highlight-fade 2.5s ease-out forwards;
+  border-radius: var(--radius-md);
+}

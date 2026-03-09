@@ -23,6 +23,8 @@ import attachments_en from '@/locales/en/attachments.json'
 import attachments_zhCN from '@/locales/zh-CN/attachments.json'
 import messages_en from '@/locales/en/messages.json'
 import messages_zhCN from '@/locales/zh-CN/messages.json'
+import search_en from '@/locales/en/search.json'
+import search_zhCN from '@/locales/zh-CN/search.json'
 
 const LANGUAGE_KEY = 'chatshell_language'
 
@@ -46,6 +48,7 @@ const resources = {
     prompts: prompts_en,
     attachments: attachments_en,
     messages: messages_en,
+    search: search_en,
   },
   'zh-CN': {
     common: common_zhCN,
@@ -59,6 +62,7 @@ const resources = {
     prompts: prompts_zhCN,
     attachments: attachments_zhCN,
     messages: messages_zhCN,
+    search: search_zhCN,
   },
 }
 
@@ -103,6 +107,7 @@ i18n
       'prompts',
       'attachments',
       'messages',
+      'search',
     ],
     interpolation: {
       escapeValue: false,

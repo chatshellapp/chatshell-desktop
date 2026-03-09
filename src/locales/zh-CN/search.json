@@ -1,0 +1,8 @@
+{
+  "placeholder": "搜索聊天记录...",
+  "conversations": "对话",
+  "messages": "消息",
+  "noResults": "未找到匹配结果",
+  "stats": "找到 {{count}} 条结果，耗时 {{time}} 秒",
+  "inConversation": "来自: {{title}}"
+}

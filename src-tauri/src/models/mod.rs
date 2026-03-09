@@ -11,6 +11,7 @@ mod model_parameter_preset;
 mod process_step;
 mod prompt;
 mod provider;
+mod search;
 mod setting;
 mod skill;
 mod tool;
@@ -80,3 +81,8 @@ pub use skill::{CreateSkillRequest, Skill};
 
 // Setting
 pub use setting::Setting;
+
+// Search
+pub use search::{
+    ConversationSearchResult, MessageSearchResult, SearchResults,
+};

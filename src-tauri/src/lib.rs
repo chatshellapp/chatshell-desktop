@@ -1,12 +1,14 @@
 pub mod commands;
 mod crypto;
 pub mod db;
+mod tokenizer;
 mod keychain;
 mod llm;
 mod logger;
 pub mod mcp;
 pub mod models;
 mod prompts;
+mod search;
 pub mod skills;
 pub mod storage;
 mod thinking_parser;
@@ -91,6 +93,12 @@ pub fn run() {
             });
 
             tracing::info!("Database seeded with default data");
+
+            rt.block_on(async {
+                db.backfill_fts()
+                    .await
+                    .expect("FATAL: Failed to backfill FTS search index");
+            });
 
             // Load log level from database
             rt.block_on(async {
@@ -195,6 +203,7 @@ pub fn run() {
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
             commands::delete_messages_from,
+            commands::search_chat_history,
             // User Attachments (files)
             commands::get_message_attachments,
             commands::get_file_attachment,
