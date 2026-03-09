@@ -88,6 +88,9 @@ pub async fn scan_skills(
     let discovered = scanner.scan_all().await.map_err(|e| e.to_string())?;
 
     // Upsert each discovered skill
+    let discovered_names: std::collections::HashSet<String> =
+        discovered.iter().map(|s| s.name.clone()).collect();
+
     for skill in &discovered {
         if let Err(e) = state
             .db
@@ -102,7 +105,21 @@ pub async fn scan_skills(
         }
     }
 
-    // Return all skills from DB (includes both discovered and manually created)
+    // Remove stale skills that no longer exist on the filesystem
+    let all_db_skills = state.db.list_skills().await.map_err(|e| e.to_string())?;
+    for skill in &all_db_skills {
+        if !discovered_names.contains(&skill.name) {
+            tracing::info!("[scan_skills] Removing stale skill '{}'", skill.name);
+            if let Err(e) = state.db.delete_skill(&skill.id).await {
+                tracing::warn!(
+                    "⚠️ [scan_skills] Failed to delete stale skill '{}': {}",
+                    skill.name,
+                    e
+                );
+            }
+        }
+    }
+
     state.db.list_skills().await.map_err(|e| e.to_string())
 }
 
