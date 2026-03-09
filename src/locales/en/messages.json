@@ -60,6 +60,8 @@
   "failedToReadFile": "Failed to read: {{file}}",
   "failedToReadImage": "Failed to read image: {{file}}",
   "clipboardImage": "clipboard image",
+  "imageNotSupportedByModel": "The selected model does not support image input",
+  "imagesSkipped": "{{count}} image(s) were skipped",
   "failedToSaveProvider": "Failed to save provider settings",
   "apiError": "API Error",
   "apiErrorBadRequest": "Bad Request",

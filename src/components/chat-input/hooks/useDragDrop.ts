@@ -17,7 +17,8 @@ export interface UseDragDropReturn {
 }
 
 export function useDragDrop(
-  setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
+  setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>,
+  visionDisabled: boolean
 ): UseDragDropReturn {
   const { t } = useTranslation('messages')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
@@ -70,6 +71,13 @@ export function useDragDrop(
         } else {
           unsupportedFiles.push(file.name)
         }
+      }
+
+      if (visionDisabled && imagesToProcess.length > 0) {
+        toast.warning(t('imageNotSupportedByModel'), {
+          description: t('imagesSkipped', { count: imagesToProcess.length }),
+        })
+        imagesToProcess.length = 0
       }
 
       // Show error for unsupported files
@@ -132,7 +140,7 @@ export function useDragDrop(
         }
       }
     },
-    [setAttachments]
+    [setAttachments, visionDisabled, t]
   )
 
   return {

@@ -10,7 +10,8 @@ export interface UsePasteHandlerReturn {
 
 export function usePasteHandler(
   attachments: Attachment[],
-  setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
+  setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>,
+  visionDisabled: boolean
 ): UsePasteHandlerReturn {
   const { t } = useTranslation('messages')
   const handlePaste = useCallback(
@@ -41,6 +42,13 @@ export function usePasteHandler(
               unsupportedFiles.push(file.name || file.type)
             }
           }
+        }
+
+        if (visionDisabled && imagesToProcess.length > 0) {
+          toast.warning(t('imageNotSupportedByModel'), {
+            description: t('imagesSkipped', { count: imagesToProcess.length }),
+          })
+          imagesToProcess.length = 0
         }
 
         // Show error for unsupported files
@@ -117,7 +125,7 @@ export function usePasteHandler(
         return // Don't process as text if we handled files
       }
     },
-    [attachments, setAttachments]
+    [attachments, setAttachments, visionDisabled, t]
   )
 
   return { handlePaste }

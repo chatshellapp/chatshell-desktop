@@ -25,6 +25,7 @@ import { SystemPromptDialog } from './SystemPromptDialog'
 import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
 import { McpServersDialog } from './McpServersDialog'
 import { SkillsDialog } from './SkillsDialog'
+import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
@@ -59,6 +60,17 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cursorPositionRef = useRef<number | null>(null)
 
+  // Model capability awareness (computed early so useAttachments can use visionDisabled)
+  const getProviderById = useModelStore((state) => state.getProviderById)
+  const selectedModelEarly = useConversationStore((state) => state.selectedModel)
+  const selectedProviderEarly = useMemo(
+    () => (selectedModelEarly ? getProviderById(selectedModelEarly.provider_id) : null),
+    [selectedModelEarly, getProviderById]
+  )
+  const capabilities = useModelCapabilities(selectedModelEarly, selectedProviderEarly ?? null)
+  const toolsDisabled = capabilities.supports_tool_use === false
+  const visionDisabled = capabilities.supports_vision === false
+
   // Attachment handling hook
   const {
     attachments,
@@ -70,7 +82,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
     handlePaste,
     isDraggingOver,
     dragHandlers,
-  } = useAttachments()
+  } = useAttachments({ visionDisabled })
 
   // Submit handling hook
   const {
@@ -128,18 +140,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // Skill store for getting skill names
   const allSkills = useSkillStore((state) => state.skills)
   const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
-
-  // Get provider for the selected model (needed for capability detection)
-  const getProviderById = useModelStore((state) => state.getProviderById)
-  const selectedProvider = useMemo(
-    () => (selectedModel ? getProviderById(selectedModel.provider_id) : null),
-    [selectedModel, getProviderById]
-  )
-
-  // Model capability awareness
-  const capabilities = useModelCapabilities(selectedModel, selectedProvider ?? null)
-  const toolsDisabled = capabilities.supports_tool_use === false
-  const visionDisabled = capabilities.supports_vision === false
 
   // Get message count from message store to determine if system prompt can be changed
   const conversationState = useMessageStore((state) =>

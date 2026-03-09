@@ -60,6 +60,8 @@
   "failedToReadFile": "读取失败：{{file}}",
   "failedToReadImage": "读取图片失败：{{file}}",
   "clipboardImage": "剪贴板图片",
+  "imageNotSupportedByModel": "所选模型不支持图片输入",
+  "imagesSkipped": "已跳过 {{count}} 张图片",
   "failedToSaveProvider": "保存提供商设置失败",
   "apiError": "API 错误",
   "apiErrorBadRequest": "请求错误",

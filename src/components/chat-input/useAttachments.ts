@@ -22,11 +22,17 @@ export interface UseAttachmentsReturn {
   dragHandlers: DragHandlers
 }
 
+export interface UseAttachmentsOptions {
+  visionDisabled?: boolean
+}
+
 /**
  * Composite hook that manages all attachment-related functionality.
  * Combines state management, file selection, image selection, paste handling, and drag-and-drop.
  */
-export function useAttachments(): UseAttachmentsReturn {
+export function useAttachments(options: UseAttachmentsOptions = {}): UseAttachmentsReturn {
+  const { visionDisabled = false } = options
+
   // Core state management
   const { attachments, setAttachments, addAttachment, removeAttachment, clearAttachments } =
     useAttachmentState()
@@ -38,10 +44,10 @@ export function useAttachments(): UseAttachmentsReturn {
   const { handleImageSelect } = useImageSelect(setAttachments)
 
   // Clipboard paste handling
-  const { handlePaste } = usePasteHandler(attachments, setAttachments)
+  const { handlePaste } = usePasteHandler(attachments, setAttachments, visionDisabled)
 
   // Drag and drop functionality
-  const { isDraggingOver, dragHandlers } = useDragDrop(setAttachments)
+  const { isDraggingOver, dragHandlers } = useDragDrop(setAttachments, visionDisabled)
 
   return {
     attachments,
