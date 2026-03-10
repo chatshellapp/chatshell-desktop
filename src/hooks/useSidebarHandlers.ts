@@ -242,6 +242,11 @@ export function useSidebarHandlers() {
 
   const handleNewConversation = useCallback(async () => {
     try {
+      // Rescan skill directories so newly added skills are indexed before
+      // conversation settings (which default to all globally enabled skills) are loaded.
+      const { useSkillStore } = await import('@/stores/skillStore')
+      await useSkillStore.getState().scanSkills()
+
       // Check if the latest conversation is empty
       if (conversations.length > 0) {
         const latestConversation = conversations[0]

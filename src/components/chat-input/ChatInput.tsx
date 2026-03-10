@@ -139,7 +139,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
   // Skill store for getting skill names
   const allSkills = useSkillStore((state) => state.skills)
-  const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
+  const scanSkills = useSkillStore((state) => state.scanSkills)
 
   // Get message count from message store to determine if system prompt can be changed
   const conversationState = useMessageStore((state) =>
@@ -573,7 +573,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
             onSkillsClick={() => {
               if (currentConversation) {
                 getSettings(currentConversation.id)
-                ensureSkillsLoaded()
+                scanSkills()
               }
               setIsSkillsDialogOpen(true)
             }}

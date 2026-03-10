@@ -171,7 +171,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Skill store methods
   const skills = useSkillStore((state) => state.skills)
   const skillsLoading = useSkillStore((state) => state.isLoading)
-  const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
   const scanSkills = useSkillStore((state) => state.scanSkills)
   const toggleSkill = useSkillStore((state) => state.toggleSkill)
   const setAllSkillsEnabled = useSkillStore((state) => state.setAllEnabled)
@@ -200,7 +199,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       loadModels()
       loadSearchProviders()
       ensureMcpLoaded()
-      ensureSkillsLoaded()
+      scanSkills()
       loadSkillSources()
       const loadSettings = async () => {
         const summaryModelValue = await getSetting('conversation_summary_model_id')
@@ -235,7 +234,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     loadModels,
     loadSearchProviders,
     ensureMcpLoaded,
-    ensureSkillsLoaded,
+    scanSkills,
     getSetting,
     getWebFetchMode,
     getWebFetchLocalMethod,
