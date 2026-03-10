@@ -35,6 +35,7 @@ export function useChatHandlers() {
     store.setIsStreaming(convId, false)
     store.setStreamingContent(convId, '')
     store.clearStreamingToolCalls(convId)
+    store.processNextPendingMessage(convId)
   }, [])
 
   const handleChatError = useCallback((convId: string, error: string) => {
@@ -44,6 +45,7 @@ export function useChatHandlers() {
     store.setIsStreaming(convId, false)
     store.setStreamingContent(convId, '')
     store.clearStreamingToolCalls(convId)
+    store.processNextPendingMessage(convId)
   }, [])
 
   const handleReasoningStarted = useCallback((convId: string) => {

@@ -43,6 +43,8 @@ export interface ConversationState {
   streamingToolCalls: Record<string, StreamingToolCall>
   // Track streaming generated images (base64 data URLs)
   streamingImages: string[]
+  // Messages queued while AI is still streaming
+  pendingMessages: PendingMessage[]
 }
 
 // Default state for a new conversation
@@ -61,6 +63,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   apiError: null,
   streamingToolCalls: {},
   streamingImages: [],
+  pendingMessages: [],
 })
 
 // Message store state (without actions)
@@ -101,6 +104,29 @@ export interface MessageStoreStreamingActions {
   ) => void
   updateStreamingToolCall: (conversationId: string, toolCallId: string, toolOutput: string) => void
   clearStreamingToolCalls: (conversationId: string) => void
+}
+
+// A message queued for sending while the AI is still streaming
+export interface PendingMessage {
+  content: string
+  conversationId: string
+  provider: string
+  model: string
+  apiKey?: string
+  baseUrl?: string
+  apiStyle?: string
+  includeHistory?: boolean
+  systemPrompt?: string
+  userPrompt?: string
+  modelDbId?: string
+  assistantDbId?: string
+  urlsToFetch?: string[]
+  images?: { name: string; base64: string; mimeType: string }[]
+  files?: { name: string; content: string; mimeType: string }[]
+  searchEnabled?: boolean
+  parameterOverrides?: SendMessageParameterOverrides
+  contextMessageCount?: number | null
+  useProviderDefaults?: boolean
 }
 
 // Parameter overrides for conversation-level settings
@@ -149,6 +175,10 @@ export interface MessageStoreCrudActions {
   clearApiError: (conversationId: string) => void
   cleanupConversation: (conversationId: string) => void
   removeConversationState: (conversationId: string) => void
+  enqueueMessage: (conversationId: string, message: PendingMessage) => void
+  removePendingMessage: (conversationId: string, index: number) => void
+  processNextPendingMessage: (conversationId: string) => void
+  clearPendingMessages: (conversationId: string) => void
 }
 
 // URL status actions

@@ -44,6 +44,7 @@ export function useSubmitHandler({
     currentConversation ? state.getConversationState(currentConversation.id) : null
   )
   const sendMessage = useMessageStore((state) => state.sendMessage)
+  const enqueueMessage = useMessageStore((state) => state.enqueueMessage)
   const stopGeneration = useMessageStore((state) => state.stopGeneration)
   const isSending = useMessageStore((state) => state.isSending)
 
@@ -204,32 +205,64 @@ export function useSubmitHandler({
         contextMessageCount,
       })
 
-      await sendMessage(
-        content, // Send original content, files are sent separately
-        currentConversation?.id ?? null,
-        providerType,
-        modelIdStr,
+      const resolvedParams = {
+        content,
+        conversationId: currentConversation?.id ?? null,
+        provider: providerType,
+        model: modelIdStr,
         apiKey,
         baseUrl,
-        providerApiStyle,
-        undefined, // includeHistory
+        apiStyle: providerApiStyle,
+        includeHistory: undefined as boolean | undefined,
         systemPrompt,
         userPrompt,
-        selectedAssistant ? undefined : modelToUse.id, // modelDbId - only send if not using assistant
-        selectedAssistant?.id, // assistantDbId
-        webpageUrls.length > 0 ? webpageUrls : undefined, // urlsToFetch
-        images.length > 0 ? images : undefined, // images
-        files.length > 0 ? files : undefined, // files
-        webSearchEnabled, // searchEnabled
-        parameterOverrides, // parameterOverrides
-        contextMessageCount, // contextMessageCount
-        useProviderDefaults // useProviderDefaults - skip all parameters when true
-      )
+        modelDbId: selectedAssistant ? undefined : modelToUse.id,
+        assistantDbId: selectedAssistant?.id,
+        urlsToFetch: webpageUrls.length > 0 ? webpageUrls : undefined,
+        images: images.length > 0 ? images : undefined,
+        files: files.length > 0 ? files : undefined,
+        searchEnabled: webSearchEnabled,
+        parameterOverrides,
+        contextMessageCount,
+        useProviderDefaults,
+      }
 
-      // Clear attachments after sending
+      if (isStreaming || isWaitingForAI) {
+        if (!currentConversation?.id) {
+          logger.warn('Cannot enqueue: no conversation ID while streaming')
+          return
+        }
+        enqueueMessage(currentConversation.id, {
+          ...resolvedParams,
+          conversationId: currentConversation.id,
+        })
+        logger.info('Message enqueued (AI is still responding)')
+      } else {
+        await sendMessage(
+          resolvedParams.content,
+          resolvedParams.conversationId,
+          resolvedParams.provider,
+          resolvedParams.model,
+          resolvedParams.apiKey,
+          resolvedParams.baseUrl,
+          resolvedParams.apiStyle,
+          resolvedParams.includeHistory,
+          resolvedParams.systemPrompt,
+          resolvedParams.userPrompt,
+          resolvedParams.modelDbId,
+          resolvedParams.assistantDbId,
+          resolvedParams.urlsToFetch,
+          resolvedParams.images,
+          resolvedParams.files,
+          resolvedParams.searchEnabled,
+          resolvedParams.parameterOverrides,
+          resolvedParams.contextMessageCount,
+          resolvedParams.useProviderDefaults,
+        )
+        logger.info('Message sent successfully')
+      }
+
       clearAttachments()
-
-      logger.info('Message sent successfully')
     } catch (error) {
       logger.error('Failed to send message:', error)
       toast.error(t('failedMessageToSend'), {

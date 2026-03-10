@@ -31,6 +31,9 @@ export function useConversationHandlers() {
     logger.info('[useChatEvents] Generation stopped for conversation:', convId)
     // Stop spinners and clear auxiliary states. Keep streaming content visible briefly
     // until handleChatComplete arrives with the saved message from the backend.
+    // Pending messages are processed in handleChatComplete (not here) to avoid
+    // race conditions: chat-complete still fires after generation-stopped and
+    // would reset isStreaming for the newly started send.
     const store = useMessageStore.getState()
     store.setIsStreaming(convId, false)
     store.setIsWaitingForAI(convId, false)

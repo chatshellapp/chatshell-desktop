@@ -32,6 +32,7 @@ export function useConversationState() {
   const apiError = conversationState?.apiError || null
   const streamingToolCalls = conversationState?.streamingToolCalls || {}
   const streamingImages = conversationState?.streamingImages || []
+  const pendingMessages = conversationState?.pendingMessages || []
 
   // Set up event listeners for chat streaming and scraping
   useChatEvents(currentConversation?.id || null)
@@ -72,6 +73,7 @@ export function useConversationState() {
     pendingSearchDecisions,
     streamingToolCalls,
     streamingImages,
+    pendingMessages,
 
     // Actions
     handleClearApiError,

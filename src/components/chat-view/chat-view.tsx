@@ -1,11 +1,14 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Clock } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
 import { ApiErrorPreview } from './api-error-preview'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { MessageItem } from './MessageItem'
 import { StreamingMessage } from './StreamingMessage'
+import { PendingMessageItem } from './PendingMessageItem'
 import { useSearchStore } from '@/stores/searchStore'
+import { useMessageStore } from '@/stores/message'
 import {
   useScrollBehavior,
   useInputResize,
@@ -36,6 +39,7 @@ export function ChatView() {
     pendingSearchDecisions,
     streamingToolCalls,
     streamingImages,
+    pendingMessages,
     handleClearApiError,
   } = useConversationState()
 
@@ -87,6 +91,16 @@ export function ChatView() {
     messagesContentRef,
     setIsAtBottom,
   })
+
+  const removePendingMessage = useMessageStore((state) => state.removePendingMessage)
+  const handleRemovePending = useCallback(
+    (index: number) => {
+      if (conversationId) {
+        removePendingMessage(conversationId, index)
+      }
+    },
+    [conversationId, removePendingMessage]
+  )
 
   // Show streaming message while actively streaming, waiting for AI,
   // or when there's frozen partial content from a stopped generation.
@@ -185,6 +199,26 @@ export function ChatView() {
         buttonLeft={buttonLeft}
         onScrollToBottom={handleScrollToBottom}
       />
+
+      {/* Pending messages (outside scroll area to avoid jitter during streaming) */}
+      {pendingMessages.length > 0 && (
+        <div className="shrink-0 bg-background/80 backdrop-blur-sm overflow-y-auto max-h-40">
+          <div className="max-w-4xl mx-auto py-1">
+            <div className="flex justify-end items-center gap-1.5 px-4 pt-1 pb-0.5 text-xs text-muted-foreground/60">
+              <Clock className="size-3" />
+              <span>{t('queuedCount', { count: pendingMessages.length })}</span>
+              <div className="w-6 shrink-0" />
+            </div>
+            {pendingMessages.map((pm, idx) => (
+              <PendingMessageItem
+                key={`pending-${idx}`}
+                content={pm.content}
+                onRemove={() => handleRemovePending(idx)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Input Area */}
       <div

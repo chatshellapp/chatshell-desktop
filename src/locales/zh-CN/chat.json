@@ -112,5 +112,8 @@
   "resetToGlobalSettings": "重置为全局设置",
   "toolsUnsupportedByModel": "所选模型不支持工具调用",
   "imageUnsupportedByModel": "所选模型不支持图片输入",
-  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具和技能将不会被使用。"
+  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具和技能将不会被使用。",
+  "queued": "排队中",
+  "queuedCount": "排队中 ({{count}})",
+  "removeQueued": "从队列中移除"
 }

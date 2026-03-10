@@ -5,6 +5,7 @@ import type {
   StoreGet,
   MessageStoreCrudActions,
   SendMessageParameterOverrides,
+  PendingMessage,
 } from './types'
 import { MAX_MESSAGES_IN_MEMORY } from './types'
 import { cleanupThrottleState } from './throttle'
@@ -335,6 +336,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         convState.isStreaming = false
         convState.isWaitingForAI = false
         convState.attachmentStatus = 'idle'
+        convState.pendingMessages = []
       }
     })
   },
@@ -349,5 +351,75 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     })
 
     logger.info('[messageStore] Removed conversation state for:', conversationId)
+  },
+
+  enqueueMessage: (conversationId: string, message: PendingMessage) => {
+    get().getConversationState(conversationId)
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.pendingMessages.push(message)
+      }
+    })
+    logger.info('[messageStore] Enqueued pending message for conversation:', conversationId)
+  },
+
+  removePendingMessage: (conversationId: string, index: number) => {
+    get().getConversationState(conversationId)
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState && index >= 0 && index < convState.pendingMessages.length) {
+        convState.pendingMessages.splice(index, 1)
+      }
+    })
+    logger.info('[messageStore] Removed pending message at index', { index, conversationId })
+  },
+
+  processNextPendingMessage: (conversationId: string) => {
+    const convState = get().getConversationState(conversationId)
+    if (convState.pendingMessages.length === 0) return
+
+    const next = convState.pendingMessages[0]
+    set((draft) => {
+      const cs = draft.conversationStates[conversationId]
+      if (cs) {
+        cs.pendingMessages = cs.pendingMessages.slice(1)
+      }
+    })
+
+    logger.info('[messageStore] Processing next pending message for conversation:', conversationId)
+
+    get().sendMessage(
+      next.content,
+      next.conversationId,
+      next.provider,
+      next.model,
+      next.apiKey,
+      next.baseUrl,
+      next.apiStyle,
+      next.includeHistory,
+      next.systemPrompt,
+      next.userPrompt,
+      next.modelDbId,
+      next.assistantDbId,
+      next.urlsToFetch,
+      next.images,
+      next.files,
+      next.searchEnabled,
+      next.parameterOverrides,
+      next.contextMessageCount,
+      next.useProviderDefaults,
+    )
+  },
+
+  clearPendingMessages: (conversationId: string) => {
+    get().getConversationState(conversationId)
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.pendingMessages = []
+      }
+    })
+    logger.info('[messageStore] Cleared pending messages for conversation:', conversationId)
   },
 })
