@@ -47,6 +47,7 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
           background: '#fafafa',
         }}
         showLineNumbers={code.split('\n').length > 3}
+        lineNumberStyle={{ userSelect: 'none', MozUserSelect: 'none', WebkitUserSelect: 'none' }}
         wrapLines
       >
         {code}
