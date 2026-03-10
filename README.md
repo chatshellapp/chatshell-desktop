@@ -40,7 +40,7 @@ With ChatShell, you get a working AI agent in under a minute.
 
 ### Powerful Skills System
 
-Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. Create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
+Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. Create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`, or **paste a GitHub URL into the chat** — ChatShell downloads and installs it automatically. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
 
 Skills use **progressive disclosure**: only the skills the AI decides to invoke are injected into the context window. Unused skills consume zero tokens, keeping your context budget lean no matter how many skills you have installed.
 
@@ -70,8 +70,13 @@ Most AI desktop clients are chat wrappers. ChatShell is built differently — fr
 |---------|-----------|---------------------|
 | Engine | Tauri 2 + Rust (not Electron) | Electron or native per platform |
 | Agent Tools | 9 built-in tools, zero setup | Plugin marketplace or MCP config required |
-| Skills System | Progressive disclosure — only active skills injected into context | Not available |
+| Skills System | Progressive disclosure — install from URL or create your own | Not available |
 | MCP Support | On-demand tool loading · STDIO + HTTP + OAuth 2.1 / PKCE | STDIO or HTTP (no auth) |
+| Chat History Search | Full-text search across all conversations | Not available or basic filter |
+| Conversation Forking | Branch from any AI reply into a new thread | Not available |
+| Rich Content | KaTeX math · Mermaid diagrams · syntax highlighting | Basic markdown only |
+| Model Awareness | Auto-detects vision, tool use, image generation per model | Manual configuration |
+| Multilingual UI | English, Chinese, and more planned | English only |
 | Privacy | AES-256-GCM · OS keychain · no telemetry | Varies — often opt-out telemetry |
 | Assistants | Full local builder with avatars & prompt library | Basic system prompt only |
 | Memory Footprint | Low — native Rust binary | High (Electron ships a full browser) |
@@ -106,8 +111,9 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
 - **Progressive Disclosure**: Only invoked skills are injected into context — unused skills consume no tokens
 - **Custom Skills**: Create your own skills (`~/.chatshell/skills/<skill-name>/SKILL.md`)
+- **Install from URL**: Paste a GitHub, GitLab, or Bitbucket link into the chat to install skills automatically
 - **Invocation Control**: Choose whether the AI or the user triggers each skill
-- **Auto-Discovery**: Skill Scanner finds skills from configured directories
+- **Auto-Discovery**: Skill Scanner finds skills from multiple configured directories
 - **Per-Conversation Selection**: Enable different skills for different conversations
 
 ### Custom Assistants
@@ -124,6 +130,10 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Local**: Ollama, LM Studio, GPUStack, OVMS — run LLMs entirely on your machine
 - **Custom Endpoints**: Connect any OpenAI-compatible or Anthropic-compatible API
 - **Smart Model Discovery**: Automatically fetch available models from 30+ providers
+- **Model Capability Awareness**: ChatShell knows each model's capabilities — vision, tool use, image generation — and adapts the UI automatically (e.g., disables image paste for text-only models)
+- **Image Generation**: Generate images directly in chat with supported models (e.g., Gemini)
+- **Manual Model Entry**: Add any model manually when auto-discovery doesn't find it
+- **API Connectivity Check**: Test your provider connection right from the settings page
 - **Configurable Parameters**: Temperature, max tokens, top-p, frequency/presence penalty, and more
 - **Parameter Presets**: Save and reuse model configurations across conversations
 
@@ -142,10 +152,25 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 - **Streaming Responses**: See AI output as it generates in real time
 - **Thinking Display**: View the model's reasoning process (for supported models)
+- **Fork Conversations**: Branch off from any AI reply into a new conversation, keeping full context up to that point
+- **Resend Messages**: Retry any user message with one click
+- **Message Queue**: Keep typing while the AI is responding — your messages are queued and sent in order
 - **Auto Title Generation**: Smart conversation titling
 - **Context Window Control**: Configurable message context (5, 10, 20, 50, 100, or unlimited)
 - **Working Directory**: Per-conversation working directory for file system tools
 - **Persistent History**: All conversations stored locally in SQLite
+
+### Chat History Search
+
+- **Full-Text Search**: Find any message across all conversations instantly
+- **Highlighted Snippets**: See matching text highlighted in search results
+- **Jump to Message**: Click a result to go directly to that conversation and message
+
+### Rich Content Rendering
+
+- **Math Formulas**: Render LaTeX equations inline and in blocks with KaTeX
+- **Diagrams**: Render Mermaid flowcharts, sequence diagrams, and more directly in chat
+- **Syntax Highlighting**: Code blocks with language-aware highlighting and one-click copy
 
 ### Powerful Attachments
 
@@ -177,6 +202,11 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Screenshot Export**: Export conversations as PNG images via html-to-image
 - **Flexible Scope**: Export all messages, a single conversation, or an individual message
 - **Theme-Aware**: Exports respect current light/dark mode setting
+
+### Multilingual Interface
+
+- **Multiple Languages**: Interface available in English and Chinese, with more languages planned
+- **Automatic Detection**: UI language follows your system preference
 
 ### Privacy-First Design
 
