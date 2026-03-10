@@ -47,8 +47,8 @@ const TOOL_NAME_ICONS: Record<string, LucideIcon> = {
   write: FilePlus2,
   grep: FileSearch,
   glob: FolderSearch,
-  load_skill: BookOpen,
-  load_mcp_schema: Braces,
+  skill: BookOpen,
+  mcp_schema: Braces,
 }
 
 export function getBuiltinToolIcon(toolId: string): LucideIcon {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ExternalLink, Copy, Check } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { MarkdownContent } from '@/components/markdown-content'
@@ -143,12 +143,10 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'edit':
       case 'write':
         return parsed.path ? fileNameFromPath(parsed.path) : null
-      case 'load_skill':
+      case 'skill':
         return parsed.name ?? null
-      case 'load_mcp_schema':
-        if (parsed.server_name && parsed.tool_name)
-          return `${parsed.server_name}/${parsed.tool_name}`
-        return parsed.tool_name ?? null
+      case 'mcp_schema':
+        return parsed.server && parsed.tool ? `${parsed.server}/${parsed.tool}` : null
       case 'bash':
         return parsed.description || (parsed.command ? extractCommandNames(parsed.command) : null)
       case 'kill_shell':
@@ -422,10 +420,22 @@ function normalizeSkillMarkdown(content: string): string {
   return codeBlock + body
 }
 
-export function LoadSkillOutput({ toolInput, toolOutput }: ToolOutputProps) {
+function stripXmlWrapper(content: string, tag: string): string {
+  const openRe = new RegExp(`^<${tag}\\b[^>]*>\\n?`)
+  const closeRe = new RegExp(`\\n?</${tag}>$`)
+  return content.replace(openRe, '').replace(closeRe, '')
+}
+
+function stripXmlBlock(content: string, tag: string): string {
+  return content.replace(new RegExp(`\\n?<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g'), '')
+}
+
+export function SkillOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const name = safeParseField(toolInput, 'name') || ''
-  const output = toolOutput || ''
-  const normalized = output ? normalizeSkillMarkdown(output) : ''
+  const raw = toolOutput || ''
+  const unwrapped = stripXmlWrapper(raw, 'skill_content')
+  const stripped = unwrapped ? stripXmlBlock(unwrapped, 'skill_resources') : unwrapped
+  const content = stripped ? normalizeSkillMarkdown(stripped) : ''
 
   return (
     <div className="space-y-2">
@@ -434,47 +444,46 @@ export function LoadSkillOutput({ toolInput, toolOutput }: ToolOutputProps) {
           <span className="text-xs text-muted-foreground/70 font-medium truncate min-w-0">
             {name}
           </span>
-          {output && <CopyButton text={output} />}
+          {raw && <CopyButton text={stripped} />}
         </div>
       )}
-      {normalized && (
+      {content && (
         <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent content={normalized} className="text-xs" />
+          <MarkdownContent content={content} className="text-xs" />
         </div>
       )}
     </div>
   )
 }
 
-function tryFormatJson(raw: string): string {
-  try {
-    const parsed = JSON.parse(raw)
-    return JSON.stringify(parsed, null, 2)
-  } catch {
-    return raw
-  }
-}
-
-export function LoadMcpSchemaOutput({ toolInput, toolOutput }: ToolOutputProps) {
-  const toolName = safeParseField(toolInput, 'tool_name') || ''
-  const output = toolOutput || ''
-  const formatted = tryFormatJson(output)
-  const codeBlock = formatted ? '```json\n' + formatted + '\n```' : ''
+export function McpSchemaOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const server = safeParseField(toolInput, 'server') || ''
+  const tool = safeParseField(toolInput, 'tool') || ''
+  const label = server && tool ? `${server}/${tool}` : ''
+  const raw = toolOutput || ''
+  const unwrapped = stripXmlWrapper(raw, 'mcp_schema')
+  const displayContent = useMemo(() => {
+    try {
+      const pretty = JSON.stringify(JSON.parse(unwrapped), null, 2)
+      return '```json\n' + pretty + '\n```'
+    } catch {
+      return '```json\n' + unwrapped + '\n```'
+    }
+  }, [unwrapped])
 
   return (
     <div className="space-y-2">
-      {toolName && (
-        <div className="flex items-center justify-between min-w-0">
-          <span className="text-xs text-muted-foreground/70 font-mono truncate">{toolName}</span>
-          {output && <CopyButton text={output} />}
+      {label && (
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground/70 font-medium truncate min-w-0">
+            {label}
+          </span>
+          {raw && <CopyButton text={unwrapped} />}
         </div>
       )}
-      {codeBlock && (
-        <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent
-            content={codeBlock}
-            className="text-xs [&_pre]:!bg-transparent [&_pre]:!p-0"
-          />
+      {unwrapped && (
+        <div className="max-h-60 overflow-y-auto rounded">
+          <MarkdownContent content={displayContent} className="text-xs" />
         </div>
       )}
     </div>
@@ -499,10 +508,10 @@ export function ToolOutputRenderer({
       return <WebFetchOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'read':
       return <ReadOutput toolInput={toolInput} toolOutput={toolOutput} />
-    case 'load_skill':
-      return <LoadSkillOutput toolInput={toolInput} toolOutput={toolOutput} />
-    case 'load_mcp_schema':
-      return <LoadMcpSchemaOutput toolInput={toolInput} toolOutput={toolOutput} />
+    case 'skill':
+      return <SkillOutput toolInput={toolInput} toolOutput={toolOutput} />
+    case 'mcp_schema':
+      return <McpSchemaOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'bash':
       return <BashOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'kill_shell':

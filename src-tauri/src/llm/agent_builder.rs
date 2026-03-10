@@ -15,9 +15,6 @@ use rig::providers::{
     anthropic, azure, cohere, deepseek, galadriel, gemini, groq, hyperbolic, mira, mistral,
     moonshot, ollama, openai, openrouter, perplexity, together, xai,
 };
-use rmcp::RoleClient;
-use rmcp::model::Tool as McpTool;
-use rmcp::service::Peer;
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::ChatResponse;
@@ -26,8 +23,8 @@ use crate::llm::common::{StreamChunkType, build_user_content, create_http_client
 use crate::llm::tool_registry::ToolRegistry;
 use crate::llm::tools::bash::{SharedBashSession, TempFileList};
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, KillShellTool, LoadMcpSchemaTool, LoadSkillTool,
-    McpCallTool, ReadTool, WebFetchTool, WebSearchTool, WriteTool,
+    BashTool, EditTool, GlobTool, GrepTool, KillShellTool, McpSchemaTool, McpToolUseTool, ReadTool,
+    SkillTool, WebFetchTool, WebSearchTool, WriteTool,
 };
 use crate::llm::{
     anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
@@ -39,16 +36,6 @@ use crate::llm::{
     together as together_provider, xai as xai_provider,
 };
 use crate::models::ModelParameters;
-
-/// Per-server MCP tools and client (one entry per MCP server connection)
-pub type McpServerTools = (Vec<McpTool>, Peer<RoleClient>);
-
-/// MCP tools configuration for agent (supports multiple MCP servers; each server has its own client)
-#[derive(Clone)]
-pub struct McpToolsConfig {
-    /// One (tools, client) pair per connected MCP server so tool calls are routed to the correct server
-    pub server_tools: Vec<McpServerTools>,
-}
 
 /// Configuration for building an agent.
 /// Combines system prompt with model parameters and tool registry.
@@ -62,8 +49,6 @@ pub struct AgentConfig {
     pub tool_registry: Option<ToolRegistry>,
     /// Optional list of specific tool names to enable (if None, all tools are enabled)
     pub enabled_tools: Option<Vec<String>>,
-    /// Optional MCP tools configuration
-    pub mcp_tools: Option<McpToolsConfig>,
     /// Enable built-in web search tool
     pub enable_web_search: bool,
     /// Enable built-in web fetch tool
@@ -94,12 +79,12 @@ pub struct AgentConfig {
     pub bash_abort_notify: Option<Arc<tokio::sync::Notify>>,
     /// Shared temp file tracker for bash output truncation cleanup
     pub bash_temp_files: Option<TempFileList>,
-    /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
-    pub mcp_call_tool: Option<McpCallTool>,
-    /// Optional load_skill tool (when skills are in catalog)
-    pub load_skill_tool: Option<LoadSkillTool>,
-    /// Optional load_mcp_schema tool (when MCP lazy loading is active)
-    pub load_mcp_schema_tool: Option<LoadMcpSchemaTool>,
+    /// MCP schema lookup tool with embedded catalog
+    pub mcp_schema_tool: Option<McpSchemaTool>,
+    /// MCP tool execution tool
+    pub mcp_tool_use: Option<McpToolUseTool>,
+    /// Skill tool with embedded catalog
+    pub skill_tool: Option<SkillTool>,
 }
 
 impl AgentConfig {
@@ -147,12 +132,15 @@ impl AgentConfig {
         self
     }
 
-    /// Add MCP tools from one or more servers. Each (tools, client) pair is one MCP server connection.
-    pub fn with_mcp_tools(mut self, server_tools: Vec<McpServerTools>) -> Self {
-        if server_tools.is_empty() {
-            return self;
-        }
-        self.mcp_tools = Some(McpToolsConfig { server_tools });
+    /// Set the MCP schema lookup tool with embedded catalog
+    pub fn with_mcp_schema_tool(mut self, tool: McpSchemaTool) -> Self {
+        self.mcp_schema_tool = Some(tool);
+        self
+    }
+
+    /// Set the MCP tool execution tool
+    pub fn with_mcp_tool_use(mut self, tool: McpToolUseTool) -> Self {
+        self.mcp_tool_use = Some(tool);
         self
     }
 
@@ -246,21 +234,9 @@ impl AgentConfig {
         self
     }
 
-    /// Set the MCP meta-tool for lazy-loaded MCP tool calling
-    pub fn with_mcp_call_tool(mut self, tool: McpCallTool) -> Self {
-        self.mcp_call_tool = Some(tool);
-        self
-    }
-
-    /// Set the load_skill tool (when skills are in catalog)
-    pub fn with_load_skill_tool(mut self, tool: LoadSkillTool) -> Self {
-        self.load_skill_tool = Some(tool);
-        self
-    }
-
-    /// Set the load_mcp_schema tool (when MCP lazy loading is active)
-    pub fn with_load_mcp_schema_tool(mut self, tool: LoadMcpSchemaTool) -> Self {
-        self.load_mcp_schema_tool = Some(tool);
+    /// Set the skill tool with embedded catalog
+    pub fn with_skill_tool(mut self, tool: SkillTool) -> Self {
+        self.skill_tool = Some(tool);
         self
     }
 
@@ -402,13 +378,9 @@ pub fn create_openrouter_agent(
             || config.enable_grep
             || config.enable_glob
             || config.enable_kill_shell
-            || config.mcp_call_tool.is_some()
-            || config.load_skill_tool.is_some()
-            || config.load_mcp_schema_tool.is_some()
-            || config
-                .mcp_tools
-                .as_ref()
-                .is_some_and(|m| m.server_tools.iter().any(|(t, _)| !t.is_empty()));
+            || config.mcp_schema_tool.is_some()
+            || config.mcp_tool_use.is_some()
+            || config.skill_tool.is_some();
 
         if !has_tools {
             openrouter_config.model_params.additional_params = Some(serde_json::json!({
@@ -791,7 +763,7 @@ fn build_agent<M: CompletionModel>(
     // Check if we need to add any native tools or MCP tools
     // Note: .tool() transforms AgentBuilder into AgentBuilderSimple,
     // so we need to handle the transition carefully
-    let has_native_tools = config.enable_web_search
+    let has_tools = config.enable_web_search
         || config.enable_web_fetch
         || config.enable_bash
         || config.enable_read
@@ -799,15 +771,11 @@ fn build_agent<M: CompletionModel>(
         || config.enable_write
         || config.enable_grep
         || config.enable_glob
-        || config.mcp_call_tool.is_some()
-        || config.load_skill_tool.is_some()
-        || config.load_mcp_schema_tool.is_some();
-    let has_mcp_tools = config
-        .mcp_tools
-        .as_ref()
-        .is_some_and(|m| m.server_tools.iter().any(|(t, _)| !t.is_empty()));
+        || config.mcp_schema_tool.is_some()
+        || config.mcp_tool_use.is_some()
+        || config.skill_tool.is_some();
 
-    if has_native_tools || has_mcp_tools {
+    if has_tools {
         return build_agent_with_tools(builder, config);
     }
 
@@ -881,22 +849,9 @@ fn build_agent_with_tools<M: CompletionModel>(
                 FirstTool::Write => $builder.tool(WriteTool::new()),
                 FirstTool::Grep => $builder.tool(create_grep_tool()),
                 FirstTool::Glob => $builder.tool(create_glob_tool()),
-                FirstTool::McpCall => $builder.tool(config.mcp_call_tool.clone().unwrap()),
-                FirstTool::LoadSkill => $builder.tool(config.load_skill_tool.clone().unwrap()),
-                FirstTool::LoadMcpSchema => {
-                    $builder.tool(config.load_mcp_schema_tool.clone().unwrap())
-                }
-                FirstTool::Mcp => {
-                    let (first_tools, first_client) = config
-                        .mcp_tools
-                        .as_ref()
-                        .unwrap()
-                        .server_tools
-                        .iter()
-                        .find(|(t, _)| !t.is_empty())
-                        .expect("build_agent_with_tools called but no tools available");
-                    $builder.rmcp_tools(first_tools.clone(), first_client.clone())
-                }
+                FirstTool::McpSchema => $builder.tool(config.mcp_schema_tool.clone().unwrap()),
+                FirstTool::McpToolUse => $builder.tool(config.mcp_tool_use.clone().unwrap()),
+                FirstTool::Skill => $builder.tool(config.skill_tool.clone().unwrap()),
             }
         }};
     }
@@ -938,40 +893,17 @@ fn build_agent_with_tools<M: CompletionModel>(
         tracing::info!("📂 Adding glob tool to agent");
         sb = sb.tool(create_glob_tool());
     }
-    if config.mcp_call_tool.is_some() && first != FirstTool::McpCall {
-        tracing::info!("🔌 Adding call_mcp_tool meta-tool to agent (lazy loading)");
-        sb = sb.tool(config.mcp_call_tool.clone().unwrap());
+    if config.mcp_schema_tool.is_some() && first != FirstTool::McpSchema {
+        tracing::info!("📋 Adding mcp_schema tool to agent");
+        sb = sb.tool(config.mcp_schema_tool.clone().unwrap());
     }
-    if config.load_skill_tool.is_some() && first != FirstTool::LoadSkill {
-        tracing::info!("📋 Adding load_skill tool to agent");
-        sb = sb.tool(config.load_skill_tool.clone().unwrap());
+    if config.mcp_tool_use.is_some() && first != FirstTool::McpToolUse {
+        tracing::info!("🔌 Adding mcp_tool_use tool to agent");
+        sb = sb.tool(config.mcp_tool_use.clone().unwrap());
     }
-    if config.load_mcp_schema_tool.is_some() && first != FirstTool::LoadMcpSchema {
-        tracing::info!("📋 Adding load_mcp_schema tool to agent");
-        sb = sb.tool(config.load_mcp_schema_tool.clone().unwrap());
-    }
-
-    if let Some(ref mcp_config) = config.mcp_tools {
-        let skip_first = first == FirstTool::Mcp;
-        let total: usize = mcp_config.server_tools.iter().map(|(t, _)| t.len()).sum();
-        if total > 0 {
-            tracing::info!(
-                "🔌 Adding {} MCP tool(s) from {} server(s) to agent",
-                total,
-                mcp_config.server_tools.len()
-            );
-        }
-        for (i, (tools, client)) in mcp_config
-            .server_tools
-            .iter()
-            .filter(|(t, _)| !t.is_empty())
-            .enumerate()
-        {
-            if skip_first && i == 0 {
-                continue;
-            }
-            sb = sb.rmcp_tools(tools.clone(), client.clone());
-        }
+    if config.skill_tool.is_some() && first != FirstTool::Skill {
+        tracing::info!("📋 Adding skill tool to agent");
+        sb = sb.tool(config.skill_tool.clone().unwrap());
     }
 
     sb.build()
@@ -988,10 +920,9 @@ enum FirstTool {
     Write,
     Grep,
     Glob,
-    McpCall,
-    LoadSkill,
-    LoadMcpSchema,
-    Mcp,
+    McpSchema,
+    McpToolUse,
+    Skill,
 }
 
 fn first_added(config: &AgentConfig) -> FirstTool {
@@ -1011,14 +942,12 @@ fn first_added(config: &AgentConfig) -> FirstTool {
         FirstTool::Grep
     } else if config.enable_glob {
         FirstTool::Glob
-    } else if config.mcp_call_tool.is_some() {
-        FirstTool::McpCall
-    } else if config.load_skill_tool.is_some() {
-        FirstTool::LoadSkill
-    } else if config.load_mcp_schema_tool.is_some() {
-        FirstTool::LoadMcpSchema
+    } else if config.mcp_schema_tool.is_some() {
+        FirstTool::McpSchema
+    } else if config.mcp_tool_use.is_some() {
+        FirstTool::McpToolUse
     } else {
-        FirstTool::Mcp
+        FirstTool::Skill
     }
 }
 

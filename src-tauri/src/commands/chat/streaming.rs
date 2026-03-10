@@ -1,12 +1,13 @@
 //! Agent-based streaming for LLM responses
 
 use super::super::AppState;
+use crate::prompts;
 use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
     stream_chat_with_agent,
 };
 use crate::llm::tools::bash::{BashTool, TempFileList};
-use crate::llm::tools::{LoadMcpSchemaTool, LoadSkillTool, McpCallTool};
+use crate::llm::tools::{McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool};
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
@@ -15,7 +16,7 @@ use crate::models::{
 };
 use rig::completion::Message as RigMessage;
 use rmcp::RoleClient;
-use rmcp::model::Tool as McpTool;
+use rmcp::model::Tool as RmcpTool;
 use rmcp::service::Peer;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,10 +30,6 @@ use crate::db::tools::{
     BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_KILL_SHELL_ID,
     BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
 };
-
-/// MCP tool count threshold: above this, use lazy loading via file-based discovery
-/// instead of injecting all tool schemas into every API call.
-const MCP_LAZY_LOAD_THRESHOLD: usize = 8;
 
 /// RAII guard that deletes tracked bash temp files when the streaming task exits
 /// (via any path: success, error, or cancellation).
@@ -272,27 +269,18 @@ pub(crate) async fn handle_agent_streaming(
         skill_entries.clear();
     }
 
-    // Build skill catalog and inject into system prompt (lazy-load approach)
+    // Build skill tool with embedded catalog (progressive disclosure via tool description)
     if !skill_entries.is_empty() {
-        let mut skill_name_to_path: HashMap<String, String> = HashMap::new();
-        for entry in &skill_entries {
-            skill_name_to_path.insert(entry.name.clone(), entry.path.clone());
-        }
-        config = config.with_load_skill_tool(LoadSkillTool::new(skill_name_to_path));
-
-        effective_system_prompt.push_str("\n\n## Available Skills\n\n");
-        effective_system_prompt.push_str(
-            "When a task matches one of the skills below, use the `load_skill` tool to load \
-             its full instructions before proceeding.\n\n",
-        );
-        for entry in &skill_entries {
-            let desc = entry.description.as_deref().unwrap_or("No description");
-            effective_system_prompt.push_str(&format!("- **{}** - {}\n", entry.name, desc));
-        }
+        let catalog: Vec<SkillCatalogEntry> = skill_entries
+            .iter()
+            .map(|e| SkillCatalogEntry {
+                name: e.name.clone(),
+                description: e.description.clone(),
+                path: e.path.clone(),
+            })
+            .collect();
+        config = config.with_skill_tool(SkillTool::new(catalog));
     }
-
-    // NOTE: effective_system_prompt is set on config later, after the MCP block
-    // may append the MCP tool catalog to it.
 
     // Determine which builtin tools are enabled
     let web_search_enabled = all_enabled_tool_ids.contains(&BUILTIN_WEB_SEARCH_ID.to_string());
@@ -403,14 +391,13 @@ pub(crate) async fn handle_agent_streaming(
         .cloned()
         .collect();
 
-    // Load MCP tools from enabled servers
+    // Load MCP tools from enabled servers and build McpSchemaTool + McpToolUseTool
     let (mcp_tool_name_to_server_id, mcp_tool_name_to_server_name): (
         Arc<HashMap<String, String>>,
         Arc<HashMap<String, String>>,
     ) = if !mcp_server_ids.is_empty() {
         let loaded = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
         if let Some(loaded) = loaded {
-            // Emit mcp-auth-required for servers that failed with auth errors
             for server_id in &loaded.auth_failed_server_ids {
                 tracing::warn!(
                     "🔐 [agent_streaming] MCP server {} failed auth, emitting mcp-auth-required",
@@ -431,92 +418,67 @@ pub(crate) async fn handle_agent_streaming(
                     loaded.server_tools.len()
                 );
 
-                if total > MCP_LAZY_LOAD_THRESHOLD {
-                    // Lazy-load path: sync definitions to files, inject catalog
-                    // into system prompt, and use McpCallTool meta-tool.
-                    tracing::info!(
-                        "📄 [agent_streaming] {} tools > threshold {}, using lazy loading",
-                        total,
-                        MCP_LAZY_LOAD_THRESHOLD
+                let mcp_tools_dir = app
+                    .path()
+                    .app_cache_dir()
+                    .map(|d| d.join("mcp-tools"))
+                    .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
+                if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
+                    tracing::warn!(
+                        "⚠️ [agent_streaming] Failed to create mcp-tools dir: {}",
+                        e
                     );
-
-                    let mcp_tools_dir = app
-                        .path()
-                        .app_cache_dir()
-                        .map(|d| d.join("mcp-tools"))
-                        .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
-                    if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
-                        tracing::warn!(
-                            "⚠️ [agent_streaming] Failed to create mcp-tools dir: {}",
-                            e
-                        );
-                    }
-
-                    // Sync tool definitions to files (for debugging) and build in-memory schema map + catalog
-                    let mut mcp_catalog = String::from("\n\n## Available MCP Tools\n\n");
-                    mcp_catalog.push_str(
-                        "When calling `load_mcp_schema` or `call_mcp_tool`, pass both \
-                         `server_name` (the section header below, e.g. GitHub) and `tool_name`. \
-                         Use `load_mcp_schema` first to load a tool's definition and understand its parameters.\n\n",
-                    );
-
-                    let mut client_map: HashMap<String, (String, Peer<RoleClient>)> =
-                        HashMap::new();
-                    let mut schema_map: HashMap<String, String> = HashMap::new();
-
-                    for (tools, client) in &loaded.server_tools {
-                        if tools.is_empty() {
-                            continue;
-                        }
-                        // Derive server name from the first tool's mapping
-                        let server_name = tools
-                            .first()
-                            .and_then(|t| loaded.tool_name_to_server_name.get(&t.name.to_string()))
-                            .cloned()
-                            .unwrap_or_else(|| "unknown".to_string());
-
-                        match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
-                            Ok(_server_dir) => {
-                                mcp_catalog.push_str(&format!("### {}\n", server_name));
-                                for tool in tools {
-                                    let desc =
-                                        tool.description.as_deref().unwrap_or("No description");
-                                    mcp_catalog
-                                        .push_str(&format!("- **{}** - {}\n", tool.name, desc));
-                                    let key = format!("{}/{}", server_name, tool.name);
-                                    client_map
-                                        .insert(key.clone(), (server_name.clone(), client.clone()));
-                                    let definition = serde_json::json!({
-                                        "name": key,
-                                        "description": tool.description,
-                                        "inputSchema": tool.input_schema,
-                                    });
-                                    if let Ok(json_str) = serde_json::to_string_pretty(&definition)
-                                    {
-                                        schema_map.insert(key, json_str);
-                                    }
-                                }
-                                mcp_catalog.push('\n');
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "⚠️ [agent_streaming] Failed to sync tool definitions \
-                                     for server '{}': {}",
-                                    server_name,
-                                    e
-                                );
-                            }
-                        }
-                    }
-
-                    effective_system_prompt.push_str(&mcp_catalog);
-                    config = config
-                        .with_mcp_call_tool(McpCallTool::new(Arc::new(RwLock::new(client_map))))
-                        .with_load_mcp_schema_tool(LoadMcpSchemaTool::new(schema_map));
-                } else {
-                    // Below threshold: use the existing direct rmcp_tools approach
-                    config = config.with_mcp_tools(loaded.server_tools);
                 }
+
+                let mut client_map: HashMap<String, (String, Peer<RoleClient>)> = HashMap::new();
+                let mut server_catalogs: Vec<McpServerCatalog> = Vec::new();
+
+                for (tools, client) in &loaded.server_tools {
+                    if tools.is_empty() {
+                        continue;
+                    }
+                    let server_name = tools
+                        .first()
+                        .and_then(|t| loaded.tool_name_to_server_name.get(&t.name.to_string()))
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
+                        Ok(_server_dir) => {
+                            let mut catalog_tools: Vec<(String, String)> = Vec::new();
+                            for tool in tools {
+                                let desc =
+                                    tool.description.as_deref().unwrap_or("No description");
+                                let key = format!("{}/{}", server_name, tool.name);
+                                client_map
+                                    .insert(key, (server_name.clone(), client.clone()));
+                                catalog_tools
+                                    .push((tool.name.to_string(), desc.to_string()));
+                            }
+                            server_catalogs.push(McpServerCatalog {
+                                name: server_name,
+                                tools: catalog_tools,
+                            });
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "⚠️ [agent_streaming] Failed to sync tool definitions \
+                                 for server '{}': {}",
+                                server_name,
+                                e
+                            );
+                        }
+                    }
+                }
+
+                config = config
+                    .with_mcp_schema_tool(McpSchemaTool::new(
+                        server_catalogs,
+                        mcp_tools_dir.to_string_lossy().to_string(),
+                    ))
+                    .with_mcp_tool_use(McpToolUseTool::new(
+                        Arc::new(RwLock::new(client_map)),
+                    ));
             }
             (
                 Arc::new(loaded.tool_name_to_server_id),
@@ -529,7 +491,16 @@ pub(crate) async fn handle_agent_streaming(
         (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
     };
 
-    // Set the effective system prompt (after MCP catalog may have been appended)
+    // Inject workflow instructions for skills and MCP tools
+    if !skill_entries.is_empty() {
+        effective_system_prompt.push_str("\n\n");
+        effective_system_prompt.push_str(prompts::SKILL_INSTRUCTIONS);
+    }
+    if config.mcp_schema_tool.is_some() {
+        effective_system_prompt.push_str("\n\n");
+        effective_system_prompt.push_str(prompts::MCP_INSTRUCTIONS);
+    }
+
     if !effective_system_prompt.is_empty() {
         config = config.with_system_prompt(effective_system_prompt);
     }
@@ -772,19 +743,19 @@ pub(crate) async fn handle_agent_streaming(
                     let tool_order = display_order_for_callback
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-                    // For call_mcp_tool, extract server_name, real MCP tool name, and inner arguments
+                    // For mcp meta-tool, extract server, real MCP tool name, and inner arguments
                     let (actual_tool_name, display_name, display_input) =
-                        if tool_info.tool_name == "call_mcp_tool" {
+                        if tool_info.tool_name == "mcp_tool_use" {
                             if let Ok(parsed) =
                                 serde_json::from_str::<serde_json::Value>(&tool_info.tool_input)
                             {
-                                let server_name = parsed["server_name"]
+                                let server_name = parsed["server"]
                                     .as_str()
                                     .unwrap_or("unknown")
                                     .to_string();
-                                let real_name = parsed["tool_name"]
+                                let real_name = parsed["tool"]
                                     .as_str()
-                                    .unwrap_or("call_mcp_tool")
+                                    .unwrap_or("mcp_tool_use")
                                     .to_string();
                                 let inner_args = parsed
                                     .get("arguments")
@@ -1427,7 +1398,7 @@ pub(crate) async fn handle_agent_streaming(
 
 /// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.
 struct LoadedMcpTools {
-    server_tools: Vec<(Vec<McpTool>, Peer<RoleClient>)>,
+    server_tools: Vec<(Vec<RmcpTool>, Peer<RoleClient>)>,
     /// Maps MCP tool name (e.g. "search") to the DB tool ID of the MCP server that provides it.
     tool_name_to_server_id: HashMap<String, String>,
     /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
