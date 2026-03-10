@@ -1083,7 +1083,12 @@ export function AssistantDialog({
                 {skill.name}
               </label>
               {skill.description && (
-                <p className="text-xs text-muted-foreground max-w-[380px] line-clamp-2" title={skill.description}>{skill.description}</p>
+                <p
+                  className="text-xs text-muted-foreground max-w-[380px] line-clamp-2"
+                  title={skill.description}
+                >
+                  {skill.description}
+                </p>
               )}
               {skill.required_tool_ids.length > 0 && (
                 <p className="text-xs text-muted-foreground/60">

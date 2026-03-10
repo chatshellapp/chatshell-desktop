@@ -1,19 +1,21 @@
 //! Agent-based streaming for LLM responses
 
 use super::super::AppState;
-use crate::prompts;
 use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
     stream_chat_with_agent,
 };
 use crate::llm::tools::bash::{BashTool, TempFileList};
-use crate::llm::tools::{McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool};
+use crate::llm::tools::{
+    McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool,
+};
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
     CreateContentBlockRequest, CreateFileAttachmentRequest, CreateMessageRequest,
     CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
 };
+use crate::prompts;
 use rig::completion::Message as RigMessage;
 use rmcp::RoleClient;
 use rmcp::model::Tool as RmcpTool;
@@ -424,10 +426,7 @@ pub(crate) async fn handle_agent_streaming(
                     .map(|d| d.join("mcp-tools"))
                     .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
                 if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
-                    tracing::warn!(
-                        "⚠️ [agent_streaming] Failed to create mcp-tools dir: {}",
-                        e
-                    );
+                    tracing::warn!("⚠️ [agent_streaming] Failed to create mcp-tools dir: {}", e);
                 }
 
                 let mut client_map: HashMap<String, (String, Peer<RoleClient>)> = HashMap::new();
@@ -447,13 +446,10 @@ pub(crate) async fn handle_agent_streaming(
                         Ok(_server_dir) => {
                             let mut catalog_tools: Vec<(String, String)> = Vec::new();
                             for tool in tools {
-                                let desc =
-                                    tool.description.as_deref().unwrap_or("No description");
+                                let desc = tool.description.as_deref().unwrap_or("No description");
                                 let key = format!("{}/{}", server_name, tool.name);
-                                client_map
-                                    .insert(key, (server_name.clone(), client.clone()));
-                                catalog_tools
-                                    .push((tool.name.to_string(), desc.to_string()));
+                                client_map.insert(key, (server_name.clone(), client.clone()));
+                                catalog_tools.push((tool.name.to_string(), desc.to_string()));
                             }
                             server_catalogs.push(McpServerCatalog {
                                 name: server_name,
@@ -476,9 +472,7 @@ pub(crate) async fn handle_agent_streaming(
                         server_catalogs,
                         mcp_tools_dir.to_string_lossy().to_string(),
                     ))
-                    .with_mcp_tool_use(McpToolUseTool::new(
-                        Arc::new(RwLock::new(client_map)),
-                    ));
+                    .with_mcp_tool_use(McpToolUseTool::new(Arc::new(RwLock::new(client_map))));
             }
             (
                 Arc::new(loaded.tool_name_to_server_id),

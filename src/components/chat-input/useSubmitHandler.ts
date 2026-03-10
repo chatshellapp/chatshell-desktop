@@ -257,7 +257,7 @@ export function useSubmitHandler({
           resolvedParams.searchEnabled,
           resolvedParams.parameterOverrides,
           resolvedParams.contextMessageCount,
-          resolvedParams.useProviderDefaults,
+          resolvedParams.useProviderDefaults
         )
         logger.info('Message sent successfully')
       }

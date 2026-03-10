@@ -693,8 +693,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       const sourceLabel = (source: SkillSource) =>
         t(`settings:skillSourceLabels.${source}`, { defaultValue: source })
 
-      const skillCountBySource = (source: SkillSource) =>
-        getSkillsBySource(skills, source).length
+      const skillCountBySource = (source: SkillSource) => getSkillsBySource(skills, source).length
 
       const filteredBuiltinSkills = filteredSkills.filter((s) => isBuiltinSkill(s))
 
@@ -706,7 +705,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <div className="grid gap-1">
             <span className="font-medium">{skill.name}</span>
             {skill.description && (
-              <p className="text-xs text-muted-foreground line-clamp-2" title={skill.description}>{skill.description}</p>
+              <p className="text-xs text-muted-foreground line-clamp-2" title={skill.description}>
+                {skill.description}
+              </p>
             )}
             {skill.required_tool_ids.length > 0 && (
               <p className="text-xs text-muted-foreground">
@@ -770,9 +771,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   >
                     <div className="grid gap-0.5 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {sourceLabel(src.source)}
-                        </span>
+                        <span className="text-sm font-medium">{sourceLabel(src.source)}</span>
                         {src.enabled && (
                           <span className="text-xs text-muted-foreground">
                             {t('settings:skillCount', {
@@ -840,9 +839,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   {filteredBuiltinSkills.length > 0 && (
                     <div className="grid gap-3">
                       <h4 className="text-sm font-medium">{t('settings:builtInSkills')}</h4>
-                      <div className="grid gap-3">
-                        {filteredBuiltinSkills.map(renderSkillItem)}
-                      </div>
+                      <div className="grid gap-3">{filteredBuiltinSkills.map(renderSkillItem)}</div>
                     </div>
                   )}
 

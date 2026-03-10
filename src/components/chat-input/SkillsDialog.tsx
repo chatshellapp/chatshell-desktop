@@ -125,7 +125,12 @@ export function SkillsDialog({
             {skill.name}
           </Label>
           {skill.description && (
-            <p className="text-xs text-muted-foreground max-w-[280px] line-clamp-2" title={skill.description}>{skill.description}</p>
+            <p
+              className="text-xs text-muted-foreground max-w-[280px] line-clamp-2"
+              title={skill.description}
+            >
+              {skill.description}
+            </p>
           )}
           {isGloballyDisabled && (
             <p className="text-xs text-muted-foreground/70 italic">

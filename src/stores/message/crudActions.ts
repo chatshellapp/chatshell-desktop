@@ -408,7 +408,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       next.searchEnabled,
       next.parameterOverrides,
       next.contextMessageCount,
-      next.useProviderDefaults,
+      next.useProviderDefaults
     )
   },
 

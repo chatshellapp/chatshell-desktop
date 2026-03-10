@@ -255,22 +255,16 @@ pub async fn scan_skills(
 
 /// Open a skill source directory in the system file manager
 #[tauri::command]
-pub async fn open_skills_directory(
-    app: tauri::AppHandle,
-    source: String,
-) -> Result<(), String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+pub async fn open_skills_directory(app: tauri::AppHandle, source: String) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let dir = match source.as_str() {
         "user" => home.join(".chatshell/skills"),
-        other => {
-            EXTERNAL_SKILL_SOURCES
-                .iter()
-                .find(|(s, _, _)| *s == other)
-                .map(|(_, rel_path, _)| home.join(rel_path))
-                .ok_or_else(|| format!("Unknown skill source: {}", other))?
-        }
+        other => EXTERNAL_SKILL_SOURCES
+            .iter()
+            .find(|(s, _, _)| *s == other)
+            .map(|(_, rel_path, _)| home.join(rel_path))
+            .ok_or_else(|| format!("Unknown skill source: {}", other))?,
     };
 
     std::fs::create_dir_all(&dir)
