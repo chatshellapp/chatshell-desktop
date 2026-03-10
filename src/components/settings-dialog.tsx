@@ -83,6 +83,7 @@ import { invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { logger } from '@/lib/logger'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
@@ -705,7 +706,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <div className="grid gap-1">
             <span className="font-medium">{skill.name}</span>
             {skill.description && (
-              <p className="text-xs text-muted-foreground">{skill.description}</p>
+              <p className="text-xs text-muted-foreground line-clamp-2" title={skill.description}>{skill.description}</p>
             )}
             {skill.required_tool_ids.length > 0 && (
               <p className="text-xs text-muted-foreground">
@@ -794,9 +795,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         </Button>
                       )}
                       {src.always_on ? (
-                        <span className="text-xs text-muted-foreground mr-1">
-                          {t('settings:alwaysEnabled')}
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div>
+                              <Switch checked disabled />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>{t('settings:alwaysEnabled')}</TooltipContent>
+                        </Tooltip>
                       ) : (
                         <Switch
                           checked={src.enabled}
