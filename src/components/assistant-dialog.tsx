@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -62,7 +62,8 @@ import type { Assistant, CreateAssistantRequest } from '@/types'
 import type { Model } from '@/types'
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { isBuiltinTool, isMcpTool, sortBuiltinTools } from '@/types/tool'
-import { isBuiltinSkill, isUserSkill } from '@/types/skill'
+import { getSkillsBySource, SKILL_SOURCE_ORDER } from '@/types/skill'
+import type { SkillSource } from '@/types/skill'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
@@ -121,6 +122,7 @@ export function AssistantDialog({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState('')
+  const [skillSearchQuery, setSkillSearchQuery] = useState('')
   const [activeSection, setActiveSection] = useState('general')
   const [groupComboboxOpen, setGroupComboboxOpen] = useState(false)
   const [groupInputValue, setGroupInputValue] = useState('')
@@ -149,10 +151,6 @@ export function AssistantDialog({
     () => allTools.filter((t) => t.is_enabled).map((t) => t.id),
     [allTools]
   )
-
-  // All skills for the Skills tab (show all, not just enabled)
-  const builtinSkillsList = useMemo(() => allSkills.filter((s) => isBuiltinSkill(s)), [allSkills])
-  const userSkillsList = useMemo(() => allSkills.filter((s) => isUserSkill(s)), [allSkills])
 
   // All globally enabled skill IDs
   const globalEnabledSkillIds = useMemo(
@@ -1039,7 +1037,23 @@ export function AssistantDialog({
     }
 
     if (activeSection === 'skills') {
-      const hasNoSkills = builtinSkillsList.length === 0 && userSkillsList.length === 0
+      const hasNoSkills = allSkills.length === 0
+
+      const skillQuery = skillSearchQuery.toLowerCase().trim()
+      const filteredAllSkills = skillQuery
+        ? allSkills.filter(
+            (s) =>
+              s.name.toLowerCase().includes(skillQuery) ||
+              (s.description && s.description.toLowerCase().includes(skillQuery))
+          )
+        : allSkills
+
+      const sourceLabelMap: Record<SkillSource, string> = {
+        builtin: t('builtinSkills'),
+        user: t('userSkills'),
+        claude: t('claudeSkills'),
+        agents: t('agentSkills'),
+      }
       const allSkillsEnabled =
         globalEnabledSkillIds.length > 0 &&
         globalEnabledSkillIds.every((id) => skillIds.includes(id))
@@ -1147,26 +1161,40 @@ export function AssistantDialog({
             </div>
           ) : (
             <>
-              {builtinSkillsList.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    {t('builtinSkills')}
-                  </h4>
-                  {builtinSkillsList.map(renderSkillItem)}
-                </div>
-              )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t('common:search')}
+                  value={skillSearchQuery}
+                  onChange={(e) => setSkillSearchQuery(e.target.value)}
+                  className="pl-9 h-8 text-sm"
+                />
+              </div>
 
-              {builtinSkillsList.length > 0 && userSkillsList.length > 0 && <Separator />}
-
-              {userSkillsList.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    {t('userSkills')}
-                  </h4>
-                  {userSkillsList.map(renderSkillItem)}
-                </div>
+              {filteredAllSkills.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {t('common:noResults')}
+                </p>
+              ) : (
+                SKILL_SOURCE_ORDER.map((source, idx) => {
+                  const sourceSkills = getSkillsBySource(filteredAllSkills, source)
+                  if (sourceSkills.length === 0) return null
+                  return (
+                    <Fragment key={source}>
+                      {idx > 0 &&
+                        SKILL_SOURCE_ORDER.slice(0, idx).some(
+                          (prev) => getSkillsBySource(filteredAllSkills, prev).length > 0
+                        ) && <Separator />}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                          <Zap className="h-4 w-4" />
+                          {sourceLabelMap[source] ?? source}
+                        </h4>
+                        {sourceSkills.map(renderSkillItem)}
+                      </div>
+                    </Fragment>
+                  )
+                })
               )}
             </>
           )}

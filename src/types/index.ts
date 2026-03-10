@@ -43,8 +43,14 @@ export {
 } from './tool'
 
 // Skill types
-export type { Skill, CreateSkillRequest } from './skill'
-export { isBuiltinSkill, isUserSkill } from './skill'
+export type { Skill, CreateSkillRequest, SkillSource, SkillSourceInfo } from './skill'
+export {
+  isBuiltinSkill,
+  isUserSkill,
+  getSkillsBySource,
+  getSkillSourceLabel,
+  SKILL_SOURCE_ORDER,
+} from './skill'
 
 // User types
 export type {

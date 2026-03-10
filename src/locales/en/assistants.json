@@ -60,6 +60,8 @@
   "skillsDescription": "Select which skills this assistant should have. Skills add specialized instructions and may require specific tools to function. Place SKILL.md files in ~/.chatshell/skills/ to create custom skills.",
   "builtinSkills": "Built-in Skills",
   "userSkills": "User Skills",
+  "claudeSkills": "Claude Skills",
+  "agentSkills": "Agent Skills",
   "skillsSelected": "{{count}} skill(s) selected",
   "requiresTool": "Requires {{count}} tool(s)",
   "enableSkillInSettings": "Enable this skill in Settings first",

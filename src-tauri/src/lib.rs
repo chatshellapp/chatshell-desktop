@@ -303,6 +303,8 @@ pub fn run() {
             commands::scan_skills,
             commands::read_skill_content,
             commands::open_skills_directory,
+            commands::get_skill_sources,
+            commands::set_skill_source_enabled,
             // Model capabilities commands
             commands::get_model_capabilities,
             commands::refresh_capabilities_cache,

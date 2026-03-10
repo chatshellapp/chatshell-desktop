@@ -70,6 +70,23 @@ impl Database {
         }
     }
 
+    pub async fn get_skill_by_name_and_source(
+        &self,
+        name: &str,
+        source: &str,
+    ) -> Result<Option<Skill>> {
+        let row = sqlx::query("SELECT * FROM skills WHERE name = ? AND source = ?")
+            .bind(name)
+            .bind(source)
+            .fetch_optional(self.pool.as_ref())
+            .await?;
+
+        match row {
+            Some(row) => Ok(Some(Self::skill_from_row(&row))),
+            None => Ok(None),
+        }
+    }
+
     pub async fn list_skills(&self) -> Result<Vec<Skill>> {
         let rows = sqlx::query("SELECT * FROM skills ORDER BY source ASC, name ASC")
             .fetch_all(self.pool.as_ref())
@@ -239,7 +256,29 @@ impl Database {
     /// Upsert a skill by name. Used by the skill scanner to create or update skills.
     pub async fn upsert_skill_by_name(&self, req: CreateSkillRequest) -> Result<Skill> {
         if let Some(existing) = self.get_skill_by_name(&req.name).await? {
-            // Only update if content_hash changed (or no hash yet)
+            let should_update = match (&existing.content_hash, &req.content_hash) {
+                (Some(old), Some(new)) => old != new,
+                (None, Some(_)) => true,
+                _ => false,
+            };
+
+            if should_update {
+                self.update_skill(&existing.id, req).await
+            } else {
+                Ok(existing)
+            }
+        } else {
+            self.create_skill(req).await
+        }
+    }
+
+    /// Upsert a skill by (name, source) composite key.
+    /// Different sources can have skills with the same name.
+    pub async fn upsert_skill_by_name_and_source(&self, req: CreateSkillRequest) -> Result<Skill> {
+        if let Some(existing) = self
+            .get_skill_by_name_and_source(&req.name, &req.source)
+            .await?
+        {
             let should_update = match (&existing.content_hash, &req.content_hash) {
                 (Some(old), Some(new)) => old != new,
                 (None, Some(_)) => true,

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Zap, RotateCcw, ToggleLeft, ToggleRight, Info } from 'lucide-react'
+import { Zap, RotateCcw, ToggleLeft, ToggleRight, Info, Search } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,10 +12,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSkillStore } from '@/stores/skillStore'
-import { isBuiltinSkill, isUserSkill } from '@/types/skill'
+import { getSkillsBySource, SKILL_SOURCE_ORDER } from '@/types/skill'
+import type { SkillSource } from '@/types/skill'
 
 interface SkillsDialogProps {
   open: boolean
@@ -35,15 +37,31 @@ export function SkillsDialog({
   const { t } = useTranslation(['chat', 'common'])
   const skills = useSkillStore((state) => state.skills)
   const ensureLoaded = useSkillStore((state) => state.ensureLoaded)
+  const [searchQuery, setSearchQuery] = React.useState('')
 
   React.useEffect(() => {
     if (open) {
       ensureLoaded()
+    } else {
+      setSearchQuery('')
     }
   }, [open, ensureLoaded])
 
-  const builtinSkills = skills.filter((s) => isBuiltinSkill(s))
-  const userSkills = skills.filter((s) => isUserSkill(s))
+  const query = searchQuery.toLowerCase().trim()
+  const filteredSkills = query
+    ? skills.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          (s.description && s.description.toLowerCase().includes(query))
+      )
+    : skills
+
+  const sourceLabelMap: Record<SkillSource, string> = {
+    builtin: t('builtinSkills'),
+    user: t('userSkills'),
+    claude: t('claudeSkills'),
+    agents: t('agentSkills'),
+  }
 
   // "Global default" = all globally enabled skills
   const globalEnabledIds = React.useMemo(
@@ -81,7 +99,7 @@ export function SkillsDialog({
     onSkillIdsChange([])
   }
 
-  const hasNoSkills = builtinSkills.length === 0 && userSkills.length === 0
+  const hasNoSkills = skills.length === 0
 
   // Check if all available (globally enabled) skills are enabled/disabled for this conversation
   const allEnabled =
@@ -179,37 +197,50 @@ export function SkillsDialog({
           </div>
         )}
 
+        {!hasNoSkills && (
+          <div className="px-6 pb-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t('common:search')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 grid gap-4">
           {hasNoSkills ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               {t('noSkillsAvailable')}
             </p>
+          ) : filteredSkills.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              {t('common:noResults')}
+            </p>
           ) : (
             <>
-              {/* Builtin Skills Section */}
-              {builtinSkills.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    {t('builtinSkills')}
-                  </h4>
-                  {builtinSkills.map(renderSkillItem)}
-                </div>
-              )}
-
-              {/* Separator between sections */}
-              {builtinSkills.length > 0 && userSkills.length > 0 && <Separator />}
-
-              {/* User Skills Section */}
-              {userSkills.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    {t('userSkills')}
-                  </h4>
-                  {userSkills.map(renderSkillItem)}
-                </div>
-              )}
+              {SKILL_SOURCE_ORDER.map((source, idx) => {
+                const sourceSkills = getSkillsBySource(filteredSkills, source)
+                if (sourceSkills.length === 0) return null
+                return (
+                  <React.Fragment key={source}>
+                    {idx > 0 &&
+                      SKILL_SOURCE_ORDER.slice(0, idx).some(
+                        (prev) => getSkillsBySource(filteredSkills, prev).length > 0
+                      ) && <Separator />}
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        {sourceLabelMap[source] ?? source}
+                      </h4>
+                      {sourceSkills.map(renderSkillItem)}
+                    </div>
+                  </React.Fragment>
+                )
+              })}
             </>
           )}
         </div>

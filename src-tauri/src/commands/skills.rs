@@ -1,6 +1,7 @@
 use super::AppState;
 use crate::models::{CreateSkillRequest, Skill};
-use crate::skills::SkillScanner;
+use crate::skills::{ScanDirectory, SkillScanner};
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 #[tauri::command]
@@ -56,16 +57,104 @@ pub async fn set_all_skills_enabled(
         .map_err(|e| e.to_string())
 }
 
-/// Scan the filesystem for SKILL.md files and sync them into the database
+/// Well-known external skill directories (beyond ~/.chatshell/skills)
+const EXTERNAL_SKILL_SOURCES: &[(&str, &str, &str)] = &[
+    ("claude", ".claude/skills", "skill_source_claude_enabled"),
+    ("agents", ".agents/skills", "skill_source_agents_enabled"),
+];
+
+/// Info about a skill source directory shown in the UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSourceInfo {
+    pub source: String,
+    pub path: String,
+    pub enabled: bool,
+    pub always_on: bool,
+    pub exists: bool,
+}
+
+/// Return metadata about all skill source directories
 #[tauri::command]
-pub async fn scan_skills(
+pub async fn get_skill_sources(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<Vec<Skill>, String> {
+) -> Result<Vec<SkillSourceInfo>, String> {
+    let home = dirs::home_dir().unwrap_or_default();
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let mut sources = Vec::new();
+
+    // ChatShell user dir (always on)
+    let user_dir = if home.as_os_str().is_empty() {
+        app_data_dir.join("skills")
+    } else {
+        home.join(".chatshell/skills")
+    };
+    sources.push(SkillSourceInfo {
+        source: "user".to_string(),
+        path: user_dir.to_string_lossy().to_string(),
+        enabled: true,
+        always_on: true,
+        exists: user_dir.exists(),
+    });
+
+    // External sources
+    for (source, rel_path, setting_key) in EXTERNAL_SKILL_SOURCES {
+        let dir = home.join(rel_path);
+        let enabled = state
+            .db
+            .get_setting(setting_key)
+            .await
+            .ok()
+            .flatten()
+            .map(|v| v != "false")
+            .unwrap_or(true);
+
+        sources.push(SkillSourceInfo {
+            source: source.to_string(),
+            path: dir.to_string_lossy().to_string(),
+            enabled,
+            always_on: false,
+            exists: dir.exists(),
+        });
+    }
+
+    Ok(sources)
+}
+
+/// Toggle an external skill source on or off
+#[tauri::command]
+pub async fn set_skill_source_enabled(
+    state: State<'_, AppState>,
+    source: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let setting_key = EXTERNAL_SKILL_SOURCES
+        .iter()
+        .find(|(s, _, _)| *s == source)
+        .map(|(_, _, key)| *key)
+        .ok_or_else(|| format!("Unknown skill source: {}", source))?;
+
+    state
+        .db
+        .set_setting(setting_key, if enabled { "true" } else { "false" })
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Build the list of directories to scan based on current settings
+async fn build_scan_directories(
+    state: &AppState,
+    app: &tauri::AppHandle,
+) -> Result<Vec<ScanDirectory>, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let home = dirs::home_dir().unwrap_or_else(|| app_data_dir.clone());
 
     let builtin_dir = app
         .path()
@@ -73,33 +162,70 @@ pub async fn scan_skills(
         .map(|d| d.join("builtin-skills"))
         .unwrap_or_else(|_| app_data_dir.join("builtin-skills"));
 
-    let user_dir = dirs::home_dir()
-        .unwrap_or_else(|| app_data_dir.clone())
-        .join(".chatshell")
-        .join("skills");
+    let user_dir = home.join(".chatshell/skills");
 
-    // Ensure user skills directory exists
     if let Err(e) = std::fs::create_dir_all(&user_dir) {
         tracing::warn!("⚠️ [scan_skills] Failed to create user skills dir: {}", e);
     }
 
-    let scanner = SkillScanner::new(builtin_dir, user_dir);
+    let mut dirs = vec![
+        ScanDirectory {
+            path: builtin_dir,
+            source: "builtin".to_string(),
+        },
+        ScanDirectory {
+            path: user_dir,
+            source: "user".to_string(),
+        },
+    ];
+
+    for (source, rel_path, setting_key) in EXTERNAL_SKILL_SOURCES {
+        let enabled = state
+            .db
+            .get_setting(setting_key)
+            .await
+            .ok()
+            .flatten()
+            .map(|v| v != "false")
+            .unwrap_or(true);
+
+        if enabled {
+            dirs.push(ScanDirectory {
+                path: home.join(rel_path),
+                source: source.to_string(),
+            });
+        }
+    }
+
+    Ok(dirs)
+}
+
+/// Scan the filesystem for SKILL.md files and sync them into the database
+#[tauri::command]
+pub async fn scan_skills(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<Vec<Skill>, String> {
+    let dirs = build_scan_directories(&state, &app).await?;
+    let scanner = SkillScanner::new(dirs);
 
     let discovered = scanner.scan_all().await.map_err(|e| e.to_string())?;
 
-    // Upsert each discovered skill
-    let discovered_names: std::collections::HashSet<String> =
-        discovered.iter().map(|s| s.name.clone()).collect();
+    let discovered_keys: std::collections::HashSet<(String, String)> = discovered
+        .iter()
+        .map(|s| (s.name.clone(), s.source.clone()))
+        .collect();
 
     for skill in &discovered {
         if let Err(e) = state
             .db
-            .upsert_skill_by_name(skill.to_create_request())
+            .upsert_skill_by_name_and_source(skill.to_create_request())
             .await
         {
             tracing::warn!(
-                "⚠️ [scan_skills] Failed to upsert skill '{}': {}",
+                "⚠️ [scan_skills] Failed to upsert skill '{}' ({}): {}",
                 skill.name,
+                skill.source,
                 e
             );
         }
@@ -108,8 +234,12 @@ pub async fn scan_skills(
     // Remove stale skills that no longer exist on the filesystem
     let all_db_skills = state.db.list_skills().await.map_err(|e| e.to_string())?;
     for skill in &all_db_skills {
-        if !discovered_names.contains(&skill.name) {
-            tracing::info!("[scan_skills] Removing stale skill '{}'", skill.name);
+        if !discovered_keys.contains(&(skill.name.clone(), skill.source.clone())) {
+            tracing::info!(
+                "[scan_skills] Removing stale skill '{}' ({})",
+                skill.name,
+                skill.source
+            );
             if let Err(e) = state.db.delete_skill(&skill.id).await {
                 tracing::warn!(
                     "⚠️ [scan_skills] Failed to delete stale skill '{}': {}",
@@ -123,24 +253,30 @@ pub async fn scan_skills(
     state.db.list_skills().await.map_err(|e| e.to_string())
 }
 
-/// Open the user skills directory in the system file manager
+/// Open a skill source directory in the system file manager
 #[tauri::command]
-pub async fn open_skills_directory(app: tauri::AppHandle) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+pub async fn open_skills_directory(
+    app: tauri::AppHandle,
+    source: String,
+) -> Result<(), String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Cannot determine home directory".to_string())?;
 
-    let user_dir = dirs::home_dir()
-        .unwrap_or(app_data_dir)
-        .join(".chatshell")
-        .join("skills");
+    let dir = match source.as_str() {
+        "user" => home.join(".chatshell/skills"),
+        other => {
+            EXTERNAL_SKILL_SOURCES
+                .iter()
+                .find(|(s, _, _)| *s == other)
+                .map(|(_, rel_path, _)| home.join(rel_path))
+                .ok_or_else(|| format!("Unknown skill source: {}", other))?
+        }
+    };
 
-    // Ensure the directory exists before opening
-    std::fs::create_dir_all(&user_dir)
+    std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create skills directory: {}", e))?;
 
-    tauri_plugin_opener::open_path(user_dir, None::<&str>)
+    tauri_plugin_opener::open_path(dir, None::<&str>)
         .map_err(|e| format!("Failed to open skills directory: {}", e))
 }
 

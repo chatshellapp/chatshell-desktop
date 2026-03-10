@@ -2,12 +2,15 @@
 // SKILL - Prompt instructions + required tools bundled together
 // ==========================================================================
 
+export type SkillSource = 'builtin' | 'user' | 'claude' | 'agents'
+
+export const SKILL_SOURCE_ORDER: SkillSource[] = ['builtin', 'user', 'claude', 'agents']
+
 export interface Skill {
   id: string
   name: string
   description?: string
-  /** "builtin" | "user" */
-  source: string
+  source: SkillSource
   /** Filesystem path to skill directory */
   path: string
   /** Emoji or icon identifier */
@@ -42,10 +45,32 @@ export interface CreateSkillRequest {
   is_enabled?: boolean
 }
 
+export interface SkillSourceInfo {
+  source: SkillSource
+  path: string
+  enabled: boolean
+  always_on: boolean
+  exists: boolean
+}
+
 export function isBuiltinSkill(skill: Skill): boolean {
   return skill.source === 'builtin'
 }
 
 export function isUserSkill(skill: Skill): boolean {
-  return skill.source === 'user'
+  return skill.source !== 'builtin'
+}
+
+export function getSkillsBySource(skills: Skill[], source: SkillSource): Skill[] {
+  return skills.filter((s) => s.source === source)
+}
+
+export function getSkillSourceLabel(source: SkillSource): string {
+  const labels: Record<SkillSource, string> = {
+    builtin: 'Built-in',
+    user: 'ChatShell',
+    claude: 'Claude',
+    agents: 'Agent Skills',
+  }
+  return labels[source] ?? source
 }

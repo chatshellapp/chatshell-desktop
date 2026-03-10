@@ -1,16 +1,16 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
-import type { Skill } from '@/types'
+import type { Skill, SkillSourceInfo } from '@/types'
 import { logger } from '@/lib/logger'
 
 interface SkillState {
   skills: Skill[]
+  sources: SkillSourceInfo[]
   isLoading: boolean
   error: string | null
   hasScanned: boolean
 
-  // Actions
   loadSkills: () => Promise<void>
   scanSkills: () => Promise<void>
   ensureLoaded: () => Promise<void>
@@ -19,11 +19,14 @@ interface SkillState {
   setAllEnabled: (enabled: boolean) => Promise<void>
   readSkillContent: (path: string) => Promise<string>
   getSkillById: (id: string) => Skill | undefined
+  loadSources: () => Promise<void>
+  setSourceEnabled: (source: string, enabled: boolean) => Promise<void>
 }
 
 export const useSkillStore = create<SkillState>()(
   immer((set, get) => ({
     skills: [],
+    sources: [],
     isLoading: false,
     error: null,
     hasScanned: false,
@@ -62,6 +65,7 @@ export const useSkillStore = create<SkillState>()(
           draft.isLoading = false
           draft.hasScanned = true
         })
+        await get().loadSources()
       } catch (error) {
         logger.error('[skillStore] Failed to scan skills:', error)
         set((draft) => {
@@ -133,6 +137,33 @@ export const useSkillStore = create<SkillState>()(
 
     getSkillById: (id: string) => {
       return get().skills.find((s) => s.id === id)
+    },
+
+    loadSources: async () => {
+      try {
+        const sources = await invoke<SkillSourceInfo[]>('get_skill_sources')
+        set((draft) => {
+          draft.sources = sources
+        })
+      } catch (error) {
+        logger.error('[skillStore] Failed to load skill sources:', error)
+      }
+    },
+
+    setSourceEnabled: async (source: string, enabled: boolean) => {
+      try {
+        await invoke('set_skill_source_enabled', { source, enabled })
+        set((draft) => {
+          const idx = draft.sources.findIndex((s) => s.source === source)
+          if (idx >= 0) {
+            draft.sources[idx].enabled = enabled
+          }
+        })
+        await get().scanSkills()
+      } catch (error) {
+        logger.error('[skillStore] Failed to set skill source enabled:', error)
+        throw error
+      }
     },
   }))
 )

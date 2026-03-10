@@ -109,6 +109,8 @@
   "skillsDisabledInSettings": "Disabled in Settings",
   "skillsEnableInSettingsFirst": "Enable this skill in Settings first",
   "userSkills": "User Skills",
+  "claudeSkills": "Claude Skills",
+  "agentSkills": "Agent Skills",
   "resetToGlobalSettings": "Reset to Global Settings",
   "toolsUnsupportedByModel": "The selected model does not support tool use",
   "imageUnsupportedByModel": "The selected model does not support image input",

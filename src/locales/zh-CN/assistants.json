@@ -60,6 +60,8 @@
   "skillsDescription": "选择助手应具备的技能。技能添加专业指令，可能需要特定工具才能运行。在 ~/.chatshell/skills/ 放置 SKILL.md 文件以创建自定义技能。",
   "builtinSkills": "内置技能",
   "userSkills": "用户技能",
+  "claudeSkills": "Claude 技能",
+  "agentSkills": "Agent 技能",
   "skillsSelected": "已选择 {{count}} 个技能",
   "requiresTool": "需要 {{count}} 个工具",
   "enableSkillInSettings": "请先在设置中启用此技能",

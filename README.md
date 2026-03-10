@@ -42,6 +42,8 @@ With ChatShell, you get a working AI agent in under a minute.
 
 Go beyond simple prompts. **Skills** bundle prompt instructions with required tools into reusable, composable capabilities. Create your own by dropping a `SKILL.md` file into `~/.chatshell/skills/<skill-name>/`. Each skill declares which tools it needs — those tools are enabled automatically when the skill is active. You control whether the AI triggers a skill on its own or waits for you to invoke it.
 
+Skills use **progressive disclosure**: only the skills the AI decides to invoke are injected into the context window. Unused skills consume zero tokens, keeping your context budget lean no matter how many skills you have installed.
+
 ### Custom Assistants, Built Locally
 
 Create personalized AI assistants entirely on your machine. Each assistant packages together a model, system prompt, user prompt, tools, skills, and a custom avatar — forming a complete AI persona you can switch between instantly. Organize them into groups, star your favorites, and reuse prompts from your library. No cloud account needed, no sharing of your data.
@@ -56,7 +58,7 @@ API keys encrypted with **AES-256-GCM** (master key stored in your OS keychain v
 
 ### Permissive Open Source
 
-**Apache 2.0** — use it commercially, fork it, embed it. No AGPL restrictions, no per-seat pricing, no subscriptions.
+**Apache 2.0** — use it commercially, fork it, embed it. No GPL restrictions, no per-seat pricing, no subscriptions.
 
 ---
 
@@ -66,14 +68,14 @@ Most AI desktop clients are chat wrappers. ChatShell is built differently — fr
 
 | Feature | ChatShell | Typical Chat Client |
 |---------|-----------|---------------------|
+| Engine | Tauri 2 + Rust (not Electron) | Electron or native per platform |
 | Agent Tools | 9 built-in tools, zero setup | Plugin marketplace or MCP config required |
-| Skills System | Fully custom SKILL.md | Not available |
-| MCP Support | STDIO + HTTP + OAuth 2.1 / PKCE | STDIO or HTTP (no auth) |
+| Skills System | Progressive disclosure — only active skills injected into context | Not available |
+| MCP Support | On-demand tool loading · STDIO + HTTP + OAuth 2.1 / PKCE | STDIO or HTTP (no auth) |
 | Privacy | AES-256-GCM · OS keychain · no telemetry | Varies — often opt-out telemetry |
 | Assistants | Full local builder with avatars & prompt library | Basic system prompt only |
-| Engine | Tauri 2 + Rust (not Electron) | Electron or native per platform |
 | Memory Footprint | Low — native Rust binary | High (Electron ships a full browser) |
-| License | Apache 2.0 — permissive open source | AGPL, proprietary, or subscription |
+| License | Apache 2.0 — permissive open source | GPL, proprietary, or subscription |
 | Platforms | macOS · Windows · Linux | Often macOS-only or partial support |
 | AI Providers | 40+ with local model support | Varies |
 
@@ -102,6 +104,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### Skills
 
 - **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
+- **Progressive Disclosure**: Only invoked skills are injected into context — unused skills consume no tokens
 - **Custom Skills**: Create your own skills (`~/.chatshell/skills/<skill-name>/SKILL.md`)
 - **Invocation Control**: Choose whether the AI or the user triggers each skill
 - **Auto-Discovery**: Skill Scanner finds skills from configured directories
@@ -127,6 +130,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### MCP (Model Context Protocol) Integration
 
 - **Extensible Tool System**: Connect AI with external tools and data sources
+- **Progressive Disclosure**: Only MCP tools the AI actually calls are loaded into context — unused tools consume no tokens
 - **Server Management**: Add, configure, and manage MCP servers from the UI
 - **Dynamic Tool Discovery**: Automatically detect and expose tools from MCP servers
 - **Seamless Integration**: AI can invoke MCP tools naturally during conversations

@@ -76,35 +76,47 @@ struct SkillFrontmatter {
     disable_user_invocation: Option<bool>,
 }
 
+/// A directory to scan for skills, with its source label
+#[derive(Debug, Clone)]
+pub struct ScanDirectory {
+    pub path: PathBuf,
+    pub source: String,
+}
+
 /// Scans directories for SKILL.md files and parses them
 pub struct SkillScanner {
-    builtin_dir: PathBuf,
-    user_dir: PathBuf,
+    directories: Vec<ScanDirectory>,
 }
 
 impl SkillScanner {
-    pub fn new(builtin_dir: PathBuf, user_dir: PathBuf) -> Self {
-        Self {
-            builtin_dir,
-            user_dir,
-        }
+    pub fn new(directories: Vec<ScanDirectory>) -> Self {
+        Self { directories }
     }
 
     /// Scan all skill directories and return discovered skills
     pub async fn scan_all(&self) -> Result<Vec<DiscoveredSkill>> {
         let mut skills = Vec::new();
 
-        // Scan builtin skills
-        skills.extend(self.scan_directory(&self.builtin_dir, "builtin").await?);
+        for dir in &self.directories {
+            skills.extend(self.scan_directory(&dir.path, &dir.source).await?);
+        }
 
-        // Scan user skills
-        skills.extend(self.scan_directory(&self.user_dir, "user").await?);
+        let sources: Vec<String> = self.directories.iter().map(|d| d.source.clone()).collect();
+        let source_counts: Vec<String> = sources
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} {}",
+                    skills.iter().filter(|sk| sk.source == *s).count(),
+                    s
+                )
+            })
+            .collect();
 
         tracing::info!(
-            "📋 [skill_scanner] Discovered {} skill(s) ({} builtin, {} user)",
+            "📋 [skill_scanner] Discovered {} skill(s) ({})",
             skills.len(),
-            skills.iter().filter(|s| s.source == "builtin").count(),
-            skills.iter().filter(|s| s.source == "user").count(),
+            source_counts.join(", "),
         );
 
         Ok(skills)
