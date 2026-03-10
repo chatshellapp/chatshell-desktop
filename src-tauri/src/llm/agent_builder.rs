@@ -3,6 +3,8 @@
 //! This module provides a unified interface for creating rig agents with full configuration
 //! (preamble, temperature, max_tokens, etc.) regardless of the underlying provider.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use rig::OneOrMany;
 use rig::agent::Agent;
@@ -88,6 +90,8 @@ pub struct AgentConfig {
     pub glob_working_directory: Option<String>,
     /// Shared bash session handle (for conversation-level persistence)
     pub bash_session: Option<SharedBashSession>,
+    /// Abort notification handle for cooperative bash cancellation
+    pub bash_abort_notify: Option<Arc<tokio::sync::Notify>>,
     /// Shared temp file tracker for bash output truncation cleanup
     pub bash_temp_files: Option<TempFileList>,
     /// Optional MCP meta-tool for lazy-loaded MCP tool calling (used when tool count exceeds threshold)
@@ -227,6 +231,12 @@ impl AgentConfig {
     /// Set a shared bash session handle for conversation-level persistence
     pub fn with_bash_session(mut self, session: SharedBashSession) -> Self {
         self.bash_session = Some(session);
+        self
+    }
+
+    /// Set the abort notification handle for cooperative bash cancellation
+    pub fn with_bash_abort_notify(mut self, notify: Arc<tokio::sync::Notify>) -> Self {
+        self.bash_abort_notify = Some(notify);
         self
     }
 
@@ -814,7 +824,7 @@ fn build_agent_with_tools<M: CompletionModel>(
     config: &AgentConfig,
 ) -> Agent<M> {
     let create_bash_tool = || -> BashTool {
-        let tool = if let Some(ref session) = config.bash_session {
+        let mut tool = if let Some(ref session) = config.bash_session {
             tracing::info!("🖥️ Bash tool using shared conversation session");
             BashTool::with_session(session.clone(), config.bash_working_directory.clone())
         } else if let Some(ref dir) = config.bash_working_directory {
@@ -823,6 +833,9 @@ fn build_agent_with_tools<M: CompletionModel>(
         } else {
             BashTool::new()
         };
+        if let Some(ref notify) = config.bash_abort_notify {
+            tool = tool.with_abort_notify(notify.clone());
+        }
         if let Some(ref tracker) = config.bash_temp_files {
             tool.with_temp_file_tracker(tracker.clone())
         } else {

@@ -324,10 +324,11 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
         config = config.with_bash();
 
-        let session = state_clone
+        let (session, abort_notify) = state_clone
             .bash_session_manager
             .get_or_create(&conversation_id_clone);
         config = config.with_bash_session(session);
+        config = config.with_bash_abort_notify(abort_notify);
         config = config.with_bash_temp_files(bash_temp_files.clone());
 
         if let Some(ref settings) = conv_settings

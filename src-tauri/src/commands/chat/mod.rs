@@ -130,6 +130,8 @@ pub async fn stop_generation(
         cancel_token.cancel();
         tracing::info!("✅ [stop_generation] Cancellation token triggered");
 
+        state.bash_session_manager.abort_running(&conversation_id);
+
         let _ = app.emit(
             "generation-stopped",
             serde_json::json!({

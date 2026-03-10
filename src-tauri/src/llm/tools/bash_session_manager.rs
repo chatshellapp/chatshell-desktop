@@ -11,8 +11,11 @@ use std::time::{Duration, Instant};
 
 use super::bash::SharedBashSession;
 
+pub(crate) type BashAbortHandle = Arc<tokio::sync::Notify>;
+
 struct SessionEntry {
     session: SharedBashSession,
+    abort_handle: BashAbortHandle,
     last_used_at: Instant,
 }
 
@@ -30,16 +33,36 @@ impl BashSessionManager {
     /// Get an existing session handle or create a new (empty) one for the given
     /// conversation. The actual `BashSession` inside is lazily created by `BashTool`
     /// on first command execution. Refreshes `last_used_at` on every access.
-    pub(crate) fn get_or_create(&self, conversation_id: &str) -> SharedBashSession {
+    ///
+    /// Returns `(session, abort_handle)` so the caller can wire the abort signal
+    /// into `BashTool` for cooperative cancellation.
+    pub(crate) fn get_or_create(
+        &self,
+        conversation_id: &str,
+    ) -> (SharedBashSession, BashAbortHandle) {
         let mut map = self.sessions.lock().unwrap();
         let entry = map
             .entry(conversation_id.to_string())
             .or_insert_with(|| SessionEntry {
                 session: Arc::new(tokio::sync::Mutex::new(None)),
+                abort_handle: Arc::new(tokio::sync::Notify::new()),
                 last_used_at: Instant::now(),
             });
         entry.last_used_at = Instant::now();
-        entry.session.clone()
+        (entry.session.clone(), entry.abort_handle.clone())
+    }
+
+    /// Signal the abort handle for the given conversation so that a running
+    /// `BashTool::call()` can break out of `execute()` and release the mutex.
+    pub(crate) fn abort_running(&self, conversation_id: &str) {
+        let map = self.sessions.lock().unwrap();
+        if let Some(entry) = map.get(conversation_id) {
+            tracing::info!(
+                "🛑 [bash] Aborting running command for conversation {}",
+                conversation_id
+            );
+            entry.abort_handle.notify_waiters();
+        }
     }
 
     /// Remove the session handle for a conversation. Any running bash process

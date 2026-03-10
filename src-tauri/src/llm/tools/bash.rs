@@ -293,6 +293,8 @@ pub struct BashTool {
     session: SharedBashSession,
     #[serde(skip)]
     temp_files: TempFileList,
+    #[serde(skip)]
+    abort_notify: Option<Arc<tokio::sync::Notify>>,
 }
 
 impl fmt::Debug for BashTool {
@@ -309,6 +311,7 @@ impl Default for BashTool {
             default_cwd: None,
             session: Arc::new(TokioMutex::new(None)),
             temp_files: Arc::new(Mutex::new(Vec::new())),
+            abort_notify: None,
         }
     }
 }
@@ -323,6 +326,7 @@ impl BashTool {
             default_cwd: Some(cwd),
             session: Arc::new(TokioMutex::new(None)),
             temp_files: Arc::new(Mutex::new(Vec::new())),
+            abort_notify: None,
         }
     }
 
@@ -331,12 +335,19 @@ impl BashTool {
             default_cwd: cwd,
             session,
             temp_files: Arc::new(Mutex::new(Vec::new())),
+            abort_notify: None,
         }
     }
 
     /// Set a shared temp file tracker (call before the tool is consumed by the agent builder).
     pub fn with_temp_file_tracker(mut self, tracker: TempFileList) -> Self {
         self.temp_files = tracker;
+        self
+    }
+
+    /// Set the abort notification handle for cooperative cancellation.
+    pub fn with_abort_notify(mut self, notify: Arc<tokio::sync::Notify>) -> Self {
+        self.abort_notify = Some(notify);
         self
     }
 
@@ -580,9 +591,23 @@ impl Tool for BashTool {
         let timeout_secs = args.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS).clamp(1, 600);
 
         let session = guard.as_mut().unwrap();
-        let result = session
-            .execute(&effective_command, Duration::from_secs(timeout_secs))
-            .await;
+        let result = if let Some(ref abort) = self.abort_notify {
+            tokio::select! {
+                biased;
+                _ = abort.notified() => {
+                    tracing::info!("🛑 [bash] Command aborted: generation was stopped");
+                    if let Some(mut s) = guard.take() {
+                        s.kill().await;
+                    }
+                    Err(BashError("Command aborted: generation was stopped.".into()))
+                }
+                r = session.execute(&effective_command, Duration::from_secs(timeout_secs)) => r,
+            }
+        } else {
+            session
+                .execute(&effective_command, Duration::from_secs(timeout_secs))
+                .await
+        };
 
         match result {
             Ok(cmd) => {
