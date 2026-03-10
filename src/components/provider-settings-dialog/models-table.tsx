@@ -73,9 +73,9 @@ export function ModelsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">{t('modelId')}</TableHead>
-              <TableHead>{t('modelName')}</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
+              <TableHead className="w-[45%]">{t('modelId')}</TableHead>
+              <TableHead className="w-[45%]">{t('modelName')}</TableHead>
+              <TableHead className="w-[10%]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -87,7 +87,7 @@ export function ModelsTable({
                       {model.modelId}
                     </div>
                   </TableCell>
-                  <TableCell className="w-full">
+                  <TableCell>
                     <Input
                       value={model.displayName}
                       onChange={(e) => onUpdateModelName(model.id, e.target.value)}
