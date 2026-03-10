@@ -63,6 +63,7 @@
   "imageNotSupportedByModel": "所选模型不支持图片输入",
   "imagesSkipped": "已跳过 {{count}} 张图片",
   "failedToSaveProvider": "保存提供商设置失败",
+  "providerSavedSuccessfully": "提供商设置已保存",
   "apiError": "API 错误",
   "apiErrorBadRequest": "请求错误",
   "apiErrorUnauthorized": "未授权",

@@ -26,6 +26,7 @@ interface UseProviderSaveParams {
   selectedProvider: LLMProvider
   loadExistingData: () => void
   onOpenChange: (open: boolean) => void
+  onProviderCreated?: (providerId: string) => void
 }
 
 /**
@@ -45,6 +46,7 @@ export function useProviderSave({
   selectedProvider,
   loadExistingData,
   onOpenChange,
+  onProviderCreated,
 }: UseProviderSaveParams): UseProviderSaveReturn {
   const { t } = useTranslation('messages')
   const [isSaving, setIsSaving] = React.useState(false)
@@ -116,6 +118,7 @@ export function useProviderSave({
         const provider = await invoke<Provider>('create_provider', { req: providerReq })
         logger.info('Created provider:', provider)
         providerId = provider.id
+        onProviderCreated?.(providerId)
       }
 
       for (const modelId of modelsToDelete) {
@@ -146,6 +149,7 @@ export function useProviderSave({
       }
 
       loadExistingData()
+      toast.success(t('providerSavedSuccessfully'))
       onOpenChange(false)
     } catch (error) {
       logger.error('Failed to save provider:', error)
@@ -169,6 +173,7 @@ export function useProviderSave({
     selectedProvider,
     loadExistingData,
     onOpenChange,
+    onProviderCreated,
   ])
 
   return {

@@ -63,6 +63,7 @@
   "imageNotSupportedByModel": "The selected model does not support image input",
   "imagesSkipped": "{{count}} image(s) were skipped",
   "failedToSaveProvider": "Failed to save provider settings",
+  "providerSavedSuccessfully": "Provider settings saved",
   "apiError": "API Error",
   "apiErrorBadRequest": "Bad Request",
   "apiErrorUnauthorized": "Unauthorized",

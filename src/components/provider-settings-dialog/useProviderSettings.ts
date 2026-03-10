@@ -68,6 +68,13 @@ export function useProviderSettings(
   })
 
   // 6. Save functionality
+  const handleProviderCreated = React.useCallback(
+    (providerId: string) => {
+      formState.setEditingCustomProviderId(providerId)
+    },
+    [formState]
+  )
+
   const save = useProviderSave({
     models: modelList.models,
     modelsToDelete: modelList.modelsToDelete,
@@ -82,6 +89,7 @@ export function useProviderSettings(
     selectedProvider: formState.selectedProvider,
     loadExistingData: providerData.loadExistingData,
     onOpenChange,
+    onProviderCreated: handleProviderCreated,
   })
 
   // 7. Manual add model dialog state
