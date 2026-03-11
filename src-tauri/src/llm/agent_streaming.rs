@@ -215,9 +215,26 @@ where
                     );
                 }
             }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(
+                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
+            )) => {
+                consecutive_errors = 0;
+                if !is_reasoning {
+                    is_reasoning = true;
+                    tracing::info!("💡 [{}] Reasoning started", log_prefix);
+                }
+                if !reasoning.is_empty() {
+                    full_reasoning.push_str(&reasoning);
+
+                    if !callback(reasoning, StreamChunkType::Reasoning) {
+                        tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                        cancelled = true;
+                        break;
+                    }
+                }
+            }
             Ok(_) => {
                 consecutive_errors = 0;
-                // Ignore other events (e.g., ToolCallDelta, ReasoningDelta)
             }
             Err(e) => {
                 consecutive_errors += 1;

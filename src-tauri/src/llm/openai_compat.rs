@@ -727,12 +727,9 @@ where
                         let reasoning = delta.reasoning_content.as_ref().unwrap();
                         had_reasoning = true;
                         accumulated_reasoning.push_str(reasoning);
-                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
                             id: None,
-                            content: rig::message::ReasoningContent::Text {
-                                text: reasoning.clone(),
-                                signature: None,
-                            },
+                            reasoning: reasoning.clone(),
                         });
 
                         // Skip content in the same chunk as reasoning to avoid
