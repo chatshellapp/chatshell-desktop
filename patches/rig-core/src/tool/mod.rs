@@ -192,7 +192,14 @@ impl<T: Tool> ToolDyn for T {
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| {
-                        serde_json::to_string(&output).map_err(ToolError::JsonError)
+                        let json_str =
+                            serde_json::to_string(&output).map_err(ToolError::JsonError)?;
+                        if json_str.starts_with('"') && json_str.ends_with('"') {
+                            serde_json::from_str::<String>(&json_str)
+                                .map_err(ToolError::JsonError)
+                        } else {
+                            Ok(json_str)
+                        }
                     }),
                 Err(e) => Err(ToolError::JsonError(e)),
             }
@@ -697,5 +704,65 @@ mod tests {
         toolset.delete_tool("add");
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_string_output_not_double_encoded() {
+        #[derive(Deserialize)]
+        struct EchoArgs {
+            text: String,
+        }
+
+        #[derive(Debug, thiserror::Error)]
+        #[error("Echo error")]
+        struct EchoError;
+
+        #[derive(Deserialize, Serialize)]
+        struct Echo;
+
+        impl Tool for Echo {
+            const NAME: &'static str = "echo";
+            type Error = EchoError;
+            type Args = EchoArgs;
+            type Output = String;
+
+            async fn definition(&self, _prompt: String) -> ToolDefinition {
+                ToolDefinition {
+                    name: "echo".to_string(),
+                    description: "Echo input text".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "text": { "type": "string" }
+                        },
+                        "required": ["text"]
+                    }),
+                }
+            }
+
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                Ok(args.text)
+            }
+        }
+
+        let tool: &dyn ToolDyn = &Echo;
+        let result = tool
+            .call(r#"{"text": "hello world"}"#.to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(result, "hello world");
+        assert!(!result.starts_with('"'));
+        assert!(!result.ends_with('"'));
+    }
+
+    #[tokio::test]
+    async fn test_non_string_output_unchanged() {
+        let toolset = get_test_toolset();
+        let result = toolset
+            .call("add", r#"{"x": 3, "y": 4}"#.to_string())
+            .await
+            .unwrap();
+        assert_eq!(result, "7");
     }
 }
