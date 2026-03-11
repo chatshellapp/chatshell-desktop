@@ -6,7 +6,7 @@ pub async fn create_skills_table(pool: &SqlitePool) -> Result<()> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS skills (
             id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
             description TEXT,
             source TEXT NOT NULL DEFAULT 'user',
             path TEXT NOT NULL,
@@ -18,7 +18,8 @@ pub async fn create_skills_table(pool: &SqlitePool) -> Result<()> {
             cached_instructions TEXT,
             is_enabled INTEGER DEFAULT 1,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            UNIQUE(name, source)
         )",
     )
     .execute(pool)

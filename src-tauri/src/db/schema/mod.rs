@@ -16,7 +16,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 9;
+const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -99,6 +99,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         migrate_v8_to_v9(pool).await?;
         set_user_version(pool, 9).await?;
         tracing::info!("Migration to v9 completed");
+    }
+
+    if current_version < 10 {
+        migrate_v9_to_v10(pool).await?;
+        set_user_version(pool, 10).await?;
+        tracing::info!("Migration to v10 completed");
     }
 
     // Ensure columns exist (idempotent, fixes databases
@@ -280,5 +286,22 @@ async fn ensure_auth_token_column(pool: &SqlitePool) -> Result<()> {
 async fn migrate_v8_to_v9(pool: &SqlitePool) -> Result<()> {
     search::create_messages_fts_table(pool).await?;
     tracing::info!("Created messages_fts FTS5 table for search");
+    Ok(())
+}
+
+/// Migration v9 -> v10: Fix skills table unique constraint.
+/// The old schema had `name UNIQUE` which prevented skills with the same name from
+/// different sources (e.g. claude, agents). The new schema uses UNIQUE(name, source).
+async fn migrate_v9_to_v10(pool: &SqlitePool) -> Result<()> {
+    // SQLite cannot drop/modify constraints, so we drop and recreate the skills tables.
+    // assistant_skills must be dropped first due to the FK reference.
+    sqlx::query("DROP TABLE IF EXISTS assistant_skills")
+        .execute(pool)
+        .await?;
+    sqlx::query("DROP TABLE IF EXISTS skills")
+        .execute(pool)
+        .await?;
+    skills::create_skills_table(pool).await?;
+    tracing::info!("Recreated skills and assistant_skills tables with UNIQUE(name, source)");
     Ok(())
 }
