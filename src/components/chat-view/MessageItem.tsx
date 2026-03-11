@@ -212,7 +212,9 @@ export function MessageItem({
           assistantImageAttachments.length > 0
             ? handleCopyImage
             : hasContentBlocks
-              ? async () => { navigator.clipboard.writeText(message.content) }
+              ? async () => {
+                  navigator.clipboard.writeText(message.content)
+                }
               : undefined
         }
         onCopy={onCopy}
