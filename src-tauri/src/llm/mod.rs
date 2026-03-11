@@ -39,8 +39,8 @@ pub use tool_registry::{ToolDefinition, ToolParameter, ToolRegistry};
 pub use tools::{WebFetchTool, WebSearchTool};
 
 use agent_builder::{
-    AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
-    stream_chat_with_agent,
+    AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
+    build_tool_result_message, build_user_message, create_provider_agent, stream_chat_with_agent,
 };
 use anyhow::Result;
 use rig::completion::Message as RigMessage;
@@ -68,6 +68,14 @@ pub struct FileData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallData {
+    pub id: String,
+    pub tool_name: String,
+    pub tool_input: String,
+    pub tool_output: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
@@ -77,6 +85,15 @@ pub struct ChatMessage {
     /// Optional files/documents for multimodal messages
     #[serde(default)]
     pub files: Vec<FileData>,
+    /// Tool calls made by the assistant (only for role="assistant")
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCallData>,
+    /// Tool call ID this message is a result for (only for role="tool")
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+    /// Reasoning/thinking content from the assistant (only for role="assistant")
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,9 +146,22 @@ pub async fn call_provider(
         let is_last = i == messages.len() - 1;
         let message = match msg.role.as_str() {
             "user" => build_user_message(&msg.content, &msg.images, &msg.files),
-            "assistant" => build_assistant_message(&msg.content),
+            "assistant" => {
+                if !msg.tool_calls.is_empty() {
+                    build_assistant_message_with_tool_calls(
+                        &msg.content,
+                        &msg.tool_calls,
+                        msg.reasoning_content.as_deref(),
+                    )
+                } else {
+                    build_assistant_message(&msg.content, msg.reasoning_content.as_deref())
+                }
+            }
+            "tool" => {
+                let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
+                build_tool_result_message(tc_id, &msg.content)
+            }
             "system" => {
-                // System messages are handled via preamble in agent config
                 if system_prompt.is_some() {
                     continue;
                 }

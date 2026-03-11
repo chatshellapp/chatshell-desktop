@@ -77,6 +77,8 @@ pub enum SimpleMessage {
     },
     Assistant {
         content: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
         #[serde(
             default,
             skip_serializing_if = "Vec::is_empty",
@@ -217,32 +219,28 @@ fn convert_message(msg: message::Message, supports_array_content: bool) -> Vec<S
             }
         }
         message::Message::Assistant { content, .. } => {
-            let (text_parts, tool_calls): (Vec<_>, Vec<_>) = content
-                .into_iter()
-                .partition(|c| !matches!(c, AssistantContent::ToolCall(_)));
+            let mut text_parts = Vec::new();
+            let mut reasoning_parts = Vec::new();
+            let mut tc = Vec::new();
 
-            let text = text_parts
-                .iter()
-                .filter_map(|c| match c {
-                    AssistantContent::Text(t) => Some(t.text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("");
+            for item in content.into_iter() {
+                match item {
+                    AssistantContent::Text(t) => text_parts.push(t.text.clone()),
+                    AssistantContent::Reasoning(r) => reasoning_parts.push(r.display_text()),
+                    AssistantContent::ToolCall(c) => tc.push(c.into()),
+                    _ => {}
+                }
+            }
 
-            let tc: Vec<openai::ToolCall> = tool_calls
-                .into_iter()
-                .filter_map(|c| {
-                    if let AssistantContent::ToolCall(tc) = c {
-                        Some(tc.into())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let reasoning = if reasoning_parts.is_empty() {
+                None
+            } else {
+                Some(reasoning_parts.join("\n"))
+            };
 
             vec![SimpleMessage::Assistant {
-                content: text,
+                content: text_parts.join(""),
+                reasoning_content: reasoning,
                 tool_calls: tc,
             }]
         }

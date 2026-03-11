@@ -1251,9 +1251,58 @@ pub fn build_user_message(
 }
 
 /// Helper to build assistant message
-pub fn build_assistant_message(text: &str) -> Message {
+pub fn build_assistant_message(text: &str, reasoning: Option<&str>) -> Message {
+    let mut content_items: Vec<AssistantContent> = vec![];
+    if let Some(r) = reasoning {
+        if !r.is_empty() {
+            content_items.push(AssistantContent::reasoning(r));
+        }
+    }
+    content_items.push(AssistantContent::Text(text.to_string().into()));
     Message::Assistant {
         id: None,
-        content: OneOrMany::one(AssistantContent::Text(text.to_string().into())),
+        content: OneOrMany::many(content_items)
+            .expect("content_items should have at least one item"),
+    }
+}
+
+/// Build an assistant message that includes tool calls alongside optional text.
+pub fn build_assistant_message_with_tool_calls(
+    text: &str,
+    tool_calls: &[crate::llm::ToolCallData],
+    reasoning: Option<&str>,
+) -> Message {
+    let mut content_items: Vec<AssistantContent> = vec![];
+    if let Some(r) = reasoning {
+        if !r.is_empty() {
+            content_items.push(AssistantContent::reasoning(r));
+        }
+    }
+    if !text.is_empty() {
+        content_items.push(AssistantContent::Text(text.to_string().into()));
+    }
+    for tc in tool_calls {
+        let args: serde_json::Value = serde_json::from_str(&tc.tool_input)
+            .unwrap_or(serde_json::Value::String(tc.tool_input.clone()));
+        content_items.push(AssistantContent::tool_call(&tc.id, &tc.tool_name, args));
+    }
+    if content_items.is_empty() {
+        content_items.push(AssistantContent::Text(String::new().into()));
+    }
+    Message::Assistant {
+        id: None,
+        content: OneOrMany::many(content_items)
+            .expect("content_items should have at least one item"),
+    }
+}
+
+/// Build a tool result message (sent as a User message with ToolResult content).
+pub fn build_tool_result_message(tool_call_id: &str, output: &str) -> Message {
+    use rig::message::{ToolResultContent, UserContent};
+    Message::User {
+        content: OneOrMany::one(UserContent::tool_result(
+            tool_call_id,
+            OneOrMany::one(ToolResultContent::text(output)),
+        )),
     }
 }

@@ -2,8 +2,8 @@
 
 use super::super::AppState;
 use crate::llm::agent_builder::{
-    AgentConfig, build_assistant_message, build_user_message, create_provider_agent,
-    stream_chat_with_agent,
+    AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
+    build_tool_result_message, build_user_message, create_provider_agent, stream_chat_with_agent,
 };
 use crate::llm::tools::bash::{BashTool, TempFileList};
 use crate::llm::tools::{
@@ -558,14 +558,25 @@ pub(crate) async fn handle_agent_streaming(
         let is_last = i == chat_messages.len() - 1;
         let message = match msg.role.as_str() {
             "user" => build_user_message(&msg.content, &msg.images, &msg.files),
-            "assistant" => build_assistant_message(&msg.content),
+            "assistant" => {
+                if !msg.tool_calls.is_empty() {
+                    build_assistant_message_with_tool_calls(
+                        &msg.content,
+                        &msg.tool_calls,
+                        msg.reasoning_content.as_deref(),
+                    )
+                } else {
+                    build_assistant_message(&msg.content, msg.reasoning_content.as_deref())
+                }
+            }
+            "tool" => {
+                let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
+                build_tool_result_message(tc_id, &msg.content)
+            }
             "system" => {
-                // System messages are handled via preamble in agent config
-                // Skip them in history if we have a system_prompt in config
                 if system_prompt.is_some() {
                     continue;
                 }
-                // Otherwise include as user message with system context
                 build_user_message(&format!("[System]: {}", msg.content), &[], &[])
             }
             _ => build_user_message(&msg.content, &msg.images, &msg.files),

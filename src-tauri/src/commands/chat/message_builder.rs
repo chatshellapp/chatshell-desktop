@@ -1,10 +1,12 @@
 //! Chat message building for LLM requests
 //!
 //! Constructs the chat message array including system prompt, history, and current user message.
+//! For assistant messages with tool calls, the full tool call chain is reconstructed:
+//! assistant(tool_calls) -> tool(result) -> ... -> assistant(final text).
 
 use super::AppState;
 use super::attachment_processing;
-use crate::llm::{self, ChatMessage};
+use crate::llm::{self, ChatMessage, ToolCallData};
 use crate::prompts;
 
 /// Build chat messages for LLM request
@@ -37,27 +39,26 @@ pub async fn build_chat_messages(
         content: system_prompt_content,
         images: vec![],
         files: vec![],
+        tool_calls: vec![],
+        tool_call_id: None,
+        reasoning_content: None,
     }];
 
-    // Include message history if requested
     if include_history
         && let Ok(messages) = state
             .db
             .list_messages_by_conversation(conversation_id)
             .await
     {
-        // Filter out the current user message first
         let history_messages: Vec<_> = messages
             .iter()
             .filter(|msg| msg.id != user_message_id)
             .collect();
 
-        // Apply context message count limit if specified
         let messages_to_include = match context_message_count {
             Some(count) if count > 0 => {
                 let count = count as usize;
                 if history_messages.len() > count {
-                    // Take only the last N messages
                     tracing::info!(
                         "📊 [message_builder] Limiting context to {} messages (had {})",
                         count,
@@ -68,32 +69,145 @@ pub async fn build_chat_messages(
                     &history_messages[..]
                 }
             }
-            _ => &history_messages[..], // None or negative: include all
+            _ => &history_messages[..],
         };
 
         for msg in messages_to_include.iter() {
-            let chat_role = match msg.sender_type.as_str() {
-                "user" => "user",
-                "model" | "assistant" => "assistant",
+            match msg.sender_type.as_str() {
+                "user" => {
+                    chat_messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: msg.content.clone(),
+                        images: vec![],
+                        files: vec![],
+                        tool_calls: vec![],
+                        tool_call_id: None,
+                        reasoning_content: None,
+                    });
+                }
+                "model" | "assistant" => {
+                    let db_tool_calls = state
+                        .db
+                        .get_tool_calls_by_message(&msg.id)
+                        .await
+                        .unwrap_or_default();
+
+                    let thinking_steps = state
+                        .db
+                        .get_thinking_steps_by_message(&msg.id)
+                        .await
+                        .unwrap_or_default();
+                    let reasoning = if thinking_steps.is_empty() {
+                        None
+                    } else {
+                        let joined: String = thinking_steps
+                            .iter()
+                            .map(|s| s.content.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        if joined.trim().is_empty() {
+                            None
+                        } else {
+                            Some(joined)
+                        }
+                    };
+
+                    if db_tool_calls.is_empty() {
+                        chat_messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: msg.content.clone(),
+                            images: vec![],
+                            files: vec![],
+                            tool_calls: vec![],
+                            tool_call_id: None,
+                            reasoning_content: reasoning,
+                        });
+                    } else {
+                        let tc_data: Vec<ToolCallData> = db_tool_calls
+                            .iter()
+                            .map(|tc| ToolCallData {
+                                id: tc.id.clone(),
+                                tool_name: tc.tool_name.clone(),
+                                tool_input: tc.tool_input.clone().unwrap_or_default(),
+                                tool_output: tc.tool_output.clone(),
+                            })
+                            .collect();
+
+                        // 1) Assistant message carrying tool_calls (content may be
+                        //    empty when the assistant only invoked tools)
+                        let content_blocks = state
+                            .db
+                            .get_content_blocks_by_message(&msg.id)
+                            .await
+                            .unwrap_or_default();
+
+                        let pre_tool_text = if !content_blocks.is_empty() {
+                            let min_tc_order = db_tool_calls
+                                .iter()
+                                .map(|tc| tc.display_order)
+                                .min()
+                                .unwrap_or(0);
+                            content_blocks
+                                .iter()
+                                .filter(|cb| cb.display_order < min_tc_order)
+                                .map(|cb| cb.content.as_str())
+                                .collect::<Vec<_>>()
+                                .join("")
+                        } else {
+                            String::new()
+                        };
+
+                        chat_messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: pre_tool_text,
+                            images: vec![],
+                            files: vec![],
+                            tool_calls: tc_data.clone(),
+                            tool_call_id: None,
+                            reasoning_content: reasoning,
+                        });
+
+                        // 2) Tool result messages
+                        for tc in &tc_data {
+                            if let Some(ref output) = tc.tool_output {
+                                chat_messages.push(ChatMessage {
+                                    role: "tool".to_string(),
+                                    content: output.clone(),
+                                    images: vec![],
+                                    files: vec![],
+                                    tool_calls: vec![],
+                                    tool_call_id: Some(tc.id.clone()),
+                                    reasoning_content: None,
+                                });
+                            }
+                        }
+
+                        // 3) Final assistant text after tool calls (the stored
+                        //    message content), if non-empty
+                        if !msg.content.trim().is_empty() {
+                            chat_messages.push(ChatMessage {
+                                role: "assistant".to_string(),
+                                content: msg.content.clone(),
+                                images: vec![],
+                                files: vec![],
+                                tool_calls: vec![],
+                                tool_call_id: None,
+                                reasoning_content: None,
+                            });
+                        }
+                    }
+                }
                 _ => continue,
-            };
-            chat_messages.push(ChatMessage {
-                role: chat_role.to_string(),
-                content: msg.content.clone(),
-                images: vec![],
-                files: vec![],
-            });
+            }
         }
     }
 
-    // Add current user message with processed content
     let final_user_content = if let Some(prompt) = user_prompt {
         format!("{}\n\n{}", prompt, processed_content)
     } else {
         processed_content.to_string()
     };
 
-    // Extract ImageData for LLM
     let llm_images: Vec<llm::ImageData> = user_images.iter().map(|img| img.data.clone()).collect();
 
     chat_messages.push(ChatMessage {
@@ -101,6 +215,9 @@ pub async fn build_chat_messages(
         content: final_user_content,
         images: llm_images,
         files: user_files.to_vec(),
+        tool_calls: vec![],
+        tool_call_id: None,
+        reasoning_content: None,
     });
 
     chat_messages
