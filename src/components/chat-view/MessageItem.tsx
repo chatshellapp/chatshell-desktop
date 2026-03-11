@@ -208,7 +208,13 @@ export function MessageItem({
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
         headerContent={headerContent}
         footerContent={generatedImagesContent}
-        onCopyOverride={assistantImageAttachments.length > 0 ? handleCopyImage : undefined}
+        onCopyOverride={
+          assistantImageAttachments.length > 0
+            ? handleCopyImage
+            : hasContentBlocks
+              ? async () => { navigator.clipboard.writeText(message.content) }
+              : undefined
+        }
         onCopy={onCopy}
         onRevert={() => onRevert(message.id)}
         onFork={() => onFork(message.id)}
