@@ -45,6 +45,14 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
 
+        if !conv_id.is_empty() {
+            sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(conv_id)
+                .execute(self.pool.as_ref())
+                .await?;
+        }
+
         tracing::info!("✅ [db] INSERT completed");
 
         tracing::info!("🔍 [db] Retrieving created message...");

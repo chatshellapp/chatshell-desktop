@@ -161,6 +161,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.isSending = false
       })
 
+      // Bump the conversation to the top of the sidebar list
+      const { useConversationStore } = await import('../conversation')
+      useConversationStore.getState().bumpConversation(targetId, content)
+
       logger.info('[messageStore] User message added to store, waiting for assistant response...')
 
       // The assistant message will be added via the chat-complete event

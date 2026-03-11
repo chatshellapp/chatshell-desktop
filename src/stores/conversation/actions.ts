@@ -327,4 +327,18 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       draft.lastUsedModel = null
     })
   },
+
+  bumpConversation: (id: string, lastMessage?: string) => {
+    set((draft) => {
+      const index = draft.conversations.findIndex((c: Conversation) => c.id === id)
+      if (index <= 0) return
+      const [conversation] = draft.conversations.splice(index, 1)
+      const now = new Date().toISOString()
+      conversation.updated_at = now
+      if (lastMessage !== undefined) {
+        conversation.last_message = lastMessage
+      }
+      draft.conversations.unshift(conversation)
+    })
+  },
 })

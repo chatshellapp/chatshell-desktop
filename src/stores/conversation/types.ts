@@ -49,6 +49,9 @@ export interface ConversationStoreActions {
   // Selection actions
   setSelectedModel: (model: Model | null) => void
   setSelectedAssistant: (assistant: Assistant | null) => void
+
+  // Bump a conversation to the top of the list (called after sending a message)
+  bumpConversation: (id: string, lastMessage?: string) => void
 }
 
 // Combined conversation store type
