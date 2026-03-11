@@ -235,7 +235,7 @@ export function ChatView() {
           <div className="w-12 h-1 bg-muted-foreground/20 rounded-full backdrop-blur-sm group-hover:bg-muted-foreground/40 transition-colors" />
         </div>
 
-        <div className="p-4 flex justify-center h-full overflow-y-auto">
+        <div className="p-4 flex flex-col h-full overflow-y-auto">
           <ChatInput />
         </div>
       </div>

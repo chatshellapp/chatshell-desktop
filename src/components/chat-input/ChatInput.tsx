@@ -383,7 +383,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
   return (
     <div
-      className="grid w-full gap-6 relative"
+      className="flex flex-col w-full gap-6 relative flex-1"
       onDragEnter={dragHandlers.onDragEnter}
       onDragLeave={dragHandlers.onDragLeave}
       onDragOver={dragHandlers.onDragOver}
@@ -413,7 +413,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
         />
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 flex-1">
         {/* Tags row: System Prompt + Working Directory */}
         {(activeSystemPromptInfo || conversationSettings?.workingDirectory) && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -499,7 +499,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
           </div>
         )}
 
-        <InputGroup>
+        <InputGroup className="flex-1">
           <AttachmentPreviewRow
             attachments={attachments}
             onRemove={removeAttachment}
