@@ -1,17 +1,73 @@
 # ChatShell
 
-**Your AI, in a Shell. Stand Alone, Yet Connected.**
+A lightweight desktop AI agent with 9 built-in tools. Built with Tauri 2 + Rust, not Electron.
 
+**Agent-ready, out of the box** — no plugins, no MCP servers, no config files.
+
+[![Download](https://img.shields.io/github/v/release/chatshellapp/chatshell-desktop?label=Download&color=brightgreen)](https://github.com/chatshellapp/chatshell-desktop/releases/latest)
+[![Binary Size](https://img.shields.io/badge/Binary_Size-22MB-green)](https://github.com/chatshellapp/chatshell-desktop/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/chatshellapp/chatshell-desktop)](https://github.com/chatshellapp/chatshell-desktop/stargazers)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
-[![Rust](https://img.shields.io/badge/Rust-2024-orange)](https://www.rust-lang.org/)
-[![React](https://img.shields.io/badge/React-19-blue)](https://react.dev/)
 
-ChatShell is a free, open-source desktop AI client that works as a fully capable AI agent right out of the box. No plugins to install, no MCP servers to configure — ChatShell ships with built-in tools for web search, web browsing, file access, and shell execution, so your AI can take real actions from the very first conversation.
+> Web Search · Web Fetch · Bash · File Read/Edit/Write · Grep · Glob — all built in, zero config.
+> No plugins to install, no MCP servers to set up. A working AI agent in under a minute.
 
-Built on Tauri 2 with a Rust backend, ChatShell is fast, lightweight, and runs on macOS, Windows, and Linux.
+[Download](https://github.com/chatshellapp/chatshell-desktop/releases/latest) · [Documentation](https://chatshell.app/docs) · [GitHub](https://github.com/chatshellapp/chatshell-desktop) · [Issues](https://github.com/chatshellapp/chatshell-desktop/issues)
 
-[Website](https://chatshell.app/) | [GitHub](https://github.com/chatshellapp/chatshell-desktop) | [Issues](https://github.com/chatshellapp/chatshell-desktop/issues)
+---
+
+## Quick Start
+
+1. **[Download ChatShell](https://github.com/chatshellapp/chatshell-desktop/releases/latest)** — macOS (universal), Windows, Linux (22MB)
+2. **Add an API key** — OpenAI, Anthropic, Google Gemini, or any of [40+ providers](https://chatshell.app/docs/providers)
+3. **Try it:**
+
+```
+Search the web for the latest Rust release and summarize the changelog
+```
+
+ChatShell's AI will autonomously search the web, fetch the release page, and return a summary — no setup, no plugins.
+
+Want to go further? Try:
+
+```
+Find all TODO comments in ~/projects/my-app, then create a markdown report on my desktop
+```
+
+The agent chains Grep, Read, and Write tools together to complete multi-step tasks on its own.
+
+---
+
+## What Can You Do
+
+### Research & Summarize
+
+- `Search for the best ergonomic keyboards in 2026 and compare the top 3`
+- `Fetch https://blog.rust-lang.org and summarize the latest post`
+- `Search for recent papers on RAG and write a summary to ~/Desktop/rag-notes.md`
+
+### Code & Files
+
+- `Find all files larger than 1MB in this project`
+- `Read src/App.tsx and suggest performance improvements`
+- `Replace all console.log calls with logger.info across this project`
+
+### System & Automation
+
+- `List all running Docker containers and show their resource usage`
+- `Find which process is using port 3000 and kill it`
+- `Create a bash script that backs up my project to ~/backups with a timestamp`
+
+### Create & Generate
+
+- `Generate a pixel art coffee shop with a cat sleeping on the counter` (Gemini Nana Banana 2)
+- `Design a minimal app icon for a note-taking app, blue and white`
+- `Create a diagram showing how microservices communicate` (Mermaid)
+
+### Extend with Skills & MCP
+
+- `Open my GitHub PRs and summarize what needs review` (agent-browser skill)
+- Connect external tools via MCP servers — databases, APIs, dev tools — and the AI uses them seamlessly alongside built-in tools
 
 ---
 
@@ -216,10 +272,6 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **No Cloud Dependency**: Works entirely offline with local models
 
 ---
-
-## Installation
-
-Download from [chatshell.app](https://chatshell.app/) or build from source. The macOS build is code-signed and notarized.
 
 ## Development
 
