@@ -180,7 +180,7 @@ impl Database {
 
     // Tool Call operations
     pub async fn create_tool_call(&self, req: CreateToolCallRequest) -> Result<ToolCall> {
-        let id = Uuid::now_v7().to_string();
+        let id = req.id.unwrap_or_else(|| Uuid::now_v7().to_string());
         let now = Utc::now().to_rfc3339();
         let status = req.status.unwrap_or_else(|| "pending".to_string());
         let display_order = req.display_order.unwrap_or(0);

@@ -810,6 +810,10 @@ mod tests {
                     println!("Reasoning delta: {reasoning}");
                     chunk_count += 1;
                 }
+                Ok(StreamedAssistantContent::Image(_)) => {
+                    println!("\nImage chunk received");
+                    chunk_count += 1;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;

@@ -1215,6 +1215,7 @@ pub(crate) async fn handle_agent_streaming(
             match state_clone
                 .db
                 .create_tool_call(CreateToolCallRequest {
+                    id: Some(tool_call_id.clone()),
                     message_id: assistant_message.id.clone(),
                     tool_name: display_name,
                     tool_input: Some(tool_input.clone()),

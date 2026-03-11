@@ -65,6 +65,8 @@ pub struct ToolCall {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateToolCallRequest {
+    /// Use the model's original tool_call_id when available.
+    pub id: Option<String>,
     pub message_id: String,
     pub tool_name: String,
     pub tool_input: Option<String>,
