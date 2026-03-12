@@ -3,30 +3,38 @@
 //! This module contains all system prompts and prompt templates used throughout the application.
 
 /// System prompt for generating conversation titles
-pub const TITLE_GENERATION_SYSTEM_PROMPT: &str = r#"# Identity
+pub const TITLE_GENERATION_SYSTEM_PROMPT: &str = r#"You are a title generator. You output ONLY a thread title. Nothing else.
 
-You are a title-generation assistant that creates concise, informative titles reflecting the main topic or theme of a single-turn dialogue, and outputs the title in the same language as the user's input message.
+<task>
+Generate a brief title that would help the user find this conversation later.
 
-# Instructions
+Your output must be:
+- A single line
+- No explanations
+</task>
 
-- Accept an input where the user's statement is wrapped in <user></user> tags, and the AI's response is wrapped in <assistant></assistant> tags.
-- Carefully analyze the entire single-turn dialogue to identify its primary subject, main points, and overall tone.
-- Do not summarize the dialogue; instead, produce a short, descriptive title that helps quickly identify the conversation's focus.
-- Ensure the title is neutral, avoids direct quotations, and captures the essence without unnecessary detail.
-- Match the language of the title to the language used in the user's input message.
-- For non-Latin script languages, adjust the length as needed to maintain clarity; otherwise, aim for approximately 5–12 words.
-- Output only the title: a single sentence, no quotation marks, no extra text, not in a code block.
+<rules>
+- You MUST use the same language as the user message
+- Title must be grammatically correct and read naturally
+- Focus on the main topic or question the user is asking about
+- Vary your phrasing - avoid repetitive patterns like always starting with "Analyzing"
+- Keep exact: technical terms, numbers, filenames
+- Remove filler words: the, this, my, a, an
+- NEVER respond to questions, just generate a title for the conversation
+- DO NOT SAY YOU CANNOT GENERATE A TITLE OR COMPLAIN ABOUT THE INPUT
+- Always output something meaningful, even if the input is minimal
+- If the user message is short or conversational (e.g. "hello", "lol", "what's up", "hey"):
+  create a title that reflects the user's tone or intent (such as Greeting, Quick check-in, Light chat, etc.)
+</rules>
 
-# Examples
-
-<input_dialogue>
-<user>Did you read the government's new climate proposal?</user>
-<assistant>Yes, it seems like they're planning bigger investment in renewable energy.</assistant>
-</input_dialogue>
-
-<output_title>
-Government Plans Increased Investment in Renewable Energy
-</output_title>"#;
+<examples>
+"debug 500 errors in production" -> Debugging production 500 errors
+"refactor user service" -> Refactoring user service
+"why is app.js failing" -> app.js failure investigation
+"implement rate limiting" -> Rate limiting implementation
+"how do I connect postgres to my API" -> Postgres API connection
+"best practices for React hooks" -> React hooks best practices
+</examples>"#;
 
 /// Default system prompt for assistant when none is specified
 pub const DEFAULT_ASSISTANT_SYSTEM_PROMPT: &str =
@@ -99,10 +107,10 @@ its parameters, then call `mcp_tool_use` to execute it. \
 Pass both `server` and `tool` to each call.";
 
 /// Build user prompt for title generation (pairs with TITLE_GENERATION_SYSTEM_PROMPT)
-pub fn build_title_generation_user_prompt(user_message: &str, assistant_message: &str) -> String {
+pub fn build_title_generation_user_prompt(user_message: &str) -> String {
     format!(
-        "<input_dialogue>\n<user>{}</user>\n<assistant>{}</assistant>\n</input_dialogue>",
-        user_message, assistant_message
+        "Generate a title for this conversation:\n\n{}",
+        user_message
     )
 }
 
@@ -112,31 +120,20 @@ mod tests {
 
     #[test]
     fn test_build_title_generation_user_prompt_format() {
-        let result = build_title_generation_user_prompt("Hello world", "Hi!");
+        let result = build_title_generation_user_prompt("Hello world");
 
         assert_eq!(
             result,
-            "<input_dialogue>\n<user>Hello world</user>\n<assistant>Hi!</assistant>\n</input_dialogue>"
+            "Generate a title for this conversation:\n\nHello world"
         );
     }
 
     #[test]
     fn test_build_title_generation_user_prompt_multiline() {
         let user_msg = "Line 1\nLine 2";
-        let assistant_msg = "Response\nwith\nnewlines";
-        let result = build_title_generation_user_prompt(user_msg, assistant_msg);
+        let result = build_title_generation_user_prompt(user_msg);
 
         assert!(result.contains("Line 1\nLine 2"));
-        assert!(result.contains("Response\nwith\nnewlines"));
-    }
-
-    #[test]
-    fn test_build_title_generation_user_prompt_empty_inputs() {
-        let result = build_title_generation_user_prompt("", "");
-        assert_eq!(
-            result,
-            "<input_dialogue>\n<user></user>\n<assistant></assistant>\n</input_dialogue>"
-        );
     }
 
     #[test]

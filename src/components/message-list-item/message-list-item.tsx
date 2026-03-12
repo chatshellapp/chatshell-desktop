@@ -6,6 +6,7 @@ import { MessageAvatarGroup } from './message-avatar'
 import { ActionsMenu } from './actions-menu'
 import { RenameDialog } from './rename-dialog'
 import { DeleteDialog } from './delete-dialog'
+import { useTypewriterTitle } from './useTypewriterTitle'
 
 export function MessageListItem({
   avatars,
@@ -18,10 +19,12 @@ export function MessageListItem({
   onGenerateTitle,
   onEditTitle,
   onDelete,
+  placeholderTitle,
 }: MessageListItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
   const [showRenameDialog, setShowRenameDialog] = React.useState(false)
+  const displayTitle = useTypewriterTitle(summary, placeholderTitle)
 
   const hasActions = onGenerateTitle || onEditTitle || onDelete
 
@@ -48,7 +51,7 @@ export function MessageListItem({
         <ItemContent>
           {/* First line: Summary (can wrap) with action overlay */}
           <ItemHeader className="relative">
-            <ItemTitle className="line-clamp-2">{summary}</ItemTitle>
+            <ItemTitle className="line-clamp-2">{displayTitle}</ItemTitle>
 
             {/* Floating action overlay */}
             {hasActions && (

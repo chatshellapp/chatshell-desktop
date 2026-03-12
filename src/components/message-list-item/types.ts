@@ -52,4 +52,9 @@ export interface MessageListItemProps {
    * Handler for delete action
    */
   onDelete?: () => void
+  /**
+   * Placeholder title shown when conversation has no real title yet.
+   * When summary transitions from this value to a real title, a typewriter animation plays.
+   */
+  placeholderTitle?: string
 }

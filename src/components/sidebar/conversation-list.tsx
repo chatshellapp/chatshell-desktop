@@ -69,11 +69,14 @@ export function ConversationList({
             : conversation.last_message
           : tChat('noMessages')
 
+        const placeholderTitle = t('newConversation')
+
         return (
           <MessageListItem
             key={conversation.id}
             avatars={displayAvatars}
-            summary={conversation.title || t('newConversation')}
+            summary={conversation.title || placeholderTitle}
+            placeholderTitle={placeholderTitle}
             timestamp={formatConversationTimestamp(conversation.updated_at)}
             lastMessage={lastMessage}
             isActive={currentConversation?.id === conversation.id}

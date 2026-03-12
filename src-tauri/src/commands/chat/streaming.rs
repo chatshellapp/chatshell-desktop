@@ -638,6 +638,35 @@ pub(crate) async fn handle_agent_streaming(
     let mcp_server_name_map_for_callback = mcp_tool_name_to_server_name.clone();
     let mcp_manager_for_callback = state_clone.mcp_manager.clone();
 
+    // Auto-generate title for new conversations early (only needs user message).
+    // Fire-and-forget: runs concurrently with the LLM streaming below.
+    {
+        let state_for_title = state_clone.clone();
+        let app_for_title = app.clone();
+        let conversation_id_for_title = conversation_id_clone.clone();
+        let content_for_title = content.clone();
+        let provider_for_title = provider_type.clone();
+        let model_for_title = model_id.clone();
+        let api_key_for_title = api_key.clone();
+        let base_url_for_title = base_url.clone();
+        let api_style_for_title = api_style.clone();
+
+        tokio::spawn(async move {
+            auto_generate_title_if_needed(
+                &state_for_title,
+                &app_for_title,
+                &conversation_id_for_title,
+                &content_for_title,
+                &provider_for_title,
+                &model_for_title,
+                api_key_for_title,
+                base_url_for_title,
+                api_style_for_title,
+            )
+            .await;
+        });
+    }
+
     // Stream using the agent
     let response = stream_chat_with_agent(
         agent,
@@ -1373,33 +1402,6 @@ pub(crate) async fn handle_agent_streaming(
         tasks.remove(&conversation_id_clone);
     }
 
-    // Auto-generate title for new conversations (async, doesn't block the response)
-    let state_for_title = state_clone.clone();
-    let app_for_title = app.clone();
-    let conversation_id_for_title = conversation_id_clone.clone();
-    let content_for_title = content.clone();
-    let final_content_for_title = final_content.clone();
-    let provider_for_title = provider_type.clone();
-    let model_for_title = model_id.clone();
-    let api_key_for_title = api_key.clone();
-    let base_url_for_title = base_url.clone();
-    let api_style_for_title = api_style.clone();
-
-    tokio::spawn(async move {
-        auto_generate_title_if_needed(
-            &state_for_title,
-            &app_for_title,
-            &conversation_id_for_title,
-            &content_for_title,
-            &final_content_for_title,
-            &provider_for_title,
-            &model_for_title,
-            api_key_for_title,
-            base_url_for_title,
-            api_style_for_title,
-        )
-        .await;
-    });
 }
 
 /// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.

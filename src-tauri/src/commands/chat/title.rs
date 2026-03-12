@@ -112,16 +112,10 @@ pub async fn generate_conversation_title_manually(
         return Err("No messages in conversation to generate title from".to_string());
     }
 
-    // Find first user message and first assistant message
+    // Find first user message
     let user_message = messages
         .iter()
         .find(|m| m.sender_type == "user")
-        .map(|m| m.content.clone())
-        .unwrap_or_default();
-
-    let assistant_message = messages
-        .iter()
-        .find(|m| m.sender_type == "model" || m.sender_type == "assistant")
         .map(|m| m.content.clone())
         .unwrap_or_default();
 
@@ -136,9 +130,7 @@ pub async fn generate_conversation_title_manually(
     // Generate the title
     let title = generate_conversation_title(
         &state,
-        &conversation_id,
         &user_message,
-        &assistant_message,
         &provider,
         &model,
         api_key,
@@ -155,9 +147,7 @@ pub async fn generate_conversation_title_manually(
 /// Helper function to generate conversation title
 pub(crate) async fn generate_conversation_title(
     state: &AppState,
-    _conversation_id: &str,
     user_message: &str,
-    assistant_message: &str,
     provider: &str,
     model: &str,
     api_key: Option<String>,
@@ -250,10 +240,7 @@ pub(crate) async fn generate_conversation_title(
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: prompts::build_title_generation_user_prompt(
-                    user_message,
-                    assistant_message,
-                ),
+                content: prompts::build_title_generation_user_prompt(user_message),
                 images: vec![],
                 files: vec![],
                 tool_calls: vec![],
@@ -285,7 +272,6 @@ pub(crate) async fn auto_generate_title_if_needed(
     app: &tauri::AppHandle,
     conversation_id: &str,
     user_content: &str,
-    assistant_content: &str,
     provider: &str,
     model: &str,
     api_key: Option<String>,
@@ -298,9 +284,7 @@ pub(crate) async fn auto_generate_title_if_needed(
         tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
         match generate_conversation_title(
             state,
-            conversation_id,
             user_content,
-            assistant_content,
             provider,
             model,
             api_key,
