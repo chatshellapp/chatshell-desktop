@@ -104,6 +104,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           convState.streamingContent = ''
           convState.streamingReasoningContent = ''
           convState.streamingToolCalls = {}
+          convState.apiError = null
         }
       })
 
