@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::agent::Agent;
+use rig::agent::{Agent, AgentBuilder};
 use rig::client::{CompletionClient, Nothing};
 use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
@@ -445,7 +445,8 @@ pub fn create_anthropic_agent(
         anthropic_config.model_params.max_tokens = Some(ANTHROPIC_DEFAULT_MAX_TOKENS);
     }
 
-    Ok(build_agent(client.agent(model_id), &anthropic_config))
+    let model = client.completion_model(model_id).with_prompt_caching();
+    Ok(build_agent(AgentBuilder::new(model), &anthropic_config))
 }
 
 /// Create an Azure OpenAI agent with full configuration.
