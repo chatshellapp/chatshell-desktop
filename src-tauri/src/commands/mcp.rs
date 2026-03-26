@@ -129,11 +129,19 @@ pub async fn create_mcp_server(
                 }
                 let mcp_config: McpConfig = cfg.into();
                 tracing::info!(
-                    "🔌 Creating STDIO MCP server: {} (command: {:?})",
+                    "🔌 Creating STDIO MCP server: {} (command: {:?}, env_vars: {}, args: {:?})",
                     name,
-                    mcp_config.command
+                    mcp_config.command,
+                    mcp_config
+                        .env
+                        .as_ref()
+                        .map(|e| format!("{:?}", e.keys().collect::<Vec<_>>()))
+                        .unwrap_or_else(|| "none".to_string()),
+                    mcp_config.args,
                 );
-                (None, Some(mcp_config.to_json().map_err(|e| e.to_string())?))
+                let json = mcp_config.to_json().map_err(|e| e.to_string())?;
+                tracing::debug!("  Stored config JSON: {}", json);
+                (None, Some(json))
             }
             "http" | _ => {
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
@@ -212,11 +220,19 @@ pub async fn update_mcp_server(
                 }
                 let mcp_config: McpConfig = cfg.into();
                 tracing::info!(
-                    "📝 Updating STDIO MCP server: {} (command: {:?})",
+                    "📝 Updating STDIO MCP server: {} (command: {:?}, env_vars: {}, args: {:?})",
                     name,
-                    mcp_config.command
+                    mcp_config.command,
+                    mcp_config
+                        .env
+                        .as_ref()
+                        .map(|e| format!("{:?}", e.keys().collect::<Vec<_>>()))
+                        .unwrap_or_else(|| "none".to_string()),
+                    mcp_config.args,
                 );
-                (None, Some(mcp_config.to_json().map_err(|e| e.to_string())?))
+                let json = mcp_config.to_json().map_err(|e| e.to_string())?;
+                tracing::debug!("  Stored config JSON: {}", json);
+                (None, Some(json))
             }
             "http" | _ => {
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
@@ -325,7 +341,15 @@ pub async fn test_mcp_stdio_connection(
     state: State<'_, AppState>,
     config: McpServerConfig,
 ) -> Result<Vec<McpToolInfo>, String> {
-    tracing::info!("🧪 Testing STDIO MCP connection: {:?}", config.command);
+    tracing::info!(
+        "🧪 Testing STDIO MCP connection: {:?} (env_vars: {})",
+        config.command,
+        config
+            .env
+            .as_ref()
+            .map(|e| format!("{:?}", e.keys().collect::<Vec<_>>()))
+            .unwrap_or_else(|| "none".to_string()),
+    );
 
     if config.command.is_none() {
         return Err("STDIO transport requires a command".to_string());

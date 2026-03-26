@@ -251,11 +251,18 @@ impl McpConnectionManager {
             }
         }
         if let Some(env_vars) = &config.env {
-            cmd.envs(env_vars);
-            tracing::debug!(
-                "  Custom env vars: {:?}",
-                env_vars.keys().collect::<Vec<_>>()
-            );
+            if env_vars.is_empty() {
+                tracing::info!("  No custom env vars (empty map)");
+            } else {
+                cmd.envs(env_vars);
+                tracing::info!(
+                    "  Applied {} custom env var(s): {:?}",
+                    env_vars.len(),
+                    env_vars.keys().collect::<Vec<_>>()
+                );
+            }
+        } else {
+            tracing::info!("  No custom env vars configured");
         }
 
         // Create STDIO transport from the command

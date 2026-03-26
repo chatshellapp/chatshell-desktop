@@ -101,14 +101,24 @@ export function McpServerConfigModal({
       .filter((line) => line.length > 0)
   }
 
+  const stripQuotes = (s: string): string => {
+    if (s.length >= 2) {
+      if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        return s.slice(1, -1)
+      }
+    }
+    return s
+  }
+
   const parseEnvVars = (envText: string): Record<string, string> => {
     const envMap: Record<string, string> = {}
     envText.split('\n').forEach((line) => {
       const trimmed = line.trim()
-      if (trimmed && trimmed.includes('=')) {
+      if (!trimmed || trimmed.startsWith('#')) return
+      if (trimmed.includes('=')) {
         const eqIndex = trimmed.indexOf('=')
         const key = trimmed.substring(0, eqIndex).trim()
-        const value = trimmed.substring(eqIndex + 1).trim()
+        const value = stripQuotes(trimmed.substring(eqIndex + 1).trim())
         if (key) envMap[key] = value
       }
     })
