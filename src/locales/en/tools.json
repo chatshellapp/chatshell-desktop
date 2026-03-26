@@ -100,5 +100,11 @@
   "cwdHelp": "Defaults to home directory if not specified",
   "descriptionOptional": "Description (optional)",
   "descriptionPlaceholder": "A brief description of this MCP server",
-  "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools will not be used."
+  "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools will not be used.",
+  "pasteJsonConfig": "Paste JSON config",
+  "backToForm": "Back to form",
+  "applyJsonConfig": "Apply",
+  "pasteJsonPlaceholder": "Paste your MCP server JSON config here...\n\nExample:\n{\n  \"mcpServers\": {\n    \"MyServer\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"my-mcp-server\"],\n      \"env\": { \"API_KEY\": \"...\" }\n    }\n  }\n}",
+  "jsonParseError": "Invalid JSON. Please check the format and try again.",
+  "jsonNoServerFound": "No valid server configuration found in the pasted JSON."
 }

@@ -533,7 +533,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             </span>
                           </div>
                           <span className="text-xs text-muted-foreground truncate font-mono">
-                            {serverTransport === 'http' ? server.endpoint : serverConfig?.command}
+                            {serverTransport === 'http'
+                              ? server.endpoint
+                              : [
+                                  serverConfig?.command,
+                                  ...(serverConfig?.args ?? []),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
                           </span>
                           {server.description && (
                             <span className="text-xs text-muted-foreground">

@@ -100,5 +100,11 @@
   "cwdHelp": "未指定时默认使用主目录",
   "descriptionOptional": "描述（可选）",
   "descriptionPlaceholder": "对此 MCP 服务器的简要描述",
-  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具将不会被使用。"
+  "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具将不会被使用。",
+  "pasteJsonConfig": "粘贴 JSON 配置",
+  "backToForm": "返回表单",
+  "applyJsonConfig": "应用",
+  "pasteJsonPlaceholder": "在此粘贴 MCP 服务器 JSON 配置...\n\n示例：\n{\n  \"mcpServers\": {\n    \"MyServer\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"my-mcp-server\"],\n      \"env\": { \"API_KEY\": \"...\" }\n    }\n  }\n}",
+  "jsonParseError": "无效的 JSON，请检查格式后重试。",
+  "jsonNoServerFound": "粘贴的 JSON 中未找到有效的服务器配置。"
 }
