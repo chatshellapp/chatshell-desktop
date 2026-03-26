@@ -1,7 +1,7 @@
 # GitLab CI/CD for ChatShell Desktop
 #
-# Runner requirements:
-#   - "linux" tag:   Ubuntu 22.04+ runner with apt-get access
+# Linux jobs use GitLab.com shared runners (no tags needed).
+# Windows and macOS jobs require self-hosted runners:
 #   - "windows" tag: Windows runner with MSVC toolchain
 #   - "macos" tag:   macOS 14+ (Apple Silicon) runner with Xcode
 #
@@ -63,8 +63,6 @@ workflow:
 
 check:
   stage: check
-  tags:
-    - linux
   image: node:${NODE_VERSION}
   interruptible: true
   before_script:
@@ -162,8 +160,6 @@ build-macos:
 
 build-linux:
   stage: build
-  tags:
-    - linux
   image: ubuntu:22.04
   needs: ["check"]
   interruptible: true
@@ -200,8 +196,6 @@ build-linux:
 
 release:
   stage: release
-  tags:
-    - linux
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - job: build-windows
