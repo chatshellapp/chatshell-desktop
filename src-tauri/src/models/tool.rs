@@ -23,19 +23,21 @@ pub struct Tool {
 impl Tool {
     /// Parse the config field as McpConfig
     pub fn parse_mcp_config(&self) -> Option<McpConfig> {
-        self.config.as_ref().and_then(|c| match serde_json::from_str(c) {
-            Ok(config) => Some(config),
-            Err(e) => {
-                tracing::error!(
-                    "Failed to parse MCP config for tool '{}' (id={}): {}. Raw config: {}",
-                    self.name,
-                    self.id,
-                    e,
-                    c
-                );
-                None
-            }
-        })
+        self.config
+            .as_ref()
+            .and_then(|c| match serde_json::from_str(c) {
+                Ok(config) => Some(config),
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to parse MCP config for tool '{}' (id={}): {}. Raw config: {}",
+                        self.name,
+                        self.id,
+                        e,
+                        c
+                    );
+                    None
+                }
+            })
     }
 
     /// Get the transport type for this MCP server

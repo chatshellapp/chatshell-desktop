@@ -1401,7 +1401,6 @@ pub(crate) async fn handle_agent_streaming(
         let mut tasks = state_clone.generation_tasks.write().await;
         tasks.remove(&conversation_id_clone);
     }
-
 }
 
 /// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.

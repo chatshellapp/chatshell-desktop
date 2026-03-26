@@ -95,7 +95,8 @@ function parseMcpJsonConfig(jsonText: string): ParsedServerConfig {
   const hasUrl = typeof serverObj.url === 'string'
   const hasCommand = typeof serverObj.command === 'string'
   const typeField = typeof serverObj.type === 'string' ? serverObj.type : ''
-  const isHttp = hasUrl || typeField === 'http' || typeField === 'sse' || typeField === 'streamable-http'
+  const isHttp =
+    hasUrl || typeField === 'http' || typeField === 'sse' || typeField === 'streamable-http'
 
   if (!hasUrl && !hasCommand) {
     return { ...empty, error: 'noServerFound' }

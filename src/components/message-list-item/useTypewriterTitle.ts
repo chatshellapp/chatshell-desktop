@@ -11,7 +11,7 @@ export function useTypewriterTitle(
   title: string,
   placeholderTitle: string | undefined,
   deleteSpeed = 18,
-  typeSpeed = 15,
+  typeSpeed = 15
 ): string {
   const [display, setDisplay] = useState(title)
   const prevRef = useRef(title)
