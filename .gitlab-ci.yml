@@ -1,0 +1,233 @@
+# GitLab CI/CD for ChatShell Desktop
+#
+# Runner requirements:
+#   - "linux" tag:   Ubuntu 22.04+ runner with apt-get access
+#   - "windows" tag: Windows runner with MSVC toolchain
+#   - "macos" tag:   macOS 14+ (Apple Silicon) runner with Xcode
+#
+# Required CI/CD variables (Settings > CI/CD > Variables):
+#   macOS code signing (optional):
+#     APPLE_CERTIFICATE            - Base64-encoded .p12 certificate
+#     APPLE_CERTIFICATE_PASSWORD   - .p12 password
+#     APPLE_TEAM_ID                - Apple Developer Team ID
+#   macOS notarization (optional):
+#     APPLE_API_KEY_CONTENT        - Base64-encoded .p8 API key
+#     APPLE_API_KEY                - API Key ID
+#     APPLE_API_ISSUER             - API Issuer ID
+
+variables:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+  RUST_TOOLCHAIN: "stable"
+
+stages:
+  - check
+  - build
+  - release
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v.*/
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "api"
+
+.setup-node: &setup-node
+  - corepack enable
+  - corepack prepare pnpm@${PNPM_VERSION} --activate
+  - pnpm install --frozen-lockfile
+
+.setup-rust: &setup-rust
+  - |
+    if ! command -v rustup &> /dev/null; then
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN}
+      source "$HOME/.cargo/env"
+    fi
+    rustup default ${RUST_TOOLCHAIN}
+    rustup update ${RUST_TOOLCHAIN}
+
+.rust-cache:
+  cache:
+    - key: rust-${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}
+      paths:
+        - src-tauri/target/
+        - ${CARGO_HOME:-$HOME/.cargo}/registry/
+      policy: pull-push
+    - key: pnpm-${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}
+      paths:
+        - .pnpm-store/
+      policy: pull-push
+
+# ---------------------------------------------------------------------------
+# Stage: check
+# ---------------------------------------------------------------------------
+
+check:
+  stage: check
+  tags:
+    - linux
+  image: node:${NODE_VERSION}
+  interruptible: true
+  before_script:
+    - *setup-node
+    - *setup-rust
+    - rustup component add rustfmt clippy
+  script:
+    - pnpm check
+    - pnpm test
+    - cd src-tauri && cargo fmt --all -- --check
+
+# ---------------------------------------------------------------------------
+# Stage: build
+# ---------------------------------------------------------------------------
+
+build-windows:
+  stage: build
+  tags:
+    - windows
+  needs: ["check"]
+  interruptible: true
+  extends: .rust-cache
+  before_script:
+    - *setup-node
+    - *setup-rust
+    - rustup target add x86_64-pc-windows-msvc
+  script:
+    - pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi
+  artifacts:
+    name: chatshell-windows
+    paths:
+      - src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+    expire_in: 7 days
+
+build-macos:
+  stage: build
+  tags:
+    - macos
+  needs: ["check"]
+  interruptible: true
+  extends: .rust-cache
+  variables:
+    HAS_APPLE_CERTIFICATE: ""
+    HAS_APPLE_API_KEY: ""
+  before_script:
+    - *setup-node
+    - *setup-rust
+    - rustup target add aarch64-apple-darwin x86_64-apple-darwin
+    - |
+      if [ -n "$APPLE_CERTIFICATE" ]; then
+        export HAS_APPLE_CERTIFICATE=true
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+        echo "$APPLE_CERTIFICATE" | base64 -d > /tmp/certificate.p12
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security import /tmp/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+        rm /tmp/certificate.p12
+      fi
+    - |
+      if [ -n "$APPLE_API_KEY_CONTENT" ] && [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_ISSUER" ]; then
+        export HAS_APPLE_API_KEY=true
+      fi
+  script:
+    - pnpm tauri build --target universal-apple-darwin --bundles dmg
+    - |
+      if [ "$HAS_APPLE_API_KEY" = "true" ]; then
+        echo "$APPLE_API_KEY_CONTENT" | base64 -d > api_key.p8
+        for dmg in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
+          echo "Notarizing: $dmg"
+          xcrun notarytool submit "$dmg" \
+            --key api_key.p8 \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          echo "Stapling: $dmg"
+          xcrun stapler staple "$dmg"
+        done
+        rm -f api_key.p8
+      fi
+  after_script:
+    - rm -f api_key.p8
+    - |
+      if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+        security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+      fi
+  artifacts:
+    name: chatshell-macos
+    paths:
+      - src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+    expire_in: 7 days
+
+build-linux:
+  stage: build
+  tags:
+    - linux
+  image: ubuntu:22.04
+  needs: ["check"]
+  interruptible: true
+  extends: .rust-cache
+  before_script:
+    - apt-get update
+    - |
+      apt-get install -y \
+        curl \
+        build-essential \
+        pkg-config \
+        libwebkit2gtk-4.1-dev \
+        libappindicator3-dev \
+        librsvg2-dev \
+        patchelf \
+        libssl-dev \
+        libdbus-1-dev
+    - curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
+    - apt-get install -y nodejs
+    - *setup-node
+    - *setup-rust
+    - rustup target add x86_64-unknown-linux-gnu
+  script:
+    - pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+  artifacts:
+    name: chatshell-linux
+    paths:
+      - src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+    expire_in: 7 days
+
+# ---------------------------------------------------------------------------
+# Stage: release
+# ---------------------------------------------------------------------------
+
+release:
+  stage: release
+  tags:
+    - linux
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: build-windows
+      artifacts: true
+    - job: build-macos
+      artifacts: true
+    - job: build-linux
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v.*/
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+  script:
+    - echo "Creating release for ${CI_COMMIT_TAG:-manual}"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Release $CI_COMMIT_TAG"
+    description: "Automated release for $CI_COMMIT_TAG"
+    assets:
+      links:
+        - name: "ChatShell Windows (MSI)"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/"
+          link_type: package
+        - name: "ChatShell macOS (DMG)"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/src-tauri/target/universal-apple-darwin/release/bundle/dmg/"
+          link_type: package
+        - name: "ChatShell Linux (AppImage)"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/"
+          link_type: package
