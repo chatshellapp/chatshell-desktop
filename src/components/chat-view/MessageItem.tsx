@@ -1,5 +1,8 @@
 import { useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
+import { writeTextFile } from '@tauri-apps/plugin-fs'
+import { logger } from '@/lib/logger'
 import { ChatMessage } from '@/components/chat-message'
 import {
   AttachmentPreview,
@@ -187,6 +190,29 @@ export function MessageItem({
     })
   }, [assistantImageAttachments])
 
+  const handleDownloadMarkdown = useCallback(async () => {
+    try {
+      const now = new Date()
+      const y = now.getFullYear()
+      const m = String(now.getMonth() + 1).padStart(2, '0')
+      const d = String(now.getDate()).padStart(2, '0')
+      const chars = 'abcdefghijklmnopqrstuvwxyz'
+      let suffix = ''
+      for (let i = 0; i < 4; i++) suffix += chars[Math.floor(Math.random() * chars.length)]
+      const defaultPath = `chatshell-${y}${m}${d}-${suffix}.md`
+
+      const filePath = await save({
+        defaultPath,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (filePath) {
+        await writeTextFile(filePath, message.content)
+      }
+    } catch (err) {
+      logger.error('Failed to save markdown file:', err)
+    }
+  }, [message.content])
+
   return (
     <div key={message.id} id={`message-${message.id}`} data-message-id={message.id}>
       <ChatMessage
@@ -220,6 +246,7 @@ export function MessageItem({
         onCopy={onCopy}
         onRevert={() => onRevert(message.id)}
         onFork={() => onFork(message.id)}
+        onDownloadMarkdown={handleDownloadMarkdown}
         onExportAll={onExportAll}
         onExportConversation={onExportConversation}
         onExportMessage={() => onExportMessage(message.id)}

@@ -94,6 +94,7 @@
   "rename": "Rename",
   "now": "Now",
   "fork": "Fork",
+  "downloadMarkdown": "Download as Markdown",
   "screenshot": "Screenshot",
   "exportAllMessages": "Export All Messages",
   "exportCurrentConversation": "Export Current Conversation",

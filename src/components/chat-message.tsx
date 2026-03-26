@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, Undo, Scan, Check, GitFork } from 'lucide-react'
+import { Copy, Undo, Scan, Check, GitFork, Download } from 'lucide-react'
 import { useState, memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
@@ -89,6 +89,7 @@ interface ChatMessageProps {
   onCopy?: () => void
   onRevert?: () => void
   onFork?: () => void
+  onDownloadMarkdown?: () => void
   onExportAll?: () => void
   onExportConversation?: () => void
   onExportMessage?: () => void
@@ -119,6 +120,7 @@ export const ChatMessage = memo(function ChatMessage({
   onCopy,
   onRevert,
   onFork,
+  onDownloadMarkdown,
   onExportAll,
   onExportConversation,
   onExportMessage,
@@ -299,6 +301,21 @@ export const ChatMessage = memo(function ChatMessage({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{isCopied ? tCommon('copied') : tCommon('copy')}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={onDownloadMarkdown}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{tChat('downloadMarkdown')}</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
