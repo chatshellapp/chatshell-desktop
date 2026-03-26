@@ -9,7 +9,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from '@/components/ui/sidebar'
 
 export interface NavItem {
@@ -36,9 +35,7 @@ export function SidebarNavigation({
   onSettingsClick,
   onNewConversation,
 }: SidebarNavigationProps) {
-  const { state } = useSidebar()
   const { t } = useTranslation()
-  const isCollapsed = state === 'collapsed'
 
   return (
     <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
@@ -90,16 +87,13 @@ export function SidebarNavigation({
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="gap-2">
-        {isCollapsed && (
-          <button
-            onClick={onNewConversation}
-            className="mx-auto flex size-8 items-center justify-center rounded-full bg-black text-white hover:bg-black/80 transition-colors"
-            title={t('sidebar:newConversation')}
-          >
-            <MessageSquarePlus className="size-4" />
-          </button>
-        )}
-        {/* <NavUser user={user} /> */}
+        <button
+          onClick={onNewConversation}
+          className="mx-auto flex size-8 items-center justify-center rounded-full bg-black text-white hover:bg-black/80 transition-colors dark:bg-white dark:text-black dark:hover:bg-white/80"
+          title={t('sidebar:newConversation')}
+        >
+          <MessageSquarePlus className="size-4" />
+        </button>
       </SidebarFooter>
     </Sidebar>
   )
