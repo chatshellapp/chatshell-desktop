@@ -176,7 +176,8 @@ build-linux:
         librsvg2-dev \
         patchelf \
         libssl-dev \
-        libdbus-1-dev
+        libdbus-1-dev \
+        xdg-utils
     - curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
     - apt-get install -y nodejs
     - *setup-node
