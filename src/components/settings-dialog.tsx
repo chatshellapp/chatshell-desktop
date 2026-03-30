@@ -145,6 +145,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [editingMcpServer, setEditingMcpServer] = React.useState<Tool | null>(null)
   const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
   const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
+  const [capabilitiesRefreshing, setCapabilitiesRefreshing] = React.useState(false)
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -1152,7 +1153,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               <Button
                 variant="outline"
                 size="sm"
+                disabled={capabilitiesRefreshing}
                 onClick={async () => {
+                  setCapabilitiesRefreshing(true)
                   try {
                     const count = await invoke<number>('refresh_capabilities_cache')
                     invalidateCapabilitiesCache()
@@ -1163,10 +1166,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     logger.error('Failed to refresh capabilities:', error)
                     const { toast } = await import('sonner')
                     toast.error(t('capabilitiesRefreshError'))
+                  } finally {
+                    setCapabilitiesRefreshing(false)
                   }
                 }}
               >
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${capabilitiesRefreshing ? 'animate-spin' : ''}`}
+                />
                 {t('refreshFromModelsDev')}
               </Button>
             </div>
