@@ -176,6 +176,47 @@ export function MessageItem({
       </div>
     ) : undefined
 
+  const userAfterContent =
+    isUserMessage && hasUserAttachments ? (
+      <div className="flex justify-end my-1">
+        <div className="max-w-[80%] space-y-1.5">
+          {(() => {
+            const imageAttachments = userAttachments.filter(
+              (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
+            )
+            const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
+              id: a.id,
+              fileName: a.file_name,
+              storagePath: a.storage_path,
+            }))
+
+            return userAttachments.map((attachment) => {
+              const isImage =
+                attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
+              const imageIndex = isImage
+                ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                : undefined
+
+              return (
+                <AttachmentPreview
+                  key={attachment.id}
+                  userAttachment={attachment}
+                  allImages={isImage ? allImages : undefined}
+                  currentImageIndex={imageIndex}
+                />
+              )
+            })
+          })()}
+          {userFetchResults.map((context) => (
+            <AttachmentPreview key={context.id} context={context} />
+          ))}
+          {urls.map((url) => (
+            <AttachmentPreview key={url} processingUrl={url} />
+          ))}
+        </div>
+      </div>
+    ) : undefined
+
   const generatedImagesContent =
     assistantImageAttachments.length > 0 ? (
       <GeneratedImageGallery attachments={assistantImageAttachments} />
@@ -234,6 +275,7 @@ export function MessageItem({
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
         headerContent={headerContent}
         footerContent={generatedImagesContent}
+        userAfterContent={userAfterContent}
         onCopyOverride={
           assistantImageAttachments.length > 0
             ? handleCopyImage
@@ -251,47 +293,6 @@ export function MessageItem({
         onExportConversation={onExportConversation}
         onExportMessage={() => onExportMessage(message.id)}
       />
-
-      {/* User attachments - rendered right-aligned after user message */}
-      {hasUserAttachments && (
-        <div className="flex justify-end px-4 my-1">
-          <div className="max-w-[80%] space-y-1.5">
-            {(() => {
-              const imageAttachments = userAttachments.filter(
-                (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
-              )
-              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
-                id: a.id,
-                fileName: a.file_name,
-                storagePath: a.storage_path,
-              }))
-
-              return userAttachments.map((attachment) => {
-                const isImage =
-                  attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
-                const imageIndex = isImage
-                  ? imageAttachments.findIndex((img) => img.id === attachment.id)
-                  : undefined
-
-                return (
-                  <AttachmentPreview
-                    key={attachment.id}
-                    userAttachment={attachment}
-                    allImages={isImage ? allImages : undefined}
-                    currentImageIndex={imageIndex}
-                  />
-                )
-              })
-            })()}
-            {userFetchResults.map((context) => (
-              <AttachmentPreview key={context.id} context={context} />
-            ))}
-            {urls.map((url) => (
-              <AttachmentPreview key={url} processingUrl={url} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

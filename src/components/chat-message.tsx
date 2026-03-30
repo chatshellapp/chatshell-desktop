@@ -86,6 +86,11 @@ interface ChatMessageProps {
    * Should return a Promise; the component handles isCopied state.
    */
   onCopyOverride?: () => Promise<void>
+  /**
+   * Content to render after the message body but before action buttons (user messages only).
+   * Used for user attachments (files, images, URLs) so buttons appear below them.
+   */
+  userAfterContent?: React.ReactNode
   onCopy?: () => void
   onRevert?: () => void
   onFork?: () => void
@@ -116,6 +121,7 @@ export const ChatMessage = memo(function ChatMessage({
   isStreaming = false,
   headerContent,
   footerContent,
+  userAfterContent,
   onCopyOverride,
   onCopy,
   onRevert,
@@ -201,6 +207,7 @@ export const ChatMessage = memo(function ChatMessage({
             <p className="text-base text-foreground whitespace-pre-wrap">{content}</p>
           </div>
         </div>
+        {userAfterContent}
         <TooltipProvider delayDuration={300}>
           <div
             data-screenshot-exclude="true"

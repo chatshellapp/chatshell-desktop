@@ -9,7 +9,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
-import type { Conversation } from '@/types'
+import type { Conversation, MessageResources } from '@/types'
 
 interface UseMessageHandlersOptions {
   messagesEndRef: RefObject<HTMLDivElement | null>
@@ -71,6 +71,40 @@ export function useMessageHandlers({
       }
 
       try {
+        // Retrieve original attachments before deleting the message
+        const resources = await invoke<MessageResources>('get_message_resources', {
+          messageId,
+        })
+
+        const imageAttachments = resources.attachments.filter(
+          (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
+        )
+        const fileAttachments = resources.attachments.filter(
+          (a) => a.type === 'file' && !a.mime_type?.startsWith('image/')
+        )
+        const userUrls = resources.contexts
+          .filter((c) => c.type === 'fetch_result' && c.source_type === 'user_link')
+          .map((c) => (c as { url: string }).url)
+
+        const [images, files] = await Promise.all([
+          Promise.all(
+            imageAttachments.map(async (a) => {
+              const base64 = await invoke<string>('read_image_base64', {
+                storagePath: a.storage_path,
+              })
+              return { name: a.file_name, base64, mimeType: a.mime_type }
+            })
+          ),
+          Promise.all(
+            fileAttachments.map(async (a) => {
+              const fileContent = await invoke<string>('read_file_content', {
+                storagePath: a.storage_path,
+              })
+              return { name: a.file_name, content: fileContent, mimeType: a.mime_type }
+            })
+          ),
+        ])
+
         await deleteMessagesFrom(currentConversation.id, messageId)
 
         const settings = getSettings(currentConversation.id)
@@ -109,9 +143,9 @@ export function useMessageHandlers({
           userPrompt,
           selectedAssistant ? undefined : modelToUse.id,
           selectedAssistant?.id,
-          undefined,
-          undefined,
-          undefined,
+          userUrls.length > 0 ? userUrls : undefined,
+          images.length > 0 ? images : undefined,
+          files.length > 0 ? files : undefined,
           false,
           parameterOverrides,
           contextMessageCount,
