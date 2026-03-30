@@ -35,7 +35,7 @@ export function ProviderSidebar({
   const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
 
   return (
-    <Sidebar collapsible="none" className="hidden md:flex">
+    <Sidebar collapsible="none" className="hidden md:flex h-[600px]">
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>

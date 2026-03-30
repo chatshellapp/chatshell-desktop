@@ -127,7 +127,7 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
       <DialogContent className="overflow-hidden p-0 gap-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[900px]">
         <DialogTitle className="sr-only">{t('dialogTitle')}</DialogTitle>
         <DialogDescription className="sr-only">{t('dialogDescription')}</DialogDescription>
-        <SidebarProvider className="items-start">
+        <SidebarProvider className="min-h-0">
           <ProviderSidebar
             selectedProvider={selectedProvider}
             onSelectProvider={(p) => {
