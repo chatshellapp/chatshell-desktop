@@ -198,6 +198,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Extensible Tool System**: Connect AI with external tools and data sources
 - **Progressive Disclosure**: Only MCP tools the AI actually calls are loaded into context — unused tools consume no tokens
 - **Server Management**: Add, configure, and manage MCP servers from the UI
+- **JSON Config Import**: Paste `mcpServers` JSON from Claude Desktop, Cursor, or other tools to import servers instantly
 - **Dynamic Tool Discovery**: Automatically detect and expose tools from MCP servers
 - **Seamless Integration**: AI can invoke MCP tools naturally during conversations
 - **Dual Transport**: STDIO (local child processes) and Streamable HTTP (remote servers)
@@ -256,6 +257,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### Export
 
 - **Screenshot Export**: Export conversations as PNG images via html-to-image
+- **Markdown Export**: Download any assistant message as a `.md` file with one click
 - **Flexible Scope**: Export all messages, a single conversation, or an individual message
 - **Theme-Aware**: Exports respect current light/dark mode setting
 
