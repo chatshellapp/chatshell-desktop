@@ -5,7 +5,6 @@
 
 import type { Model } from '@/types'
 
-// Import model logo assets
 import gptAvatar from '@/assets/avatars/models/gpt.png'
 import claudeAvatar from '@/assets/avatars/models/claude.png'
 import geminiAvatar from '@/assets/avatars/models/gemini.png'
@@ -17,8 +16,34 @@ import doubaoAvatar from '@/assets/avatars/models/doubao.png'
 import qwenAvatar from '@/assets/avatars/models/qwen.png'
 import glmAvatar from '@/assets/avatars/models/glm.png'
 import minimaxAvatar from '@/assets/avatars/models/minimax.png'
+import mistralAvatar from '@/assets/avatars/models/mistral.png'
+import kimiAvatar from '@/assets/avatars/models/kimi.png'
+import wenxinAvatar from '@/assets/avatars/models/wenxin.png'
+import hunyuanAvatar from '@/assets/avatars/models/hunyuan.png'
+import sparkAvatar from '@/assets/avatars/models/spark.png'
+import yiAvatar from '@/assets/avatars/models/yi.png'
+import cohereAvatar from '@/assets/avatars/models/cohere.png'
+import stepfunAvatar from '@/assets/avatars/models/stepfun.png'
+import stabilityAvatar from '@/assets/avatars/models/stability.png'
+import microsoftAvatar from '@/assets/avatars/models/microsoft.png'
+import baichuanAvatar from '@/assets/avatars/models/baichuan.png'
+import copilotAvatar from '@/assets/avatars/models/copilot.png'
+import perplexityAvatar from '@/assets/avatars/models/perplexity.png'
+import groqAvatar from '@/assets/avatars/models/groq.png'
+import mimoAvatar from '@/assets/avatars/models/mimo.png'
+import jambaAvatar from '@/assets/avatars/models/jamba.png'
+import nvidiaAvatar from '@/assets/avatars/models/nvidia.png'
+import internlmAvatar from '@/assets/avatars/models/internlm.png'
+import fluxAvatar from '@/assets/avatars/models/flux.png'
+import dbrxAvatar from '@/assets/avatars/models/dbrx.png'
+import hailuoAvatar from '@/assets/avatars/models/hailuo.png'
+import midjourneyAvatar from '@/assets/avatars/models/midjourney.png'
+import codegeexAvatar from '@/assets/avatars/models/codegeex.png'
+import rwkvAvatar from '@/assets/avatars/models/rwkv.png'
+import dolphinAvatar from '@/assets/avatars/models/dolphin.png'
+import upstageAvatar from '@/assets/avatars/models/upstage.png'
+import voyageAvatar from '@/assets/avatars/models/voyage.png'
 import { logger } from '@/lib/logger'
-// Import more model logos as needed...
 
 type LogoMap = Record<string, string>
 
@@ -50,60 +75,38 @@ export function getModelLogoById(modelId: string): string | undefined {
     // Alibaba models
     '(qwen|qwq|qvq)': qwenAvatar,
 
-    // DeepSeek models
-    deepseek: deepseekAvatar, // Replace with deepseek logo
-
-    // Mistral models
-    // '(mixtral|mistral|codestral|ministral|magistral)': gptAvatar, // Replace with mistral logo
-
-    // Moonshot models
-    // '(moonshot|kimi)': gptAvatar, // Replace with moonshot logo
-
-    // Zhipu AI models
+    deepseek: deepseekAvatar,
+    '(mixtral|mistral|codestral|ministral|magistral)': mistralAvatar,
+    '(moonshot|kimi)': kimiAvatar,
     '(glm|chatglm|cogview|zhipu)': glmAvatar,
-
-    // ByteDance models
-    '(doubao|seedream|ep-202)': doubaoAvatar, // Replace with doubao logo
-
-    // Baidu models
-    // '(ernie|wenxin|tao-)': gptAvatar, // Replace with wenxin logo
-
-    // Tencent models
-    // 'hunyuan': gptAvatar, // Replace with hunyuan logo
-
-    // iFlytek models
-    // '(sparkdesk|generalv)': gptAvatar, // Replace with sparkdesk logo
-
-    // 01.AI models
-    // 'yi-': gptAvatar, // Replace with yi logo
-
-    // Cohere models
-    // '(cohere|command)': gptAvatar, // Replace with cohere logo
-
-    // StepFun models
-    // 'step': gptAvatar, // Replace with step logo
-
-    // MiniMax models
+    '(doubao|seedream|ep-202)': doubaoAvatar,
+    '(ernie|wenxin|tao-)': wenxinAvatar,
+    hunyuan: hunyuanAvatar,
+    '(sparkdesk|generalv|spark)': sparkAvatar,
+    'yi-': yiAvatar,
+    '(cohere|command-r)': cohereAvatar,
+    'step-': stepfunAvatar,
     '(minimax|abab)': minimaxAvatar,
-
-    // Stability AI models
-    // '(stable-|sdxl|sd3|sd2)': gptAvatar, // Replace with stability logo
-
-    // Grok models
+    '(stable-|sdxl|sd3|sd2)': stabilityAvatar,
     grok: grokAvatar,
-
-    // Microsoft models
-    // '(phi|wizardlm|microsoft)': gptAvatar, // Replace with microsoft logo
-
-    // Baichuan models
-    // 'baichuan': gptAvatar, // Replace with baichuan logo
-
-    // GitHub Copilot
-    // '(copilot|creative|balanced|precise)': gptAvatar, // Replace with copilot logo
-
-    // Other models
-    // '(minicpm|360|aimass|codegeex|dbrx|flashaudio|flux|hailuo|internlm|internvl|llava|magic|midjourney|mj-)': gptAvatar,
-    // '(nvidia|upstage|rakutenai|ibm|hugging|youdao|embedding|perplexity|sonar|bge-|voyage-|tokenflux|nomic-|pangu-|bytedance|ling|ring)': gptAvatar,
+    '(phi-|wizardlm|microsoft)': microsoftAvatar,
+    baichuan: baichuanAvatar,
+    '(copilot|creative|balanced|precise)': copilotAvatar,
+    '(sonar|perplexity)': perplexityAvatar,
+    'groq/': groqAvatar,
+    mimo: mimoAvatar,
+    jamba: jambaAvatar,
+    nemotron: nvidiaAvatar,
+    '(internlm|internvl)': internlmAvatar,
+    flux: fluxAvatar,
+    dbrx: dbrxAvatar,
+    hailuo: hailuoAvatar,
+    '(midjourney|mj-)': midjourneyAvatar,
+    codegeex: codegeexAvatar,
+    rwkv: rwkvAvatar,
+    dolphin: dolphinAvatar,
+    '(solar|upstage)': upstageAvatar,
+    'voyage-': voyageAvatar,
   }
 
   // Try to match against each pattern
