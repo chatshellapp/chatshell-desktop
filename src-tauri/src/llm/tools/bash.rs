@@ -16,6 +16,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex as TokioMutex;
 
+use super::bash_security::{self, SecurityVerdict};
+
 /// Maximum output length returned to the LLM (chars)
 const MAX_OUTPUT_CHARS: usize = 20_000;
 
@@ -572,11 +574,18 @@ impl Tool for BashTool {
             .filter(|c| !c.is_empty())
             .ok_or_else(|| BashError("No command provided".into()))?;
 
-        // --- dangerous command check ---
-        if let Some(msg) = Self::check_dangerous(command) {
-            tracing::warn!("🛡️ [bash] Dangerous command blocked: {}", command);
-            return Err(BashError(msg.to_string()));
-        }
+        // --- security checks (dangerous patterns + compound analysis + injection) ---
+        let security_warning = match bash_security::check_command(command, Self::check_dangerous) {
+            SecurityVerdict::Block(msg) => {
+                tracing::warn!("🛡️ [bash] Command blocked: {}", command);
+                return Err(BashError(msg));
+            }
+            SecurityVerdict::Warn(msg) => {
+                tracing::warn!("🛡️ [bash] Security warning: {} — {}", msg, command);
+                Some(msg)
+            }
+            SecurityVerdict::Allow => None,
+        };
 
         // Wrap in a sub-shell if workdir is specified so the session's cwd is unaffected
         let effective_command = if let Some(ref dir) = args.workdir {
@@ -632,18 +641,26 @@ impl Tool for BashTool {
                     })
                     .unwrap_or_default();
 
+                let warn_prefix = security_warning
+                    .as_ref()
+                    .map(|w| format!("{}\n", w))
+                    .unwrap_or_default();
+
                 if cmd.exit_code == 0 {
                     if text.is_empty() {
-                        Ok("(no output)".to_string())
+                        Ok(format!("{}(no output)", warn_prefix))
                     } else {
-                        Ok(format!("{}{}", text, file_notice))
+                        Ok(format!("{}{}{}", warn_prefix, text, file_notice))
                     }
                 } else if text.is_empty() {
-                    Ok(format!("[exit code: {}]{}", cmd.exit_code, file_notice))
+                    Ok(format!(
+                        "{}[exit code: {}]{}",
+                        warn_prefix, cmd.exit_code, file_notice
+                    ))
                 } else {
                     Ok(format!(
-                        "[exit code: {}]\n{}{}",
-                        cmd.exit_code, text, file_notice
+                        "{}[exit code: {}]\n{}{}",
+                        warn_prefix, cmd.exit_code, text, file_notice
                     ))
                 }
             }

@@ -28,6 +28,8 @@
 //! ```
 
 pub(crate) mod bash;
+mod bash_ast;
+mod bash_security;
 mod bash_session_manager;
 mod edit;
 mod glob;
