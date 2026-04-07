@@ -1,3 +1,24 @@
+# Required GitHub Secrets:
+#
+#   Build & Release:
+#     APPLE_CERTIFICATE            - Base64-encoded .p12 certificate (macOS signing)
+#     APPLE_CERTIFICATE_PASSWORD   - .p12 password
+#     APPLE_TEAM_ID                - Apple Developer Team ID
+#     APPLE_API_KEY_CONTENT        - Base64-encoded .p8 API key (notarization)
+#     APPLE_API_KEY                - API Key ID
+#     APPLE_API_ISSUER             - API Issuer ID
+#
+#   Cloudflare R2 (dl.chatshell.app):
+#     CLOUDFLARE_ACCOUNT_ID        - Cloudflare account ID
+#     R2_ACCESS_KEY_ID             - R2 S3-compatible API token
+#     R2_SECRET_ACCESS_KEY         - R2 S3-compatible API secret
+#     R2_BUCKET_NAME               - R2 bucket name backing dl.chatshell.app
+#
+#   Website deploy (Cloudflare Pages):
+#     CLOUDFLARE_API_TOKEN         - Wrangler API token with Pages edit permission
+#     WEBSITE_REPO                 - Website GitHub repo (e.g. chatshellapp/chatshell-website)
+#     GH_PAT                       - GitHub PAT with repo read access (if website repo is private)
+
 name: Build & Release
 
 on:
@@ -179,7 +200,7 @@ jobs:
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
 
   release:
-    name: Create Release
+    name: Create Release & Upload to R2
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -199,3 +220,71 @@ jobs:
             release/chatshell-macos/*
             release/chatshell-linux/*.AppImage
           generate_release_notes: true
+
+      - name: Install rclone
+        run: sudo apt-get update && sudo apt-get install -y rclone
+
+      - name: Upload to Cloudflare R2
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Uploading artifacts for v${VERSION} to R2..."
+          rclone copy release/chatshell-macos/ "r2:${R2_BUCKET}/v${VERSION}/darwin/universal/" --include "*.dmg" -v
+          rclone copy release/chatshell-windows/ "r2:${R2_BUCKET}/v${VERSION}/windows/x86_64/" --include "*.msi" -v
+          rclone copy release/chatshell-linux/ "r2:${R2_BUCKET}/v${VERSION}/linux/x86_64/" --include "*.AppImage" -v
+          echo "R2 upload complete."
+
+  deploy-website:
+    name: Deploy Website
+    needs: release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.WEBSITE_REPO }}
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update version in download page and docs
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Updating download links to v${VERSION}..."
+
+          sed -i "s/const version = '.*'/const version = '${VERSION}'/" src/pages/download.astro
+          grep "const version" src/pages/download.astro
+
+          sed -i "s|dl\.chatshell\.app/v[0-9]\+\.[0-9]\+\.[0-9]\+/|dl.chatshell.app/v${VERSION}/|g" src/content/docs/docs/getting-started/index.md
+          sed -i "s/ChatShell_[0-9]\+\.[0-9]\+\.[0-9]\+_/ChatShell_${VERSION}_/g" src/content/docs/docs/getting-started/index.md
+          grep "dl.chatshell.app" src/content/docs/docs/getting-started/index.md
+
+      - name: Build website
+        run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=chatshell-website
