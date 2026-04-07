@@ -14,10 +14,9 @@
 #     R2_SECRET_ACCESS_KEY         - R2 S3-compatible API secret
 #     R2_BUCKET_NAME               - R2 bucket name backing dl.chatshell.app
 #
-#   Website deploy (Cloudflare Pages):
-#     CLOUDFLARE_API_TOKEN         - Wrangler API token with Pages edit permission
+#   Website version update:
 #     WEBSITE_REPO                 - Website GitHub repo (e.g. chatshellapp/chatshell-website)
-#     GH_PAT                       - GitHub PAT with repo read access (if website repo is private)
+#     GH_PAT                       - GitHub PAT with repo write access (push version updates)
 
 name: Build & Release
 
@@ -241,8 +240,8 @@ jobs:
           rclone copy release/chatshell-linux/ "r2:${R2_BUCKET}/v${VERSION}/linux/x86_64/" --include "*.AppImage" -v
           echo "R2 upload complete."
 
-  deploy-website:
-    name: Deploy Website
+  update-website:
+    name: Update Website Version
     needs: release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -252,20 +251,6 @@ jobs:
         with:
           repository: ${{ secrets.WEBSITE_REPO }}
           token: ${{ secrets.GH_PAT || github.token }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Update version in download page and docs
         run: |
@@ -279,12 +264,12 @@ jobs:
           sed -i "s/ChatShell_[0-9]\+\.[0-9]\+\.[0-9]\+_/ChatShell_${VERSION}_/g" src/content/docs/docs/getting-started/index.md
           grep "dl.chatshell.app" src/content/docs/docs/getting-started/index.md
 
-      - name: Build website
-        run: pnpm build
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=chatshell-website
+      - name: Commit and push
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update download links to v${VERSION}"
+          git push
