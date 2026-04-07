@@ -110,23 +110,45 @@ fn extract_quoted_content(command: &str) -> QuoteExtracted {
 static SAFE_ENV_VARS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         // Go build settings
-        "GOEXPERIMENT", "GOOS", "GOARCH", "CGO_ENABLED", "GO111MODULE",
+        "GOEXPERIMENT",
+        "GOOS",
+        "GOARCH",
+        "CGO_ENABLED",
+        "GO111MODULE",
         // Rust logging/debugging
-        "RUST_BACKTRACE", "RUST_LOG",
+        "RUST_BACKTRACE",
+        "RUST_LOG",
         // Node environment name (NOT NODE_OPTIONS!)
         "NODE_ENV",
         // Python behavior flags (NOT PYTHONPATH!)
-        "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE",
+        "PYTHONUNBUFFERED",
+        "PYTHONDONTWRITEBYTECODE",
         // Pytest configuration
-        "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "PYTEST_DEBUG",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTEST_DEBUG",
         // Locale and encoding
-        "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_TIME", "CHARSET",
+        "LANG",
+        "LANGUAGE",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_TIME",
+        "CHARSET",
         // Terminal and display
-        "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR", "TZ",
+        "TERM",
+        "COLORTERM",
+        "NO_COLOR",
+        "FORCE_COLOR",
+        "TZ",
         // Color configuration
-        "LS_COLORS", "LSCOLORS", "GREP_COLOR", "GREP_COLORS", "GCC_COLORS",
+        "LS_COLORS",
+        "LSCOLORS",
+        "GREP_COLOR",
+        "GREP_COLORS",
+        "GCC_COLORS",
         // Display formatting
-        "TIME_STYLE", "BLOCK_SIZE", "BLOCKSIZE",
+        "TIME_STYLE",
+        "BLOCK_SIZE",
+        "BLOCKSIZE",
         // CI indicator
         "CI",
     ]
@@ -174,9 +196,7 @@ fn try_strip_env_assignment(s: &str) -> Option<&str> {
     }
 
     let mut i = 1;
-    while i < bytes.len()
-        && matches!(bytes[i], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_')
-    {
+    while i < bytes.len() && matches!(bytes[i], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_') {
         i += 1;
     }
 
@@ -267,10 +287,7 @@ fn try_strip_timeout(s: &str) -> Option<&str> {
         }
 
         // Short flag: -v (no value)
-        if rest.starts_with("-v")
-            && rest.len() > 2
-            && matches!(rest.as_bytes()[2], b' ' | b'\t')
-        {
+        if rest.starts_with("-v") && rest.len() > 2 && matches!(rest.as_bytes()[2], b' ' | b'\t') {
             rest = require_hws(&rest[2..])?;
             continue;
         }
@@ -1828,7 +1845,10 @@ mod tests {
 
     #[test]
     fn strip_timeout_basic() {
-        assert_eq!(strip_safe_wrappers("timeout 5 npm run build"), "npm run build");
+        assert_eq!(
+            strip_safe_wrappers("timeout 5 npm run build"),
+            "npm run build"
+        );
     }
 
     #[test]
@@ -1927,7 +1947,10 @@ mod tests {
     #[test]
     fn strip_env_var() {
         assert_eq!(strip_safe_wrappers("GOOS=linux go build"), "go build");
-        assert_eq!(strip_safe_wrappers("NODE_ENV=production npm start"), "npm start");
+        assert_eq!(
+            strip_safe_wrappers("NODE_ENV=production npm start"),
+            "npm start"
+        );
     }
 
     #[test]
@@ -1978,10 +2001,7 @@ mod tests {
             strip_safe_wrappers("GOOS=$(whoami) go build"),
             "GOOS=$(whoami) go build"
         );
-        assert_eq!(
-            strip_safe_wrappers("NODE_ENV=a;b cmd"),
-            "NODE_ENV=a;b cmd"
-        );
+        assert_eq!(strip_safe_wrappers("NODE_ENV=a;b cmd"), "NODE_ENV=a;b cmd");
     }
 
     #[test]
