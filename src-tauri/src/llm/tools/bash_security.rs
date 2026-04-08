@@ -1581,10 +1581,7 @@ fn extract_redirect_targets(command: &str, targets: &mut Vec<String>) {
                     j += 1;
                 }
                 if let Some(path) = extract_token(command, j) {
-                    if !path.is_empty()
-                        && !path.starts_with('&')
-                        && !path.starts_with("/dev/")
-                    {
+                    if !path.is_empty() && !path.starts_with('&') && !path.starts_with("/dev/") {
                         targets.push(path);
                     }
                 }
@@ -1596,8 +1593,7 @@ fn extract_redirect_targets(command: &str, targets: &mut Vec<String>) {
                     && !in_double_quote
                     && i + 1 < len
                     && bytes[i + 1] == b'>'
-                    && (bytes[i] == b'&'
-                        || (bytes[i] >= b'0' && bytes[i] <= b'9'))
+                    && (bytes[i] == b'&' || (bytes[i] >= b'0' && bytes[i] <= b'9'))
                 {
                     let mut j = i + 2;
                     if j < len && bytes[j] == b'>' {
@@ -1607,9 +1603,7 @@ fn extract_redirect_targets(command: &str, targets: &mut Vec<String>) {
                         j += 1;
                     }
                     if let Some(path) = extract_token(command, j) {
-                        if !path.is_empty()
-                            && !path.starts_with('&')
-                            && !path.starts_with("/dev/")
+                        if !path.is_empty() && !path.starts_with('&') && !path.starts_with("/dev/")
                         {
                             targets.push(path);
                         }
@@ -1632,10 +1626,7 @@ fn extract_command_write_targets(command: &str, targets: &mut Vec<String>) {
             continue;
         }
 
-        let base_cmd = parts[0]
-            .rsplit('/')
-            .next()
-            .unwrap_or(parts[0]);
+        let base_cmd = parts[0].rsplit('/').next().unwrap_or(parts[0]);
 
         match base_cmd {
             "tee" => {
@@ -1648,10 +1639,8 @@ fn extract_command_write_targets(command: &str, targets: &mut Vec<String>) {
             }
             "cp" | "mv" => {
                 // Last non-flag argument is the destination
-                let non_flag: Vec<&&str> = parts[1..]
-                    .iter()
-                    .filter(|a| !a.starts_with('-'))
-                    .collect();
+                let non_flag: Vec<&&str> =
+                    parts[1..].iter().filter(|a| !a.starts_with('-')).collect();
                 if non_flag.len() >= 2 {
                     targets.push(non_flag.last().unwrap().to_string());
                 }
@@ -2490,31 +2479,51 @@ mod tests {
     #[test]
     fn extract_redirect_simple() {
         let targets = extract_write_targets("echo hello > /tmp/out.txt");
-        assert!(targets.contains(&"/tmp/out.txt".to_string()), "targets: {:?}", targets);
+        assert!(
+            targets.contains(&"/tmp/out.txt".to_string()),
+            "targets: {:?}",
+            targets
+        );
     }
 
     #[test]
     fn extract_redirect_append() {
         let targets = extract_write_targets("echo hello >> /tmp/out.txt");
-        assert!(targets.contains(&"/tmp/out.txt".to_string()), "targets: {:?}", targets);
+        assert!(
+            targets.contains(&"/tmp/out.txt".to_string()),
+            "targets: {:?}",
+            targets
+        );
     }
 
     #[test]
     fn extract_redirect_stderr() {
         let targets = extract_write_targets("cmd 2> /tmp/err.log");
-        assert!(targets.contains(&"/tmp/err.log".to_string()), "targets: {:?}", targets);
+        assert!(
+            targets.contains(&"/tmp/err.log".to_string()),
+            "targets: {:?}",
+            targets
+        );
     }
 
     #[test]
     fn extract_redirect_ampersand() {
         let targets = extract_write_targets("cmd &> /tmp/all.log");
-        assert!(targets.contains(&"/tmp/all.log".to_string()), "targets: {:?}", targets);
+        assert!(
+            targets.contains(&"/tmp/all.log".to_string()),
+            "targets: {:?}",
+            targets
+        );
     }
 
     #[test]
     fn extract_redirect_skips_dev_null() {
         let targets = extract_write_targets("cmd > /dev/null 2>&1");
-        assert!(targets.is_empty(), "should skip /dev/null, got: {:?}", targets);
+        assert!(
+            targets.is_empty(),
+            "should skip /dev/null, got: {:?}",
+            targets
+        );
     }
 
     #[test]
@@ -2558,7 +2567,10 @@ mod tests {
             Some(root),
             Some("/home/user/project"),
         );
-        assert!(result.is_err(), "Should block write to /tmp when project root is set");
+        assert!(
+            result.is_err(),
+            "Should block write to /tmp when project root is set"
+        );
     }
 
     #[test]
@@ -2580,18 +2592,27 @@ mod tests {
             Some(root),
             Some("/home/user/project"),
         );
-        assert!(result.is_ok(), "Should allow relative write when cwd is inside project");
+        assert!(
+            result.is_ok(),
+            "Should allow relative write when cwd is inside project"
+        );
     }
 
     #[test]
     fn write_target_no_root_only_blocklist() {
         let result = check_write_targets("echo hello > /tmp/out.txt", None, Some("/tmp"));
-        assert!(result.is_ok(), "Without project root, /tmp should be allowed");
+        assert!(
+            result.is_ok(),
+            "Without project root, /tmp should be allowed"
+        );
     }
 
     #[test]
     fn write_target_blocks_system_dir() {
         let result = check_write_targets("echo evil > /etc/crontab", None, None);
-        assert!(result.is_err(), "Should block writes to /etc/ regardless of project root");
+        assert!(
+            result.is_err(),
+            "Should block writes to /etc/ regardless of project root"
+        );
     }
 }
