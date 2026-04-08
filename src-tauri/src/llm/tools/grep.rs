@@ -3,6 +3,9 @@
 //! A content search tool powered by ripgrep's core crates (grep-regex, grep-searcher, ignore).
 //! Performs fast, in-process regex searching without requiring external binaries.
 
+use std::fmt::Write;
+use std::path::{Path, PathBuf};
+
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::WalkBuilder;
@@ -11,8 +14,8 @@ use ignore::types::TypesBuilder;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt::Write;
-use std::path::Path;
+
+use super::path_policy;
 
 const MAX_OUTPUT_CHARS: usize = 50_000;
 const SEARCH_TIMEOUT_SECS: u64 = 30;
@@ -61,17 +64,28 @@ pub struct GrepError(String);
 pub struct GrepTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     default_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
 }
 
 impl GrepTool {
     pub fn new() -> Self {
-        Self { default_path: None }
+        Self {
+            default_path: None,
+            project_root: None,
+        }
     }
 
     pub fn with_working_directory(path: String) -> Self {
         Self {
             default_path: Some(path),
+            project_root: None,
         }
+    }
+
+    pub fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
+        self
     }
 }
 
@@ -176,6 +190,9 @@ impl Tool for GrepTool {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| ".".to_string())
             });
+
+        path_policy::check_read(Path::new(&search_path), self.project_root.as_deref())
+            .map_err(|e| GrepError(e))?;
 
         tokio::time::timeout(
             std::time::Duration::from_secs(SEARCH_TIMEOUT_SECS),

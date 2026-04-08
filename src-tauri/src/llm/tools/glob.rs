@@ -4,13 +4,16 @@
 //! Uses the `ignore` crate for directory walking (respects .gitignore)
 //! and returns results sorted by modification time (most recent first).
 
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::Path;
-use std::time::SystemTime;
+
+use super::path_policy;
 
 const MAX_RESULTS: usize = 1000;
 const MAX_COLLECT: usize = 100_000;
@@ -33,17 +36,28 @@ pub struct GlobError(String);
 pub struct GlobTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     default_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
 }
 
 impl GlobTool {
     pub fn new() -> Self {
-        Self { default_path: None }
+        Self {
+            default_path: None,
+            project_root: None,
+        }
     }
 
     pub fn with_working_directory(path: String) -> Self {
         Self {
             default_path: Some(path),
+            project_root: None,
         }
+    }
+
+    pub fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
+        self
     }
 }
 
@@ -102,6 +116,9 @@ impl Tool for GlobTool {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| ".".to_string())
         });
+
+        path_policy::check_read(Path::new(&base_dir), self.project_root.as_deref())
+            .map_err(|e| GlobError(e))?;
 
         let pattern = args.pattern;
 

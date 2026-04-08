@@ -29,7 +29,7 @@
 
 pub(crate) mod bash;
 mod bash_ast;
-mod bash_security;
+pub(crate) mod bash_security;
 mod bash_session_manager;
 mod edit;
 mod glob;
@@ -37,6 +37,7 @@ mod grep;
 mod kill_shell;
 mod mcp_schema;
 mod mcp_tool_use;
+pub mod path_policy;
 mod read;
 mod skill;
 mod web_fetch;

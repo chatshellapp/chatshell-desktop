@@ -3,6 +3,7 @@
 //! This module provides a unified interface for creating rig agents with full configuration
 //! (preamble, temperature, max_tokens, etc.) regardless of the underlying provider.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -85,6 +86,8 @@ pub struct AgentConfig {
     pub mcp_tool_use: Option<McpToolUseTool>,
     /// Skill tool with embedded catalog
     pub skill_tool: Option<SkillTool>,
+    /// Project root directory for path security enforcement
+    pub project_root: Option<PathBuf>,
 }
 
 impl AgentConfig {
@@ -213,6 +216,14 @@ impl AgentConfig {
     /// Enable the built-in kill_shell tool
     pub fn with_kill_shell(mut self) -> Self {
         self.enable_kill_shell = true;
+        self
+    }
+
+    /// Set the project root directory for path security enforcement.
+    /// Write operations are restricted to this directory; sensitive paths
+    /// outside it are blocked for reads.
+    pub fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
         self
     }
 
@@ -806,27 +817,63 @@ fn build_agent_with_tools<M: CompletionModel>(
             tool = tool.with_abort_notify(notify.clone());
         }
         if let Some(ref tracker) = config.bash_temp_files {
-            tool.with_temp_file_tracker(tracker.clone())
+            tool = tool.with_temp_file_tracker(tracker.clone());
+        }
+        if let Some(ref root) = config.project_root {
+            tool = tool.with_project_root(root.clone());
+        }
+        tool
+    };
+
+    let create_read_tool = || -> ReadTool {
+        if let Some(ref root) = config.project_root {
+            ReadTool::with_project_root(root.clone())
+        } else {
+            ReadTool::new()
+        }
+    };
+
+    let create_edit_tool = || -> EditTool {
+        if let Some(ref root) = config.project_root {
+            EditTool::with_project_root(root.clone())
+        } else {
+            EditTool::new()
+        }
+    };
+
+    let create_write_tool = || -> WriteTool {
+        if let Some(ref root) = config.project_root {
+            WriteTool::with_project_root(root.clone())
+        } else {
+            WriteTool::new()
+        }
+    };
+
+    let create_grep_tool = || -> GrepTool {
+        let tool = if let Some(ref dir) = config.grep_working_directory {
+            tracing::info!("🔎 Grep tool configured with working directory: {}", dir);
+            GrepTool::with_working_directory(dir.clone())
+        } else {
+            GrepTool::new()
+        };
+        if let Some(ref root) = config.project_root {
+            tool.with_project_root(root.clone())
         } else {
             tool
         }
     };
 
-    let create_grep_tool = || -> GrepTool {
-        if let Some(ref dir) = config.grep_working_directory {
-            tracing::info!("🔎 Grep tool configured with working directory: {}", dir);
-            GrepTool::with_working_directory(dir.clone())
-        } else {
-            GrepTool::new()
-        }
-    };
-
     let create_glob_tool = || -> GlobTool {
-        if let Some(ref dir) = config.glob_working_directory {
+        let tool = if let Some(ref dir) = config.glob_working_directory {
             tracing::info!("📂 Glob tool configured with working directory: {}", dir);
             GlobTool::with_working_directory(dir.clone())
         } else {
             GlobTool::new()
+        };
+        if let Some(ref root) = config.project_root {
+            tool.with_project_root(root.clone())
+        } else {
+            tool
         }
     };
 
@@ -845,9 +892,9 @@ fn build_agent_with_tools<M: CompletionModel>(
                 FirstTool::WebSearch => $builder.tool(WebSearchTool::new()),
                 FirstTool::WebFetch => $builder.tool(WebFetchTool::new()),
                 FirstTool::Bash => $builder.tool(bash_tool_instance.as_ref().unwrap().clone()),
-                FirstTool::Read => $builder.tool(ReadTool::new()),
-                FirstTool::Edit => $builder.tool(EditTool::new()),
-                FirstTool::Write => $builder.tool(WriteTool::new()),
+                FirstTool::Read => $builder.tool(create_read_tool()),
+                FirstTool::Edit => $builder.tool(create_edit_tool()),
+                FirstTool::Write => $builder.tool(create_write_tool()),
                 FirstTool::Grep => $builder.tool(create_grep_tool()),
                 FirstTool::Glob => $builder.tool(create_glob_tool()),
                 FirstTool::McpSchema => $builder.tool(config.mcp_schema_tool.clone().unwrap()),
@@ -876,15 +923,15 @@ fn build_agent_with_tools<M: CompletionModel>(
     }
     if config.enable_read && first != FirstTool::Read {
         tracing::info!("📖 Adding read tool to agent");
-        sb = sb.tool(ReadTool::new());
+        sb = sb.tool(create_read_tool());
     }
     if config.enable_edit && first != FirstTool::Edit {
         tracing::info!("✏️ Adding edit tool to agent");
-        sb = sb.tool(EditTool::new());
+        sb = sb.tool(create_edit_tool());
     }
     if config.enable_write && first != FirstTool::Write {
         tracing::info!("📝 Adding write tool to agent");
-        sb = sb.tool(WriteTool::new());
+        sb = sb.tool(create_write_tool());
     }
     if config.enable_grep && first != FirstTool::Grep {
         tracing::info!("🔎 Adding grep tool to agent");

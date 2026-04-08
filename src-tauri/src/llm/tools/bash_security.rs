@@ -1399,6 +1399,363 @@ pub fn check_command(
     SecurityVerdict::Allow
 }
 
+// ---------------------------------------------------------------------------
+// Dangerous command patterns (shared with MCP argument scanning)
+// ---------------------------------------------------------------------------
+
+/// Patterns checked via simple `contains` (no boundary logic needed).
+const SIMPLE_DANGEROUS_PATTERNS: &[(&str, &str)] = &[
+    ("mkfs.", "Blocked: filesystem formatting command"),
+    (":(){:|:&};:", "Blocked: fork bomb detected"),
+    (":(){ :|:& };:", "Blocked: fork bomb detected"),
+    ("> /dev/sda", "Blocked: direct write to block device"),
+];
+
+/// Patterns where we must verify the char after the trailing `/` to avoid
+/// false positives like `rm -rf /tmp/mydir`.
+const ROOT_PATH_PATTERNS: &[(&str, &str)] = &[
+    ("rm -rf /", "Blocked: recursive deletion of root filesystem"),
+    ("rm -fr /", "Blocked: recursive deletion of root filesystem"),
+    (
+        "chmod -r 777 /",
+        "Blocked: recursive permission change on root",
+    ),
+];
+
+/// Check a command string for known-dangerous patterns.
+///
+/// Returns `Some(message)` if the command matches a dangerous pattern, or
+/// `None` if no match is found.  This function is used by both `BashTool`
+/// and MCP argument scanning.
+pub fn check_dangerous(command: &str) -> Option<&'static str> {
+    let lower = command.to_lowercase();
+
+    for (pattern, message) in ROOT_PATH_PATTERNS {
+        if let Some(idx) = lower.find(pattern) {
+            let after = idx + pattern.len();
+            let is_root = if after >= lower.len() {
+                true
+            } else {
+                let next = lower.as_bytes()[after];
+                matches!(
+                    next,
+                    b'*' | b' ' | b';' | b'|' | b'&' | b')' | b'\n' | b'\t'
+                )
+            };
+            if is_root {
+                return Some(message);
+            }
+        }
+    }
+
+    for (pattern, message) in SIMPLE_DANGEROUS_PATTERNS {
+        if lower.contains(pattern) {
+            return Some(message);
+        }
+    }
+
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Security context for graduated threshold
+// ---------------------------------------------------------------------------
+
+/// Controls the severity threshold when reusing `check_command` in different
+/// contexts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityContext {
+    /// The input is a known shell command (bash tool).  Both `Block` and
+    /// `Warn` verdicts are propagated.
+    Command,
+    /// The input might be a command (e.g. an MCP STDIO argument string).
+    /// Only `Block` verdicts are propagated; `Warn` is downgraded to `Allow`
+    /// to avoid false positives on natural-language text.
+    Untrusted,
+}
+
+/// Run `check_command` with a graduated severity threshold.
+///
+/// In `Command` context the full verdict is returned.  In `Untrusted`
+/// context only `Block` verdicts survive — `Warn` is treated as `Allow`.
+pub fn check_with_context(value: &str, context: SecurityContext) -> SecurityVerdict {
+    let verdict = check_command(value, check_dangerous);
+    match context {
+        SecurityContext::Command => verdict,
+        SecurityContext::Untrusted => match verdict {
+            SecurityVerdict::Block(msg) => SecurityVerdict::Block(msg),
+            _ => SecurityVerdict::Allow,
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Write-target extraction for project boundary enforcement
+// ---------------------------------------------------------------------------
+
+/// Extract file paths that a bash command would write to (redirections + common
+/// write commands) and check each against `path_policy::check_write`.
+///
+/// Returns `Err(reason)` on the first violation, or `Ok(())` if all targets
+/// are within the allowed boundary.
+pub fn check_write_targets(
+    command: &str,
+    project_root: Option<&std::path::Path>,
+    cwd: Option<&str>,
+) -> Result<(), String> {
+    let targets = extract_write_targets(command);
+    for target in &targets {
+        let resolved = resolve_target(target, cwd);
+        super::path_policy::check_write(&resolved, project_root)?;
+    }
+    Ok(())
+}
+
+/// Resolve a target path: expand `~`, make relative paths absolute using cwd.
+fn resolve_target(target: &str, cwd: Option<&str>) -> std::path::PathBuf {
+    let trimmed = target.trim().trim_matches(|c| c == '\'' || c == '"');
+
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    if trimmed == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home;
+        }
+    }
+
+    let path = std::path::Path::new(trimmed);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(dir) = cwd {
+        std::path::Path::new(dir).join(trimmed)
+    } else {
+        path.to_path_buf()
+    }
+}
+
+/// Extract write targets from a command string.
+///
+/// Handles:
+/// - Output redirections: `>`, `>>`, `2>`, `&>`, `>&`
+/// - `tee` targets
+/// - `cp`/`mv` last argument
+/// - `touch` arguments
+fn extract_write_targets(command: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+
+    extract_redirect_targets(command, &mut targets);
+    extract_command_write_targets(command, &mut targets);
+
+    targets
+}
+
+/// Extract redirect targets: `> file`, `>> file`, `2> file`, `&> file`.
+fn extract_redirect_targets(command: &str, targets: &mut Vec<String>) {
+    let bytes = command.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while i < len {
+        match bytes[i] {
+            b'\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+                i += 1;
+            }
+            b'"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+                i += 1;
+            }
+            b'>' if !in_single_quote && !in_double_quote => {
+                // Skip `>>` or just `>`
+                let mut j = i + 1;
+                if j < len && bytes[j] == b'>' {
+                    j += 1;
+                }
+                // Skip whitespace after redirect operator
+                while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                    j += 1;
+                }
+                if let Some(path) = extract_token(command, j) {
+                    if !path.is_empty()
+                        && !path.starts_with('&')
+                        && !path.starts_with("/dev/")
+                    {
+                        targets.push(path);
+                    }
+                }
+                i = j;
+            }
+            _ => {
+                // Check for `2>`, `&>` patterns
+                if !in_single_quote
+                    && !in_double_quote
+                    && i + 1 < len
+                    && bytes[i + 1] == b'>'
+                    && (bytes[i] == b'&'
+                        || (bytes[i] >= b'0' && bytes[i] <= b'9'))
+                {
+                    let mut j = i + 2;
+                    if j < len && bytes[j] == b'>' {
+                        j += 1; // handle `2>>`
+                    }
+                    while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                        j += 1;
+                    }
+                    if let Some(path) = extract_token(command, j) {
+                        if !path.is_empty()
+                            && !path.starts_with('&')
+                            && !path.starts_with("/dev/")
+                        {
+                            targets.push(path);
+                        }
+                    }
+                    i = j;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Extract write targets from common write commands like `tee`, `cp`, `mv`, `touch`.
+fn extract_command_write_targets(command: &str, targets: &mut Vec<String>) {
+    for sub in split_on_operators(command) {
+        let sub = sub.trim();
+        let parts: Vec<&str> = sub.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        let base_cmd = parts[0]
+            .rsplit('/')
+            .next()
+            .unwrap_or(parts[0]);
+
+        match base_cmd {
+            "tee" => {
+                // tee [-a] file [file...]
+                for &arg in &parts[1..] {
+                    if !arg.starts_with('-') {
+                        targets.push(arg.to_string());
+                    }
+                }
+            }
+            "cp" | "mv" => {
+                // Last non-flag argument is the destination
+                let non_flag: Vec<&&str> = parts[1..]
+                    .iter()
+                    .filter(|a| !a.starts_with('-'))
+                    .collect();
+                if non_flag.len() >= 2 {
+                    targets.push(non_flag.last().unwrap().to_string());
+                }
+            }
+            "touch" => {
+                for &arg in &parts[1..] {
+                    if !arg.starts_with('-') {
+                        targets.push(arg.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Split a command on `&&`, `||`, `|`, `;` (respecting quotes).
+fn split_on_operators(command: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let bytes = command.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while i < len {
+        match bytes[i] {
+            b'\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+                current.push('\'');
+                i += 1;
+            }
+            b'"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+                current.push('"');
+                i += 1;
+            }
+            b'&' if !in_single_quote && !in_double_quote && i + 1 < len && bytes[i + 1] == b'&' => {
+                parts.push(std::mem::take(&mut current));
+                i += 2;
+            }
+            b'|' if !in_single_quote && !in_double_quote => {
+                if i + 1 < len && bytes[i + 1] == b'|' {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                parts.push(std::mem::take(&mut current));
+            }
+            b';' if !in_single_quote && !in_double_quote => {
+                parts.push(std::mem::take(&mut current));
+                i += 1;
+            }
+            _ => {
+                current.push(bytes[i] as char);
+                i += 1;
+            }
+        }
+    }
+    if !current.trim().is_empty() {
+        parts.push(current);
+    }
+    parts
+}
+
+/// Extract a single shell token starting at position `start`.
+fn extract_token(command: &str, start: usize) -> Option<String> {
+    let bytes = command.as_bytes();
+    let len = bytes.len();
+    if start >= len {
+        return None;
+    }
+
+    let mut token = String::new();
+    let mut i = start;
+
+    if bytes[i] == b'\'' {
+        // Single-quoted token
+        i += 1;
+        while i < len && bytes[i] != b'\'' {
+            token.push(bytes[i] as char);
+            i += 1;
+        }
+        return Some(token);
+    }
+    if bytes[i] == b'"' {
+        // Double-quoted token
+        i += 1;
+        while i < len && bytes[i] != b'"' {
+            token.push(bytes[i] as char);
+            i += 1;
+        }
+        return Some(token);
+    }
+
+    // Unquoted token
+    while i < len && !matches!(bytes[i], b' ' | b'\t' | b';' | b'|' | b'&' | b'\n' | b'>') {
+        token.push(bytes[i] as char);
+        i += 1;
+    }
+    Some(token)
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -2081,5 +2438,160 @@ mod tests {
             validate_zsh_dangerous_commands(&ctx),
             SecurityVerdict::Warn(_)
         ));
+    }
+
+    // ---- check_with_context ------------------------------------------------
+
+    #[test]
+    fn context_command_propagates_block() {
+        let verdict = check_with_context("rm -rf /", SecurityContext::Command);
+        assert!(matches!(verdict, SecurityVerdict::Block(_)));
+    }
+
+    #[test]
+    fn context_untrusted_propagates_block() {
+        let verdict = check_with_context("rm -rf /", SecurityContext::Untrusted);
+        assert!(matches!(verdict, SecurityVerdict::Block(_)));
+    }
+
+    #[test]
+    fn context_untrusted_downgrades_warn_to_allow() {
+        // Output redirection produces a Warn in Command context
+        let verdict = check_with_context("echo hello > /tmp/out.txt", SecurityContext::Command);
+        assert!(
+            matches!(verdict, SecurityVerdict::Warn(_)),
+            "Expected Warn for redirection in Command context, got {:?}",
+            verdict
+        );
+
+        let verdict_untrusted =
+            check_with_context("echo hello > /tmp/out.txt", SecurityContext::Untrusted);
+        assert!(
+            matches!(verdict_untrusted, SecurityVerdict::Allow),
+            "Untrusted context should downgrade Warn to Allow, got {:?}",
+            verdict_untrusted
+        );
+    }
+
+    #[test]
+    fn context_allows_safe_command_in_both() {
+        assert!(matches!(
+            check_with_context("echo hello", SecurityContext::Command),
+            SecurityVerdict::Allow
+        ));
+        assert!(matches!(
+            check_with_context("echo hello", SecurityContext::Untrusted),
+            SecurityVerdict::Allow
+        ));
+    }
+
+    // ---- extract_write_targets / check_write_targets -----------------------
+
+    #[test]
+    fn extract_redirect_simple() {
+        let targets = extract_write_targets("echo hello > /tmp/out.txt");
+        assert!(targets.contains(&"/tmp/out.txt".to_string()), "targets: {:?}", targets);
+    }
+
+    #[test]
+    fn extract_redirect_append() {
+        let targets = extract_write_targets("echo hello >> /tmp/out.txt");
+        assert!(targets.contains(&"/tmp/out.txt".to_string()), "targets: {:?}", targets);
+    }
+
+    #[test]
+    fn extract_redirect_stderr() {
+        let targets = extract_write_targets("cmd 2> /tmp/err.log");
+        assert!(targets.contains(&"/tmp/err.log".to_string()), "targets: {:?}", targets);
+    }
+
+    #[test]
+    fn extract_redirect_ampersand() {
+        let targets = extract_write_targets("cmd &> /tmp/all.log");
+        assert!(targets.contains(&"/tmp/all.log".to_string()), "targets: {:?}", targets);
+    }
+
+    #[test]
+    fn extract_redirect_skips_dev_null() {
+        let targets = extract_write_targets("cmd > /dev/null 2>&1");
+        assert!(targets.is_empty(), "should skip /dev/null, got: {:?}", targets);
+    }
+
+    #[test]
+    fn extract_tee_targets() {
+        let targets = extract_write_targets("echo hello | tee /tmp/a.txt /tmp/b.txt");
+        assert!(targets.contains(&"/tmp/a.txt".to_string()));
+        assert!(targets.contains(&"/tmp/b.txt".to_string()));
+    }
+
+    #[test]
+    fn extract_cp_destination() {
+        let targets = extract_write_targets("cp src.txt /tmp/dest.txt");
+        assert!(targets.contains(&"/tmp/dest.txt".to_string()));
+    }
+
+    #[test]
+    fn extract_mv_destination() {
+        let targets = extract_write_targets("mv old.txt /tmp/new.txt");
+        assert!(targets.contains(&"/tmp/new.txt".to_string()));
+    }
+
+    #[test]
+    fn extract_touch_targets() {
+        let targets = extract_write_targets("touch /tmp/a.txt /tmp/b.txt");
+        assert!(targets.contains(&"/tmp/a.txt".to_string()));
+        assert!(targets.contains(&"/tmp/b.txt".to_string()));
+    }
+
+    #[test]
+    fn extract_compound_redirect() {
+        let targets = extract_write_targets("echo a > /tmp/a.txt && echo b > /tmp/b.txt");
+        assert!(targets.contains(&"/tmp/a.txt".to_string()));
+        assert!(targets.contains(&"/tmp/b.txt".to_string()));
+    }
+
+    #[test]
+    fn write_target_blocks_outside_project() {
+        let root = std::path::Path::new("/home/user/project");
+        let result = check_write_targets(
+            "echo hello > /tmp/out.txt",
+            Some(root),
+            Some("/home/user/project"),
+        );
+        assert!(result.is_err(), "Should block write to /tmp when project root is set");
+    }
+
+    #[test]
+    fn write_target_allows_inside_project() {
+        let root = std::path::Path::new("/home/user/project");
+        let result = check_write_targets(
+            "echo hello > /home/user/project/out.txt",
+            Some(root),
+            Some("/home/user/project"),
+        );
+        assert!(result.is_ok(), "Should allow write inside project root");
+    }
+
+    #[test]
+    fn write_target_allows_relative_inside_project() {
+        let root = std::path::Path::new("/home/user/project");
+        let result = check_write_targets(
+            "echo hello > ./out.txt",
+            Some(root),
+            Some("/home/user/project"),
+        );
+        assert!(result.is_ok(), "Should allow relative write when cwd is inside project");
+    }
+
+    #[test]
+    fn write_target_no_root_only_blocklist() {
+        let result = check_write_targets("echo hello > /tmp/out.txt", None, Some("/tmp"));
+        assert!(result.is_ok(), "Without project root, /tmp should be allowed");
+    }
+
+    #[test]
+    fn write_target_blocks_system_dir() {
+        let result = check_write_targets("echo evil > /etc/crontab", None, None);
+        assert!(result.is_err(), "Should block writes to /etc/ regardless of project root");
     }
 }

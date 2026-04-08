@@ -13,7 +13,7 @@ use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
     CreateContentBlockRequest, CreateFileAttachmentRequest, CreateMessageRequest,
-    CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
+    CreateThinkingStepRequest, CreateToolCallRequest, McpTransportType, ModelParameters,
 };
 use crate::prompts;
 use rig::completion::Message as RigMessage;
@@ -21,6 +21,7 @@ use rmcp::RoleClient;
 use rmcp::model::Tool as RmcpTool;
 use rmcp::service::Peer;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
@@ -376,6 +377,18 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
+    // Apply project_root security boundary from conversation working directory
+    if let Some(ref settings) = conv_settings
+        && let Some(ref working_dir) = settings.working_directory
+    {
+        let root = PathBuf::from(working_dir);
+        tracing::info!(
+            "🛡️ [agent_streaming] Enforcing project root security boundary: {}",
+            working_dir
+        );
+        config = config.with_project_root(root);
+    }
+
     // Collect MCP server IDs (non-builtin tools)
     let mcp_server_ids: Vec<String> = all_enabled_tool_ids
         .iter()
@@ -472,7 +485,10 @@ pub(crate) async fn handle_agent_streaming(
                         server_catalogs,
                         mcp_tools_dir.to_string_lossy().to_string(),
                     ))
-                    .with_mcp_tool_use(McpToolUseTool::new(Arc::new(RwLock::new(client_map))));
+                    .with_mcp_tool_use(McpToolUseTool::new(
+                        Arc::new(RwLock::new(client_map)),
+                        loaded.tool_name_to_transport.clone(),
+                    ));
             }
             (
                 Arc::new(loaded.tool_name_to_server_id),
@@ -1410,6 +1426,8 @@ struct LoadedMcpTools {
     tool_name_to_server_id: HashMap<String, String>,
     /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
     tool_name_to_server_name: HashMap<String, String>,
+    /// Maps "server_name/tool_name" key to transport type (used for security scanning).
+    tool_name_to_transport: HashMap<String, McpTransportType>,
     /// Server IDs that failed to connect due to auth errors (401/Unauthorized).
     auth_failed_server_ids: Vec<String>,
 }
@@ -1473,13 +1491,16 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
 
     let mut tool_name_to_server_id = HashMap::new();
     let mut tool_name_to_server_name = HashMap::new();
+    let mut tool_name_to_transport: HashMap<String, McpTransportType> = HashMap::new();
     let mut server_tools = Vec::new();
 
     for (conn, tools) in result.connections {
+        let transport = conn.tool.get_transport_type();
         for t in &tools {
             let key = format!("{}/{}", conn.tool.name, t.name);
             tool_name_to_server_id.insert(key.clone(), conn.tool.id.clone());
             tool_name_to_server_name.insert(key.clone(), conn.tool.name.clone());
+            tool_name_to_transport.insert(key, transport);
             // Also insert raw key so non-lazy path (direct rmcp_tools) auth lookup still works
             tool_name_to_server_id.insert(t.name.to_string(), conn.tool.id.clone());
             tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
@@ -1491,6 +1512,7 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
         server_tools,
         tool_name_to_server_id,
         tool_name_to_server_name,
+        tool_name_to_transport,
         auth_failed_server_ids,
     })
 }

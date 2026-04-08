@@ -4,10 +4,13 @@
 //! `old_string` to find and a `new_string` to replace it with. Supports
 //! `replace_all` for renaming variables across a file.
 
+use std::path::{Path, PathBuf};
+
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::Path;
+
+use super::path_policy;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct EditArgs {
@@ -27,11 +30,20 @@ pub struct EditArgs {
 pub struct EditError(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EditTool;
+pub struct EditTool {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
+}
 
 impl EditTool {
     pub fn new() -> Self {
-        Self
+        Self { project_root: None }
+    }
+
+    pub fn with_project_root(root: PathBuf) -> Self {
+        Self {
+            project_root: Some(root),
+        }
     }
 }
 
@@ -94,6 +106,9 @@ impl Tool for EditTool {
         }
 
         let path = Path::new(&args.path);
+
+        path_policy::check_write(path, self.project_root.as_deref()).map_err(|e| EditError(e))?;
+
         if !path.exists() {
             return Err(EditError(format!("File not found: {}", args.path)));
         }

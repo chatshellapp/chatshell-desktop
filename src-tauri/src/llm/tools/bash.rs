@@ -32,25 +32,6 @@ const MAX_CAPTURE_BYTES: usize = 100_000;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
-/// Patterns checked via simple `contains` (no boundary logic needed).
-const SIMPLE_DANGEROUS_PATTERNS: &[(&str, &str)] = &[
-    ("mkfs.", "Blocked: filesystem formatting command"),
-    (":(){:|:&};:", "Blocked: fork bomb detected"),
-    (":(){ :|:& };:", "Blocked: fork bomb detected"),
-    ("> /dev/sda", "Blocked: direct write to block device"),
-];
-
-/// Patterns where we must verify the char after the trailing `/` to avoid
-/// false positives like `rm -rf /tmp/mydir`.
-const ROOT_PATH_PATTERNS: &[(&str, &str)] = &[
-    ("rm -rf /", "Blocked: recursive deletion of root filesystem"),
-    ("rm -fr /", "Blocked: recursive deletion of root filesystem"),
-    (
-        "chmod -r 777 /",
-        "Blocked: recursive permission change on root",
-    ),
-];
-
 // ---------------------------------------------------------------------------
 // BashSession – persistent child process
 // ---------------------------------------------------------------------------
@@ -297,6 +278,8 @@ pub struct BashTool {
     temp_files: TempFileList,
     #[serde(skip)]
     abort_notify: Option<Arc<tokio::sync::Notify>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
 }
 
 impl fmt::Debug for BashTool {
@@ -314,6 +297,7 @@ impl Default for BashTool {
             session: Arc::new(TokioMutex::new(None)),
             temp_files: Arc::new(Mutex::new(Vec::new())),
             abort_notify: None,
+            project_root: None,
         }
     }
 }
@@ -329,6 +313,7 @@ impl BashTool {
             session: Arc::new(TokioMutex::new(None)),
             temp_files: Arc::new(Mutex::new(Vec::new())),
             abort_notify: None,
+            project_root: None,
         }
     }
 
@@ -338,7 +323,13 @@ impl BashTool {
             session,
             temp_files: Arc::new(Mutex::new(Vec::new())),
             abort_notify: None,
+            project_root: None,
         }
+    }
+
+    pub fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
+        self
     }
 
     /// Set a shared temp file tracker (call before the tool is consumed by the agent builder).
@@ -388,36 +379,7 @@ impl BashTool {
     }
 
     fn check_dangerous(command: &str) -> Option<&'static str> {
-        let lower = command.to_lowercase();
-
-        // Patterns ending with `/` need boundary detection so that
-        // `rm -rf /tmp/mydir` is NOT flagged while `rm -rf /` is.
-        for (pattern, message) in ROOT_PATH_PATTERNS {
-            if let Some(idx) = lower.find(pattern) {
-                let after = idx + pattern.len();
-                let is_root = if after >= lower.len() {
-                    true
-                } else {
-                    // Dangerous only when `/` is followed by a non-path char
-                    let next = lower.as_bytes()[after];
-                    matches!(
-                        next,
-                        b'*' | b' ' | b';' | b'|' | b'&' | b')' | b'\n' | b'\t'
-                    )
-                };
-                if is_root {
-                    return Some(message);
-                }
-            }
-        }
-
-        for (pattern, message) in SIMPLE_DANGEROUS_PATTERNS {
-            if lower.contains(pattern) {
-                return Some(message);
-            }
-        }
-
-        None
+        bash_security::check_dangerous(command)
     }
 
     /// Keep the first `TRUNCATE_HEAD_CHARS` and last `TRUNCATE_TAIL_CHARS`,
@@ -586,6 +548,16 @@ impl Tool for BashTool {
             }
             SecurityVerdict::Allow => None,
         };
+
+        // --- write-target boundary check (redirect targets + write commands) ---
+        if let Err(msg) = bash_security::check_write_targets(
+            command,
+            self.project_root.as_deref(),
+            self.default_cwd.as_deref(),
+        ) {
+            tracing::warn!("🛡️ [bash] Write target blocked: {} — {}", msg, command);
+            return Err(BashError(msg));
+        }
 
         // Wrap in a sub-shell if workdir is specified so the session's cwd is unaffected
         let effective_command = if let Some(ref dir) = args.workdir {

@@ -3,10 +3,13 @@
 //! Creates new files or overwrites existing ones with provided content.
 //! Automatically creates parent directories as needed.
 
+use std::path::{Path, PathBuf};
+
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::Path;
+
+use super::path_policy;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WriteArgs {
@@ -21,11 +24,20 @@ pub struct WriteArgs {
 pub struct WriteError(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct WriteTool;
+pub struct WriteTool {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
+}
 
 impl WriteTool {
     pub fn new() -> Self {
-        Self
+        Self { project_root: None }
+    }
+
+    pub fn with_project_root(root: PathBuf) -> Self {
+        Self {
+            project_root: Some(root),
+        }
     }
 }
 
@@ -70,6 +82,8 @@ impl Tool for WriteTool {
         );
 
         let path = Path::new(&args.path);
+
+        path_policy::check_write(path, self.project_root.as_deref()).map_err(|e| WriteError(e))?;
 
         // Create parent directories if needed
         if let Some(parent) = path.parent()

@@ -4,10 +4,14 @@
 //! image files (PNG, JPEG, GIF, WebP) with metadata and base64 encoding,
 //! and PDF files with text extraction.
 
+use std::path::PathBuf;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use super::path_policy;
 
 const DEFAULT_LINE_LIMIT: usize = 2000;
 const MAX_LINE_LENGTH: usize = 2000;
@@ -33,11 +37,20 @@ pub struct ReadArgs {
 pub struct ReadError(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ReadTool;
+pub struct ReadTool {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_root: Option<PathBuf>,
+}
 
 impl ReadTool {
     pub fn new() -> Self {
-        Self
+        Self { project_root: None }
+    }
+
+    pub fn with_project_root(root: PathBuf) -> Self {
+        Self {
+            project_root: Some(root),
+        }
     }
 }
 
@@ -222,6 +235,8 @@ impl Tool for ReadTool {
         );
 
         let path = std::path::Path::new(&args.path);
+
+        path_policy::check_read(path, self.project_root.as_deref()).map_err(|e| ReadError(e))?;
         if !path.exists() {
             return Err(ReadError(format!("File not found: {}", args.path)));
         }
