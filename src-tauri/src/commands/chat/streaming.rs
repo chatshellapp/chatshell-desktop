@@ -587,11 +587,7 @@ pub(crate) async fn handle_agent_streaming(
             }
             "tool" => {
                 let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
-                build_tool_result_message(
-                    tc_id,
-                    msg.tool_result_call_id.as_deref(),
-                    &msg.content,
-                )
+                build_tool_result_message(tc_id, msg.tool_result_call_id.as_deref(), &msg.content)
             }
             "system" => {
                 if system_prompt.is_some() {
@@ -637,7 +633,12 @@ pub(crate) async fn handle_agent_streaming(
 
     // Track tool calls: HashMap<tool_call_id, (display_order, tool_name, tool_input, tool_output, call_id)>
     let tool_calls_map: Arc<
-        RwLock<std::collections::HashMap<String, (i32, String, String, Option<String>, Option<String>)>>,
+        RwLock<
+            std::collections::HashMap<
+                String,
+                (i32, String, String, Option<String>, Option<String>),
+            >,
+        >,
     > = Arc::new(RwLock::new(std::collections::HashMap::new()));
 
     let accumulated_content_for_callback = accumulated_content.clone();

@@ -292,9 +292,10 @@ async fn migrate_v8_to_v9(pool: &SqlitePool) -> Result<()> {
 
 /// Ensure call_id column exists in tool_calls (idempotent)
 async fn ensure_tool_call_id_column(pool: &SqlitePool) -> Result<()> {
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('tool_calls')")
-        .fetch_all(pool)
-        .await?;
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('tool_calls')")
+            .fetch_all(pool)
+            .await?;
 
     let has_column = columns.iter().any(|(name,)| name == "call_id");
 

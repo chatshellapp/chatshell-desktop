@@ -164,11 +164,7 @@ pub async fn call_provider(
             }
             "tool" => {
                 let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
-                build_tool_result_message(
-                    tc_id,
-                    msg.tool_result_call_id.as_deref(),
-                    &msg.content,
-                )
+                build_tool_result_message(tc_id, msg.tool_result_call_id.as_deref(), &msg.content)
             }
             "system" => {
                 if system_prompt.is_some() {
