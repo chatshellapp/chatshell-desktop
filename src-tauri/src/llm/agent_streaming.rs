@@ -48,7 +48,7 @@ where
 
     let mut stream = agent
         .stream_chat(prompt, chat_history)
-        .multi_turn(100)
+        .multi_turn(1000)
         .await;
 
     let mut full_content = String::new();
@@ -144,6 +144,7 @@ where
 
                 let tool_info = ToolCallInfo {
                     id: tool_call.id.clone(),
+                    call_id: tool_call.call_id.clone(),
                     tool_name: tool_call.function.name.clone(),
                     tool_input,
                 };

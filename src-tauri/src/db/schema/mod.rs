@@ -113,6 +113,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_working_directory_column(pool).await?;
     ensure_api_style_column(pool).await?;
     ensure_auth_token_column(pool).await?;
+    ensure_tool_call_id_column(pool).await?;
 
     Ok(())
 }
@@ -286,6 +287,24 @@ async fn ensure_auth_token_column(pool: &SqlitePool) -> Result<()> {
 async fn migrate_v8_to_v9(pool: &SqlitePool) -> Result<()> {
     search::create_messages_fts_table(pool).await?;
     tracing::info!("Created messages_fts FTS5 table for search");
+    Ok(())
+}
+
+/// Ensure call_id column exists in tool_calls (idempotent)
+async fn ensure_tool_call_id_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('tool_calls')")
+        .fetch_all(pool)
+        .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "call_id");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE tool_calls ADD COLUMN call_id TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added call_id column to tool_calls table");
+    }
+
     Ok(())
 }
 

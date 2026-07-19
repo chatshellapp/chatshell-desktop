@@ -35,8 +35,10 @@ pub fn create_http_client() -> reqwest::Client {
 /// Tool call information for streaming callback
 #[derive(Debug, Clone)]
 pub struct ToolCallInfo {
-    /// Tool call ID (from the LLM)
+    /// Tool call item id (function-call id from the LLM).
     pub id: String,
+    /// OpenAI Responses API `call_id`, when available.
+    pub call_id: Option<String>,
     /// Name of the tool being called
     pub tool_name: String,
     /// Input arguments as JSON string
@@ -344,10 +346,12 @@ mod tests {
     fn test_tool_call_info_creation() {
         let info = ToolCallInfo {
             id: "call-123".to_string(),
+            call_id: Some("call_abc".to_string()),
             tool_name: "web_search".to_string(),
             tool_input: r#"{"query": "test"}"#.to_string(),
         };
         assert_eq!(info.id, "call-123");
+        assert_eq!(info.call_id.as_deref(), Some("call_abc"));
         assert_eq!(info.tool_name, "web_search");
     }
 
@@ -367,6 +371,7 @@ mod tests {
         let reasoning_chunk = StreamChunkType::Reasoning;
         let tool_call_chunk = StreamChunkType::ToolCall(ToolCallInfo {
             id: "1".to_string(),
+            call_id: None,
             tool_name: "test".to_string(),
             tool_input: "{}".to_string(),
         });

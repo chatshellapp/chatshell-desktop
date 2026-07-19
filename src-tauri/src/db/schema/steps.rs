@@ -51,6 +51,7 @@ pub async fn create_steps_table(pool: &SqlitePool) -> Result<()> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS tool_calls (
             id TEXT PRIMARY KEY,
+            call_id TEXT,
             message_id TEXT NOT NULL,
             tool_name TEXT NOT NULL,
             tool_input TEXT,

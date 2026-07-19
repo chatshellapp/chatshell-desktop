@@ -186,10 +186,11 @@ impl Database {
         let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO tool_calls (id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO tool_calls (id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
+        .bind(&req.call_id)
         .bind(&req.message_id)
         .bind(&req.tool_name)
         .bind(&req.tool_input)
@@ -208,7 +209,7 @@ impl Database {
 
     pub async fn get_tool_call(&self, id: &str) -> Result<ToolCall> {
         let row = sqlx::query(
-            "SELECT id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
+            "SELECT id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
              FROM tool_calls WHERE id = ?"
         )
         .bind(id)
@@ -218,6 +219,7 @@ impl Database {
 
         Ok(ToolCall {
             id: row.get("id"),
+            call_id: row.get("call_id"),
             message_id: row.get("message_id"),
             tool_name: row.get("tool_name"),
             tool_input: row.get("tool_input"),
@@ -233,7 +235,7 @@ impl Database {
 
     pub async fn get_tool_calls_by_message(&self, message_id: &str) -> Result<Vec<ToolCall>> {
         let rows = sqlx::query(
-            "SELECT id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
+            "SELECT id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at
              FROM tool_calls WHERE message_id = ? ORDER BY display_order, created_at"
         )
         .bind(message_id)
@@ -244,6 +246,7 @@ impl Database {
             .iter()
             .map(|row| ToolCall {
                 id: row.get("id"),
+                call_id: row.get("call_id"),
                 message_id: row.get("message_id"),
                 tool_name: row.get("tool_name"),
                 tool_input: row.get("tool_input"),

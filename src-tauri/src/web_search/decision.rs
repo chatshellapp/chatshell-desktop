@@ -44,6 +44,7 @@ pub async fn decide_search_needed(
                 files: vec![],
                 tool_calls: vec![],
                 tool_call_id: None,
+                tool_result_call_id: None,
                 reasoning_content: None,
             },
             ChatMessage {
@@ -53,6 +54,7 @@ pub async fn decide_search_needed(
                 files: vec![],
                 tool_calls: vec![],
                 tool_call_id: None,
+                tool_result_call_id: None,
                 reasoning_content: None,
             },
         ],

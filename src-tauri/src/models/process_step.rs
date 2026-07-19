@@ -51,6 +51,8 @@ pub struct CreateSearchDecisionRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ToolCall {
     pub id: String,
+    /// OpenAI Responses API `call_id`. Distinct from `id` (function-call item id).
+    pub call_id: Option<String>,
     pub message_id: String,
     pub tool_name: String,
     pub tool_input: Option<String>,  // JSON
@@ -67,6 +69,8 @@ pub struct ToolCall {
 pub struct CreateToolCallRequest {
     /// Use the model's original tool_call_id when available.
     pub id: Option<String>,
+    /// OpenAI Responses API `call_id` for replaying tool history on follow-up turns.
+    pub call_id: Option<String>,
     pub message_id: String,
     pub tool_name: String,
     pub tool_input: Option<String>,

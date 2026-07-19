@@ -70,6 +70,8 @@ pub struct FileData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallData {
     pub id: String,
+    #[serde(default)]
+    pub call_id: Option<String>,
     pub tool_name: String,
     pub tool_input: String,
     pub tool_output: Option<String>,
@@ -91,6 +93,9 @@ pub struct ChatMessage {
     /// Tool call ID this message is a result for (only for role="tool")
     #[serde(default)]
     pub tool_call_id: Option<String>,
+    /// OpenAI Responses API `call_id` for tool result replay (only for role="tool")
+    #[serde(default)]
+    pub tool_result_call_id: Option<String>,
     /// Reasoning/thinking content from the assistant (only for role="assistant")
     #[serde(default)]
     pub reasoning_content: Option<String>,
@@ -159,7 +164,11 @@ pub async fn call_provider(
             }
             "tool" => {
                 let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
-                build_tool_result_message(tc_id, &msg.content)
+                build_tool_result_message(
+                    tc_id,
+                    msg.tool_result_call_id.as_deref(),
+                    &msg.content,
+                )
             }
             "system" => {
                 if system_prompt.is_some() {

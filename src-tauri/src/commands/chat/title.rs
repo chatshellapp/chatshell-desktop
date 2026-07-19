@@ -236,6 +236,7 @@ pub(crate) async fn generate_conversation_title(
                 files: vec![],
                 tool_calls: vec![],
                 tool_call_id: None,
+                tool_result_call_id: None,
                 reasoning_content: None,
             },
             ChatMessage {
@@ -245,6 +246,7 @@ pub(crate) async fn generate_conversation_title(
                 files: vec![],
                 tool_calls: vec![],
                 tool_call_id: None,
+                tool_result_call_id: None,
                 reasoning_content: None,
             },
         ],

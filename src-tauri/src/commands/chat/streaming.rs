@@ -587,7 +587,11 @@ pub(crate) async fn handle_agent_streaming(
             }
             "tool" => {
                 let tc_id = msg.tool_call_id.as_deref().unwrap_or("");
-                build_tool_result_message(tc_id, &msg.content)
+                build_tool_result_message(
+                    tc_id,
+                    msg.tool_result_call_id.as_deref(),
+                    &msg.content,
+                )
             }
             "system" => {
                 if system_prompt.is_some() {
@@ -631,9 +635,9 @@ pub(crate) async fn handle_agent_streaming(
     let current_reasoning_block = Arc::new(RwLock::new(String::new()));
     let current_reasoning_order = Arc::new(std::sync::atomic::AtomicI32::new(-1));
 
-    // Track tool calls: HashMap<tool_call_id, (display_order, tool_name, tool_input, tool_output)>
+    // Track tool calls: HashMap<tool_call_id, (display_order, tool_name, tool_input, tool_output, call_id)>
     let tool_calls_map: Arc<
-        RwLock<std::collections::HashMap<String, (i32, String, String, Option<String>)>>,
+        RwLock<std::collections::HashMap<String, (i32, String, String, Option<String>, Option<String>)>>,
     > = Arc::new(RwLock::new(std::collections::HashMap::new()));
 
     let accumulated_content_for_callback = accumulated_content.clone();
@@ -849,6 +853,7 @@ pub(crate) async fn handle_agent_streaming(
                                 actual_tool_name,
                                 display_input.clone(),
                                 None,
+                                tool_info.call_id.clone(),
                             ),
                         );
                     }
@@ -865,7 +870,8 @@ pub(crate) async fn handle_agent_streaming(
                 StreamChunkType::ToolResult(result_info) => {
                     // Update tool call with result
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write()
-                        && let Some((_, name, input, output)) = tool_calls.get_mut(&result_info.id)
+                        && let Some((_, name, input, output, _)) =
+                            tool_calls.get_mut(&result_info.id)
                     {
                         *output = Some(result_info.tool_output.clone());
 
@@ -1243,7 +1249,7 @@ pub(crate) async fn handle_agent_streaming(
             tool_calls_data.len()
         );
 
-        for (tool_call_id, (display_order, tool_name, tool_input, tool_output)) in
+        for (tool_call_id, (display_order, tool_name, tool_input, tool_output, call_id)) in
             tool_calls_data.iter()
         {
             let status = if tool_output.is_some() {
@@ -1261,6 +1267,7 @@ pub(crate) async fn handle_agent_streaming(
                 .db
                 .create_tool_call(CreateToolCallRequest {
                     id: Some(tool_call_id.clone()),
+                    call_id: call_id.clone(),
                     message_id: assistant_message.id.clone(),
                     tool_name: display_name,
                     tool_input: Some(tool_input.clone()),

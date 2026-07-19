@@ -1332,7 +1332,11 @@ pub fn build_assistant_message_with_tool_calls(
     for tc in tool_calls {
         let args: serde_json::Value = serde_json::from_str(&tc.tool_input)
             .unwrap_or(serde_json::Value::String(tc.tool_input.clone()));
-        content_items.push(AssistantContent::tool_call(&tc.id, &tc.tool_name, args));
+        content_items.push(if let Some(ref call_id) = tc.call_id {
+            AssistantContent::tool_call_with_call_id(&tc.id, call_id.clone(), &tc.tool_name, args)
+        } else {
+            AssistantContent::tool_call(&tc.id, &tc.tool_name, args)
+        });
     }
     if content_items.is_empty() {
         content_items.push(AssistantContent::Text(String::new().into()));
@@ -1345,12 +1349,18 @@ pub fn build_assistant_message_with_tool_calls(
 }
 
 /// Build a tool result message (sent as a User message with ToolResult content).
-pub fn build_tool_result_message(tool_call_id: &str, output: &str) -> Message {
+pub fn build_tool_result_message(
+    tool_call_id: &str,
+    call_id: Option<&str>,
+    output: &str,
+) -> Message {
     use rig::message::{ToolResultContent, UserContent};
+    let content = OneOrMany::one(ToolResultContent::text(output));
     Message::User {
-        content: OneOrMany::one(UserContent::tool_result(
-            tool_call_id,
-            OneOrMany::one(ToolResultContent::text(output)),
-        )),
+        content: OneOrMany::one(if let Some(call_id) = call_id {
+            UserContent::tool_result_with_call_id(tool_call_id, call_id.to_string(), content)
+        } else {
+            UserContent::tool_result(tool_call_id, content)
+        }),
     }
 }

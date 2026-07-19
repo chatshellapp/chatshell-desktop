@@ -41,6 +41,7 @@ pub async fn build_chat_messages(
         files: vec![],
         tool_calls: vec![],
         tool_call_id: None,
+        tool_result_call_id: None,
         reasoning_content: None,
     }];
 
@@ -82,6 +83,7 @@ pub async fn build_chat_messages(
                         files: vec![],
                         tool_calls: vec![],
                         tool_call_id: None,
+                        tool_result_call_id: None,
                         reasoning_content: None,
                     });
                 }
@@ -120,6 +122,7 @@ pub async fn build_chat_messages(
                             files: vec![],
                             tool_calls: vec![],
                             tool_call_id: None,
+                            tool_result_call_id: None,
                             reasoning_content: reasoning,
                         });
                     } else {
@@ -127,6 +130,7 @@ pub async fn build_chat_messages(
                             .iter()
                             .map(|tc| ToolCallData {
                                 id: tc.id.clone(),
+                                call_id: tc.call_id.clone(),
                                 tool_name: tc.tool_name.clone(),
                                 tool_input: tc.tool_input.clone().unwrap_or_default(),
                                 tool_output: tc.tool_output.clone(),
@@ -164,6 +168,7 @@ pub async fn build_chat_messages(
                             files: vec![],
                             tool_calls: tc_data.clone(),
                             tool_call_id: None,
+                            tool_result_call_id: None,
                             reasoning_content: reasoning,
                         });
 
@@ -177,6 +182,7 @@ pub async fn build_chat_messages(
                                     files: vec![],
                                     tool_calls: vec![],
                                     tool_call_id: Some(tc.id.clone()),
+                                    tool_result_call_id: tc.call_id.clone(),
                                     reasoning_content: None,
                                 });
                             }
@@ -192,6 +198,7 @@ pub async fn build_chat_messages(
                                 files: vec![],
                                 tool_calls: vec![],
                                 tool_call_id: None,
+                                tool_result_call_id: None,
                                 reasoning_content: None,
                             });
                         }
@@ -217,6 +224,7 @@ pub async fn build_chat_messages(
         files: user_files.to_vec(),
         tool_calls: vec![],
         tool_call_id: None,
+        tool_result_call_id: None,
         reasoning_content: None,
     });
 
