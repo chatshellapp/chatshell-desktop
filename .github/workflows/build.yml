@@ -37,6 +37,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout chatshell-agent (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: chatshellapp/chatshell-agent
+          path: ../chatshell-agent
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -64,6 +69,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout chatshell-agent (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: chatshellapp/chatshell-agent
+          path: ../chatshell-agent
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -99,6 +109,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout chatshell-agent (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: chatshellapp/chatshell-agent
+          path: ../chatshell-agent
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -163,6 +178,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout chatshell-agent (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: chatshellapp/chatshell-agent
+          path: ../chatshell-agent
 
       - name: Install Linux dependencies
         run: |
