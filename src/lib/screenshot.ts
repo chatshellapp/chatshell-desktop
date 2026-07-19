@@ -134,56 +134,106 @@ async function inlineAssetImages(
   return restorations
 }
 
+async function renderElementToImage(
+  element: HTMLElement,
+  paddingPx: number
+): Promise<HTMLImageElement | null> {
+  const restorations = await inlineAssetImages(element)
+
+  const rect = element.getBoundingClientRect()
+  const contentWidth = rect.width + paddingPx * 2
+  const contentHeight = rect.height + paddingPx * 2
+  const bg = getBackgroundColor()
+
+  let dataUrl: string
+  try {
+    dataUrl = await toPng(element, {
+      pixelRatio: SCREENSHOT_SCALE,
+      backgroundColor: bg,
+      width: contentWidth,
+      height: contentHeight,
+      style: {
+        margin: '0',
+        padding: `${paddingPx}px`,
+        width: `${contentWidth}px`,
+      },
+      filter: (node: HTMLElement) => {
+        if (node.dataset?.screenshotExclude === 'true') return false
+        return true
+      },
+    })
+  } finally {
+    for (const { img, originalSrc } of restorations) {
+      img.src = originalSrc
+    }
+  }
+
+  try {
+    return await loadImage(dataUrl)
+  } catch {
+    return null
+  }
+}
+
+async function composeWithFooter(
+  images: HTMLImageElement[],
+  outerPaddingPx: number
+): Promise<Uint8Array | null> {
+  if (images.length === 0) return null
+
+  const bg = getBackgroundColor()
+  const outerPadding = outerPaddingPx * SCREENSHOT_SCALE
+  const maxWidth = Math.max(...images.map((i) => i.width))
+  const totalImageHeight = images.reduce((sum, i) => sum + i.height, 0)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = maxWidth + outerPadding * 2
+  canvas.height = totalImageHeight + outerPadding * 2 + FOOTER_HEIGHT * SCREENSHOT_SCALE
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  let y = outerPadding
+  for (const img of images) {
+    const x = outerPadding + (maxWidth - img.width) / 2
+    ctx.drawImage(img, x, y)
+    y += img.height
+  }
+
+  await drawBrandFooter(ctx, y + outerPadding, canvas.width)
+
+  const finalUrl = canvas.toDataURL('image/png')
+  const base64 = finalUrl.split(',')[1]
+  if (!base64) return null
+  return base64ToUint8Array(base64)
+}
+
 async function captureElement(element: HTMLElement): Promise<Uint8Array | null> {
   try {
-    const restorations = await inlineAssetImages(element)
-
-    const rect = element.getBoundingClientRect()
-    const contentWidth = rect.width + SCREENSHOT_PADDING * 2
-    const contentHeight = rect.height + SCREENSHOT_PADDING * 2
-    const bg = getBackgroundColor()
-
-    let dataUrl: string
-    try {
-      dataUrl = await toPng(element, {
-        pixelRatio: SCREENSHOT_SCALE,
-        backgroundColor: bg,
-        width: contentWidth,
-        height: contentHeight,
-        style: {
-          margin: '0',
-          padding: `${SCREENSHOT_PADDING}px`,
-          width: `${contentWidth}px`,
-        },
-        filter: (node: HTMLElement) => {
-          if (node.dataset?.screenshotExclude === 'true') return false
-          return true
-        },
-      })
-    } finally {
-      for (const { img, originalSrc } of restorations) {
-        img.src = originalSrc
-      }
-    }
-
-    const img = await loadImage(dataUrl)
-
-    const canvas = document.createElement('canvas')
-    canvas.width = img.width
-    canvas.height = img.height + FOOTER_HEIGHT * SCREENSHOT_SCALE
-    const ctx = canvas.getContext('2d')!
-
-    ctx.fillStyle = bg
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(img, 0, 0)
-    await drawBrandFooter(ctx, img.height, canvas.width)
-
-    const finalUrl = canvas.toDataURL('image/png')
-    const base64 = finalUrl.split(',')[1]
-    if (!base64) return null
-    return base64ToUint8Array(base64)
+    const img = await renderElementToImage(element, SCREENSHOT_PADDING)
+    if (!img) return null
+    return await composeWithFooter([img], 0)
   } catch (err) {
     logger.error('Failed to capture element:', err)
+    return null
+  }
+}
+
+async function captureElements(elements: HTMLElement[]): Promise<Uint8Array | null> {
+  if (elements.length === 0) return null
+  if (elements.length === 1) return captureElement(elements[0])
+
+  try {
+    const images: HTMLImageElement[] = []
+    for (const el of elements) {
+      const img = await renderElementToImage(el, 0)
+      if (!img) return null
+      images.push(img)
+    }
+    return await composeWithFooter(images, SCREENSHOT_PADDING)
+  } catch (err) {
+    logger.error('Failed to capture elements:', err)
     return null
   }
 }
@@ -199,10 +249,7 @@ function generateFilename(): string {
   return `chatshell-${y}${m}${d}-${suffix}.png`
 }
 
-export async function saveScreenshot(element: HTMLElement): Promise<boolean> {
-  const data = await captureElement(element)
-  if (!data) return false
-
+async function promptAndWriteScreenshot(data: Uint8Array): Promise<boolean> {
   try {
     const filePath = await save({
       defaultPath: generateFilename(),
@@ -218,6 +265,22 @@ export async function saveScreenshot(element: HTMLElement): Promise<boolean> {
   }
 }
 
+export async function saveScreenshot(element: HTMLElement): Promise<boolean> {
+  const data = await captureElement(element)
+  if (!data) return false
+  return promptAndWriteScreenshot(data)
+}
+
+export async function saveScreenshotMulti(elements: HTMLElement[]): Promise<boolean> {
+  const data = await captureElements(elements)
+  if (!data) return false
+  return promptAndWriteScreenshot(data)
+}
+
 export function findMessageElement(messageId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
+}
+
+export function findStreamingMessageElement(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-streaming-message="true"]')
 }

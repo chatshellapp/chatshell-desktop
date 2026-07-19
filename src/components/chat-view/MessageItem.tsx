@@ -31,7 +31,7 @@ interface MessageItemProps {
   onRevert: (messageId: string) => void
   onFork: (messageId: string) => void
   onExportAll: () => void
-  onExportConversation: () => void
+  onExportConversation: (messageId: string) => void
   onExportMessage: (messageId: string) => void
 }
 
@@ -290,7 +290,7 @@ export function MessageItem({
         onFork={() => onFork(message.id)}
         onDownloadMarkdown={handleDownloadMarkdown}
         onExportAll={onExportAll}
-        onExportConversation={onExportConversation}
+        onExportConversation={() => onExportConversation(message.id)}
         onExportMessage={() => onExportMessage(message.id)}
       />
     </div>

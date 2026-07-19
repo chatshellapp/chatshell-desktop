@@ -161,24 +161,26 @@ export function ChatView() {
               />
             ))}
             {showStreamingMessage && (
-              <StreamingMessage
-                messages={messages}
-                messageResources={messageResources}
-                urlStatuses={urlStatuses}
-                pendingSearchDecisions={pendingSearchDecisions}
-                streamingToolCalls={streamingToolCalls}
-                streamingImages={streamingImages}
-                isWaitingForAI={isWaitingForAI}
-                isStreaming={isStreaming}
-                streamingContent={streamingContent}
-                streamingReasoningContent={streamingReasoningContent}
-                isReasoningActive={isReasoningActive}
-                getDisplayInfo={getDisplayInfo}
-                onCopy={handleCopy}
-                onExportAll={handleExportAll}
-                onExportConversation={handleExportConversation}
-                onExportMessage={() => {}}
-              />
+              <div data-streaming-message="true">
+                <StreamingMessage
+                  messages={messages}
+                  messageResources={messageResources}
+                  urlStatuses={urlStatuses}
+                  pendingSearchDecisions={pendingSearchDecisions}
+                  streamingToolCalls={streamingToolCalls}
+                  streamingImages={streamingImages}
+                  isWaitingForAI={isWaitingForAI}
+                  isStreaming={isStreaming}
+                  streamingContent={streamingContent}
+                  streamingReasoningContent={streamingReasoningContent}
+                  isReasoningActive={isReasoningActive}
+                  getDisplayInfo={getDisplayInfo}
+                  onCopy={handleCopy}
+                  onExportAll={handleExportAll}
+                  onExportConversation={() => handleExportConversation(null)}
+                  onExportMessage={() => {}}
+                />
+              </div>
             )}
             {/* API Error display */}
             {apiError && (

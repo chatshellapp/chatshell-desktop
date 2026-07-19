@@ -3,7 +3,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
-import { saveScreenshot, findMessageElement } from '@/lib/screenshot'
+import {
+  saveScreenshot,
+  saveScreenshotMulti,
+  findMessageElement,
+  findStreamingMessageElement,
+} from '@/lib/screenshot'
 import { useMessageStore } from '@/stores/message'
 import { useConversationStore } from '@/stores/conversation'
 import { useModelStore } from '@/stores/modelStore'
@@ -211,16 +216,76 @@ export function useMessageHandlers({
     })
   }, [messagesContentRef])
 
-  const handleExportConversation = useCallback(() => {
-    const el = messagesContentRef.current
-    if (!el) {
-      toast.error(t('noMessagesToCapture'))
-      return
-    }
-    saveScreenshot(el).then((ok) => {
+  const handleExportConversation = useCallback(
+    async (messageId: string | null) => {
+      if (!currentConversation) {
+        toast.error(t('noActiveConversation'))
+        return
+      }
+
+      const elements: HTMLElement[] = []
+
+      if (messageId === null) {
+        // Streaming case: pair last user message with the in-progress streaming message
+        const convState = getConversationState(currentConversation.id)
+        const lastUser = [...convState.messages].reverse().find((m) => m.sender_type === 'user')
+        if (lastUser) {
+          const userEl = findMessageElement(lastUser.id)
+          if (userEl) elements.push(userEl)
+        }
+        const streamingEl = findStreamingMessageElement()
+        if (streamingEl) elements.push(streamingEl)
+      } else {
+        const convState = getConversationState(currentConversation.id)
+        const msgs = convState.messages
+        const idx = msgs.findIndex((m) => m.id === messageId)
+        if (idx === -1) {
+          toast.error(t('couldNotFindMessage'))
+          return
+        }
+
+        const current = msgs[idx]
+        let userMessageId: string | null = null
+        let assistantMessageId: string | null = null
+
+        if (current.sender_type === 'user') {
+          userMessageId = current.id
+          for (let i = idx + 1; i < msgs.length; i++) {
+            if (msgs[i].sender_type !== 'user') {
+              assistantMessageId = msgs[i].id
+              break
+            }
+          }
+        } else {
+          assistantMessageId = current.id
+          for (let i = idx - 1; i >= 0; i--) {
+            if (msgs[i].sender_type === 'user') {
+              userMessageId = msgs[i].id
+              break
+            }
+          }
+        }
+
+        if (userMessageId) {
+          const el = findMessageElement(userMessageId)
+          if (el) elements.push(el)
+        }
+        if (assistantMessageId) {
+          const el = findMessageElement(assistantMessageId)
+          if (el) elements.push(el)
+        }
+      }
+
+      if (elements.length === 0) {
+        toast.error(t('couldNotFindMessage'))
+        return
+      }
+
+      const ok = await saveScreenshotMulti(elements)
       if (ok) toast.success(t('screenshotSaved'))
-    })
-  }, [messagesContentRef])
+    },
+    [currentConversation, getConversationState, t]
+  )
 
   const handleExportMessage = useCallback((messageId: string) => {
     const el = findMessageElement(messageId)
