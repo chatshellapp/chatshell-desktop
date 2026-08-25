@@ -35,3 +35,8 @@ design-assets
 
 # Claude settings
 .claude
+
+# Signing artifacts
+*.p8
+*.p12
+*.mobileprovision
