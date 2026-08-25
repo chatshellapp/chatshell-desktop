@@ -2,7 +2,9 @@
 
 use super::super::AppState;
 use crate::models::{ContextType, CreateFetchResultRequest};
-use crate::web_fetch::{self, FetchConfig, FetchMode, FetchedWebResource, LocalMethod};
+use crate::web_fetch::{
+    self, FetchConfig, FetchMode, FetchedWebResource, LocalMethod, WebFetchMetadata,
+};
 use tauri::Emitter;
 
 /// Load fetch configuration from settings
@@ -42,19 +44,159 @@ pub(crate) struct UrlProcessingResult {
     pub attachment_ids: Vec<String>,
 }
 
-/// Fetch and store URLs, emitting events as each completes
+/// Re-link existing fetch_results to the new user message without re-hitting
+/// the network. Used by the "resend" path so the LLM sees the same content
+/// the user originally attached, even if the URL has since changed or gone
+/// offline.
+async fn reuse_fetch_results(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    fetch_result_ids: &[String],
+    user_message_id: &str,
+    conversation_id: &str,
+) -> (Vec<FetchedWebResource>, Vec<String>) {
+    let mut resources = Vec::new();
+    let mut attachment_ids = Vec::new();
+
+    for fetch_result_id in fetch_result_ids {
+        let fetch_result = match state.db.get_fetch_result(fetch_result_id).await {
+            Ok(fr) => fr,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to load fetch_result {} for reuse: {}",
+                    fetch_result_id,
+                    e
+                );
+                continue;
+            }
+        };
+
+        let content = match crate::storage::read_content(app, &fetch_result.storage_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to read reused fetch_result {} from {}: {}",
+                    fetch_result_id,
+                    fetch_result.storage_path,
+                    e
+                );
+                continue;
+            }
+        };
+
+        let headings: Vec<String> = fetch_result
+            .headings
+            .as_deref()
+            .and_then(|h| serde_json::from_str(h).ok())
+            .unwrap_or_default();
+
+        let mime_type = fetch_result
+            .original_mime
+            .clone()
+            .unwrap_or_else(|| fetch_result.content_type.clone());
+
+        let resource = FetchedWebResource {
+            url: fetch_result.url.clone(),
+            title: fetch_result.title.clone(),
+            description: fetch_result.description.clone(),
+            mime_type,
+            content_format: fetch_result.content_type.clone(),
+            content,
+            extraction_error: if fetch_result.status == "failed" {
+                fetch_result.error.clone()
+            } else {
+                None
+            },
+            metadata: WebFetchMetadata {
+                keywords: fetch_result.keywords.clone(),
+                headings,
+                fetched_at: fetch_result.updated_at.clone(),
+                original_length: fetch_result
+                    .original_size
+                    .and_then(|s| usize::try_from(s).ok()),
+                truncated: false,
+                favicon_url: fetch_result.favicon_url.clone(),
+            },
+        };
+
+        if let Err(e) = state
+            .db
+            .link_message_context(
+                user_message_id,
+                ContextType::FetchResult,
+                &fetch_result.id,
+                None,
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to link reused fetch_result {} to message: {}",
+                fetch_result_id,
+                e
+            );
+            continue;
+        }
+
+        tracing::info!(
+            "♻️ [url_processing] Reusing fetch_result {} for {}",
+            fetch_result.id,
+            fetch_result.url
+        );
+
+        let _ = app.emit(
+            "attachment-update",
+            serde_json::json!({
+                "message_id": user_message_id,
+                "conversation_id": conversation_id,
+                "attachment_id": fetch_result.id,
+                "completed_url": fetch_result.url,
+            }),
+        );
+
+        attachment_ids.push(fetch_result.id);
+        resources.push(resource);
+    }
+
+    (resources, attachment_ids)
+}
+
+/// Fetch and store URLs, emitting events as each completes.
+///
+/// `reuse_fetch_result_ids` are existing `fetch_results` rows whose already-
+/// stored content should be re-attached to this message without re-fetching.
+/// `urls` are brand-new URLs that still need to be fetched.
 pub(crate) async fn fetch_and_store_urls(
     state: &AppState,
     app: &tauri::AppHandle,
     urls: &[String],
+    reuse_fetch_result_ids: &[String],
     user_message_id: &str,
     conversation_id: &str,
     search_result_id: Option<&str>,
 ) -> UrlProcessingResult {
+    let (mut fetched_resources, mut attachment_ids) = reuse_fetch_results(
+        state,
+        app,
+        reuse_fetch_result_ids,
+        user_message_id,
+        conversation_id,
+    )
+    .await;
+
     if urls.is_empty() {
+        if !reuse_fetch_result_ids.is_empty() {
+            let _ = app.emit(
+                "attachment-processing-complete",
+                serde_json::json!({
+                    "message_id": user_message_id,
+                    "conversation_id": conversation_id,
+                    "attachment_ids": attachment_ids,
+                }),
+            );
+        }
         return UrlProcessingResult {
-            fetched_resources: Vec::new(),
-            attachment_ids: Vec::new(),
+            fetched_resources,
+            attachment_ids,
         };
     }
 
@@ -78,9 +220,6 @@ pub(crate) async fn fetch_and_store_urls(
 
     // Process URLs with streaming - results are sent one by one as they complete
     let (mut rx, fetch_handle) = web_fetch::fetch_urls_with_config(urls, None, fetch_config).await;
-
-    let mut fetched_resources: Vec<FetchedWebResource> = Vec::new();
-    let mut attachment_ids: Vec<String> = Vec::new();
 
     // Process each result as it arrives from the channel
     while let Some(resource) = rx.recv().await {

@@ -127,6 +127,7 @@ export interface PendingMessage {
   parameterOverrides?: SendMessageParameterOverrides
   contextMessageCount?: number | null
   useProviderDefaults?: boolean
+  reuseFetchResultIds?: string[]
 }
 
 // Parameter overrides for conversation-level settings
@@ -160,7 +161,8 @@ export interface MessageStoreCrudActions {
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
-    useProviderDefaults?: boolean
+    useProviderDefaults?: boolean,
+    reuseFetchResultIds?: string[]
   ) => Promise<void>
   stopGeneration: (conversationId: string) => Promise<void>
   clearMessages: (conversationId: string) => Promise<void>

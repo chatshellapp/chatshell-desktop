@@ -1,10 +1,18 @@
 import { useMemo, useState } from 'react'
 import { ExternalLink, Copy, Check } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import Ansi from 'ansi-to-react'
 import { MarkdownContent } from '@/components/markdown-content'
 import { getDomain } from './utils'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/lib/i18n'
+import { DiffView } from './diff-view'
+import {
+  parseReadOutput,
+  isReadGap,
+  countGrepMatches,
+  grepFilePaths,
+} from '@/lib/tool-output-parse'
 
 function useCopyButton(text: string) {
   const [copied, setCopied] = useState(false)
@@ -31,51 +39,6 @@ export function CopyButton({ text }: { text: string }) {
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
     </button>
   )
-}
-
-const EXT_LANG_MAP: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'tsx',
-  js: 'javascript',
-  jsx: 'jsx',
-  rs: 'rust',
-  py: 'python',
-  rb: 'ruby',
-  go: 'go',
-  java: 'java',
-  kt: 'kotlin',
-  swift: 'swift',
-  c: 'c',
-  cpp: 'cpp',
-  h: 'c',
-  hpp: 'cpp',
-  cs: 'csharp',
-  php: 'php',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  sql: 'sql',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  toml: 'toml',
-  xml: 'xml',
-  html: 'html',
-  css: 'css',
-  scss: 'scss',
-  less: 'less',
-  md: 'markdown',
-  lua: 'lua',
-  r: 'r',
-  dart: 'dart',
-  zig: 'zig',
-  vue: 'vue',
-  svelte: 'svelte',
-}
-
-function getLangFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  return EXT_LANG_MAP[ext] || ''
 }
 
 // --- Input summary extraction ---
@@ -140,6 +103,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
     const parsed = JSON.parse(toolInput)
     switch (toolName) {
       case 'read':
+        return parsed.path ? fileNameFromPath(parsed.path) : null
       case 'edit':
       case 'write':
         return parsed.path ? fileNameFromPath(parsed.path) : null
@@ -158,7 +122,7 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
       case 'glob':
         return parsed.pattern || null
       case 'grep':
-        return parsed.pattern || null
+        return parsed.pattern ?? null
       default:
         return null
     }
@@ -221,14 +185,14 @@ export function WebSearchOutput({ toolInput, toolOutput }: ToolOutputProps) {
   return (
     <div className="space-y-1">
       {query && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground/60 truncate">"{query}"</span>
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground/50 truncate">"{query}"</span>
           {output && <CopyButton text={output} />}
         </div>
       )}
       {output && (
         <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent content={output} className="text-xs" />
+          <MarkdownContent content={output} flat className="text-xs text-foreground/80" />
         </div>
       )}
     </div>
@@ -242,7 +206,7 @@ export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : null
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {url && (
         <div className="flex items-center gap-2 min-w-0">
           {faviconUrl && (
@@ -256,7 +220,7 @@ export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
               }}
             />
           )}
-          <span className="text-xs text-muted-foreground/70 font-mono truncate flex-1 min-w-0">
+          <span className="text-xs text-muted-foreground/50 font-mono truncate flex-1 min-w-0">
             {url}
           </span>
           <button
@@ -274,7 +238,7 @@ export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
       )}
       {toolOutput && (
         <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent content={toolOutput} className="text-xs" />
+          <MarkdownContent content={toolOutput} flat className="text-xs text-foreground/80" />
         </div>
       )}
     </div>
@@ -283,30 +247,67 @@ export function WebFetchOutput({ toolInput, toolOutput }: ToolOutputProps) {
 
 export function ReadOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const path = safeParseField(toolInput, 'path') || ''
-  const lang = getLangFromPath(path)
   const output = toolOutput || ''
 
-  // Strip line-number prefixes (e.g. "    12|content") for cleaner display
-  const lines = output.split('\n')
-  const hasLineNumbers = lines.length > 1 && /^\s*\d+\|/.test(lines[0])
+  const parsed = useMemo(() => parseReadOutput(output), [output])
+  const numberedCount = parsed.lines.filter((l) => l.n !== null).length
+  // The backend prefixes every line of a text read with "N\t"; anything else
+  // (images, notes, unprefixed text) keeps the generic pre fallback.
+  const hasRealLineNumbers = parsed.lines.length > 0 && numberedCount === parsed.lines.length
 
-  let displayContent: string
-  if (hasLineNumbers) {
-    displayContent =
-      '```' + lang + '\n' + lines.map((l) => l.replace(/^\s*\d+\|/, '')).join('\n') + '\n```'
-  } else {
-    displayContent = '```' + lang + '\n' + output + '\n```'
-  }
+  const maxLineNo = parsed.lines.reduce((max, l) => Math.max(max, l.n ?? 0), 0)
+  const gutterWidth = `${Math.max(2, String(maxLineNo).length)}ch`
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground/60 font-mono truncate">{path}</span>
-        {output && <CopyButton text={output} />}
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-xs text-muted-foreground/50 font-mono truncate">{path}</span>
+        {output && <CopyButton text={parsed.lines.map((l) => l.text).join('\n')} />}
       </div>
-      <div className="max-h-60 overflow-y-auto rounded">
-        <MarkdownContent content={displayContent} className="text-xs" />
-      </div>
+      {hasRealLineNumbers ? (
+        <div className="rounded border border-muted/50 overflow-hidden font-mono text-xs">
+          <div className="overflow-x-auto max-h-60 overflow-y-auto" data-testid="read-gutter">
+            {parsed.lines.map((line, i) => {
+              const prev = parsed.lines[i - 1]
+              const gapBefore = prev ? isReadGap(prev, line) : false
+              return (
+                <div key={i}>
+                  {gapBefore && (
+                    <div
+                      className="text-muted-foreground/40 select-none px-2"
+                      data-testid="read-gap"
+                    >
+                      …
+                    </div>
+                  )}
+                  <div className="flex items-start hover:bg-muted/30">
+                    <span
+                      className="flex-shrink-0 text-right text-muted-foreground/40 select-none px-1"
+                      style={{ width: gutterWidth }}
+                    >
+                      {line.n ?? ''}
+                    </span>
+                    <span className="flex-1 whitespace-pre pr-3 text-foreground/80">
+                      {line.text || ' '}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {parsed.footer && (
+            <div className="px-2 py-1 bg-muted/30 text-muted-foreground/50 border-t border-muted/40">
+              {parsed.footer}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded border border-muted/50 overflow-hidden font-mono text-xs">
+          <pre className="overflow-x-auto max-h-60 overflow-y-auto p-2 text-foreground/80 whitespace-pre-wrap break-words">
+            {output}
+          </pre>
+        </div>
+      )}
     </div>
   )
 }
@@ -340,8 +341,11 @@ export function BashOutput({ toolInput, toolOutput }: ToolOutputProps) {
           <div className="text-xs font-mono text-green-400/80 mb-1.5 break-all">$ {command}</div>
         )}
         {cleanOutput && (
-          <pre className="text-xs font-mono text-zinc-300 whitespace-pre-wrap break-all leading-relaxed">
-            {cleanOutput}
+          <pre
+            className="text-xs font-mono text-zinc-300 whitespace-pre-wrap break-all leading-relaxed"
+            data-testid="bash-output"
+          >
+            <Ansi>{cleanOutput}</Ansi>
           </pre>
         )}
       </div>
@@ -349,9 +353,41 @@ export function BashOutput({ toolInput, toolOutput }: ToolOutputProps) {
   )
 }
 
-export function EditWriteOutput({ toolOutput }: ToolOutputProps) {
-  if (!toolOutput) return null
-  return <p className="text-xs text-muted-foreground/70 leading-relaxed">{toolOutput}</p>
+export function EditOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const oldStr = safeParseField(toolInput, 'old_string') ?? ''
+  const newStr = safeParseField(toolInput, 'new_string') ?? ''
+  // Caption: backend success line ("Successfully replaced N occurrence(s) in ...")
+  const caption = toolOutput?.split('\n')[0] || ''
+
+  return (
+    <div className="space-y-1">
+      {caption && (
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground/50 truncate">{caption}</span>
+          {newStr && <CopyButton text={newStr} />}
+        </div>
+      )}
+      <DiffView oldText={oldStr} newText={newStr} />
+    </div>
+  )
+}
+
+export function WriteOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const content = safeParseField(toolInput, 'content') ?? ''
+  // Caption: backend success line ("Created/Wrote <path> (N lines, M bytes)")
+  const caption = toolOutput?.split('\n')[0] || ''
+
+  return (
+    <div className="space-y-1">
+      {caption && (
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground/50 truncate">{caption}</span>
+          {content && <CopyButton text={content} />}
+        </div>
+      )}
+      <DiffView oldText="" newText={content} />
+    </div>
+  )
 }
 
 export function SimpleTextOutput({ toolOutput }: ToolOutputProps) {
@@ -359,19 +395,23 @@ export function SimpleTextOutput({ toolOutput }: ToolOutputProps) {
   return <p className="text-xs text-muted-foreground/70 leading-relaxed">{toolOutput}</p>
 }
 
-export function GrepOutput({ toolInput, toolOutput }: ToolOutputProps) {
-  const pattern = safeParseField(toolInput, 'pattern') || ''
+export function GrepOutput({ toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
   const output = toolOutput || ''
+
+  const matchCount = useMemo(() => (output ? countGrepMatches(output) : 0), [output])
+  const fileCount = useMemo(() => (output ? grepFilePaths(output).length : 0), [output])
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        {pattern && (
-          <span className="text-xs text-muted-foreground/60 font-mono truncate">/{pattern}/</span>
-        )}
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-xs text-muted-foreground/50 font-mono truncate">
+          {matchCount} {matchCount === 1 ? t('grepOutput.match') : t('grepOutput.matches')} ·{' '}
+          {fileCount} {fileCount === 1 ? t('grepOutput.file') : t('grepOutput.files')}
+        </span>
         {output && <CopyButton text={output} />}
       </div>
-      <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto font-mono">
+      <pre className="text-xs text-foreground/80 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto font-mono">
         {output}
       </pre>
     </div>
@@ -386,8 +426,8 @@ export function GlobOutput({ toolOutput }: ToolOutputProps) {
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground/60">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-xs text-muted-foreground/50">
           {fileCount} {fileCount === 1 ? t('globOutput.file') : t('globOutput.files')}
         </span>
         {output && <CopyButton text={output} />}
@@ -438,18 +478,16 @@ export function SkillOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const content = stripped ? normalizeSkillMarkdown(stripped) : ''
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {name && (
         <div className="flex items-center justify-between gap-2 min-w-0">
-          <span className="text-xs text-muted-foreground/70 font-medium truncate min-w-0">
-            {name}
-          </span>
+          <span className="text-xs text-muted-foreground/50 truncate min-w-0">{name}</span>
           {raw && <CopyButton text={stripped} />}
         </div>
       )}
       {content && (
         <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-          <MarkdownContent content={content} className="text-xs" />
+          <MarkdownContent content={content} flat className="text-xs text-foreground/80" />
         </div>
       )}
     </div>
@@ -462,28 +500,94 @@ export function McpSchemaOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const label = server && tool ? `${server}/${tool}` : ''
   const raw = toolOutput || ''
   const unwrapped = stripXmlWrapper(raw, 'mcp_schema')
-  const displayContent = useMemo(() => {
+
+  if (!unwrapped) return null
+
+  const pretty = useMemo(() => {
     try {
-      const pretty = JSON.stringify(JSON.parse(unwrapped), null, 2)
-      return '```json\n' + pretty + '\n```'
+      return JSON.stringify(JSON.parse(unwrapped), null, 2)
     } catch {
-      return '```json\n' + unwrapped + '\n```'
+      return unwrapped
     }
   }, [unwrapped])
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {label && (
         <div className="flex items-center justify-between gap-2 min-w-0">
-          <span className="text-xs text-muted-foreground/70 font-medium truncate min-w-0">
-            {label}
-          </span>
+          <span className="text-xs text-muted-foreground/50 truncate min-w-0">{label}</span>
           {raw && <CopyButton text={unwrapped} />}
         </div>
       )}
-      {unwrapped && (
-        <div className="max-h-60 overflow-y-auto rounded">
-          <MarkdownContent content={displayContent} className="text-xs" />
+      <div className="rounded border border-muted/50 overflow-hidden font-mono text-xs">
+        <pre className="overflow-x-auto max-h-60 overflow-y-auto p-2 text-foreground/80 whitespace-pre">
+          {pretty}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+export function McpToolOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
+  const args = useMemo(() => {
+    if (!toolInput) return null
+    try {
+      const parsed = JSON.parse(toolInput)
+      if (typeof parsed !== 'object' || parsed === null) return null
+      return parsed as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }, [toolInput])
+  const output = toolOutput || ''
+  const hasArgs = args && Object.keys(args).length > 0
+  const hasOutput = output.length > 0
+  const entries = hasArgs ? Object.entries(args!) : []
+
+  if (!hasArgs && !hasOutput)
+    return (
+      <p className="text-xs text-muted-foreground/50 italic">
+        {t('toolCallPreview.waitingForResult')}
+      </p>
+    )
+
+  return (
+    <div className="space-y-1">
+      {hasArgs && (
+        <div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="text-xs text-muted-foreground/50 truncate">arguments</span>
+            {toolInput && <CopyButton text={JSON.stringify(args, null, 2)} />}
+          </div>
+          <div className="rounded border border-muted/50 overflow-hidden font-mono text-xs">
+            <div className="grid grid-cols-[auto_auto_1fr] gap-x-1 overflow-x-auto max-h-40 overflow-y-auto">
+              {entries.map(([key, value]) => (
+                <div key={key} className="contents group">
+                  <span className="text-muted-foreground/25 select-none px-2 py-0.5 text-right group-hover:bg-muted/30">
+                    -
+                  </span>
+                  <span className="text-muted-foreground/60 select-none py-0.5 group-hover:bg-muted/30">
+                    {key}
+                  </span>
+                  <span className="text-foreground/80 whitespace-pre-wrap break-all px-2 py-0.5 group-hover:bg-muted/30">
+                    {typeof value === 'string' ? value : JSON.stringify(value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {hasOutput && (
+        <div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="text-xs text-muted-foreground/50 truncate">result</span>
+            <CopyButton text={output} />
+          </div>
+          <pre className="text-xs text-foreground/80 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap break-words">
+            {output}
+          </pre>
         </div>
       )}
     </div>
@@ -517,10 +621,11 @@ export function ToolOutputRenderer({
     case 'kill_shell':
       return <SimpleTextOutput toolOutput={toolOutput} />
     case 'edit':
+      return <EditOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'write':
-      return <EditWriteOutput toolOutput={toolOutput} />
+      return <WriteOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'grep':
-      return <GrepOutput toolInput={toolInput} toolOutput={toolOutput} />
+      return <GrepOutput toolOutput={toolOutput} />
     case 'glob':
       return <GlobOutput toolOutput={toolOutput} />
     default:

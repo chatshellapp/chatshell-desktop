@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileText, Image, FileIcon as FileIconLucide } from 'lucide-react'
+import { CloudOff, FileText, Image, FileIcon as FileIconLucide, Loader2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import {
   Dialog,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
+import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
 import type { FileAttachment } from '@/types'
 import type { FilePreviewDialogProps, ImageAttachmentData } from './types'
 import { formatFileSize, isMarkdownFile } from './utils'
@@ -108,6 +109,7 @@ export function FileAttachmentPreview({
   allImages?: ImageAttachmentData[]
   currentImageIndex?: number
 }) {
+  const { t } = useTranslation(['attachments'])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
 
@@ -118,8 +120,17 @@ export function FileAttachmentPreview({
       ? FileText
       : FileIconLucide
 
+  // Blob fetch state for this attachment's bytes (plan §5 tri-state).
+  // Rows without a content hash predate the sidecar and are local by
+  // construction; absent from the store also reads as available.
+  const hash = fileAttachment.content_hash ?? ''
+  const blobState = useAttachmentBlobStore((s) => (hash ? s.states[hash] : undefined))
+  const isGone = blobState === 'gone'
+  const isDownloading = blobState === 'downloading'
+
   // For images, use lightbox; for other files, use dialog
   const handleClick = () => {
+    if (isGone || isDownloading) return
     if (isImage) {
       setIsLightboxOpen(true)
     } else {
@@ -148,17 +159,35 @@ export function FileAttachmentPreview({
     <>
       <button
         onClick={handleClick}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left hover:border-muted-foreground/50 transition-colors cursor-pointer"
+        disabled={isGone || isDownloading}
+        className={`flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-muted text-left transition-colors ${
+          isGone || isDownloading
+            ? 'opacity-60 cursor-not-allowed'
+            : 'hover:border-muted-foreground/50 cursor-pointer'
+        }`}
       >
-        <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        {isDownloading ? (
+          <Loader2 className="h-4 w-4 text-muted-foreground flex-shrink-0 animate-spin" />
+        ) : isGone ? (
+          <CloudOff className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        ) : (
+          <IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        )}
 
         <span className="flex-1 text-sm truncate">
           <span>{fileAttachment.file_name}</span>
+          {(isGone || isDownloading) && (
+            <span className="ml-1.5 text-muted-foreground">
+              ({t(isGone ? 'attachmentUnavailable' : 'downloadingAttachment')})
+            </span>
+          )}
         </span>
 
-        <span className="text-sm text-muted-foreground flex-shrink-0">
-          {formatFileSize(fileAttachment.file_size)}
-        </span>
+        {!isGone && !isDownloading && (
+          <span className="text-sm text-muted-foreground flex-shrink-0">
+            {formatFileSize(fileAttachment.file_size)}
+          </span>
+        )}
       </button>
 
       {/* Lightbox for images */}

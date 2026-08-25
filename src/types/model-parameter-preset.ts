@@ -1,40 +1,6 @@
-// Model Parameter Preset types
-export interface ModelParameterPreset {
-  id: string
-  name: string
-  description?: string
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-  additional_params?: Record<string, unknown>
-  is_system: boolean
-  is_default: boolean
-  created_at: string
-  updated_at: string
-}
+// Model Parameter Preset types are generated from Rust models via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-export interface CreateModelParameterPresetRequest {
-  name: string
-  description?: string
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-  additional_params?: Record<string, unknown>
-  is_default?: boolean
-}
-
-export interface UpdateModelParameterPresetRequest {
-  name?: string
-  description?: string
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-  additional_params?: Record<string, unknown>
-  is_default?: boolean
-}
+export type { ModelParameterPreset } from './generated/ModelParameterPreset'
+export type { CreateModelParameterPresetRequest } from './generated/CreateModelParameterPresetRequest'
+export type { UpdateModelParameterPresetRequest } from './generated/UpdateModelParameterPresetRequest'

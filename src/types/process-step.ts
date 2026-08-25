@@ -1,121 +1,25 @@
-// ==========================================================================
-// CATEGORY 3: PROCESS STEPS (AI workflow artifacts)
-// ==========================================================================
+// Process step types are generated from Rust models (src-tauri/src/models/process_step.rs)
+// via ts-rs. Run `pnpm types:generate` in src-tauri to regenerate.
 
-// Thinking step - stores AI's reasoning/thinking process
-export interface ThinkingStep {
-  id: string
-  content: string
-  source: string // "llm" | "extended_thinking"
-  display_order: number
-  created_at: string
-}
+export type { ThinkingStep } from './generated/ThinkingStep'
+export type { CreateThinkingStepRequest } from './generated/CreateThinkingStepRequest'
+export type { SearchDecision } from './generated/SearchDecision'
+export type { CreateSearchDecisionRequest } from './generated/CreateSearchDecisionRequest'
+export type { ToolCall } from './generated/ToolCall'
+export type { CreateToolCallRequest } from './generated/CreateToolCallRequest'
+export type { CodeExecution } from './generated/CodeExecution'
+export type { CreateCodeExecutionRequest } from './generated/CreateCodeExecutionRequest'
+export type { ContentBlock } from './generated/ContentBlock'
+export type { CreateContentBlockRequest } from './generated/CreateContentBlockRequest'
+export type { StepType } from './generated/StepType'
+export type { ProcessStep } from './generated/ProcessStep'
 
-export interface CreateThinkingStepRequest {
-  content: string
-  source?: string
-  display_order?: number
-}
-
-// Search decision - stores AI's reasoning about whether web search is needed
-export interface SearchDecision {
-  id: string
-  reasoning: string
-  search_needed: boolean
-  search_query?: string
-  search_result_id?: string // Link to resulting search if approved
-  display_order: number
-  created_at: string
-}
-
-export interface CreateSearchDecisionRequest {
-  reasoning: string
-  search_needed: boolean
-  search_query?: string
-  search_result_id?: string
-  display_order?: number
-}
-
-// Tool call - stores tool/function invocations (for MCP support)
-export interface ToolCall {
-  id: string
-  tool_name: string
-  tool_input?: string // JSON
-  tool_output?: string // JSON
-  status: string // "pending" | "running" | "success" | "error"
-  error?: string
-  duration_ms?: number
-  display_order: number
-  created_at: string
-  completed_at?: string
-}
-
-export interface CreateToolCallRequest {
-  tool_name: string
-  tool_input?: string
-  tool_output?: string
-  status?: string
-  error?: string
-  duration_ms?: number
-  display_order?: number
-  completed_at?: string
-}
-
-// Code execution - stores code interpreter results
-export interface CodeExecution {
-  id: string
-  language: string
-  code: string
-  output?: string
-  exit_code?: number
-  status: string // "pending" | "running" | "success" | "error"
-  error?: string
-  duration_ms?: number
-  display_order: number
-  created_at: string
-  completed_at?: string
-}
-
-export interface CreateCodeExecutionRequest {
-  language: string
-  code: string
-  output?: string
-  exit_code?: number
-  status?: string
-  error?: string
-  duration_ms?: number
-  display_order?: number
-  completed_at?: string
-}
-
-// Content block - stores segmented content for interleaved display with tool calls
-export interface ContentBlock {
-  id: string
-  content: string
-  display_order: number
-  created_at: string
-}
-
-export interface CreateContentBlockRequest {
-  content: string
-  display_order: number
-}
-
-// Process step type enum
-export type StepType =
-  | 'thinking'
-  | 'search_decision'
-  | 'tool_call'
-  | 'code_execution'
-  | 'content_block'
-
-// Unified process step type
-export type ProcessStep =
-  | ({ type: 'thinking' } & ThinkingStep)
-  | ({ type: 'search_decision' } & SearchDecision)
-  | ({ type: 'tool_call' } & ToolCall)
-  | ({ type: 'code_execution' } & CodeExecution)
-  | ({ type: 'content_block' } & ContentBlock)
+import type { ProcessStep } from './generated/ProcessStep'
+import type { ThinkingStep } from './generated/ThinkingStep'
+import type { SearchDecision } from './generated/SearchDecision'
+import type { ToolCall } from './generated/ToolCall'
+import type { CodeExecution } from './generated/CodeExecution'
+import type { ContentBlock } from './generated/ContentBlock'
 
 // Helper type guards for process steps
 export function isThinkingStep(step: ProcessStep): step is { type: 'thinking' } & ThinkingStep {

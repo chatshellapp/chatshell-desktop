@@ -7,6 +7,7 @@ const createMockFetchResult = (overrides: Partial<FetchResult> = {}): FetchResul
   url: 'https://example.com/page',
   title: 'Example Page',
   source_type: 'user_link',
+  content_hash: null,
   storage_path: 'fetch/abc123.md',
   content_type: 'text/markdown',
   status: 'success',

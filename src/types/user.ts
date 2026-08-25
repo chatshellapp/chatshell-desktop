@@ -1,45 +1,9 @@
-// User types
-export interface User {
-  id: string
-  username: string
-  display_name: string
-  email?: string
-  avatar_type: string
-  avatar_bg?: string
-  avatar_text?: string
-  avatar_image_path?: string
-  avatar_image_url?: string
-  is_self: boolean
-  status: string // "active", "inactive", "deleted"
-  last_seen_at?: string
-  created_at: string
-  updated_at: string
-}
+// User types are generated from Rust models via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-export interface CreateUserRequest {
-  username: string
-  display_name: string
-  email?: string
-  avatar_type?: string
-  avatar_bg?: string
-  avatar_text?: string
-  avatar_image_path?: string
-  avatar_image_url?: string
-  is_self?: boolean
-}
+export type { User } from './generated/User'
+export type { CreateUserRequest } from './generated/CreateUserRequest'
 
 // User relationship types
-export interface UserRelationship {
-  id: string
-  user_id: string
-  related_user_id: string
-  relationship_type: string // "friend", "blocked", "pending"
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateUserRelationshipRequest {
-  user_id: string
-  related_user_id: string
-  relationship_type: string
-}
+export type { UserRelationship } from './generated/UserRelationship'
+export type { CreateUserRelationshipRequest } from './generated/CreateUserRelationshipRequest'

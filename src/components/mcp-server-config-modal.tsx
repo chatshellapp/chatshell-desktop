@@ -195,7 +195,7 @@ export function McpServerConfigModal({
       setCwd(config?.cwd || '')
       setDescription(editingServer.description || '')
       const h: HeaderEntry[] = config?.headers
-        ? Object.entries(config.headers).map(([key, value]) => ({ key, value }))
+        ? Object.entries(config.headers).map(([key, value]) => ({ key, value: String(value) }))
         : []
       setHeaders(h)
     } else if (open && !editingServer) {

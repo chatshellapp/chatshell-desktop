@@ -1,22 +1,6 @@
-export interface MessageSearchResult {
-  message_id: string
-  conversation_id: string
-  conversation_title?: string
-  sender_type: string
-  content_snippet: string
-  created_at: string
-}
+// Search result types are generated from Rust models via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-export interface ConversationSearchResult {
-  id: string
-  title: string
-  updated_at: string
-  last_message?: string
-}
-
-export interface SearchResults {
-  messages: MessageSearchResult[]
-  conversations: ConversationSearchResult[]
-  total_message_count: number
-  search_time_ms: number
-}
+export type { MessageSearchResult } from './generated/MessageSearchResult'
+export type { ConversationSearchResult } from './generated/ConversationSearchResult'
+export type { SearchResults } from './generated/SearchResults'

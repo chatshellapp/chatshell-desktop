@@ -1,17 +1,17 @@
-// Conversation-level parameter settings
-// These override assistant preset parameters when set
+// Conversation settings types are generated from Rust models
+// (src-tauri/src/models/conversation_settings.rs) via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-export interface ModelParameterOverrides {
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-}
+import type { ModelParameterOverrides } from './generated/ModelParameterOverrides'
+import type { PromptMode } from './generated/PromptMode'
+export type { ModelParameterOverrides } from './generated/ModelParameterOverrides'
+export type { PromptMode } from './generated/PromptMode'
 
-// Prompt mode options
-export type PromptMode = 'none' | 'existing' | 'custom'
+// Wire format (snake_case) re-exported under its historical alias
+import type { ConversationSettings as ConversationSettingsResponse } from './generated/ConversationSettings'
+export type { ConversationSettingsResponse }
 
+// Frontend view model (camelCase) kept hand-written; mirrors the wire shape above
 export interface ConversationSettings {
   // Conversation ID this settings belongs to
   conversationId: string
@@ -58,7 +58,9 @@ export interface ConversationSettings {
   workingDirectory: string | null
 }
 
-// Request to update conversation settings (all fields optional for partial updates)
+// Request to update conversation settings (all fields optional for partial updates).
+// The snake_case wire request is generated at ./generated/UpdateConversationSettingsRequest
+// (not re-exported); the camelCase input view below is what UI code builds.
 export interface UpdateConversationSettingsRequest {
   useProviderDefaults?: boolean
   useCustomParameters?: boolean
@@ -74,25 +76,6 @@ export interface UpdateConversationSettingsRequest {
   enabledMcpServerIds?: string[]
   enabledSkillIds?: string[]
   workingDirectory?: string | null
-}
-
-// Backend response format (snake_case)
-export interface ConversationSettingsResponse {
-  conversation_id: string
-  use_provider_defaults: boolean
-  use_custom_parameters: boolean
-  parameter_overrides: ModelParameterOverrides
-  context_message_count: number | null
-  selected_preset_id: string | null
-  system_prompt_mode: PromptMode
-  selected_system_prompt_id: string | null
-  custom_system_prompt: string | null
-  user_prompt_mode: PromptMode
-  selected_user_prompt_id: string | null
-  custom_user_prompt: string | null
-  enabled_mcp_server_ids: string[]
-  enabled_skill_ids: string[]
-  working_directory: string | null
 }
 
 // Convert backend response to frontend format

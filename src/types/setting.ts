@@ -1,15 +1,8 @@
-// Settings type
-export interface Setting {
-  key: string
-  value: string
-  updated_at: string
-}
+// Setting types are generated from Rust models via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-// Search provider type
-export interface SearchProvider {
-  id: string
-  name: string
-}
+export type { Setting } from './generated/Setting'
+export type { SearchProviderInfo as SearchProvider } from './generated/SearchProviderInfo'
 
 // Known search provider IDs
 export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu'

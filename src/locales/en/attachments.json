@@ -57,5 +57,7 @@
   "noResults": "No results fetched.",
   "reasoning": "Reasoning",
   "decidingSearch": "Deciding if search needed...",
-  "noContent": "No content available"
+  "noContent": "No content available",
+  "attachmentUnavailable": "Attachment unavailable",
+  "downloadingAttachment": "Downloading..."
 }

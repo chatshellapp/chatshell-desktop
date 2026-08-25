@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -9,6 +10,7 @@ import { useUserStore } from '@/stores/userStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
+import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
 import { logger } from '@/lib/logger'
 
 export function useAppInit() {
@@ -92,6 +94,43 @@ export function useAppInit() {
     }
 
     initialize()
+  }, [])
+
+  // Reload stores when a sync pass merged remote rows (runs once on mount)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+
+    listen<number>('sync-merged', () => {
+      logger.info('Sync merged remote rows, reloading conversation list')
+      useConversationStore
+        .getState()
+        .loadConversations()
+        .catch((err) => {
+          logger.error('Failed to reload conversations after sync:', err)
+        })
+      // Self-heal (plan §5): the merge may have brought previously-gone
+      // attachment blobs into the container - re-run the open conversation's
+      // fetch pass.
+      useAttachmentBlobStore
+        .getState()
+        .refreshAfterMerge()
+        .catch((err) => {
+          logger.error('Attachment blob self-heal failed:', err)
+        })
+    })
+      .then((fn) => {
+        if (cancelled) fn()
+        else unlisten = fn
+      })
+      .catch((err) => {
+        logger.error('Failed to subscribe to sync-merged events:', err)
+      })
+
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
   }, [])
 
   // Set up inter-store communication callbacks (runs once on mount)

@@ -1,3 +1,4 @@
+mod blob_sync;
 pub mod commands;
 mod crypto;
 pub mod db;
@@ -10,6 +11,9 @@ mod prompts;
 mod search;
 pub mod skills;
 pub mod storage;
+pub mod sync;
+#[cfg(target_os = "macos")]
+pub mod sync_keychain;
 mod thinking_parser;
 mod tokenizer;
 mod web_fetch;
@@ -86,6 +90,11 @@ pub fn run() {
 
             tracing::info!("Database initialized successfully");
 
+            // Export the master encryption key for the sync engine's
+            // publish path to write into the cloud container.
+            // Safety: single-threaded setup phase, no concurrent env access.
+            let master_key_b64 = crate::crypto::get_master_key_b64().ok();
+
             // Seed database with default data (async operation)
             rt.block_on(async {
                 db.seed_default_data()
@@ -99,6 +108,22 @@ pub fn run() {
                 db.backfill_fts()
                     .await
                     .expect("FATAL: Failed to backfill FTS search index");
+            });
+
+            // Master-key adoption repair: when the iCloud-synchronizable
+            // item replaced a different local key, re-encrypt rows that
+            // still carry the old key's ciphertext so peers can open them
+            // (runs before the first sync pass ships anything).
+            rt.block_on(async {
+                match db.repair_master_key_ciphertext().await {
+                    Ok(n) if n > 0 => {
+                        tracing::info!("Re-encrypted {n} row(s) under the adopted master key")
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("Master-key ciphertext repair failed (will retry next launch): {e:#}")
+                    }
+                }
             });
 
             // Load log level from database
@@ -137,6 +162,50 @@ pub fn run() {
                 })
             };
 
+            // Republish the master key into the iCloud-synchronizable
+            // keychain ONLY when this launch minted one or found the
+            // transport item missing. Adoption and steady state never
+            // write: an unconditional write-back would overwrite the
+            // ecosystem key with the local one whenever the item read
+            // transiently fails (loser-overwrites-winner).
+            #[cfg(target_os = "macos")]
+            if crate::crypto::should_publish_master_key()
+                && let Some(key_b64) = &master_key_b64
+            {
+                if let Err(err) = crate::sync_keychain::set_synchronizable_master_key(key_b64) {
+                    tracing::warn!("Failed to store sync master key: {err:?}");
+                }
+            }
+
+            // Snapshot sync against the iCloud container. When Apple hasn't
+            // provisioned it yet (or on machines without iCloud), fall back
+            // to a local staging dir so publish/sync_now stay exercisable -
+            // the engine only needs a writable directory.
+            let sync_target = sync::detect_icloud_container()
+                .map(|dir| (dir, "iCloud container".to_string()))
+                .or_else(|| {
+                    let staging = app_data_dir.join("sync-staging");
+                    std::fs::create_dir_all(&staging)
+                        .ok()
+                        .map(|_| (staging, "local staging dir".to_string()))
+                });
+            let sync_engine = match sync_target
+                .map(|(dir, reason)| sync::SyncEngine::new(&db_path, dir).map(|e| (e, reason)))
+            {
+                Some(Ok((engine, reason))) => {
+                    tracing::info!("Snapshot sync enabled ({reason})");
+                    Some(engine)
+                }
+                Some(Err(err)) => {
+                    tracing::warn!("Snapshot sync disabled: {err}");
+                    None
+                }
+                None => {
+                    tracing::warn!("Snapshot sync disabled: no sync target available");
+                    None
+                }
+            };
+
             let app_state = AppState {
                 db,
                 generation_tasks: Arc::new(RwLock::new(HashMap::new())),
@@ -144,7 +213,36 @@ pub fn run() {
                 pending_oauth: Arc::new(RwLock::new(HashMap::new())),
                 bash_session_manager: Arc::new(BashSessionManager::new()),
                 capabilities_cache,
+                sync_engine: Arc::new(std::sync::Mutex::new(sync_engine)),
             };
+
+            // Pull remote changes shortly after startup, then keep ticking
+            // on an interval so mid-session changes converge without waiting
+            // for the next relaunch. Idle passes are near-free (the engine
+            // skips publishing unless the pool wrote since the last one).
+            {
+                let engine = app_state.sync_engine.clone();
+                let db = app_state.db.clone();
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if let Err(err) =
+                        sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
+                    {
+                        tracing::warn!("Sync pass failed: {err:?}");
+                    }
+                    let mut ticker = tokio::time::interval(sync::SYNC_TICK_INTERVAL);
+                    ticker.tick().await; // consume the immediate first tick
+                    loop {
+                        ticker.tick().await;
+                        if let Err(err) =
+                            sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
+                        {
+                            tracing::warn!("Sync pass failed: {err:?}");
+                        }
+                    }
+                });
+            }
             // Grab handle before app_state is moved into managed state
             let manager_for_sweep = app_state.bash_session_manager.clone();
             app.manage(app_state);
@@ -176,7 +274,6 @@ pub fn run() {
             commands::list_all_models,
             commands::update_model,
             commands::delete_model,
-            commands::soft_delete_model,
             // Model Parameter Preset commands
             commands::list_model_parameter_presets,
             commands::get_model_parameter_preset,
@@ -229,6 +326,7 @@ pub fn run() {
             // User Attachments (files)
             commands::get_message_attachments,
             commands::get_file_attachment,
+            commands::fetch_conversation_blobs,
             // Context Enrichments (search results, fetch results)
             commands::get_message_contexts,
             commands::get_search_result,
@@ -281,6 +379,7 @@ pub fn run() {
             commands::delete_mcp_server,
             commands::toggle_mcp_server,
             commands::set_all_tools_enabled,
+            commands::sync_now,
             commands::test_mcp_connection,
             commands::test_mcp_stdio_connection,
             commands::disconnect_mcp_server,
@@ -319,6 +418,34 @@ pub fn run() {
                 tracing::info!("Application exiting, cleaning up bash sessions");
                 let state: tauri::State<'_, AppState> = app_handle.state();
                 state.bash_session_manager.kill_all_sync();
+                // Best-effort final snapshot publish so other devices see
+                // the latest local state. New attachment bytes go first:
+                // blobs-before-snapshots keeps peer references dangling-free.
+                if let Ok(mut guard) = state.sync_engine.lock() {
+                    let cloud_dir = guard
+                        .as_ref()
+                        .map(|engine| engine.cloud_dir().to_path_buf());
+                    if let Some(dir) = cloud_dir
+                        && let Ok(attach_dir) =
+                            crate::storage::get_attachments_dir(app_handle)
+                    {
+                        let db = state.db.clone();
+                        if let Err(err) = tauri::async_runtime::block_on(
+                            blob_sync::ensure_referenced_blobs_uploaded(
+                                &db,
+                                &dir,
+                                &attach_dir,
+                            ),
+                        ) {
+                            tracing::warn!("Final blob upload failed: {err:#}");
+                        }
+                    }
+                    if let Some(engine) = guard.as_mut()
+                        && let Err(err) = engine.publish()
+                    {
+                        tracing::warn!("Final snapshot publish failed: {err}");
+                    }
+                }
             }
         });
 }

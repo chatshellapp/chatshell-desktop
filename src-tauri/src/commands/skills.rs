@@ -3,6 +3,7 @@ use crate::models::{CreateSkillRequest, Skill};
 use crate::skills::{ScanDirectory, SkillScanner};
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
+use ts_rs::TS;
 
 #[tauri::command]
 pub async fn list_skills(state: State<'_, AppState>) -> Result<Vec<Skill>, String> {
@@ -64,7 +65,8 @@ const EXTERNAL_SKILL_SOURCES: &[(&str, &str, &str)] = &[
 ];
 
 /// Info about a skill source directory shown in the UI
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct SkillSourceInfo {
     pub source: String,
     pub path: String,

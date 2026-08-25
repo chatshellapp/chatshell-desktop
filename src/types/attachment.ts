@@ -1,30 +1,15 @@
-// ==========================================================================
-// CATEGORY 1: USER ATTACHMENTS (user-provided files)
-// ==========================================================================
+// Attachment types are generated from Rust models (src-tauri/src/models/attachment.rs)
+// via ts-rs. Run `pnpm types:generate` in src-tauri to regenerate.
 
-// File attachment - stores user uploaded file metadata (content in filesystem)
-export interface FileAttachment {
-  id: string
-  file_name: string
-  file_size: number
-  mime_type: string
-  storage_path: string // Path relative to attachments dir: "files/{uuid}.pdf"
-  created_at: string
-}
+export type { FileAttachment } from './generated/FileAttachment'
+export type { CreateFileAttachmentRequest } from './generated/CreateFileAttachmentRequest'
+export type { UserAttachment } from './generated/UserAttachment'
 
-export interface CreateFileAttachmentRequest {
-  file_name: string
-  file_size: number
-  mime_type: string
-  storage_path: string
-}
-
+import type { FileAttachment } from './generated/FileAttachment'
+import type { UserAttachment } from './generated/UserAttachment'
 // User attachment type enum (currently only files)
 // User-provided URLs are stored as fetch_results with source_type="user_link"
 export type UserAttachmentType = 'file'
-
-// Unified user attachment type
-export type UserAttachment = { type: 'file' } & FileAttachment
 
 // Helper type guard for user attachments
 export function isFileAttachment(

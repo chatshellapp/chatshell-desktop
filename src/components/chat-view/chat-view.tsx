@@ -9,6 +9,7 @@ import { StreamingMessage } from './StreamingMessage'
 import { PendingMessageItem } from './PendingMessageItem'
 import { useSearchStore } from '@/stores/searchStore'
 import { useMessageStore } from '@/stores/message'
+import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
 import {
   useScrollBehavior,
   useInputResize,
@@ -72,6 +73,14 @@ export function ChatView() {
     attachmentStatus,
     attachmentRefreshKey,
   })
+
+  // Fetch-on-open (plan §5): materialize attachment bytes referenced by this
+  // conversation (newest-first, budgeted) so previews resolve locally.
+  const fetchBlobs = useAttachmentBlobStore((s) => s.fetchForConversation)
+  useEffect(() => {
+    if (!conversationId) return
+    void fetchBlobs(conversationId)
+  }, [conversationId, fetchBlobs])
 
   const { getDisplayInfo, getMessageDisplayInfo } = useDisplayInfo({
     selectedModel,

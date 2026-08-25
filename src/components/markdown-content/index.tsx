@@ -13,8 +13,9 @@ export function MarkdownContent({
   content,
   className = '',
   compact = false,
+  flat = false,
 }: MarkdownContentProps) {
-  const markdownComponents = useMarkdownComponents({ compact }) as unknown as Components
+  const markdownComponents = useMarkdownComponents({ compact, flat }) as unknown as Components
 
   return (
     <div className={className}>

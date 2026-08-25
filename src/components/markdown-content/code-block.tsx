@@ -5,7 +5,7 @@ import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Check, Copy } from 'lucide-react'
 import type { CodeBlockProps } from './types'
 
-export function CodeBlock({ language, code }: CodeBlockProps) {
+export function CodeBlock({ language, code, flat = false }: CodeBlockProps) {
   const { t } = useTranslation(['common', 'attachments'])
   const [copied, setCopied] = useState(false)
 
@@ -16,9 +16,23 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
   }, [code])
 
   return (
-    <div className="relative group my-2 border border-border rounded-md overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
-        <span className="text-xs text-muted-foreground font-mono">{language || 'text'}</span>
+    <div
+      className={
+        flat
+          ? 'relative group border border-border rounded-md overflow-hidden'
+          : 'relative group my-2 border border-border rounded-md overflow-hidden'
+      }
+    >
+      <div className="flex items-center justify-between px-2 py-1 bg-muted/50 border-b border-border">
+        <span
+          className={
+            flat
+              ? 'text-[10px] text-muted-foreground font-mono'
+              : 'text-xs text-muted-foreground font-mono'
+          }
+        >
+          {language || 'text'}
+        </span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
@@ -26,13 +40,13 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
         >
           {copied ? (
             <>
-              <Check className="h-3.5 w-3.5" />
-              <span>{t('attachments:copied')}</span>
+              <Check className="h-3 w-3" />
+              <span className="text-[10px]">{t('attachments:copied')}</span>
             </>
           ) : (
             <>
-              <Copy className="h-3.5 w-3.5" />
-              <span>{t('attachments:copy')}</span>
+              <Copy className="h-3 w-3" />
+              <span className="text-[10px]">{t('attachments:copy')}</span>
             </>
           )}
         </button>
@@ -43,7 +57,7 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
         customStyle={{
           margin: 0,
           borderRadius: 0,
-          fontSize: '0.875rem',
+          fontSize: flat ? '0.75rem' : '0.875rem',
           background: '#fafafa',
         }}
         showLineNumbers={code.split('\n').length > 3}

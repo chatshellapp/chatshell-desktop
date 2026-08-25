@@ -1,6 +1,7 @@
 //! Web search commands
 
 use crate::web_search::{SearchProvider, WebSearchResponse};
+use ts_rs::TS;
 
 /// Perform a web search using the specified provider
 #[tauri::command]
@@ -46,7 +47,8 @@ pub async fn get_search_providers() -> Result<Vec<SearchProviderInfo>, String> {
 }
 
 /// Search provider information for frontend
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, TS)]
+#[ts(export)]
 pub struct SearchProviderInfo {
     pub id: String,
     pub name: String,

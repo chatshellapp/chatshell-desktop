@@ -3,6 +3,7 @@
 //! This module handles sending messages, streaming LLM responses, and related functionality.
 
 mod attachment_processing;
+mod compaction;
 mod message_builder;
 mod participants;
 mod search_processing;
@@ -48,6 +49,8 @@ pub async fn send_message(
     parameter_overrides: Option<types::ParameterOverrides>,
     context_message_count: Option<i64>,
     use_provider_defaults: Option<bool>,
+    disable_tools: Option<bool>,
+    reuse_fetch_result_ids: Option<Vec<String>>,
 ) -> Result<Message, String> {
     log_send_message_params(
         &conversation_id,
@@ -66,6 +69,7 @@ pub async fn send_message(
         &parameter_overrides,
         &context_message_count,
         &use_provider_defaults,
+        &reuse_fetch_result_ids,
     );
 
     // Save user message to database
@@ -107,6 +111,8 @@ pub async fn send_message(
         parameter_overrides,
         context_message_count,
         use_provider_defaults.unwrap_or(false),
+        disable_tools.unwrap_or(false),
+        reuse_fetch_result_ids,
     );
 
     Ok(user_message)
@@ -167,6 +173,7 @@ fn log_send_message_params(
     parameter_overrides: &Option<types::ParameterOverrides>,
     context_message_count: &Option<i64>,
     use_provider_defaults: &Option<bool>,
+    reuse_fetch_result_ids: &Option<Vec<String>>,
 ) {
     tracing::info!("🚀 [send_message] Command received!");
     tracing::info!("   conversation_id: {}", conversation_id);
@@ -185,6 +192,10 @@ fn log_send_message_params(
     tracing::info!("   parameter_overrides: {:?}", parameter_overrides);
     tracing::info!("   context_message_count: {:?}", context_message_count);
     tracing::info!("   use_provider_defaults: {:?}", use_provider_defaults);
+    tracing::info!(
+        "   reuse_fetch_result_ids: {:?}",
+        reuse_fetch_result_ids.as_ref().map(|v| v.len())
+    );
 }
 
 async fn save_user_message(
@@ -240,6 +251,8 @@ fn spawn_background_task(
     parameter_overrides: Option<types::ParameterOverrides>,
     context_message_count: Option<i64>,
     use_provider_defaults: bool,
+    disable_tools: bool,
+    reuse_fetch_result_ids: Option<Vec<String>>,
 ) {
     tracing::info!("🔄 [send_message] Spawning background task...");
 
@@ -268,6 +281,8 @@ fn spawn_background_task(
             parameter_overrides,
             context_message_count,
             use_provider_defaults,
+            disable_tools,
+            reuse_fetch_result_ids,
         )
         .await;
     });
@@ -298,6 +313,8 @@ async fn process_llm_request(
     parameter_overrides: Option<types::ParameterOverrides>,
     context_message_count: Option<i64>,
     use_provider_defaults: bool,
+    disable_tools: bool,
+    reuse_fetch_result_ids: Option<Vec<String>>,
 ) {
     tracing::info!("🎯 [background_task] Started processing LLM request");
 
@@ -324,11 +341,15 @@ async fn process_llm_request(
         }
     };
 
-    // Step 2: Fetch URLs
+    // Step 2: Reuse existing fetch_results (resend path) and/or fetch new URLs.
+    // Reuse is processed first so reused ids win over any duplicate URL the
+    // frontend may have also included.
+    let reuse_ids_owned = reuse_fetch_result_ids.unwrap_or_default();
     let url_result = url_processing::fetch_and_store_urls(
         &state,
         &app,
         &search_result.urls,
+        &reuse_ids_owned,
         &user_message_id,
         &conversation_id,
         search_result.search_result_id.as_deref(),
@@ -463,6 +484,7 @@ async fn process_llm_request(
         content,
         model_db_id,
         assistant_db_id,
+        disable_tools,
     )
     .await;
 }

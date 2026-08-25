@@ -27,23 +27,35 @@ pub(crate) fn parse_image_attachments(
             images.len()
         );
         for img in images.iter() {
-            if let Some(rest) = img.base64.strip_prefix("data:")
-                && let Some((media_type, base64_data)) = rest.split_once(";base64,")
-            {
-                user_images.push(ParsedImage {
-                    name: img.name.clone(),
-                    data: ImageData {
-                        base64: base64_data.to_string(),
-                        media_type: media_type.to_string(),
-                    },
-                });
-                tracing::info!(
-                    "   - Parsed image: {} - {} ({} chars)",
-                    img.name,
+            let (media_type, base64_data) = if let Some(rest) = img.base64.strip_prefix("data:") {
+                match rest.split_once(";base64,") {
+                    Some((mt, b64)) => (mt.to_string(), b64.to_string()),
+                    None => {
+                        tracing::warn!(
+                            "🖼️  [attachment] Malformed data URL for {}, skipping",
+                            img.name
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                (img.mime_type.clone(), img.base64.clone())
+            };
+
+            let base64_len = base64_data.len();
+            tracing::info!(
+                "   - Parsed image: {} - {} ({} chars)",
+                img.name,
+                media_type,
+                base64_len
+            );
+            user_images.push(ParsedImage {
+                name: img.name.clone(),
+                data: ImageData {
+                    base64: base64_data,
                     media_type,
-                    base64_data.len()
-                );
-            }
+                },
+            });
         }
     }
 

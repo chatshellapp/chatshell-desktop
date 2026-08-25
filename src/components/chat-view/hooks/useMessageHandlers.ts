@@ -87,9 +87,9 @@ export function useMessageHandlers({
         const fileAttachments = resources.attachments.filter(
           (a) => a.type === 'file' && !a.mime_type?.startsWith('image/')
         )
-        const userUrls = resources.contexts
+        const reuseFetchResultIds = resources.contexts
           .filter((c) => c.type === 'fetch_result' && c.source_type === 'user_link')
-          .map((c) => (c as { url: string }).url)
+          .map((c) => c.id)
 
         const [images, files] = await Promise.all([
           Promise.all(
@@ -148,13 +148,14 @@ export function useMessageHandlers({
           userPrompt,
           selectedAssistant ? undefined : modelToUse.id,
           selectedAssistant?.id,
-          userUrls.length > 0 ? userUrls : undefined,
+          undefined,
           images.length > 0 ? images : undefined,
           files.length > 0 ? files : undefined,
           false,
           parameterOverrides,
           contextMessageCount,
-          useProviderDefaults
+          useProviderDefaults,
+          reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined
         )
       } catch (error) {
         logger.error('Failed to revert message:', error)

@@ -122,8 +122,8 @@ export function useProviderSave({
       }
 
       for (const modelId of modelsToDelete) {
-        await invoke('soft_delete_model', { id: modelId })
-        logger.info('Soft deleted model:', modelId)
+        await invoke('delete_model', { id: modelId })
+        logger.info('Tombstoned model:', modelId)
       }
 
       for (const model of modifiedModels) {

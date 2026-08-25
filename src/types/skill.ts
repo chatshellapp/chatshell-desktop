@@ -1,57 +1,15 @@
-// ==========================================================================
-// SKILL - Prompt instructions + required tools bundled together
-// ==========================================================================
+// Skill types are generated from Rust models (src-tauri/src/models/skill.rs)
+// via ts-rs. Run `pnpm types:generate` in src-tauri to regenerate.
+
+export type { Skill } from './generated/Skill'
+export type { CreateSkillRequest } from './generated/CreateSkillRequest'
+export type { SkillSourceInfo } from './generated/SkillSourceInfo'
+
+import type { Skill } from './generated/Skill'
 
 export type SkillSource = 'builtin' | 'user' | 'claude' | 'agents'
 
 export const SKILL_SOURCE_ORDER: SkillSource[] = ['builtin', 'user', 'claude', 'agents']
-
-export interface Skill {
-  id: string
-  name: string
-  description?: string
-  source: SkillSource
-  /** Filesystem path to skill directory */
-  path: string
-  /** Emoji or icon identifier */
-  icon?: string
-  /** Required tool IDs for this skill */
-  required_tool_ids: string[]
-  /** Whether the LLM can auto-invoke this skill */
-  allow_model_invocation: boolean
-  /** Whether the user can manually invoke this skill */
-  allow_user_invocation: boolean
-  /** Blake3 hash for change detection */
-  content_hash?: string
-  /** Cached parsed instructions */
-  cached_instructions?: string
-  /** Whether globally enabled */
-  is_enabled: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateSkillRequest {
-  name: string
-  description?: string
-  source: string
-  path: string
-  icon?: string
-  required_tool_ids?: string[]
-  allow_model_invocation?: boolean
-  allow_user_invocation?: boolean
-  content_hash?: string
-  cached_instructions?: string
-  is_enabled?: boolean
-}
-
-export interface SkillSourceInfo {
-  source: SkillSource
-  path: string
-  enabled: boolean
-  always_on: boolean
-  exists: boolean
-}
 
 export function isBuiltinSkill(skill: Skill): boolean {
   return skill.source === 'builtin'

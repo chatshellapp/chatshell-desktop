@@ -1,14 +1,9 @@
 {
   "toolCallPreview": {
     "error": "Error",
-    "input": "Input",
-    "output": "Output",
     "waitingForResult": "Waiting for result...",
-    "showFormatted": "Show formatted",
-    "showRaw": "Show raw",
-    "formatted": "Formatted",
-    "raw": "Raw",
-    "calling": "Calling..."
+    "calling": "Calling...",
+    "rawErrorDetail": "Details"
   },
   "copyButton": {
     "copy": "Copy"
@@ -23,8 +18,38 @@
     "file": "file",
     "files": "files"
   },
+  "grepOutput": {
+    "match": "match",
+    "matches": "matches",
+    "file": "file",
+    "files": "files"
+  },
   "bashOutput": {
     "exitCode": "exit {{exitCode}}"
+  },
+  "wrapButton": {
+    "wrap": "Wrap lines",
+    "unwrap": "Unwrap lines"
+  },
+  "diffView": {
+    "moreLines": "… {{n}} more lines"
+  },
+  "summary": {
+    "linesCount": "{{n}} lines",
+    "matchesCount": "{{n}} matches"
+  },
+  "errors": {
+    "noOpEdit": "No-op edit: old and new text are identical",
+    "noOpRetry": "Repeated no-op edit; re-read the file first",
+    "ambiguousMatch": "old_string is not unique; add context or use replace_all",
+    "staleFile": "old_string not found; the file changed since it was read",
+    "staleAnchor": "File changed since the last read; re-read and retry",
+    "fileNotFound": "File not found",
+    "notAFile": "Path is not a file",
+    "binaryFile": "Binary or non-UTF-8 file",
+    "outsideProject": "Path is outside the project directory",
+    "imageTooLarge": "Image too large",
+    "timedOut": "Command timed out"
   },
   "mcpServers": "MCP Servers",
   "serverName": "Server Name",

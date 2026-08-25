@@ -20,6 +20,7 @@ import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
 import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
+import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
 import { useConversationParticipants } from '@/hooks/useConversationParticipants'
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
@@ -151,6 +152,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onGroupSettings={() => {}}
           />
         )
+      case 'translation':
+        return <TranslationContent />
       case 'library':
         return (
           <LibraryContent
@@ -302,9 +305,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </Button>
           </div>
         </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup className="px-0">
-            <SidebarGroupContent>{renderContent()}</SidebarGroupContent>
+        <SidebarContent
+          className={activeItem.id === 'translation' ? 'gap-0 overflow-hidden' : undefined}
+        >
+          <SidebarGroup className={activeItem.id === 'translation' ? 'flex-1 min-h-0 p-0' : 'px-0'}>
+            <SidebarGroupContent
+              className={
+                activeItem.id === 'translation' ? 'flex-1 min-h-0 flex flex-col' : undefined
+              }
+            >
+              {renderContent()}
+            </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>

@@ -1,17 +1,11 @@
-import type { UserAttachment } from './attachment'
-import type { ContextEnrichment } from './context'
-import type { ProcessStep } from './process-step'
+// Message resources type is generated from Rust models (src-tauri/src/models/message_resources.rs)
+// via ts-rs. Run `pnpm types:generate` in src-tauri to regenerate.
 
-// ==========================================================================
-// MESSAGE RESOURCES (Combined Response)
-// ==========================================================================
+export type { MessageResources } from './generated/MessageResources'
 
-// All resources associated with a message
-export interface MessageResources {
-  attachments: UserAttachment[]
-  contexts: ContextEnrichment[]
-  steps: ProcessStep[]
-}
+import type { UserAttachment } from './generated/UserAttachment'
+import type { ContextEnrichment } from './generated/ContextEnrichment'
+import type { ProcessStep } from './generated/ProcessStep'
 
 // ==========================================================================
 // LEGACY COMPATIBILITY (deprecated - use specific types above)

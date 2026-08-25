@@ -5,7 +5,7 @@ use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
     build_tool_result_message, build_user_message, create_provider_agent, stream_chat_with_agent,
 };
-use crate::llm::tools::bash::{BashTool, TempFileList};
+use crate::llm::tools::{BashTool, TempFileList};
 use crate::llm::tools::{
     McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool,
 };
@@ -42,7 +42,9 @@ struct BashTempFileGuard {
 
 impl Drop for BashTempFileGuard {
     fn drop(&mut self) {
-        BashTool::cleanup_temp_files(&self.files);
+        BashTool::<chatshell_agent_core::process_api::TokioSpawner>::cleanup_temp_files(
+            &self.files,
+        );
     }
 }
 
@@ -64,6 +66,7 @@ pub(crate) async fn handle_agent_streaming(
     content: String,
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
+    disable_tools: bool,
 ) {
     tracing::info!(
         "✅ [agent_streaming] Using {} provider with agent API",
@@ -92,66 +95,72 @@ pub(crate) async fn handle_agent_streaming(
     }
     let mut skill_entries: Vec<SkillEntry> = Vec::new();
 
-    // Load assistant's configured tools and skills
-    if let Some(ref assistant_id) = assistant_db_id {
-        match state_clone.db.get_assistant_tool_ids(assistant_id).await {
-            Ok(ids) => {
-                if !ids.is_empty() {
-                    tracing::info!(
-                        "🛠️ [agent_streaming] Assistant has {} configured tool(s)",
-                        ids.len()
-                    );
-                    all_enabled_tool_ids.extend(ids);
-                }
-            }
-            Err(e) => {
-                tracing::warn!("⚠️ [agent_streaming] Failed to load assistant tools: {}", e);
-            }
-        }
-
-        // Load assistant skills: collect catalog entries + auto-enable required tools
-        match state_clone.db.get_assistant_skill_ids(assistant_id).await {
-            Ok(skill_ids) => {
-                if !skill_ids.is_empty() {
-                    tracing::info!(
-                        "📋 [agent_streaming] Assistant has {} configured skill(s)",
-                        skill_ids.len()
-                    );
-                }
-                for skill_id in &skill_ids {
-                    if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await
-                        && skill.is_enabled
-                    {
-                        let skill_md_path =
-                            format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+    if disable_tools {
+        tracing::info!(
+            "🚫 [agent_streaming] Tools disabled (e.g. translation mode); skipping all tool and skill loading"
+        );
+    } else {
+        // Load assistant's configured tools and skills
+        if let Some(ref assistant_id) = assistant_db_id {
+            match state_clone.db.get_assistant_tool_ids(assistant_id).await {
+                Ok(ids) => {
+                    if !ids.is_empty() {
                         tracing::info!(
-                            "📋 [agent_streaming] Adding skill '{}' to catalog (path: {})",
-                            skill.name,
-                            skill_md_path
+                            "🛠️ [agent_streaming] Assistant has {} configured tool(s)",
+                            ids.len()
                         );
-                        skill_entries.push(SkillEntry {
-                            name: skill.name.clone(),
-                            description: skill.description.clone(),
-                            path: skill_md_path,
-                        });
-                        for tool_id in &skill.required_tool_ids {
-                            if !all_enabled_tool_ids.contains(tool_id) {
-                                tracing::info!(
-                                    "🔧 [agent_streaming] Auto-enabling tool '{}' required by skill '{}'",
-                                    tool_id,
-                                    skill.name
-                                );
-                                all_enabled_tool_ids.push(tool_id.clone());
+                        all_enabled_tool_ids.extend(ids);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️ [agent_streaming] Failed to load assistant tools: {}", e);
+                }
+            }
+
+            // Load assistant skills: collect catalog entries + auto-enable required tools
+            match state_clone.db.get_assistant_skill_ids(assistant_id).await {
+                Ok(skill_ids) => {
+                    if !skill_ids.is_empty() {
+                        tracing::info!(
+                            "📋 [agent_streaming] Assistant has {} configured skill(s)",
+                            skill_ids.len()
+                        );
+                    }
+                    for skill_id in &skill_ids {
+                        if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await
+                            && skill.is_enabled
+                        {
+                            let skill_md_path =
+                                format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+                            tracing::info!(
+                                "📋 [agent_streaming] Adding skill '{}' to catalog (path: {})",
+                                skill.name,
+                                skill_md_path
+                            );
+                            skill_entries.push(SkillEntry {
+                                name: skill.name.clone(),
+                                description: skill.description.clone(),
+                                path: skill_md_path,
+                            });
+                            for tool_id in &skill.required_tool_ids {
+                                if !all_enabled_tool_ids.contains(tool_id) {
+                                    tracing::info!(
+                                        "🔧 [agent_streaming] Auto-enabling tool '{}' required by skill '{}'",
+                                        tool_id,
+                                        skill.name
+                                    );
+                                    all_enabled_tool_ids.push(tool_id.clone());
+                                }
                             }
                         }
                     }
                 }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "⚠️ [agent_streaming] Failed to load assistant skills: {}",
-                    e
-                );
+                Err(e) => {
+                    tracing::warn!(
+                        "⚠️ [agent_streaming] Failed to load assistant skills: {}",
+                        e
+                    );
+                }
             }
         }
     }
@@ -163,94 +172,98 @@ pub(crate) async fn handle_agent_streaming(
         .await
         .ok();
 
-    if let Some(ref settings) = conv_settings {
-        for id in &settings.enabled_mcp_server_ids {
-            if !all_enabled_tool_ids.contains(id) {
-                all_enabled_tool_ids.push(id.clone());
+    if !disable_tools {
+        if let Some(ref settings) = conv_settings {
+            for id in &settings.enabled_mcp_server_ids {
+                if !all_enabled_tool_ids.contains(id) {
+                    all_enabled_tool_ids.push(id.clone());
+                }
             }
-        }
 
-        // Load conversation-level skills into catalog
-        if !settings.enabled_skill_ids.is_empty() {
-            tracing::info!(
-                "📋 [agent_streaming] Conversation has {} enabled skill(s)",
-                settings.enabled_skill_ids.len()
-            );
-            for skill_id in &settings.enabled_skill_ids {
-                match state_clone.db.get_skill(skill_id).await {
-                    Ok(Some(skill)) => {
-                        if skill.is_enabled {
-                            let skill_md_path =
-                                format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
-                            // Avoid duplicates (skill may already be in catalog from assistant)
-                            if !skill_entries.iter().any(|e| e.path == skill_md_path) {
-                                tracing::info!(
-                                    "📋 [agent_streaming] Adding conversation skill '{}' to catalog",
-                                    skill.name
-                                );
-                                skill_entries.push(SkillEntry {
-                                    name: skill.name.clone(),
-                                    description: skill.description.clone(),
-                                    path: skill_md_path,
-                                });
-                            }
-                            for tool_id in &skill.required_tool_ids {
-                                if !all_enabled_tool_ids.contains(tool_id) {
+            // Load conversation-level skills into catalog
+            if !settings.enabled_skill_ids.is_empty() {
+                tracing::info!(
+                    "📋 [agent_streaming] Conversation has {} enabled skill(s)",
+                    settings.enabled_skill_ids.len()
+                );
+                for skill_id in &settings.enabled_skill_ids {
+                    match state_clone.db.get_skill(skill_id).await {
+                        Ok(Some(skill)) => {
+                            if skill.is_enabled {
+                                let skill_md_path =
+                                    format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+                                // Avoid duplicates (skill may already be in catalog from assistant)
+                                if !skill_entries.iter().any(|e| e.path == skill_md_path) {
                                     tracing::info!(
-                                        "🔧 [agent_streaming] Auto-enabling tool '{}' required by conversation skill '{}'",
-                                        tool_id,
+                                        "📋 [agent_streaming] Adding conversation skill '{}' to catalog",
                                         skill.name
                                     );
-                                    all_enabled_tool_ids.push(tool_id.clone());
+                                    skill_entries.push(SkillEntry {
+                                        name: skill.name.clone(),
+                                        description: skill.description.clone(),
+                                        path: skill_md_path,
+                                    });
+                                }
+                                for tool_id in &skill.required_tool_ids {
+                                    if !all_enabled_tool_ids.contains(tool_id) {
+                                        tracing::info!(
+                                            "🔧 [agent_streaming] Auto-enabling tool '{}' required by conversation skill '{}'",
+                                            tool_id,
+                                            skill.name
+                                        );
+                                        all_enabled_tool_ids.push(tool_id.clone());
+                                    }
                                 }
                             }
                         }
-                    }
-                    Ok(None) => {
-                        tracing::warn!(
-                            "⚠️ [agent_streaming] Conversation skill '{}' not found",
-                            skill_id
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "⚠️ [agent_streaming] Failed to load conversation skill '{}': {}",
-                            skill_id,
-                            e
-                        );
+                        Ok(None) => {
+                            tracing::warn!(
+                                "⚠️ [agent_streaming] Conversation skill '{}' not found",
+                                skill_id
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "⚠️ [agent_streaming] Failed to load conversation skill '{}': {}",
+                                skill_id,
+                                e
+                            );
+                        }
                     }
                 }
             }
         }
     }
 
-    // Append environment info block to system prompt
-    {
-        use chrono::Local;
-
-        let today = Local::now().format("%a %b %d %Y").to_string();
-        let platform = match std::env::consts::OS {
-            "macos" => "darwin",
-            other => other,
-        };
-
-        let mut env_block = format!(
-            "\n\nYou are running on model {provider_type}/{model_id}\n\n## Environment\n\n- Platform: {platform}\n- Today's date: {today}",
-        );
-
-        // Only include working directory info when explicitly set in conversation settings
-        if let Some(working_dir) = conv_settings
-            .as_ref()
-            .and_then(|s| s.working_directory.as_deref())
+    // Append environment info block to system prompt (skip for tool-less modes like translation)
+    if !disable_tools {
         {
-            let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
-            env_block.push_str(&format!(
-                "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
-                if is_git_repo { "yes" } else { "no" },
-            ));
-        }
+            use chrono::Local;
 
-        effective_system_prompt.push_str(&env_block);
+            let today = Local::now().format("%a %b %d %Y").to_string();
+            let platform = match std::env::consts::OS {
+                "macos" => "darwin",
+                other => other,
+            };
+
+            let mut env_block = format!(
+                "\n\nYou are running on model {provider_type}/{model_id}\n\n## Environment\n\n- Platform: {platform}\n- Today's date: {today}",
+            );
+
+            // Only include working directory info when explicitly set in conversation settings
+            if let Some(working_dir) = conv_settings
+                .as_ref()
+                .and_then(|s| s.working_directory.as_deref())
+            {
+                let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
+                env_block.push_str(&format!(
+                    "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
+                    if is_git_repo { "yes" } else { "no" },
+                ));
+            }
+
+            effective_system_prompt.push_str(&env_block);
+        }
     }
 
     // Check model capabilities and strip unsupported features
@@ -1093,6 +1106,22 @@ pub(crate) async fn handle_agent_streaming(
             return;
         }
     };
+
+    // Post-turn compaction check (fire-and-forget): estimates context usage
+    // against the model's window and records a compaction row when the
+    // threshold is crossed. Only the LLM projection shrinks; the persisted
+    // history is untouched.
+    {
+        let state_for_compaction = state_clone.clone();
+        let conversation_for_compaction = conversation_id_clone.clone();
+        tokio::spawn(async move {
+            super::compaction::run_post_turn_compaction(
+                &state_for_compaction,
+                &conversation_for_compaction,
+            )
+            .await;
+        });
+    }
 
     // Save generated images as file attachments linked to the assistant message
     if !images_snapshot.is_empty() {

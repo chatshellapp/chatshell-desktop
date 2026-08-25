@@ -69,7 +69,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
-    useProviderDefaults?: boolean
+    useProviderDefaults?: boolean,
+    reuseFetchResultIds?: string[]
   ) => {
     set((draft) => {
       draft.isSending = true
@@ -126,6 +127,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         hasParameterOverrides: !!parameterOverrides,
         contextMessageCount,
         useProviderDefaults,
+        hasReuseFetchResultIds: !!reuseFetchResultIds?.length,
       })
 
       // This will return the user message immediately
@@ -149,6 +151,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         parameterOverrides,
         contextMessageCount,
         useProviderDefaults,
+        reuseFetchResultIds,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
@@ -413,7 +416,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       next.searchEnabled,
       next.parameterOverrides,
       next.contextMessageCount,
-      next.useProviderDefaults
+      next.useProviderDefaults,
+      next.reuseFetchResultIds
     )
   },
 

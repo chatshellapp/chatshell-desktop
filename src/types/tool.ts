@@ -1,3 +1,18 @@
+// Tool types are generated from Rust models (src-tauri/src/models/tool.rs)
+// via ts-rs. Run `pnpm types:generate` in src-tauri to regenerate.
+
+export type { Tool } from './generated/Tool'
+export type { CreateToolRequest } from './generated/CreateToolRequest'
+export type { McpTransportType } from './generated/McpTransportType'
+export type { McpAuthType } from './generated/McpAuthType'
+export type { ProbeResult } from './generated/ProbeResult'
+export type { McpConfig as McpServerConfig } from './generated/McpConfig'
+export type { OAuthMetadata as McpOAuthMetadata } from './generated/OAuthMetadata'
+
+import type { Tool } from './generated/Tool'
+import type { McpTransportType } from './generated/McpTransportType'
+import type { McpConfig as McpServerConfig } from './generated/McpConfig'
+
 // Tool type constants
 export const TOOL_TYPE_MCP = 'mcp'
 export const TOOL_TYPE_BUILTIN = 'builtin'
@@ -32,19 +47,6 @@ export function sortBuiltinTools<T extends { id: string }>(tools: T[]): T[] {
   )
 }
 
-// Tool types
-export interface Tool {
-  id: string
-  name: string
-  type: string // "mcp", "builtin", "server", "tool", "api"
-  endpoint?: string
-  config?: string // JSON string of McpConfig
-  description?: string
-  is_enabled: boolean
-  created_at: string
-  updated_at: string
-}
-
 // Helper to check if a tool is a builtin tool
 export function isBuiltinTool(tool: Tool): boolean {
   return tool.type === TOOL_TYPE_BUILTIN
@@ -53,53 +55,6 @@ export function isBuiltinTool(tool: Tool): boolean {
 // Helper to check if a tool is an MCP tool
 export function isMcpTool(tool: Tool): boolean {
   return tool.type === TOOL_TYPE_MCP
-}
-
-export interface CreateToolRequest {
-  name: string
-  type: string
-  endpoint?: string
-  config?: string
-  description?: string
-  is_enabled?: boolean
-}
-
-// MCP transport types
-export type McpTransportType = 'http' | 'stdio'
-
-// MCP HTTP auth type (OAuth applies only to HTTP per MCP spec)
-export type McpAuthType = 'none' | 'bearer' | 'oauth'
-
-// OAuth metadata (populated after discovery/authorization)
-export interface McpOAuthMetadata {
-  authorization_server_url: string
-  client_id?: string
-  scopes?: string[]
-  token_expires_at?: number
-  is_authorized: boolean
-}
-
-// MCP server configuration for frontend
-export interface McpServerConfig {
-  transport: McpTransportType
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-  cwd?: string
-  auth_type?: McpAuthType
-  oauth_metadata?: McpOAuthMetadata
-  headers?: Record<string, string>
-}
-
-// Result of probing an MCP endpoint for OAuth discovery
-export interface ProbeResult {
-  status: 'ok' | 'needs_oauth' | 'error'
-  error?: string
-  authorization_server_url?: string
-  authorization_endpoint?: string
-  token_endpoint?: string
-  registration_endpoint?: string
-  scopes_supported?: string[]
 }
 
 // Helper to parse Tool.config as McpServerConfig

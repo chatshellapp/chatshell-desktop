@@ -126,7 +126,7 @@ export const useModelStore = create<ModelState>()(
         draft.error = null
       })
       try {
-        await invoke('soft_delete_model', { id })
+        await invoke('delete_model', { id })
         set((draft) => {
           const index = draft.models.findIndex((m: Model) => m.id === id)
           if (index >= 0) {

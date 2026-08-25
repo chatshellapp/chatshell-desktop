@@ -15,6 +15,7 @@ const createMockTool = (overrides: Partial<Tool> = {}): Tool => ({
   name: 'Test Tool',
   type: 'mcp',
   is_enabled: true,
+  auth_token: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   ...overrides,

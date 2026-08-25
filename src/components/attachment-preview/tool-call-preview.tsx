@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Wrench, ChevronDown, ChevronUp, XCircle, Loader2, Plug, Braces, Ban } from 'lucide-react'
+import { Wrench, ChevronDown, ChevronUp, XCircle, Loader2, Plug, Ban } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
 import type { ParsedToolName } from '@/lib/tool-name'
@@ -9,9 +9,12 @@ import {
   getMcpToolInputSummary,
   formatDuration,
   ToolOutputRenderer,
-  CopyButton,
+  McpToolOutput,
 } from './tool-output-renderers'
-import { MarkdownContent } from '@/components/markdown-content'
+import { DiffStatsBadge } from './diff-view'
+import { diffStatCounts } from '@/lib/tool-diff'
+import { humanizeToolError } from '@/lib/tool-errors'
+
 import { getToolIconByName } from '@/components/builtin-tool-icon'
 
 // Re-export StreamingToolCall from store types for consistency
@@ -100,13 +103,30 @@ export function ToolNameDisplay({ rawName }: { rawName: string }) {
   )
 }
 
-function isJsonLike(text: string): boolean {
-  const trimmed = text.trimStart()
-  return trimmed.startsWith('{') || trimmed.startsWith('[')
-}
-
-function jsonCodeBlock(text: string): string {
-  return '```json\n' + text + '\n```'
+function ErrorBlock({ error }: { error: string }) {
+  const { t } = useTranslation('tools')
+  const message = humanizeToolError(error)
+  const isHumanized = message !== error
+  return (
+    <div className="space-y-1" data-testid="tool-error">
+      <p className="text-xs text-red-500/80 uppercase tracking-wider">
+        {t('toolCallPreview.error')}
+      </p>
+      <div className="text-xs text-red-400/90 leading-relaxed bg-red-500/10 rounded p-2">
+        <p className="whitespace-pre-wrap break-words">{message}</p>
+        {isHumanized && (
+          <details className="mt-1">
+            <summary className="text-[10px] text-muted-foreground/60 cursor-pointer select-none">
+              {t('toolCallPreview.rawErrorDetail')}
+            </summary>
+            <pre className="mt-1 text-xs text-red-400/70 whitespace-pre-wrap break-words overflow-x-auto">
+              {error}
+            </pre>
+          </details>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function ToolCallPreview({
@@ -116,7 +136,6 @@ export function ToolCallPreview({
 }: ToolCallPreviewProps) {
   const { t } = useTranslation('tools')
   const [isExpanded, setIsExpanded] = useState(false)
-  const [showRaw, setShowRaw] = useState(false)
 
   const tc = toolCall || streamingToolCall
   if (!tc) return null
@@ -131,7 +150,6 @@ export function ToolCallPreview({
 
   // Unwrap rig's JSON-encoded string outputs for built-in tools
   const toolOutput = useMemo(() => formatJson(rawOutput), [rawOutput])
-  const formattedInput = useMemo(() => formatJson(toolInput), [toolInput])
 
   const hasInput = toolInput && toolInput !== '{}' && toolInput !== ''
   const hasOutput = rawOutput && rawOutput !== ''
@@ -140,6 +158,7 @@ export function ToolCallPreview({
 
   const isInProgress = isStreaming || status === 'running' || status === 'pending'
   const isBuiltin = parsed.type === 'builtin'
+  const isMcp = parsed.type === 'mcp'
   const hasSpecializedRenderer = isBuiltin && SPECIALIZED_TOOLS.has(parsed.toolName)
 
   const inputSummary = useMemo(
@@ -149,6 +168,21 @@ export function ToolCallPreview({
         : getMcpToolInputSummary(toolInput),
     [isBuiltin, parsed.toolName, toolInput]
   )
+  const diffStats = useMemo(() => {
+    if (!isBuiltin) return null
+    try {
+      const input = toolInput ? JSON.parse(toolInput) : {}
+      if (parsed.toolName === 'edit') {
+        return diffStatCounts(input.old_string ?? '', input.new_string ?? '')
+      }
+      if (parsed.toolName === 'write' && typeof input.content === 'string') {
+        return { additions: input.content ? input.content.split('\n').length : 0, deletions: 0 }
+      }
+    } catch {
+      // fall through to no badge
+    }
+    return null
+  }, [isBuiltin, parsed.toolName, toolInput])
   const duration = formatDuration(durationMs)
 
   const containerClass = isExpanded
@@ -170,6 +204,9 @@ export function ToolCallPreview({
 
         <ToolNameDisplay rawName={toolName} />
 
+        {diffStats && !isInProgress && (
+          <DiffStatsBadge additions={diffStats.additions} deletions={diffStats.deletions} />
+        )}
         {inputSummary && (
           <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
             {inputSummary}
@@ -194,107 +231,20 @@ export function ToolCallPreview({
       {/* Expandable content */}
       {isExpanded && canExpand && (
         <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
-          {hasSpecializedRenderer && !showRaw ? (
-            <>
-              <ToolOutputRenderer
-                toolName={parsed.toolName}
-                toolInput={toolInput}
-                toolOutput={toolOutput}
-              />
-              {hasError && (
-                <div className="space-y-1">
-                  <p className="text-xs text-red-500/80 uppercase tracking-wider">
-                    {t('toolCallPreview.error')}
-                  </p>
-                  <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
-                    {error}
-                  </pre>
-                </div>
-              )}
-              {isInProgress && !hasOutput && !hasError && (
-                <p className="text-xs text-muted-foreground/50 italic">
-                  {t('toolCallPreview.waitingForResult')}
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              {hasInput && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                      {t('toolCallPreview.input')}
-                    </p>
-                    <CopyButton text={formattedInput} />
-                  </div>
-                  {isJsonLike(formattedInput) ? (
-                    <div className="max-h-40 overflow-y-auto rounded">
-                      <MarkdownContent
-                        content={jsonCodeBlock(formattedInput)}
-                        className="text-xs"
-                      />
-                    </div>
-                  ) : (
-                    <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
-                      {formattedInput}
-                    </pre>
-                  )}
-                </div>
-              )}
-              {hasOutput && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                      {t('toolCallPreview.output')}
-                    </p>
-                    <CopyButton text={toolOutput} />
-                  </div>
-                  {showRaw ? (
-                    <pre className="text-xs text-foreground/70 leading-relaxed bg-muted/30 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
-                      {toolOutput}
-                    </pre>
-                  ) : (
-                    <div className="max-h-60 overflow-y-auto rounded bg-muted/30 p-2">
-                      <MarkdownContent content={toolOutput} className="text-xs" />
-                    </div>
-                  )}
-                </div>
-              )}
-              {hasError && (
-                <div className="space-y-1">
-                  <p className="text-xs text-red-500/80 uppercase tracking-wider">
-                    {t('toolCallPreview.error')}
-                  </p>
-                  <pre className="text-xs text-red-400/80 leading-relaxed bg-red-500/10 rounded p-2 overflow-x-auto">
-                    {error}
-                  </pre>
-                </div>
-              )}
-              {isInProgress && !hasOutput && !hasError && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground/70 uppercase tracking-wider">
-                    {t('toolCallPreview.output')}
-                  </p>
-                  <p className="text-xs text-muted-foreground/50 italic">
-                    {t('toolCallPreview.waitingForResult')}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-          {(hasOutput || hasSpecializedRenderer) && (
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowRaw(!showRaw)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30 transition-colors"
-                title={showRaw ? t('toolCallPreview.showFormatted') : t('toolCallPreview.showRaw')}
-              >
-                <Braces className="h-3 w-3" />
-                <span className="text-[10px]">
-                  {showRaw ? t('toolCallPreview.formatted') : t('toolCallPreview.raw')}
-                </span>
-              </button>
-            </div>
+          {hasSpecializedRenderer ? (
+            <ToolOutputRenderer
+              toolName={parsed.toolName}
+              toolInput={toolInput}
+              toolOutput={toolOutput}
+            />
+          ) : isMcp ? (
+            <McpToolOutput toolInput={toolInput} toolOutput={rawOutput} />
+          ) : null}
+          {hasError && <ErrorBlock error={error ?? ''} />}
+          {isInProgress && !hasOutput && !hasError && (
+            <p className="text-xs text-muted-foreground/50 italic">
+              {t('toolCallPreview.waitingForResult')}
+            </p>
           )}
         </div>
       )}

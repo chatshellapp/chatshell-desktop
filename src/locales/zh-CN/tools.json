@@ -1,14 +1,9 @@
 {
   "toolCallPreview": {
     "error": "错误",
-    "input": "输入",
-    "output": "输出",
     "waitingForResult": "等待结果中...",
-    "showFormatted": "显示格式化",
-    "showRaw": "显示原始",
-    "formatted": "格式化",
-    "raw": "原始",
-    "calling": "调用中..."
+    "calling": "调用中...",
+    "rawErrorDetail": "详细信息"
   },
   "copyButton": {
     "copy": "复制"
@@ -23,8 +18,38 @@
     "file": "文件",
     "files": "个文件"
   },
+  "grepOutput": {
+    "match": "处匹配",
+    "matches": "处匹配",
+    "file": "个文件",
+    "files": "个文件"
+  },
   "bashOutput": {
     "exitCode": "退出码 {{exitCode}}"
+  },
+  "wrapButton": {
+    "wrap": "自动换行",
+    "unwrap": "取消换行"
+  },
+  "diffView": {
+    "moreLines": "… 还有 {{n}} 行"
+  },
+  "summary": {
+    "linesCount": "{{n}} 行",
+    "matchesCount": "{{n}} 个匹配"
+  },
+  "errors": {
+    "noOpEdit": "空编辑：新旧内容相同",
+    "noOpRetry": "重复的空编辑；请先重新读取文件",
+    "ambiguousMatch": "old_string 不唯一；请补充上下文或使用 replace_all",
+    "staleFile": "未找到 old_string；文件在读取后已被修改",
+    "staleAnchor": "文件在上次读取后已变更；请重新读取后重试",
+    "fileNotFound": "文件不存在",
+    "notAFile": "路径不是文件",
+    "binaryFile": "二进制或非 UTF-8 文件",
+    "outsideProject": "路径在项目目录之外",
+    "imageTooLarge": "图片过大",
+    "timedOut": "命令超时"
   },
   "mcpServers": "MCP 服务器",
   "serverName": "服务器名称",

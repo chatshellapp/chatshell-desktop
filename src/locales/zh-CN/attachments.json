@@ -57,5 +57,7 @@
   "noResults": "未获取到结果。",
   "reasoning": "推理中",
   "decidingSearch": "正在判断是否需要搜索...",
-  "noContent": "无内容可用"
+  "noContent": "无内容可用",
+  "attachmentUnavailable": "附件不可用",
+  "downloadingAttachment": "正在下载..."
 }

@@ -1,20 +1,5 @@
-// Prompt types
-export interface Prompt {
-  id: string
-  name: string
-  content: string
-  description?: string
-  category?: string
-  is_system: boolean
-  is_starred: boolean
-  created_at: string
-  updated_at: string
-}
+// Prompt types are generated from Rust models via ts-rs.
+// Run `pnpm types:generate` in src-tauri to regenerate.
 
-export interface CreatePromptRequest {
-  name: string
-  content: string
-  description?: string
-  category?: string
-  is_system?: boolean
-}
+export type { Prompt } from './generated/Prompt'
+export type { CreatePromptRequest } from './generated/CreatePromptRequest'

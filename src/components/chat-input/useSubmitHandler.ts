@@ -225,6 +225,7 @@ export function useSubmitHandler({
         parameterOverrides,
         contextMessageCount,
         useProviderDefaults,
+        reuseFetchResultIds: undefined as string[] | undefined,
       }
 
       if (isStreaming || isWaitingForAI) {
@@ -257,7 +258,8 @@ export function useSubmitHandler({
           resolvedParams.searchEnabled,
           resolvedParams.parameterOverrides,
           resolvedParams.contextMessageCount,
-          resolvedParams.useProviderDefaults
+          resolvedParams.useProviderDefaults,
+          resolvedParams.reuseFetchResultIds
         )
         logger.info('Message sent successfully')
       }

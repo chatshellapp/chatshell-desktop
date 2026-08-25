@@ -695,10 +695,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         }
       }
 
-      const sourceLabel = (source: SkillSource) =>
+      const sourceLabel = (source: string) =>
         t(`settings:skillSourceLabels.${source}`, { defaultValue: source })
 
-      const skillCountBySource = (source: SkillSource) => getSkillsBySource(skills, source).length
+      const skillCountBySource = (source: SkillSource | string) =>
+        getSkillsBySource(skills, source as SkillSource).length
 
       const filteredBuiltinSkills = filteredSkills.filter((s) => isBuiltinSkill(s))
 

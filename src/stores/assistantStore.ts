@@ -36,7 +36,9 @@ export const useAssistantStore = create<AssistantStore>()(
       try {
         const assistants = await invoke<Assistant[]>('list_assistants')
         set((draft) => {
-          draft.assistants = assistants
+          // Immer's WritableDraft recursion over JsonValue blows up TS2589 here;
+          // runtime types are identical, so a cast is safe and localized.
+          draft.assistants = assistants as Assistant[]
           draft.isLoading = false
         })
       } catch (error) {

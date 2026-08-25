@@ -18,6 +18,7 @@ mod search;
 mod settings;
 mod skills;
 mod steps;
+mod sync;
 mod users;
 
 use crate::db::Database;
@@ -46,6 +47,8 @@ pub struct AppState {
     pub pending_oauth: PendingOAuthMap,
     pub bash_session_manager: Arc<BashSessionManager>,
     pub capabilities_cache: Arc<CapabilitiesCache>,
+    /// Snapshot-sync engine against the iCloud container, when present.
+    pub sync_engine: Arc<std::sync::Mutex<Option<crate::sync::SyncEngine>>>,
 }
 
 // Re-export all commands
@@ -69,4 +72,5 @@ pub use search::*;
 pub use settings::*;
 pub use skills::*;
 pub use steps::*;
+pub use sync::*;
 pub use users::*;

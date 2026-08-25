@@ -1,4 +1,4 @@
-import { MessagesSquare, Users, Library, Package, Settings } from 'lucide-react'
+import { MessagesSquare, Users, Library, Package, Settings, Languages } from 'lucide-react'
 import type { PromptGroup } from '@/components/prompt-list'
 import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 import type { TFunction } from 'i18next'
@@ -341,6 +341,13 @@ export function getNavItems(t: TFunction): NavItem[] {
       title: t('sidebar:contacts'),
       url: '#',
       icon: Users,
+      isActive: false,
+    },
+    {
+      id: 'translation',
+      title: t('sidebar:translation'),
+      url: '#',
+      icon: Languages,
       isActive: false,
     },
     {

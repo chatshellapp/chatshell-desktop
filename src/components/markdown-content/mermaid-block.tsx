@@ -46,7 +46,7 @@ function cleanupMermaidElements(elementId: string) {
 // Debounce delay for mermaid rendering during streaming
 const MERMAID_RENDER_DEBOUNCE_MS = 300
 
-export function MermaidBlock({ code }: MermaidBlockProps) {
+export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
   const { t } = useTranslation(['common', 'attachments'])
   const uniqueId = useId()
   const [svg, setSvg] = useState<string | null>(null)
@@ -187,7 +187,13 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   }
 
   return (
-    <div className="my-2 border border-border rounded-md overflow-hidden mermaid-container">
+    <div
+      className={
+        flat
+          ? 'border border-border rounded-md overflow-hidden mermaid-container'
+          : 'my-2 border border-border rounded-md overflow-hidden mermaid-container'
+      }
+    >
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b border-border">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-mono">mermaid</span>

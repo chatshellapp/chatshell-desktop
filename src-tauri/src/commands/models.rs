@@ -42,12 +42,3 @@ pub async fn update_model(
 pub async fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.db.delete_model(&id).await.map_err(|e| e.to_string())
 }
-
-#[tauri::command]
-pub async fn soft_delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state
-        .db
-        .soft_delete_model(&id)
-        .await
-        .map_err(|e| e.to_string())
-}
