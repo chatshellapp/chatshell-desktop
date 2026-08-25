@@ -5,4 +5,4 @@ target
 pnpm-lock.yaml
 Cargo.lock
 chatshell.db
-
+src/types/generated

@@ -4,8 +4,16 @@
     "plugin:@typescript-eslint/recommended"
   ],
   "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint"],
+  "plugins": [
+    "@typescript-eslint"
+  ],
   "root": true,
-  "ignorePatterns": ["dist", "node_modules", "src-tauri", "*.config.js", "*.config.ts"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "src-tauri",
+    "src/types/generated",
+    "*.config.js",
+    "*.config.ts"
+  ]
 }
-

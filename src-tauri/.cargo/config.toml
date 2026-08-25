@@ -1,0 +1,5 @@
+[env]
+# ts-rs: export generated TypeScript bindings into the frontend type directory
+TS_RS_EXPORT_DIR = { value = "../src/types/generated", relative = true }
+# Model DTOs use i64 for token counts; the frontend treats them as number
+TS_RS_LARGE_INT = "number"
