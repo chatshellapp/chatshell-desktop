@@ -11,6 +11,7 @@ use std::time::Duration;
 use tauri::State;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
+use ts_rs::TS;
 
 /// Default OAuth client ID for ChatShell (public client, no secret)
 const MCP_OAUTH_CLIENT_ID: &str = "chatshell-desktop";
@@ -683,14 +684,21 @@ pub async fn set_mcp_bearer_token(
 }
 
 /// Result of probing an MCP endpoint for OAuth discovery
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ProbeResult {
     pub status: String, // "ok", "needs_oauth", "error"
+    #[ts(optional)]
     pub error: Option<String>,
+    #[ts(optional)]
     pub authorization_server_url: Option<String>,
+    #[ts(optional)]
     pub authorization_endpoint: Option<String>,
+    #[ts(optional)]
     pub token_endpoint: Option<String>,
+    #[ts(optional)]
     pub registration_endpoint: Option<String>,
+    #[ts(optional)]
     pub scopes_supported: Option<Vec<String>>,
 }
 

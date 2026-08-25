@@ -12,10 +12,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rig::completion::ToolDefinition;
-use rig::tool::Tool;
+use rig::agent::tool::Tool;
 use rmcp::RoleClient;
-use rmcp::model::{CallToolRequestParams, RawContent};
+use rmcp::model::{CallToolRequestParams, ContentBlock};
 use rmcp::service::Peer;
 use serde::Deserialize;
 use serde_json::json;
@@ -151,35 +150,39 @@ impl Tool for McpToolUseTool {
     type Args = McpToolUseArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "mcp_tool_use".to_string(),
-            description: "Call an MCP tool by server and name. \
+    fn description(&self) -> String {
+        "Call an MCP tool by server and name. \
                           Always read the schema with mcp_schema first to understand \
                           the required parameters."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "server": {
-                        "type": "string",
-                        "description": "The MCP server name"
-                    },
-                    "tool": {
-                        "type": "string",
-                        "description": "The exact name of the MCP tool to call"
-                    },
-                    "arguments": {
-                        "type": "object",
-                        "description": "The arguments to pass to the tool, as specified in its schema"
-                    }
-                },
-                "required": ["server", "tool"]
-            }),
-        }
+            .to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "server": {
+                    "type": "string",
+                    "description": "The MCP server name"
+                },
+                "tool": {
+                    "type": "string",
+                    "description": "The exact name of the MCP tool to call"
+                },
+                "arguments": {
+                    "type": "object",
+                    "description": "The arguments to pass to the tool, as specified in its schema"
+                }
+            },
+            "required": ["server", "tool"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::agent::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         let key = format!("{}/{}", args.server, args.tool);
 
         // Security: scan arguments for STDIO servers
@@ -205,15 +208,9 @@ impl Tool for McpToolUseTool {
 
         let arguments = args.arguments.as_object().cloned().unwrap_or_default();
 
-        let result = match client
-            .call_tool(CallToolRequestParams {
-                name: args.tool.clone().into(),
-                arguments: Some(arguments),
-                meta: None,
-                task: None,
-            })
-            .await
-        {
+        let mut params = CallToolRequestParams::new(args.tool.clone());
+        params.arguments = Some(arguments);
+        let result = match client.call_tool(params).await {
             Ok(r) => r,
             Err(e) => {
                 return Err(McpToolUseError::CallFailed(format!(
@@ -226,8 +223,8 @@ impl Tool for McpToolUseTool {
             let error_msg: String = result
                 .content
                 .into_iter()
-                .filter_map(|c| match c.raw {
-                    RawContent::Text(raw) => Some(raw.text.to_string()),
+                .filter_map(|c| match c {
+                    ContentBlock::Text(raw) => Some(raw.text.to_string()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -244,12 +241,12 @@ impl Tool for McpToolUseTool {
         Ok(result
             .content
             .into_iter()
-            .map(|c| match c.raw {
-                RawContent::Text(raw) => raw.text.to_string(),
-                RawContent::Image(raw) => {
+            .map(|c| match c {
+                ContentBlock::Text(raw) => raw.text.to_string(),
+                ContentBlock::Image(raw) => {
                     format!("data:{};base64,{}", raw.mime_type, raw.data)
                 }
-                RawContent::Resource(raw) => match raw.resource {
+                ContentBlock::Resource(raw) => match raw.resource {
                     rmcp::model::ResourceContents::TextResourceContents {
                         uri,
                         mime_type,
@@ -270,6 +267,7 @@ impl Tool for McpToolUseTool {
                         "{mime_type}{uri}:{blob}",
                         mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                     ),
+                    _ => String::new(),
                 },
                 _ => String::new(),
             })

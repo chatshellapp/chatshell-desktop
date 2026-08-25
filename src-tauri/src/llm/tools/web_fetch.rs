@@ -3,7 +3,7 @@
 //! Allows the AI to actively fetch and read web page content.
 //! This tool wraps the existing web_fetch module functionality.
 
-use rig::{completion::ToolDefinition, tool::Tool};
+use rig::agent::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -85,32 +85,36 @@ impl Tool for WebFetchTool {
     type Args = WebFetchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "web_fetch".to_string(),
-            description: "Fetch and extract the main content from a web page. \
+    fn description(&self) -> String {
+        "Fetch and extract the main content from a web page. \
                 Returns the page title and cleaned text content suitable for reading. \
                 Use this to read articles, documentation, blog posts, or any web page content. \
                 The content is extracted using readability algorithms to remove ads and navigation."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the web page to fetch"
-                    },
-                    "max_chars": {
-                        "type": "number",
-                        "description": "Maximum characters to return (default: 50000). Use smaller values for quick summaries."
-                    }
-                },
-                "required": ["url"]
-            }),
-        }
+            .to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL of the web page to fetch"
+                },
+                "max_chars": {
+                    "type": "number",
+                    "description": "Maximum characters to return (default: 50000). Use smaller values for quick summaries."
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::agent::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         tracing::info!(
             "🔧 [tool-call] web_fetch: url=\"{}\" max_chars={:?}",
             args.url,

@@ -27,33 +27,19 @@
 //!     .with_builtin_tools();
 //! ```
 
-pub(crate) mod bash;
-mod bash_ast;
-pub(crate) mod bash_security;
-mod bash_session_manager;
-mod edit;
-mod glob;
-mod grep;
-mod kill_shell;
+pub use chatshell_agent_core::tools::{
+    BashSessionManager, BashTool, EditTool, GlobTool, GrepTool, KillShellTool, ReadTool,
+    SharedBashSession, TempFileList, WriteTool,
+};
+pub use chatshell_agent_core::{bash_security, path_policy};
 mod mcp_schema;
 mod mcp_tool_use;
-pub mod path_policy;
-mod read;
 mod skill;
 mod web_fetch;
 mod web_search;
-mod write;
 
-pub use bash::BashTool;
-pub use bash_session_manager::BashSessionManager;
-pub use edit::EditTool;
-pub use glob::GlobTool;
-pub use grep::GrepTool;
-pub use kill_shell::KillShellTool;
 pub use mcp_schema::{McpSchemaTool, McpServerCatalog};
 pub use mcp_tool_use::McpToolUseTool;
-pub use read::ReadTool;
 pub use skill::{SkillCatalogEntry, SkillTool};
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
-pub use write::WriteTool;

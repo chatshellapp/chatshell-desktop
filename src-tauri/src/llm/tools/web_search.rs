@@ -3,7 +3,7 @@
 //! Allows the AI to actively search the web for information.
 //! This tool wraps the existing web_search module functionality.
 
-use rig::{completion::ToolDefinition, tool::Tool};
+use rig::agent::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -61,36 +61,40 @@ impl Tool for WebSearchTool {
     type Args = WebSearchArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "web_search".to_string(),
-            description: "Search the web for information using a search engine. \
+    fn description(&self) -> String {
+        "Search the web for information using a search engine. \
                 Returns a list of relevant search results with titles, URLs, and snippets. \
                 Use this when you need to find current information, facts, or references from the web."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to execute"
-                    },
-                    "max_results": {
-                        "type": "number",
-                        "description": "Maximum number of results to return (default: 5)"
-                    },
-                    "provider": {
-                        "type": "string",
-                        "enum": ["duckduckgo", "yahoo", "baidu"],
-                        "description": "Search provider to use (default: duckduckgo)"
-                    }
-                },
-                "required": ["query"]
-            }),
-        }
+                .to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to execute"
+                },
+                "max_results": {
+                    "type": "number",
+                    "description": "Maximum number of results to return (default: 5)"
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": ["duckduckgo", "yahoo", "baidu"],
+                    "description": "Search provider to use (default: duckduckgo)"
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::agent::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         tracing::info!(
             "🔧 [tool-call] web_search: query=\"{}\" max_results={}",
             args.query,

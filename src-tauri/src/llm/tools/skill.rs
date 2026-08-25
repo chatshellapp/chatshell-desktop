@@ -4,8 +4,7 @@
 //! an XML catalog of all available skills so the model can discover them without
 //! needing a separate system-prompt section.
 
-use rig::completion::ToolDefinition;
-use rig::tool::Tool;
+use rig::agent::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -44,38 +43,53 @@ impl Tool for SkillTool {
     type Args = SkillArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
+    fn description(&self) -> String {
+        // Catalog budget: discovery needs names plus a one-line gist, not
+        // full descriptions or filesystem paths - the tool returns the whole
+        // SKILL.md on call. Bounds keep the schema cost flat as the skill
+        // library grows.
+        const MAX_SKILLS: usize = 40;
+        const MAX_DESC_CHARS: usize = 120;
+
         let mut desc = String::from(
             "Load the full instructions for a skill by name. \
              Use this when a task matches an available skill.\n\n\
              <available_skills>\n",
         );
-        for entry in &self.skills {
+        let total = self.skills.len();
+        for entry in self.skills.iter().take(MAX_SKILLS) {
             let d = entry.description.as_deref().unwrap_or("No description");
             desc.push_str(&format!(
-                "  <skill name=\"{}\" path=\"{}\">{}</skill>\n",
-                entry.name, entry.path, d
+                "  <skill name=\"{}\">{}</skill>\n",
+                entry.name,
+                chatshell_agent_core::context_pruning::ellipsize(d, MAX_DESC_CHARS)
             ));
         }
-        desc.push_str("</available_skills>");
-
-        ToolDefinition {
-            name: "skill".to_string(),
-            description: desc,
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Skill name from the available_skills catalog"
-                    }
-                },
-                "required": ["name"]
-            }),
+        if total > MAX_SKILLS {
+            desc.push_str(&format!("  ...and {} more skills\n", total - MAX_SKILLS));
         }
+        desc.push_str("</available_skills>");
+        desc
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Skill name from the available_skills catalog"
+                }
+            },
+            "required": ["name"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::agent::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         tracing::info!("🔧 [tool-call] skill: name=\"{}\"", args.name);
 
         let entry = self
@@ -166,10 +180,10 @@ fn collect_recursive(
         }
         if path.is_dir() {
             collect_recursive(base, &path, out, limit);
-        } else if path.is_file() {
-            if let Ok(rel) = path.strip_prefix(base) {
-                out.push(rel.to_string_lossy().to_string());
-            }
+        } else if path.is_file()
+            && let Ok(rel) = path.strip_prefix(base)
+        {
+            out.push(rel.to_string_lossy().to_string());
         }
     }
 }
@@ -185,5 +199,48 @@ fn strip_frontmatter(content: &str) -> &str {
         after_opening[body_start..].trim_start()
     } else {
         content
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, description: &str) -> SkillCatalogEntry {
+        SkillCatalogEntry {
+            name: name.to_string(),
+            description: if description.is_empty() {
+                None
+            } else {
+                Some(description.to_string())
+            },
+            path: format!("/skills/{name}/SKILL.md"),
+        }
+    }
+
+    #[test]
+    fn description_budgets_long_skill_descriptions() {
+        let long = "Does many detailed things. ".repeat(30);
+        let tool = SkillTool::new(vec![entry("big-skill", &long)]);
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(desc.contains("big-skill"));
+        assert!(
+            desc.chars().count() < 400,
+            "description must stay budgeted: {} chars",
+            desc.chars().count()
+        );
+        assert!(desc.contains('\u{2026}'), "must end with ellipsis: {desc}");
+        assert!(!desc.contains("/skills/"), "paths must not ride the schema");
+    }
+
+    #[test]
+    fn description_caps_entry_count() {
+        let skills: Vec<SkillCatalogEntry> =
+            (0..50).map(|i| entry(&format!("skill-{i}"), "d")).collect();
+        let tool = SkillTool::new(skills);
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(desc.contains("skill-0"));
+        assert!(!desc.contains("skill-45"), "beyond the entry cap");
+        assert!(desc.contains("...and 10 more skills"));
     }
 }

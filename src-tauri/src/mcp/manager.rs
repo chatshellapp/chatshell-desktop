@@ -6,13 +6,12 @@ use anyhow::{Context, Result};
 use rmcp::model::{ClientCapabilities, ClientInfo, Implementation, Tool as McpTool};
 use rmcp::service::{Peer, RunningService};
 use rmcp::transport::TokioChildProcess;
-use rmcp::transport::streamable_http_client::{
-    StreamableHttpClientTransport, StreamableHttpClientTransportConfig,
-};
 use rmcp::{RoleClient, ServiceExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use chatshell_agent_core::mcp::{self as core_mcp, connect_http_service};
 
 use crate::models::{McpAuthType, McpConfig, McpTransportType, Tool};
 
@@ -75,16 +74,10 @@ impl McpConnectionManager {
 
     /// Create the standard client info for MCP connections
     fn create_client_info() -> ClientInfo {
-        ClientInfo {
-            meta: None,
-            protocol_version: Default::default(),
-            capabilities: ClientCapabilities::default(),
-            client_info: Implementation {
-                name: "chatshell".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                ..Default::default()
-            },
-        }
+        ClientInfo::new(
+            ClientCapabilities::default(),
+            Implementation::new("chatshell", env!("CARGO_PKG_VERSION")),
+        )
     }
 
     /// Resolve HTTP auth header from the tool's encrypted `auth_token` column.
@@ -129,7 +122,11 @@ impl McpConnectionManager {
         }
     }
 
-    /// Connect to an MCP server via HTTP transport
+    /// Connect to an MCP server via HTTP transport.
+    ///
+    /// Transport construction (client, headers, auth, client identity) is the
+    /// shared core layer (`connect_http_service`); desktop adds nothing on
+    /// top of it.
     async fn connect_http(
         &self,
         endpoint: &str,
@@ -138,40 +135,12 @@ impl McpConnectionManager {
     ) -> Result<McpRunningService> {
         tracing::info!("🌐 Connecting via HTTP to: {}", endpoint);
 
-        let http_client = if let Some(headers) = custom_headers {
-            let mut header_map = reqwest::header::HeaderMap::new();
-            for (k, v) in headers {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                ) {
-                    header_map.insert(name, val);
-                }
-            }
-            reqwest::Client::builder()
-                .default_headers(header_map)
-                .build()
-                .context("Failed to build HTTP client with custom headers")?
-        } else {
-            reqwest::Client::new()
+        let config = core_mcp::McpHttpConfig {
+            endpoint: endpoint.to_string(),
+            auth_token: auth_header,
+            custom_headers: custom_headers.cloned().unwrap_or_default(),
         };
-
-        let mut config = StreamableHttpClientTransportConfig {
-            uri: endpoint.to_string().into(),
-            ..Default::default()
-        };
-        if let Some(token) = auth_header {
-            config = config.auth_header(token);
-        }
-        let transport = StreamableHttpClientTransport::with_client(http_client, config);
-
-        let client_info = Self::create_client_info();
-        let running_service = client_info
-            .serve(transport)
-            .await
-            .context("Failed to connect to MCP server via HTTP")?;
-
-        Ok(running_service)
+        connect_http_service(&config).await
     }
 
     /// Connect to an MCP server via STDIO transport

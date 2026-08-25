@@ -3,7 +3,7 @@
 //! Skills are stored as directories containing a SKILL.md file with optional YAML frontmatter.
 //!
 //! ## Directory structure:
-//! ```
+//! ```text
 //! skills/
 //!   my-skill/
 //!     SKILL.md        # Required: contains frontmatter + instructions
