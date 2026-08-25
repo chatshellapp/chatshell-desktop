@@ -1,7 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
+use ts_rs::TS;
 
 /// Prompt mode for system/user prompts
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum PromptMode {
     /// No override - use assistant's default prompt
@@ -50,22 +52,29 @@ where
 }
 
 /// Model parameter overrides for a conversation
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ModelParameterOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub max_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub top_p: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub frequency_penalty: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub presence_penalty: Option<f64>,
 }
 
 /// Conversation-level settings that override assistant defaults
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ConversationSettings {
     pub conversation_id: String,
 
@@ -139,33 +148,47 @@ impl ConversationSettings {
 }
 
 /// Request to update conversation settings
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct UpdateConversationSettingsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub use_provider_defaults: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub use_custom_parameters: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub parameter_overrides: Option<ModelParameterOverrides>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub context_message_count: Option<Option<i32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub selected_preset_id: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub system_prompt_mode: Option<PromptMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub selected_system_prompt_id: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub custom_system_prompt: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub user_prompt_mode: Option<PromptMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub selected_user_prompt_id: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub custom_user_prompt: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub enabled_mcp_server_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub enabled_skill_ids: Option<Vec<String>>,
     #[serde(
         default,

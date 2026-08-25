@@ -55,7 +55,9 @@ pub use conversation_settings::{
 pub use message::{CreateMessageRequest, Message};
 
 // Attachments (user-provided files)
-pub use attachment::{CreateFileAttachmentRequest, FileAttachment, UserAttachment};
+pub use attachment::{
+    BlobFetchStatus, CreateFileAttachmentRequest, FileAttachment, UserAttachment,
+};
 
 // Context enrichments (system-fetched content)
 pub use context::{

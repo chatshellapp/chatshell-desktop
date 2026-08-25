@@ -1,14 +1,19 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::collections::HashMap;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
+#[ts(export)]
 pub struct Tool {
     pub id: String,
     pub name: String,
     pub r#type: String,
+    #[ts(optional)]
     pub endpoint: Option<String>,
+    #[ts(optional)]
     pub config: Option<String>,
+    #[ts(optional)]
     pub description: Option<String>,
     pub is_enabled: bool,
     /// Encrypted MCP auth token (Bearer or OAuth JSON), stored in SQLite.
@@ -48,18 +53,24 @@ impl Tool {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct CreateToolRequest {
     pub name: String,
     pub r#type: String,
+    #[ts(optional)]
     pub endpoint: Option<String>,
+    #[ts(optional)]
     pub config: Option<String>,
+    #[ts(optional)]
     pub description: Option<String>,
+    #[ts(optional)]
     pub is_enabled: Option<bool>,
 }
 
 /// MCP transport type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum McpTransportType {
     #[default]
@@ -68,7 +79,8 @@ pub enum McpTransportType {
 }
 
 /// MCP HTTP auth type (OAuth applies only to HTTP transport per MCP spec)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum McpAuthType {
     #[default]
@@ -78,52 +90,64 @@ pub enum McpAuthType {
 }
 
 /// OAuth metadata stored after discovery/authorization (in config JSON)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct OAuthMetadata {
     pub authorization_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub scopes: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub token_expires_at: Option<i64>,
     pub is_authorized: bool,
 }
 
 /// MCP server configuration stored in the `config` field as JSON
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct McpConfig {
     /// Transport type: "http" or "stdio"
     pub transport: McpTransportType,
 
     /// STDIO-specific configuration
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub command: Option<String>,
 
     /// Command arguments (for STDIO)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub args: Option<Vec<String>>,
 
     /// Environment variables (for STDIO)
     /// These will be merged with the current process environment
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub env: Option<HashMap<String, String>>,
 
     /// Working directory (for STDIO)
     /// Defaults to user's home directory if not specified
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub cwd: Option<String>,
 
     /// Auth type for HTTP transport: "none", "bearer", "oauth"
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub auth_type: Option<McpAuthType>,
 
     /// OAuth metadata (populated after discovery/authorization)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub oauth_metadata: Option<OAuthMetadata>,
 
     /// Custom HTTP headers (for HTTP transport)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub headers: Option<HashMap<String, String>>,
 }
 

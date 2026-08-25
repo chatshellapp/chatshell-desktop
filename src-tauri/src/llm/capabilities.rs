@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ModelCapabilities {
     pub supports_tool_use: Option<bool>,
     pub supports_vision: Option<bool>,

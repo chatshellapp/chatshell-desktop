@@ -1,20 +1,28 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::llm::common::{create_http_client, format_model_display_name};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ModelInfo {
     pub id: String,
     pub name: String,
+    #[ts(optional)]
     pub description: Option<String>,
+    #[ts(optional)]
     pub context_length: Option<i64>,
+    #[ts(optional)]
     pub pricing: Option<ModelPricing>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ModelPricing {
+    #[ts(optional)]
     pub prompt: Option<f64>,
+    #[ts(optional)]
     pub completion: Option<f64>,
 }
 

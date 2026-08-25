@@ -1,5 +1,3 @@
-use reqwest::header::{HeaderMap, HeaderValue};
-use rig::OneOrMany;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Image, ImageDetail, ImageMediaType,
     UserContent,
@@ -7,30 +5,10 @@ use rig::message::{
 
 use crate::llm::{FileData, ImageData};
 
-/// App attribution headers for API providers (especially OpenRouter)
-/// See: https://openrouter.ai/docs/app-attribution
-const APP_REFERER: &str = "https://chatshell.app";
-const APP_TITLE: &str = "ChatShell";
-
-/// Create a reqwest client with app attribution and content-type headers.
-/// The Content-Type header is required because rig's streaming path
-/// (GenericEventSource -> HttpClientExt::send_streaming) does not set it,
-/// unlike the non-streaming path (Client::send which explicitly inserts it).
-/// Without it, providers like Anthropic reject the request with "unsupported content type".
-pub fn create_http_client() -> reqwest::Client {
-    let mut headers = HeaderMap::new();
-    headers.insert("HTTP-Referer", HeaderValue::from_static(APP_REFERER));
-    headers.insert("X-Title", HeaderValue::from_static(APP_TITLE));
-    headers.insert(
-        reqwest::header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap_or_default()
-}
+// Single-sourced in chatshell-agent-core: app attribution headers
+// (OpenRouter) + the explicit Content-Type that rig's streaming path does
+// not set on its own (without it, providers like Anthropic reject requests).
+pub use chatshell_agent_core::create_http_client;
 
 /// Tool call information for streaming callback
 #[derive(Debug, Clone)]
@@ -157,7 +135,7 @@ pub fn build_user_content(
     text: &str,
     images: &[ImageData],
     files: &[FileData],
-) -> OneOrMany<UserContent> {
+) -> Vec<UserContent> {
     let mut contents: Vec<UserContent> = Vec::new();
 
     // Add text content first
@@ -189,11 +167,7 @@ pub fn build_user_content(
         contents.push(UserContent::Image(image));
     }
 
-    if contents.len() == 1 {
-        OneOrMany::one(contents.remove(0))
-    } else {
-        OneOrMany::many(contents).unwrap_or_else(|_| OneOrMany::one(UserContent::Text(text.into())))
-    }
+    contents
 }
 
 #[cfg(test)]

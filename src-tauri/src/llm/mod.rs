@@ -1,6 +1,5 @@
 pub mod agent_builder;
 pub mod agent_streaming;
-pub mod anthropic;
 pub mod azure;
 pub mod capabilities;
 pub mod cohere;
@@ -22,16 +21,10 @@ pub mod openai_compat;
 pub mod openrouter;
 pub mod perplexity;
 pub mod together;
-pub mod tool_registry;
 pub mod tools;
 pub mod xai;
 
 pub use common::StreamChunkType;
-
-// Re-export tool registry types for public API
-// These are currently unused internally but are part of the public API
-#[allow(unused_imports)]
-pub use tool_registry::{ToolDefinition, ToolParameter, ToolRegistry};
 
 // Re-export native tools for public API
 // These are currently unused internally but are part of the public API

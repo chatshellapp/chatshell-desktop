@@ -6,9 +6,10 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
-use rig::completion::{CompletionModel, Message};
-use rig::message::Reasoning;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingChat};
+use rig::completion::Message;
+use rig::message::{AssistantContent, DocumentSourceKind, Image, Reasoning};
+use rig::prelude::StreamingChat;
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::ChatResponse;
@@ -20,9 +21,10 @@ use crate::thinking_parser;
 fn strip_internal_prefixes(error: &str) -> String {
     let mut s = error;
     for prefix in &[
-        "CompletionError: ProviderError: ",
-        "Provider error: ",
+        "CompletionError: ",
         "ProviderError: ",
+        "Error sending request: ",
+        "HTTP error: ",
     ] {
         if let Some(rest) = s.strip_prefix(prefix) {
             s = rest;
@@ -31,24 +33,47 @@ fn strip_internal_prefixes(error: &str) -> String {
     s.to_string()
 }
 
-/// Generic implementation for streaming with any agent type
-pub async fn stream_agent<M>(
-    agent: Agent<M>,
+/// Extract inline assistant images as data URLs. rig 0.42 delivers generated
+/// images inside the final aggregated response content rather than as a
+/// dedicated stream variant.
+fn image_data_urls(content: &[AssistantContent]) -> Vec<String> {
+    content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::Image(Image {
+                data: DocumentSourceKind::Base64(b64),
+                media_type,
+                ..
+            }) => {
+                let mime = media_type
+                    .as_ref()
+                    .map(|mt| rig::message::MimeType::to_mime_type(mt).to_string())
+                    .unwrap_or_else(|| "image/png".to_string());
+                Some(format!("data:{mime};base64,{b64}"))
+            }
+            AssistantContent::Image(Image {
+                data: DocumentSourceKind::Url(url),
+                ..
+            }) => Some(url.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Implementation for streaming with any agent type
+pub async fn stream_agent(
+    agent: Agent,
     prompt: Message,
     chat_history: Vec<Message>,
     cancel_token: CancellationToken,
     mut callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     log_prefix: &str,
-) -> Result<ChatResponse>
-where
-    M: CompletionModel + 'static,
-    M::StreamingResponse: rig::completion::GetTokenUsage,
-{
+) -> Result<ChatResponse> {
     tracing::info!("🤖 [{}] Agent created, starting stream chat", log_prefix);
 
     let mut stream = agent
         .stream_chat(prompt, chat_history)
-        .multi_turn(1000)
+        .max_turns(1000)
         .await;
 
     let mut full_content = String::new();
@@ -100,9 +125,10 @@ where
                     }
                 }
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                Reasoning { content, .. },
-            ))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+                reasoning: Reasoning { content, .. },
+                ..
+            })) => {
                 consecutive_errors = 0;
                 if !is_reasoning {
                     is_reasoning = true;
@@ -142,29 +168,18 @@ where
                     tool_call.id
                 );
 
+                let call_id = tool_call
+                    .provider
+                    .as_ref()
+                    .map(|provider| provider.call_id.to_string());
                 let tool_info = ToolCallInfo {
-                    id: tool_call.id.clone(),
-                    call_id: tool_call.call_id.clone(),
+                    id: tool_call.id.to_string(),
+                    call_id,
                     tool_name: tool_call.function.name.clone(),
                     tool_input,
                 };
 
                 if !callback(String::new(), StreamChunkType::ToolCall(tool_info)) {
-                    tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
-                    cancelled = true;
-                    break;
-                }
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Image(
-                data_url,
-            ))) => {
-                consecutive_errors = 0;
-                tracing::info!(
-                    "🖼️ [{}] Image received ({} bytes)",
-                    log_prefix,
-                    data_url.len()
-                );
-                if !callback(data_url.clone(), StreamChunkType::Image(data_url)) {
                     tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
                     cancelled = true;
                     break;
@@ -188,12 +203,12 @@ where
                 tracing::info!(
                     "📦 [{}] Tool result received (id: {}, {} chars)",
                     log_prefix,
-                    tool_result.id,
+                    tool_result.call,
                     tool_output.len()
                 );
 
                 let result_info = ToolResultInfo {
-                    id: tool_result.id.clone(),
+                    id: tool_result.call.to_string(),
                     tool_output,
                 };
 
@@ -214,6 +229,19 @@ where
                         usage.input_tokens,
                         usage.output_tokens
                     );
+                }
+                // Generated images arrive inside the final aggregated content.
+                for data_url in image_data_urls(final_response.content()) {
+                    tracing::info!(
+                        "🖼️ [{}] Image received ({} bytes)",
+                        log_prefix,
+                        data_url.len()
+                    );
+                    if !callback(data_url.clone(), StreamChunkType::Image(data_url)) {
+                        tracing::info!("🛑 [{}] Callback signaled cancellation", log_prefix);
+                        cancelled = true;
+                        break;
+                    }
                 }
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(
@@ -285,17 +313,6 @@ where
         }
     }
 
-    // Handle case where reasoning was active when stream ended
-    if is_reasoning {
-        tracing::info!("💡 [{}] Reasoning ended", log_prefix);
-    }
-
-    if cancelled {
-        tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
-    } else {
-        tracing::info!("✅ [{}] Stream completed successfully", log_prefix);
-    }
-
     // If stream ended with no content and there were errors, return the error
     if full_content.is_empty()
         && !cancelled
@@ -320,6 +337,17 @@ where
         parsed.thinking_content
     };
 
+    // Handle case where reasoning was active when stream ended
+    if is_reasoning {
+        tracing::info!("💡 [{}] Reasoning ended", log_prefix);
+    }
+
+    if cancelled {
+        tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
+    } else {
+        tracing::info!("✅ [{}] Stream completed successfully", log_prefix);
+    }
+
     tracing::info!(
         "📊 [{}] Parsed content: {} chars, API reasoning: {} chars, final thinking: {}",
         log_prefix,
@@ -327,7 +355,6 @@ where
         full_reasoning.len(),
         final_thinking.is_some()
     );
-
     Ok(ChatResponse {
         content: parsed.content,
         thinking_content: final_thinking,

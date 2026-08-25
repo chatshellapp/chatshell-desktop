@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
+#[ts(export)]
 pub struct Model {
     pub id: String,
     pub name: String,        // Display name, e.g., "DeepSeek R1 14B"
     pub provider_id: String, // Foreign key to providers table
     pub model_id: String,    // Actual model identifier, e.g., "deepseek-r1:14b"
+    #[ts(optional)]
     pub description: Option<String>,
     pub is_starred: bool, // Whether model is starred for quick access
     pub is_deleted: bool, // Soft delete flag
@@ -14,12 +17,15 @@ pub struct Model {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct CreateModelRequest {
     pub name: String,
     pub provider_id: String,
     pub model_id: String,
+    #[ts(optional)]
     pub description: Option<String>,
+    #[ts(optional)]
     pub is_starred: Option<bool>,
 }
 
@@ -30,19 +36,27 @@ pub struct CreateModelRequest {
 /// Model parameters for LLM configuration.
 /// These parameters control the behavior of the language model during generation.
 /// Can be used independently (for direct model calls) or embedded in an Assistant.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ModelParameters {
     /// Controls randomness in output (0.0 = deterministic, 2.0 = very random)
+    #[ts(optional)]
     pub temperature: Option<f64>,
     /// Maximum number of tokens to generate
+    #[ts(optional)]
     pub max_tokens: Option<i64>,
     /// Nucleus sampling: only consider tokens with top_p cumulative probability
+    #[ts(optional)]
     pub top_p: Option<f64>,
     /// Penalize tokens based on their frequency in the text so far
+    #[ts(optional)]
     pub frequency_penalty: Option<f64>,
     /// Penalize tokens that have already appeared in the text
+    #[ts(optional)]
     pub presence_penalty: Option<f64>,
     /// Additional provider-specific parameters (JSON)
+    #[ts(optional)]
+    #[ts(type = "unknown")]
     pub additional_params: Option<serde_json::Value>,
 }
 

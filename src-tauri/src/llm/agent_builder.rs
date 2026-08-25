@@ -7,30 +7,28 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use rig::OneOrMany;
+use chatshell_agent_core::provider_catalog;
 use rig::agent::{Agent, AgentBuilder};
-use rig::client::{CompletionClient, Nothing};
-use rig::completion::{CompletionModel, Message};
+use rig::client::{AgentClientExt, Nothing};
+use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::providers::{
-    anthropic, azure, cohere, deepseek, galadriel, gemini, groq, hyperbolic, mira, mistral,
-    moonshot, ollama, openai, openrouter, perplexity, together, xai,
+    azure, cohere, deepseek, gemini, groq, hyperbolic, mira, mistral, moonshot, ollama, openai,
+    openrouter, perplexity, together, xai,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
-use crate::llm::tool_registry::ToolRegistry;
-use crate::llm::tools::bash::{SharedBashSession, TempFileList};
 use crate::llm::tools::{
     BashTool, EditTool, GlobTool, GrepTool, KillShellTool, McpSchemaTool, McpToolUseTool, ReadTool,
-    SkillTool, WebFetchTool, WebSearchTool, WriteTool,
+    SharedBashSession, SkillTool, TempFileList, WebFetchTool, WebSearchTool, WriteTool,
 };
 use crate::llm::{
-    anthropic as anthropic_provider, azure as azure_provider, cohere as cohere_provider,
-    deepseek as deepseek_provider, galadriel as galadriel_provider, gemini as gemini_provider,
-    groq as groq_provider, hyperbolic as hyperbolic_provider, minimax as minimax_provider,
+    azure as azure_provider, cohere as cohere_provider, deepseek as deepseek_provider,
+    galadriel as galadriel_provider, gemini as gemini_provider, groq as groq_provider,
+    hyperbolic as hyperbolic_provider, minimax as minimax_provider,
     minimax_cn as minimax_cn_provider, mira as mira_provider, mistral as mistral_provider,
     moonshot as moonshot_provider, ollama as ollama_provider, openai as openai_provider,
     openrouter as openrouter_provider, perplexity as perplexity_provider,
@@ -39,17 +37,13 @@ use crate::llm::{
 use crate::models::ModelParameters;
 
 /// Configuration for building an agent.
-/// Combines system prompt with model parameters and tool registry.
+/// Combines system prompt with model parameters and tool configuration.
 #[derive(Clone, Default)]
 pub struct AgentConfig {
     /// System prompt (preamble) for the agent
     pub system_prompt: Option<String>,
     /// Model parameters (temperature, max_tokens, etc.)
     pub model_params: ModelParameters,
-    /// Optional tool registry for function calling
-    pub tool_registry: Option<ToolRegistry>,
-    /// Optional list of specific tool names to enable (if None, all tools are enabled)
-    pub enabled_tools: Option<Vec<String>>,
     /// Enable built-in web search tool
     pub enable_web_search: bool,
     /// Enable built-in web fetch tool
@@ -117,21 +111,6 @@ impl AgentConfig {
 
     pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
         self.model_params.additional_params = Some(params);
-        self
-    }
-
-    pub fn with_tool_registry(mut self, registry: ToolRegistry) -> Self {
-        self.tool_registry = Some(registry);
-        self
-    }
-
-    pub fn with_enabled_tools(mut self, tools: Vec<String>) -> Self {
-        self.enabled_tools = Some(tools);
-        self
-    }
-
-    pub fn with_default_tools(mut self) -> Self {
-        self.tool_registry = Some(ToolRegistry::with_defaults());
         self
     }
 
@@ -265,54 +244,6 @@ impl AgentConfig {
     }
 }
 
-// Type aliases for the completion model types used by each provider
-type AnthropicCompletionModel = anthropic::completion::CompletionModel;
-type AzureCompletionModel = azure::CompletionModel;
-type CohereCompletionModel = cohere::CompletionModel;
-type DeepSeekCompletionModel = deepseek::CompletionModel;
-type GaladrielCompletionModel = galadriel::CompletionModel;
-type GeminiCompletionModel = gemini::completion::CompletionModel;
-type GroqCompletionModel = groq::CompletionModel;
-type HyperbolicCompletionModel = hyperbolic::CompletionModel;
-// MiniMax uses OpenAI-compatible API with string content format
-type MiniMaxCompletionModel = crate::llm::openai_compat::CompletionModel;
-type MiraCompletionModel = mira::CompletionModel;
-type MistralCompletionModel = mistral::CompletionModel;
-type MoonshotCompletionModel = moonshot::CompletionModel;
-type OllamaCompletionModel = ollama::CompletionModel;
-type OpenAICompatCompletionModel = crate::llm::openai_compat::CompletionModel;
-// OpenAI uses ResponsesCompletionModel by default for agent()
-type OpenAICompletionModel = openai::responses_api::ResponsesCompletionModel;
-type OpenRouterCompletionModel = openrouter::CompletionModel;
-type PerplexityCompletionModel = perplexity::CompletionModel;
-type TogetherCompletionModel = together::CompletionModel;
-type XAICompletionModel = xai::completion::CompletionModel;
-
-/// Enum to hold different provider agent types.
-/// This allows us to handle all providers uniformly while maintaining type safety.
-pub enum ProviderAgent {
-    Anthropic(Agent<AnthropicCompletionModel>),
-    Azure(Agent<AzureCompletionModel>),
-    Cohere(Agent<CohereCompletionModel>),
-    DeepSeek(Agent<DeepSeekCompletionModel>),
-    Galadriel(Agent<GaladrielCompletionModel>),
-    Gemini(Agent<GeminiCompletionModel>),
-    Groq(Agent<GroqCompletionModel>),
-    Hyperbolic(Agent<HyperbolicCompletionModel>),
-    MiniMax(Agent<MiniMaxCompletionModel>),
-    MiniMaxCn(Agent<MiniMaxCompletionModel>),
-    Mira(Agent<MiraCompletionModel>),
-    OpenAICompat(Agent<OpenAICompatCompletionModel>),
-    Mistral(Agent<MistralCompletionModel>),
-    Moonshot(Agent<MoonshotCompletionModel>),
-    Ollama(Agent<OllamaCompletionModel>),
-    OpenAI(Agent<OpenAICompletionModel>),
-    OpenRouter(Agent<OpenRouterCompletionModel>),
-    Perplexity(Agent<PerplexityCompletionModel>),
-    Together(Agent<TogetherCompletionModel>),
-    XAI(Agent<XAICompletionModel>),
-}
-
 /// Create an OpenAI agent with full configuration
 /// Adds default reasoning: {"effort": "medium"} parameter for gpt-5 models (extended thinking support)
 pub fn create_openai_agent(
@@ -320,7 +251,7 @@ pub fn create_openai_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<OpenAICompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
     let client = openai::Client::<reqwest::Client>::builder()
         .api_key(api_key)
@@ -347,13 +278,9 @@ fn create_custom_openai_chat_completions_agent(
     base_url: &str,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<OpenAICompatCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
-    let client = moonshot::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url)
-        .http_client(http_client)
-        .build()?;
+    let client = crate::llm::openai_compat::client(base_url, api_key, http_client)?;
 
     let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
     Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
@@ -367,7 +294,7 @@ pub fn create_openrouter_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<OpenRouterCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
     let client = openrouter::Client::<reqwest::Client>::builder()
         .api_key(api_key)
@@ -423,7 +350,7 @@ pub fn create_ollama_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<OllamaCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
     let client = ollama::Client::<reqwest::Client>::builder()
         .api_key(Nothing)
@@ -434,29 +361,26 @@ pub fn create_ollama_agent(
     Ok(build_agent(client.agent(model_id), config))
 }
 
-/// Default max_tokens for Anthropic (required by the API, unlike OpenAI)
-const ANTHROPIC_DEFAULT_MAX_TOKENS: i64 = 8192;
-
-/// Create an Anthropic agent with full configuration
+/// Create an Anthropic agent with full configuration.
+///
+/// The completion model itself comes from core's `create_anthropic_completion_model`
+/// (shared HTTP client, default base URL, prompt caching); this wrapper applies
+/// desktop's AgentConfig and fills in Anthropic's mandatory default max_tokens.
 pub fn create_anthropic_agent(
     api_key: &str,
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<AnthropicCompletionModel>> {
-    let http_client = create_http_client();
-    let client = anthropic::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(anthropic_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
+) -> Result<Agent> {
+    let model =
+        chatshell_agent_core::create_anthropic_completion_model(api_key, base_url, model_id)?;
 
     let mut anthropic_config = config.clone();
     if anthropic_config.model_params.max_tokens.is_none() {
-        anthropic_config.model_params.max_tokens = Some(ANTHROPIC_DEFAULT_MAX_TOKENS);
+        anthropic_config.model_params.max_tokens =
+            Some(chatshell_agent_core::ANTHROPIC_DEFAULT_MAX_TOKENS as i64);
     }
 
-    let model = client.completion_model(model_id).with_prompt_caching();
     Ok(build_agent(AgentBuilder::new(model), &anthropic_config))
 }
 
@@ -467,7 +391,7 @@ pub fn create_azure_agent(
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<AzureCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
     let endpoint = base_url.ok_or_else(|| {
         anyhow::anyhow!("Azure OpenAI requires an endpoint URL (set as base URL)")
@@ -482,64 +406,13 @@ pub fn create_azure_agent(
     Ok(build_agent(client.agent(model_id), config))
 }
 
-/// Create a Cohere agent with full configuration
-pub fn create_cohere_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<CohereCompletionModel>> {
-    let http_client = create_http_client();
-    let client = cohere::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(cohere_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a DeepSeek agent with full configuration
-pub fn create_deepseek_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<DeepSeekCompletionModel>> {
-    let http_client = create_http_client();
-    let client = deepseek::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(deepseek_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Galadriel agent with full configuration
-pub fn create_galadriel_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<GaladrielCompletionModel>> {
-    let http_client = create_http_client();
-    let client = galadriel::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(galadriel_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
 /// Create a Google Gemini agent with full configuration
 pub fn create_gemini_agent(
     api_key: &str,
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
-) -> Result<Agent<GeminiCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
     let client = gemini::Client::<reqwest::Client>::builder()
         .api_key(api_key)
@@ -550,185 +423,8 @@ pub fn create_gemini_agent(
     Ok(build_agent(client.agent(model_id), config))
 }
 
-/// Create a Groq agent with full configuration
-pub fn create_groq_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<GroqCompletionModel>> {
-    let http_client = create_http_client();
-    let client = groq::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(groq_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Hyperbolic agent with full configuration
-pub fn create_hyperbolic_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<HyperbolicCompletionModel>> {
-    let http_client = create_http_client();
-    let client = hyperbolic::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(hyperbolic_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a MiniMax agent with full configuration (international version)
-/// Uses openai_compat::CompletionModel for proper string content serialization.
-pub fn create_minimax_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<MiniMaxCompletionModel>> {
-    let http_client = create_http_client();
-    let client = moonshot::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(minimax_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
-    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
-}
-
-/// Create a MiniMax CN agent with full configuration (China version)
-/// Uses openai_compat::CompletionModel for proper string content serialization.
-pub fn create_minimax_cn_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<MiniMaxCompletionModel>> {
-    let http_client = create_http_client();
-    let client = moonshot::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(minimax_cn_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
-    Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
-}
-
-/// Create a Mira agent with full configuration
-pub fn create_mira_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<MiraCompletionModel>> {
-    let http_client = create_http_client();
-    let client = mira::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(mira_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Mistral agent with full configuration
-pub fn create_mistral_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<MistralCompletionModel>> {
-    let http_client = create_http_client();
-    let client = mistral::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(mistral_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Moonshot agent with full configuration
-pub fn create_moonshot_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<MoonshotCompletionModel>> {
-    let http_client = create_http_client();
-    let client = moonshot::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(moonshot_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Perplexity agent with full configuration
-pub fn create_perplexity_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<PerplexityCompletionModel>> {
-    let http_client = create_http_client();
-    let client = perplexity::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(perplexity_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create a Together AI agent with full configuration
-pub fn create_together_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<TogetherCompletionModel>> {
-    let http_client = create_http_client();
-    let client = together::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(together_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
-/// Create an xAI agent with full configuration
-pub fn create_xai_agent(
-    api_key: &str,
-    base_url: Option<&str>,
-    model_id: &str,
-    config: &AgentConfig,
-) -> Result<Agent<XAICompletionModel>> {
-    let http_client = create_http_client();
-    let client = xai::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url.unwrap_or(xai_provider::DEFAULT_BASE_URL))
-        .http_client(http_client)
-        .build()?;
-
-    Ok(build_agent(client.agent(model_id), config))
-}
-
 /// Helper function to apply common configuration to any agent builder
-fn build_agent<M: CompletionModel>(
-    mut builder: rig::agent::AgentBuilder<M>,
-    config: &AgentConfig,
-) -> Agent<M> {
+fn build_agent(mut builder: AgentBuilder, config: &AgentConfig) -> Agent {
     // Apply system prompt (preamble)
     if let Some(ref preamble) = config.system_prompt {
         builder = builder.preamble(preamble);
@@ -750,26 +446,6 @@ fn build_agent<M: CompletionModel>(
     // Apply additional params
     if let Some(ref additional) = params.additional_params {
         builder = builder.additional_params(additional.clone());
-    }
-
-    // Apply tools if a tool registry is provided
-    // Note: Tool registration is prepared here but actual integration with rig
-    // requires provider-specific implementation. This is a placeholder for future
-    // enhancement when rig adds full tool support for all providers.
-    if let Some(ref registry) = config.tool_registry {
-        // Get the list of tools to register
-        let tools = if let Some(ref enabled) = config.enabled_tools {
-            registry.to_openai_functions_by_names(enabled)
-        } else {
-            registry.to_openai_functions()
-        };
-
-        // Log tool registration (actual registration depends on provider support)
-        if !tools.is_empty() {
-            tracing::info!("🔧 Tool registry prepared with {} tool(s)", tools.len());
-            // TODO: Apply tools when rig library supports it
-            // builder = builder.tools(tools);
-        }
     }
 
     // Check if we need to add any native tools or MCP tools
@@ -799,10 +475,7 @@ fn build_agent<M: CompletionModel>(
 /// In rig-core 0.32, `AgentBuilder` uses a typestate pattern: the first `.tool()` call
 /// transitions from `NoToolConfig` to `WithBuilderTools`, and subsequent `.tool()` calls
 /// return `Self`. This eliminates the cascading if-blocks previously needed.
-fn build_agent_with_tools<M: CompletionModel>(
-    builder: rig::agent::AgentBuilder<M>,
-    config: &AgentConfig,
-) -> Agent<M> {
+fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent {
     let create_bash_tool = || -> BashTool {
         let mut tool = if let Some(ref session) = config.bash_session {
             tracing::info!("🖥️ Bash tool using shared conversation session");
@@ -999,8 +672,51 @@ fn first_added(config: &AgentConfig) -> FirstTool {
     }
 }
 
+/// Build a rig-native agent for one of the per-provider clients
+/// (cohere/deepseek/groq/...). All of these constructors are shape-identical;
+/// the macro keeps one implementation.
+fn create_rig_native_agent(
+    provider_type: &str,
+    api_key: &str,
+    base_url: Option<&str>,
+    model_id: &str,
+    config: &AgentConfig,
+) -> Result<Agent> {
+    let http_client = create_http_client();
+    macro_rules! native {
+        ($module:ident, $provider:ident) => {{
+            let client = $module::Client::<reqwest::Client>::builder()
+                .api_key(api_key)
+                .base_url(base_url.unwrap_or($provider::DEFAULT_BASE_URL))
+                .http_client(http_client.clone())
+                .build()?;
+            Ok(build_agent(client.agent(model_id), config))
+        }};
+    }
+    match provider_type {
+        "cohere" => native!(cohere, cohere_provider),
+        "deepseek" => native!(deepseek, deepseek_provider),
+        "groq" => native!(groq, groq_provider),
+        "hyperbolic" => native!(hyperbolic, hyperbolic_provider),
+        "mira" => native!(mira, mira_provider),
+        "mistral" => native!(mistral, mistral_provider),
+        "moonshot" => native!(moonshot, moonshot_provider),
+        "perplexity" => native!(perplexity, perplexity_provider),
+        "together" => native!(together, together_provider),
+        "xai" => native!(xai, xai_provider),
+        _ => Err(anyhow::anyhow!(
+            "Unknown rig-native provider: {}",
+            provider_type
+        )),
+    }
+}
+
 /// Create a provider agent based on provider type.
-/// `api_style` is only used for `custom_openai` to choose between Responses API and Chat Completions API.
+///
+/// Routing data (constructor family, default URL, key requirement,
+/// string-content quirk) comes from the shared `provider_catalog` table in
+/// `chatshell-agent-core`. `api_style` is only consulted for `custom_openai`
+/// to choose between the Responses API and the Chat Completions API.
 pub fn create_provider_agent(
     provider_type: &str,
     model_id: &str,
@@ -1008,212 +724,97 @@ pub fn create_provider_agent(
     base_url: Option<&str>,
     api_style: Option<&str>,
     config: &AgentConfig,
-) -> Result<ProviderAgent> {
-    macro_rules! require_key {
-        ($name:expr) => {
-            api_key.ok_or_else(|| anyhow::anyhow!("{} API key required", $name))?
-        };
-    }
+) -> Result<Agent> {
+    let route = provider_catalog::resolve(provider_type)
+        .ok_or_else(|| anyhow::anyhow!("Unknown provider: {}", provider_type))?;
 
-    match provider_type {
-        "anthropic" => Ok(ProviderAgent::Anthropic(create_anthropic_agent(
-            require_key!("Anthropic"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "azure" => Ok(ProviderAgent::Azure(create_azure_agent(
-            require_key!("Azure OpenAI"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "cohere" => Ok(ProviderAgent::Cohere(create_cohere_agent(
-            require_key!("Cohere"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "deepseek" => Ok(ProviderAgent::DeepSeek(create_deepseek_agent(
-            require_key!("DeepSeek"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "galadriel" => Ok(ProviderAgent::Galadriel(create_galadriel_agent(
-            require_key!("Galadriel"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "gemini" => Ok(ProviderAgent::Gemini(create_gemini_agent(
-            require_key!("Google Gemini"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "groq" => Ok(ProviderAgent::Groq(create_groq_agent(
-            require_key!("Groq"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "hyperbolic" => Ok(ProviderAgent::Hyperbolic(create_hyperbolic_agent(
-            require_key!("Hyperbolic"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "minimax" => Ok(ProviderAgent::MiniMax(create_minimax_agent(
-            require_key!("MiniMax"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "minimax_cn" => Ok(ProviderAgent::MiniMaxCn(create_minimax_cn_agent(
-            require_key!("MiniMax CN"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "mira" => Ok(ProviderAgent::Mira(create_mira_agent(
-            require_key!("Mira"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "mistral" => Ok(ProviderAgent::Mistral(create_mistral_agent(
-            require_key!("Mistral"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "moonshot" => Ok(ProviderAgent::Moonshot(create_moonshot_agent(
-            require_key!("Moonshot"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "ollama" => Ok(ProviderAgent::Ollama(create_ollama_agent(
-            base_url, model_id, config,
-        )?)),
-        "openai" => Ok(ProviderAgent::OpenAI(create_openai_agent(
-            require_key!("OpenAI"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "openrouter" => Ok(ProviderAgent::OpenRouter(create_openrouter_agent(
-            require_key!("OpenRouter"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "perplexity" => Ok(ProviderAgent::Perplexity(create_perplexity_agent(
-            require_key!("Perplexity"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "together" => Ok(ProviderAgent::Together(create_together_agent(
-            require_key!("Together AI"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "xai" => Ok(ProviderAgent::XAI(create_xai_agent(
-            require_key!("xAI"),
-            base_url,
-            model_id,
-            config,
-        )?)),
-        "custom_openai" => {
-            let key = require_key!("Custom OpenAI-compatible");
-            let url = base_url.ok_or_else(|| {
-                anyhow::anyhow!("Base URL is required for custom OpenAI-compatible providers")
-            })?;
-            if api_style == Some("chat_completions") {
-                Ok(ProviderAgent::OpenAICompat(
-                    create_custom_openai_chat_completions_agent(key, url, model_id, config)?,
-                ))
+    let api_key: Option<&str> = if route.key_required {
+        Some(api_key.ok_or_else(|| {
+            anyhow::anyhow!(
+                "{} API key required",
+                route.key_display.unwrap_or(provider_type)
+            )
+        })?)
+    } else if route.local_no_key {
+        Some(api_key.unwrap_or("no-key"))
+    } else {
+        None
+    };
+
+    match route.wire {
+        provider_catalog::Wire::Responses => {
+            let key = api_key.expect("responses routes require a key");
+            if route.kind == Some(chatshell_agent_core::types::ProviderKind::CustomOpenAi) {
+                let url = base_url.ok_or_else(|| {
+                    anyhow::anyhow!("Base URL is required for custom OpenAI-compatible providers")
+                })?;
+                if api_style == Some("chat_completions") {
+                    create_custom_openai_chat_completions_agent(key, url, model_id, config)
+                } else {
+                    create_openai_agent(key, Some(url), model_id, config)
+                }
             } else {
-                // Responses API (default)
-                Ok(ProviderAgent::OpenAI(create_openai_agent(
-                    key,
-                    Some(url),
-                    model_id,
-                    config,
-                )?))
+                create_openai_agent(key, base_url, model_id, config)
             }
         }
-        "custom_anthropic" => {
-            let key = require_key!("Custom Anthropic-compatible");
-            let url = base_url.ok_or_else(|| {
-                anyhow::anyhow!("Base URL is required for custom Anthropic-compatible providers")
-            })?;
-            Ok(ProviderAgent::Anthropic(create_anthropic_agent(
-                key,
-                Some(url),
+        provider_catalog::Wire::OpenAiCompat => {
+            let default_url = match provider_type {
+                "galadriel" => galadriel_provider::DEFAULT_BASE_URL,
+                "minimax" => minimax_provider::DEFAULT_BASE_URL,
+                "minimax_cn" => minimax_cn_provider::DEFAULT_BASE_URL,
+                _ => route
+                    .default_base_url
+                    .expect("catch-all routes carry a default URL"),
+            };
+            create_openai_compat_agent(
+                api_key.expect("openai-compat routes require a key"),
+                base_url.unwrap_or(default_url),
                 model_id,
                 config,
-            )?))
+                provider_type,
+            )
         }
-        _ => {
-            if let Some(default_url) = openai_compat_default_url(provider_type) {
-                let is_local = matches!(provider_type, "lmstudio" | "gpustack" | "ovms");
-                let key = if is_local {
-                    api_key.unwrap_or("no-key")
-                } else {
-                    require_key!(provider_type)
-                };
-                let url = base_url.unwrap_or(default_url);
-                Ok(ProviderAgent::OpenAICompat(create_openai_compat_agent(
-                    key,
-                    url,
-                    model_id,
-                    config,
-                    provider_type,
-                )?))
+        provider_catalog::Wire::Anthropic => {
+            let key = api_key.expect("anthropic routes require a key");
+            if provider_type == "custom_anthropic" {
+                let url = base_url.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Base URL is required for custom Anthropic-compatible providers"
+                    )
+                })?;
+                create_anthropic_agent(key, Some(url), model_id, config)
             } else {
-                Err(anyhow::anyhow!("Unknown provider: {}", provider_type))
+                create_anthropic_agent(key, base_url, model_id, config)
             }
         }
+        provider_catalog::Wire::OpenRouter => create_openrouter_agent(
+            api_key.expect("openrouter routes require a key"),
+            base_url,
+            model_id,
+            config,
+        ),
+        provider_catalog::Wire::Ollama => create_ollama_agent(base_url, model_id, config),
+        provider_catalog::Wire::Azure => create_azure_agent(
+            api_key.expect("azure routes require a key"),
+            base_url,
+            model_id,
+            config,
+        ),
+        provider_catalog::Wire::Gemini => create_gemini_agent(
+            api_key.expect("gemini routes require a key"),
+            base_url,
+            model_id,
+            config,
+        ),
+        provider_catalog::Wire::RigNative => create_rig_native_agent(
+            provider_type,
+            api_key.expect("rig-native routes require a key"),
+            base_url,
+            model_id,
+            config,
+        ),
     }
 }
-
-/// Default base URLs for OpenAI-compatible providers.
-/// Returns `Some(url)` if the provider is known, `None` otherwise.
-fn openai_compat_default_url(provider_type: &str) -> Option<&'static str> {
-    match provider_type {
-        // International
-        "github_models" => Some("https://models.inference.ai.azure.com"),
-        "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
-        "nvidia" => Some("https://integrate.api.nvidia.com/v1"),
-        "huggingface" => Some("https://api-inference.huggingface.co/v1"),
-        "cerebras" => Some("https://api.cerebras.ai/v1"),
-        "lmstudio" => Some("http://localhost:1234/v1"),
-        "gpustack" => Some("http://localhost:80/v1"),
-        "ovms" => Some("http://localhost:8000/v1"),
-        // Chinese AI
-        "zhipu" => Some("https://open.bigmodel.cn/api/paas/v4"),
-        "yi" => Some("https://api.lingyiwanwu.com/v1"),
-        "baichuan" => Some("https://api.baichuan-ai.com/v1"),
-        "dashscope" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        "stepfun" => Some("https://api.stepfun.com/v1"),
-        "doubao" => Some("https://ark.cn-beijing.volces.com/api/v3"),
-        "hunyuan" => Some("https://api.hunyuan.cloud.tencent.com/v1"),
-        "tencent_cloud_ti" => Some("https://api.lkeap.cloud.tencent.com/v1"),
-        "baidu_cloud" => Some("https://qianfan.baidubce.com/v2"),
-        "siliconflow" => Some("https://api.siliconflow.cn/v1"),
-        "modelscope" => Some("https://api-inference.modelscope.cn/v1"),
-        "xirang" => Some("https://wishub-x1.ctyun.cn/v1"),
-        "mimo" => Some("https://api.xiaomimimo.com/v1"),
-        _ => None,
-    }
-}
-
-const STRING_CONTENT_ONLY_PROVIDERS: &[&str] =
-    &["deepseek", "baichuan", "minimax", "minimax_cn", "xirang"];
 
 fn create_openai_compat_agent(
     api_key: &str,
@@ -1221,16 +822,12 @@ fn create_openai_compat_agent(
     model_id: &str,
     config: &AgentConfig,
     provider_type: &str,
-) -> Result<Agent<OpenAICompatCompletionModel>> {
+) -> Result<Agent> {
     let http_client = create_http_client();
-    let client = moonshot::Client::<reqwest::Client>::builder()
-        .api_key(api_key)
-        .base_url(base_url)
-        .http_client(http_client)
-        .build()?;
+    let client = crate::llm::openai_compat::client(base_url, api_key, http_client)?;
 
     let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
-    let model = if STRING_CONTENT_ONLY_PROVIDERS.contains(&provider_type) {
+    let model = if provider_catalog::is_string_content_only(provider_type) {
         model.with_string_content_only()
     } else {
         model
@@ -1241,49 +838,22 @@ fn create_openai_compat_agent(
 /// Stream chat with an agent, handling all provider types uniformly.
 /// Returns the complete response after streaming.
 pub async fn stream_chat_with_agent(
-    agent: ProviderAgent,
+    agent: Agent,
     prompt: Message,
     chat_history: Vec<Message>,
     cancel_token: CancellationToken,
     callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     log_prefix: &str,
 ) -> Result<ChatResponse> {
-    macro_rules! stream {
-        ($agent:expr) => {
-            agent_streaming::stream_agent(
-                $agent,
-                prompt,
-                chat_history,
-                cancel_token,
-                callback,
-                log_prefix,
-            )
-            .await
-        };
-    }
-
-    match agent {
-        ProviderAgent::Anthropic(a) => stream!(a),
-        ProviderAgent::Azure(a) => stream!(a),
-        ProviderAgent::Cohere(a) => stream!(a),
-        ProviderAgent::DeepSeek(a) => stream!(a),
-        ProviderAgent::Galadriel(a) => stream!(a),
-        ProviderAgent::Gemini(a) => stream!(a),
-        ProviderAgent::Groq(a) => stream!(a),
-        ProviderAgent::Hyperbolic(a) => stream!(a),
-        ProviderAgent::MiniMax(a) => stream!(a),
-        ProviderAgent::MiniMaxCn(a) => stream!(a),
-        ProviderAgent::Mira(a) => stream!(a),
-        ProviderAgent::Mistral(a) => stream!(a),
-        ProviderAgent::Moonshot(a) => stream!(a),
-        ProviderAgent::Ollama(a) => stream!(a),
-        ProviderAgent::OpenAI(a) => stream!(a),
-        ProviderAgent::OpenAICompat(a) => stream!(a),
-        ProviderAgent::OpenRouter(a) => stream!(a),
-        ProviderAgent::Perplexity(a) => stream!(a),
-        ProviderAgent::Together(a) => stream!(a),
-        ProviderAgent::XAI(a) => stream!(a),
-    }
+    agent_streaming::stream_agent(
+        agent,
+        prompt,
+        chat_history,
+        cancel_token,
+        callback,
+        log_prefix,
+    )
+    .await
 }
 
 /// Helper to convert chat messages to rig Message format
@@ -1309,8 +879,7 @@ pub fn build_assistant_message(text: &str, reasoning: Option<&str>) -> Message {
     content_items.push(AssistantContent::Text(text.to_string().into()));
     Message::Assistant {
         id: None,
-        content: OneOrMany::many(content_items)
-            .expect("content_items should have at least one item"),
+        content: content_items,
     }
 }
 
@@ -1343,8 +912,7 @@ pub fn build_assistant_message_with_tool_calls(
     }
     Message::Assistant {
         id: None,
-        content: OneOrMany::many(content_items)
-            .expect("content_items should have at least one item"),
+        content: content_items,
     }
 }
 
@@ -1355,12 +923,19 @@ pub fn build_tool_result_message(
     output: &str,
 ) -> Message {
     use rig::message::{ToolResultContent, UserContent};
-    let content = OneOrMany::one(ToolResultContent::text(output));
+    let content = vec![ToolResultContent::text(output)];
     Message::User {
-        content: OneOrMany::one(if let Some(call_id) = call_id {
-            UserContent::tool_result_with_call_id(tool_call_id, call_id.to_string(), content)
+        content: vec![if let Some(call_id) = call_id {
+            UserContent::tool_result_with_call_id(
+                tool_call_id,
+                call_id.to_string(),
+                // The executed tool name is not tracked on the streaming
+                // callback path; OpenAI-style wires key replay on the ids.
+                "",
+                content,
+            )
         } else {
-            UserContent::tool_result(tool_call_id, content)
-        }),
+            UserContent::tool_result(tool_call_id, "", content)
+        }],
     }
 }
