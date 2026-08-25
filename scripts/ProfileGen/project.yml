@@ -1,0 +1,21 @@
+name: ProfileGen
+options:
+  bundleIdPrefix: app.chatshell
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${CHATSHELL_TEAM_ID}
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_ENTITLEMENTS: ProfileGen/ProfileGen.entitlements
+targets:
+  ProfileGen:
+    type: application
+    platform: macOS
+    sources:
+      - ProfileGen
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.chatshell.desktop
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        GENERATE_INFOPLIST_FILE: YES

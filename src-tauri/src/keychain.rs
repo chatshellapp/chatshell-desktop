@@ -3,6 +3,15 @@ use keyring::Entry;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+/// Environment variable that opts every public function in this module into
+/// the in-process mock keychain backend. Set it (any non-empty value) in any
+/// build or test environment where touching the real OS keychain would be
+/// wrong — unit tests, integration tests, doc tests, sandboxed CI runners.
+///
+/// Unit tests install it automatically via `cfg!(test)`; the env var remains
+/// as an escape hatch for external runners that link this crate.
+const MOCK_KEYRING_ENV: &str = "CHATSHELL_TEST_MOCK_KEYRING";
+
 /// Service name for keychain entries
 const SERVICE_NAME: &str = "app.chatshell.desktop";
 
@@ -16,8 +25,48 @@ fn cache() -> &'static RwLock<HashMap<String, String>> {
     SECRET_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
+/// One-shot guard that swaps in the in-process mock credential builder.
+static MOCK_KEYRING_INSTALL: std::sync::Once = std::sync::Once::new();
+
+/// Installs the in-process mock credential builder so subsequent
+/// `keyring::Entry` calls hit an in-memory store instead of the real OS
+/// keychain (macOS SecKeychain, Windows Credential Manager, Linux Secret
+/// Service).
+///
+/// The install is process-global and idempotent; later calls are no-ops.
+/// Production builds never reach this function (the
+/// [`install_mock_keyring_if_needed`] gate below guards every public
+/// entry point), so the real keychain backend remains the default in
+/// shipped builds.
+pub fn install_mock_keyring() {
+    MOCK_KEYRING_INSTALL.call_once(|| {
+        let builder = keyring::mock::default_credential_builder();
+        keyring::set_default_credential_builder(builder);
+    });
+}
+
+/// Installs the mock credential builder iff [`MOCK_KEYRING_ENV`] is set in
+/// the process environment. Cheap to call from every public function entry
+/// point — it short-circuits when the env var is unset, and when it is set
+/// the inner [`std::sync::Once`] collapses repeated calls to a single
+/// install.
+#[inline]
+fn install_mock_keyring_if_needed() {
+    // Unit tests (`cargo test` on this crate) compile with cfg(test), so the
+    // mock installs automatically. The env var remains as an escape hatch for
+    // external runners that link this crate without cfg(test). It MUST NOT be
+    // exported via .cargo/config.toml [env]: that table applies to every
+    // cargo invocation, including `tauri dev`, where the mock would silently
+    // replace the real keychain and break decryption of persisted secrets.
+    if cfg!(test) || std::env::var_os(MOCK_KEYRING_ENV).is_some() {
+        install_mock_keyring();
+    }
+}
+
 /// Store a secret in the OS keychain and update the in-memory cache.
 pub fn set_secret(key: &str, secret: &str) -> Result<()> {
+    install_mock_keyring_if_needed();
+
     let entry = Entry::new(SERVICE_NAME, key)
         .map_err(|e| anyhow!("Failed to create keyring entry: {}", e))?;
 
@@ -36,6 +85,8 @@ pub fn set_secret(key: &str, secret: &str) -> Result<()> {
 /// Retrieve a secret, returning the in-memory cached value when available
 /// to avoid triggering the macOS keychain authorization dialog repeatedly.
 pub fn get_secret(key: &str) -> Result<Option<String>> {
+    install_mock_keyring_if_needed();
+
     if let Ok(c) = cache().read()
         && let Some(v) = c.get(key)
     {
@@ -60,6 +111,8 @@ pub fn get_secret(key: &str) -> Result<Option<String>> {
 /// Delete a secret from the OS keychain and the in-memory cache.
 #[allow(dead_code)]
 pub fn delete_secret(key: &str) -> Result<()> {
+    install_mock_keyring_if_needed();
+
     if let Ok(mut c) = cache().write() {
         c.remove(key);
     }
@@ -80,6 +133,7 @@ pub fn delete_secret(key: &str) -> Result<()> {
 /// Check if the OS keychain is available
 #[allow(dead_code)]
 pub fn is_keychain_available() -> bool {
+    install_mock_keyring_if_needed();
     Entry::new(SERVICE_NAME, "availability_check").is_ok()
 }
 

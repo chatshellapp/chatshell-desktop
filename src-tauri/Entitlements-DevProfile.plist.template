@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Option A (synchronizable-keychain-macos26-blocker.md): profile-granted
+	     entitlements replacing Full Disk Access for iCloud container reads.
+	     __TEAM_ID__ is injected at signing time by sign-dev-profile.sh from
+	     the provisioning profile or $CHATSHELL_TEAM_ID (CI); the Team ID is
+	     deliberately not stored in this repo. -->
+	<key>com.apple.application-identifier</key>
+	<string>__TEAM_ID__.app.chatshell.desktop</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>__TEAM_ID__</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.app.chatshell</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.app.chatshell</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<!-- Shared keychain group for the sync master encryption key
+	     (team-prefixed; both platforms must use the identical string). -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>__TEAM_ID__.app.chatshell.sync</string>
+	</array>
+</dict>
+</plist>
