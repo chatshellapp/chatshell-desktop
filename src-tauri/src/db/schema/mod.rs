@@ -1,7 +1,9 @@
 use anyhow::Result;
+use sqlx::Row;
 use sqlx::SqlitePool;
 
 mod assistants;
+mod compactions;
 mod conversation_settings;
 mod conversations;
 mod knowledge;
@@ -16,7 +18,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 10;
+const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -107,6 +109,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v10 completed");
     }
 
+    if current_version < 11 {
+        migrate_v10_to_v11(pool).await?;
+        set_user_version(pool, 11).await?;
+        tracing::info!("Migration to v11 completed");
+    }
+
     // Ensure columns exist (idempotent, fixes databases
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
@@ -114,10 +122,197 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_api_style_column(pool).await?;
     ensure_auth_token_column(pool).await?;
     ensure_tool_call_id_column(pool).await?;
+    ensure_natural_key_unique_indexes(pool).await?;
+    ensure_conversation_timestamps(pool).await?;
 
     Ok(())
 }
 
+/// Ensure updated_at exists on conversation_settings and
+/// conversation_participants. Repairs developer databases created by
+/// intermediate builds whose migration omitted these columns; idempotent.
+async fn ensure_conversation_timestamps(pool: &SqlitePool) -> Result<()> {
+    for table in ["conversation_settings", "conversation_participants"] {
+        let columns = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await?;
+        let has_column = columns.iter().any(|row| {
+            row.try_get::<String, _>("name")
+                .is_ok_and(|name| name == "updated_at")
+        });
+        if !has_column {
+            sqlx::query(&format!(
+                "ALTER TABLE {table} ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+            ))
+            .execute(pool)
+            .await?;
+            tracing::info!("Added updated_at column to {table} table");
+        }
+    }
+    Ok(())
+}
+
+/// Natural-key UNIQUE indexes the sync engine's merge specs use as
+/// `ON CONFLICT` targets. Repairs developer databases created by
+/// intermediate builds whose migration lacked these indexes; idempotent.
+async fn ensure_natural_key_unique_indexes(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_uniq \
+         ON message_attachments(message_id, attachment_id)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_message_contexts_uniq \
+         ON message_contexts(message_id, context_type, context_id)",
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Migration v10 -> v11: sync-readiness rollout, compaction events, and
+/// natural-key indexes (ADR 01 snapshot sync). This collapses what shipped
+/// as v11-v15 across local development builds into a single step; no
+/// released build ever wrote a user_version above 10.
+///
+/// - `updated_at` on every synced table (validate_registry requires it on
+///   ALL of them): NOT NULL with '' default, backfilled from
+///   COALESCE(completed_at, created_at) where those columns exist.
+/// - `deleted_at` soft-delete tombstones on synced entity tables. Hard DELETEs
+///   cannot propagate through the append-only merge; tombstones ride ordinary
+///   LWW row updates instead.
+/// - `meta` key-value table holds snapshot-sync versioning
+///   (sync_version / device_id); `compactions` records context-compaction
+///   events.
+/// - Natural-key UNIQUE indexes the sync engine's mutable merge specs use as
+///   `ON CONFLICT` targets, so unbind/removal updates propagate to peers.
+async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
+    // tool_calls/code_executions carry completed_at; messages/search_results
+    // backfill from created_at directly. Remaining synced tables keep the ''
+    // default; their rows are written fresh by the app.
+    for table in ["tool_calls", "code_executions"] {
+        sqlx::query(&format!(
+            "ALTER TABLE {table} ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+        ))
+        .execute(pool)
+        .await?;
+        sqlx::query(&format!(
+            "UPDATE {table} SET updated_at = COALESCE(completed_at, created_at)"
+        ))
+        .execute(pool)
+        .await?;
+    }
+    for table in ["messages", "search_results"] {
+        sqlx::query(&format!(
+            "ALTER TABLE {table} ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+        ))
+        .execute(pool)
+        .await?;
+        sqlx::query(&format!("UPDATE {table} SET updated_at = created_at"))
+            .execute(pool)
+            .await?;
+    }
+    // Some synced tables already define updated_at in their CREATE TABLE,
+    // so these additions are conditional.
+    async fn add_column_if_missing(
+        pool: &SqlitePool,
+        table: &str,
+        column: &str,
+        decl: &str,
+    ) -> Result<()> {
+        let columns = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await?;
+        let exists = columns.iter().any(|row| {
+            row.try_get::<String, _>("name")
+                .is_ok_and(|name| name == column)
+        });
+        if !exists {
+            sqlx::query(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"))
+                .execute(pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    for table in [
+        "files",
+        "search_decisions",
+        "thinking_steps",
+        "content_blocks",
+        "message_attachments",
+        "message_contexts",
+        "message_prompts",
+        "message_knowledge_bases",
+        "message_tools",
+        "assistant_tools",
+        "assistant_skills",
+        "assistant_knowledge_bases",
+        "conversation_settings",
+        "conversation_participants",
+    ] {
+        add_column_if_missing(pool, table, "updated_at", "TEXT NOT NULL DEFAULT ''").await?;
+    }
+    for table in [
+        "conversations",
+        "messages",
+        "tool_calls",
+        "code_executions",
+        "files",
+        "assistants",
+        "tools",
+        "providers",
+        "models",
+        "prompts",
+        "skills",
+        "model_parameter_presets",
+        "knowledge_bases",
+        "users",
+        "user_relationships",
+        "fetch_results",
+        "search_results",
+        "settings",
+        "conversation_settings",
+        "conversation_participants",
+        "search_decisions",
+        "thinking_steps",
+        "content_blocks",
+        "message_attachments",
+        "message_contexts",
+        "message_prompts",
+        "message_knowledge_bases",
+        "message_tools",
+        "assistant_tools",
+        "assistant_skills",
+        "assistant_knowledge_bases",
+    ] {
+        sqlx::query(&format!("ALTER TABLE {table} ADD COLUMN deleted_at TEXT"))
+            .execute(pool)
+            .await?;
+    }
+
+    settings::create_meta_table(pool).await?;
+    compactions::create_compactions_table(pool).await?;
+
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_uniq \
+         ON message_attachments(message_id, attachment_id)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_message_contexts_uniq \
+         ON message_contexts(message_id, context_type, context_id)",
+    )
+    .execute(pool)
+    .await?;
+
+    tracing::info!(
+        "Added sync-readiness columns, meta/compactions tables, and natural-key indexes"
+    );
+    Ok(())
+}
 /// Initial schema (v1) - used for fresh installations
 async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     providers::create_providers_table(pool).await?;
@@ -324,4 +519,146 @@ async fn migrate_v9_to_v10(pool: &SqlitePool) -> Result<()> {
     skills::create_skills_table(pool).await?;
     tracing::info!("Recreated skills and assistant_skills tables with UNIQUE(name, source)");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::Row;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory pool")
+    }
+
+    async fn columns(pool: &SqlitePool, table: &str) -> Vec<String> {
+        let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await
+            .unwrap();
+        rows.iter()
+            .map(|row| row.try_get::<String, _>("name").unwrap())
+            .collect()
+    }
+
+    /// Table -> sorted column names for every non-internal table.
+    async fn table_column_map(
+        pool: &SqlitePool,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        let names: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master \
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%'",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap();
+        let mut map = std::collections::BTreeMap::new();
+        for table in names {
+            let mut cols = columns(pool, &table).await;
+            cols.sort();
+            map.insert(table, cols);
+        }
+        map
+    }
+
+    /// The canonical sync schema (core `sync_schema`) must match the desktop
+    /// ladder endpoint exactly: `merge_remote` builds its SELECT list from
+    /// local columns, so a column added here without updating the shared
+    /// constant breaks the next device's merge, and vice versa.
+    #[tokio::test]
+    async fn canonical_sync_schema_matches_ladder_endpoint() {
+        let ladder_pool = fresh_pool().await;
+        init_schema(&ladder_pool).await.expect("init schema");
+        let canonical_pool = fresh_pool().await;
+        sqlx::raw_sql(chatshell_agent_core::sync_schema::SYNC_SCHEMA_SQL)
+            .execute(&canonical_pool)
+            .await
+            .expect("apply canonical schema");
+
+        let ladder = table_column_map(&ladder_pool).await;
+        let canonical = table_column_map(&canonical_pool).await;
+        assert_eq!(ladder, canonical);
+    }
+
+    #[tokio::test]
+    async fn fresh_database_has_sync_columns_and_meta() {
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.expect("init schema");
+
+        let version: (i32,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version.0, CURRENT_SCHEMA_VERSION);
+
+        for table in [
+            "messages",
+            "tool_calls",
+            "code_executions",
+            "search_results",
+            "conversation_settings",
+            "conversation_participants",
+        ] {
+            let cols = columns(&pool, table).await;
+            assert!(
+                cols.contains(&"updated_at".to_string()),
+                "{table}.updated_at missing: {cols:?}"
+            );
+        }
+
+        for table in [
+            "conversations",
+            "messages",
+            "tool_calls",
+            "files",
+            "assistants",
+            "tools",
+            "providers",
+            "models",
+            "prompts",
+            "skills",
+            "model_parameter_presets",
+            "knowledge_bases",
+            "users",
+            "fetch_results",
+        ] {
+            let cols = columns(&pool, table).await;
+            assert!(
+                cols.contains(&"deleted_at".to_string()),
+                "{table}.deleted_at missing: {cols:?}"
+            );
+        }
+
+        sqlx::query("INSERT INTO meta(key, value, updated_at) VALUES('sync_version', '1:test', '2026-08-21T00:00:00+00:00')")
+            .execute(&pool)
+            .await
+            .expect("meta table writable");
+    }
+
+    #[tokio::test]
+    async fn tool_call_update_maintains_updated_at() {
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.unwrap();
+
+        sqlx::query("INSERT INTO conversations(id, title, created_at, updated_at) VALUES('c1', 't', '2026-08-21T00:00:00+00:00', '2026-08-21T00:00:00+00:00')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO messages(id, conversation_id, sender_type, content, created_at, updated_at) VALUES('m1', 'c1', 'user', 'hi', '2026-08-21T00:00:01+00:00', '2026-08-21T00:00:01+00:00')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tool_calls(id, message_id, tool_name, status, created_at, updated_at) VALUES('tc1', 'm1', 'bash', 'pending', '2026-08-21T00:00:02+00:00', '2026-08-21T00:00:02+00:00')")
+            .execute(&pool).await.unwrap();
+
+        sqlx::query("UPDATE tool_calls SET status = 'completed', completed_at = '2026-08-21T00:00:09+00:00', updated_at = '2026-08-21T00:00:09+00:00' WHERE id = 'tc1'")
+            .execute(&pool).await.unwrap();
+
+        let (updated_at,): (String,) =
+            sqlx::query_as("SELECT updated_at FROM tool_calls WHERE id = 'tc1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(updated_at, "2026-08-21T00:00:09+00:00");
+    }
 }

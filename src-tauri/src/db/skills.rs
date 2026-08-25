@@ -47,7 +47,7 @@ impl Database {
     }
 
     pub async fn get_skill(&self, id: &str) -> Result<Option<Skill>> {
-        let row = sqlx::query("SELECT * FROM skills WHERE id = ?")
+        let row = sqlx::query("SELECT * FROM skills WHERE skills.deleted_at IS NULL AND id = ?")
             .bind(id)
             .fetch_optional(self.pool.as_ref())
             .await?;
@@ -59,7 +59,7 @@ impl Database {
     }
 
     pub async fn get_skill_by_name(&self, name: &str) -> Result<Option<Skill>> {
-        let row = sqlx::query("SELECT * FROM skills WHERE name = ?")
+        let row = sqlx::query("SELECT * FROM skills WHERE skills.deleted_at IS NULL AND name = ?")
             .bind(name)
             .fetch_optional(self.pool.as_ref())
             .await?;
@@ -75,11 +75,13 @@ impl Database {
         name: &str,
         source: &str,
     ) -> Result<Option<Skill>> {
-        let row = sqlx::query("SELECT * FROM skills WHERE name = ? AND source = ?")
-            .bind(name)
-            .bind(source)
-            .fetch_optional(self.pool.as_ref())
-            .await?;
+        let row = sqlx::query(
+            "SELECT * FROM skills WHERE skills.deleted_at IS NULL AND name = ? AND source = ?",
+        )
+        .bind(name)
+        .bind(source)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
 
         match row {
             Some(row) => Ok(Some(Self::skill_from_row(&row))),
@@ -88,9 +90,11 @@ impl Database {
     }
 
     pub async fn list_skills(&self) -> Result<Vec<Skill>> {
-        let rows = sqlx::query("SELECT * FROM skills ORDER BY source ASC, name ASC")
-            .fetch_all(self.pool.as_ref())
-            .await?;
+        let rows = sqlx::query(
+            "SELECT * FROM skills WHERE skills.deleted_at IS NULL ORDER BY source ASC, name ASC",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
 
         Ok(rows.iter().map(Self::skill_from_row).collect())
     }
@@ -133,11 +137,23 @@ impl Database {
     }
 
     pub async fn delete_skill(&self, id: &str) -> Result<()> {
-        // assistant_skills are cascade-deleted via FK constraint
-        sqlx::query("DELETE FROM skills WHERE id = ?")
+        // Tombstone the skill and its assistant_skills junctions explicitly:
+        // the FK cascade never fires on a tombstone UPDATE, so without this
+        // the junction rows would ride every snapshot forever.
+        let now = chrono::Utc::now().to_rfc3339();
+        for (table, where_clause) in [
+            ("assistant_skills", "skill_id = ?2 AND deleted_at IS NULL"),
+            ("skills", "id = ?2 AND deleted_at IS NULL"),
+        ] {
+            sqlx::query(&crate::db::soft_delete::tombstone_update(
+                table,
+                where_clause,
+            ))
+            .bind(&now)
             .bind(id)
             .execute(self.pool.as_ref())
             .await?;
+        }
         Ok(())
     }
 
@@ -178,10 +194,14 @@ impl Database {
         assistant_id: &str,
         skill_ids: &[String],
     ) -> Result<()> {
-        sqlx::query("DELETE FROM assistant_skills WHERE assistant_id = ?")
-            .bind(assistant_id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "assistant_skills",
+            "assistant_id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(Utc::now().to_rfc3339())
+        .bind(assistant_id)
+        .execute(self.pool.as_ref())
+        .await?;
 
         let now = Utc::now().to_rfc3339();
         for skill_id in skill_ids {
@@ -239,7 +259,7 @@ impl Database {
         let rows = sqlx::query(
             "SELECT s.* FROM skills s
              JOIN assistant_skills as_ ON s.id = as_.skill_id
-             WHERE as_.assistant_id = ?
+             WHERE s.deleted_at IS NULL AND as_.assistant_id = ?
              ORDER BY as_.created_at ASC",
         )
         .bind(assistant_id)

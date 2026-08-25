@@ -150,10 +150,14 @@ impl Database {
 
     /// Delete a tool
     pub async fn delete_tool(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM tools WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "tools",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -301,10 +305,14 @@ impl Database {
         for row in &all_builtin_rows {
             let id: String = row.get("id");
             if !canonical_ids.contains(&id.as_str()) {
-                sqlx::query("DELETE FROM tools WHERE id = ?")
-                    .bind(&id)
-                    .execute(self.pool.as_ref())
-                    .await?;
+                sqlx::query(&crate::db::soft_delete::tombstone_update(
+                    "tools",
+                    "id = ?2 AND deleted_at IS NULL",
+                ))
+                .bind(chrono::Utc::now().to_rfc3339())
+                .bind(&id)
+                .execute(self.pool.as_ref())
+                .await?;
                 tracing::info!("🗑️ [db] Removed stale builtin tool: {}", id);
             }
         }

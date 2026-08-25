@@ -43,11 +43,11 @@ impl Database {
                 c.updated_at,
                 (SELECT m.content 
                  FROM messages m 
-                 WHERE m.conversation_id = c.id 
+                 WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
                  ORDER BY m.created_at DESC 
                  LIMIT 1) as last_message
              FROM conversations c 
-             WHERE c.id = ?",
+             WHERE c.id = ? AND c.deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -74,10 +74,11 @@ impl Database {
                 c.updated_at,
                 (SELECT m.content 
                  FROM messages m 
-                 WHERE m.conversation_id = c.id 
+                 WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
                  ORDER BY m.created_at DESC 
                  LIMIT 1) as last_message
              FROM conversations c 
+             WHERE c.deleted_at IS NULL
              ORDER BY c.updated_at DESC",
         )
         .fetch_all(self.pool.as_ref())
@@ -112,11 +113,40 @@ impl Database {
             .ok_or_else(|| anyhow::anyhow!("Conversation not found"))
     }
 
+    /// Soft-delete (ADR 01): hard DELETEs cannot propagate through the
+    /// append-only snapshot merge, so deletion is a tombstone row update.
+    /// Child messages keep their rows; reads filter tombstoned conversations.
+    /// Soft-delete the conversation and every row it owns. Messages and
+    /// their child rows (tool outputs dominate the bulk) are wiped
+    /// tombstones too, so a deleted conversation actually reclaims snapshot
+    /// space instead of shipping dead payload forever.
     pub async fn delete_conversation(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM conversations WHERE id = ?")
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("DELETE FROM messages_fts WHERE conversation_id = ?")
             .bind(id)
             .execute(self.pool.as_ref())
             .await?;
+        crate::db::soft_delete::tombstone_children_of_messages(
+            self.pool.as_ref(),
+            "conversation_id = ?",
+            &[id],
+        )
+        .await?;
+        for (table, where_clause) in [
+            ("messages", "conversation_id = ?2 AND deleted_at IS NULL"),
+            ("conversation_settings", "conversation_id = ?2"),
+            ("conversation_participants", "conversation_id = ?2"),
+            ("conversations", "id = ?2"),
+        ] {
+            sqlx::query(&crate::db::soft_delete::tombstone_update(
+                table,
+                where_clause,
+            ))
+            .bind(&now)
+            .bind(id)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
         Ok(())
     }
 
@@ -130,14 +160,15 @@ impl Database {
 
         sqlx::query(
             "INSERT INTO conversation_participants 
-             (id, conversation_id, participant_type, participant_id, display_name, role, status, joined_at)
-             VALUES (?, ?, ?, ?, ?, 'member', 'active', ?)"
+             (id, conversation_id, participant_type, participant_id, display_name, role, status, joined_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'member', 'active', ?, ?)"
         )
         .bind(&id)
         .bind(&req.conversation_id)
         .bind(&req.participant_type)
         .bind(&req.participant_id)
         .bind(&req.display_name)
+        .bind(&now)
         .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
@@ -154,7 +185,7 @@ impl Database {
         let row = sqlx::query(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
-             FROM conversation_participants WHERE id = ?",
+             FROM conversation_participants WHERE conversation_participants.deleted_at IS NULL AND id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -185,7 +216,7 @@ impl Database {
         let rows = sqlx::query(
             "SELECT id, conversation_id, participant_type, participant_id, display_name, 
              role, status, joined_at, left_at, last_read_at, metadata
-             FROM conversation_participants WHERE conversation_id = ? ORDER BY joined_at",
+             FROM conversation_participants WHERE conversation_participants.deleted_at IS NULL AND conversation_id = ? ORDER BY joined_at",
         )
         .bind(conversation_id)
         .fetch_all(self.pool.as_ref())
@@ -252,7 +283,7 @@ impl Database {
              LEFT JOIN users u ON cp.participant_type = 'user' AND cp.participant_id = u.id
              LEFT JOIN assistants a ON cp.participant_type = 'assistant' AND cp.participant_id = a.id
              LEFT JOIN models m ON cp.participant_type = 'model' AND cp.participant_id = m.id
-             WHERE cp.conversation_id = ? 
+             WHERE cp.deleted_at IS NULL AND a.deleted_at IS NULL AND cp.conversation_id = ? 
                AND cp.status = 'active'
                AND NOT (cp.participant_type = 'user' AND cp.participant_id = ?)
              ORDER BY cp.joined_at"
@@ -280,10 +311,14 @@ impl Database {
     }
 
     pub async fn remove_conversation_participant(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM conversation_participants WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "conversation_participants",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -321,8 +356,8 @@ impl Database {
             let new_msg_id = Uuid::now_v7().to_string();
             let now = Utc::now().to_rfc3339();
             sqlx::query(
-                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&new_msg_id)
             .bind(&new_conv.id)
@@ -331,8 +366,39 @@ impl Database {
             .bind(&msg.content)
             .bind(msg.tokens)
             .bind(&now)
+            .bind(&now)
             .execute(self.pool.as_ref())
             .await?;
+
+            // Re-link file attachments so user-provided images/files survive the fork.
+            // Files live in their own table and are not conversation-scoped, so the
+            // original file rows are reused and only the junction row is duplicated.
+            let attachment_rows = sqlx::query(
+                "SELECT attachment_id, display_order
+                 FROM message_attachments
+                 WHERE message_attachments.deleted_at IS NULL AND message_id = ?
+                 ORDER BY display_order, created_at",
+            )
+            .bind(&msg.id)
+            .fetch_all(self.pool.as_ref())
+            .await?;
+
+            for row in attachment_rows {
+                let attachment_id: String = row.get("attachment_id");
+                let display_order: i32 = row.try_get("display_order").unwrap_or(0);
+                sqlx::query(
+                    "INSERT INTO message_attachments
+                        (id, message_id, attachment_type, attachment_id, display_order, created_at)
+                     VALUES (?, ?, 'file', ?, ?, ?)",
+                )
+                .bind(Uuid::now_v7().to_string())
+                .bind(&new_msg_id)
+                .bind(&attachment_id)
+                .bind(display_order)
+                .bind(&now)
+                .execute(self.pool.as_ref())
+                .await?;
+            }
         }
 
         let participants = self
@@ -360,8 +426,8 @@ impl Database {
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
                 user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-                enabled_mcp_server_ids, enabled_skill_ids, working_directory
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
@@ -376,7 +442,8 @@ impl Database {
                 custom_user_prompt = excluded.custom_user_prompt,
                 enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
                 enabled_skill_ids = excluded.enabled_skill_ids,
-                working_directory = excluded.working_directory",
+                working_directory = excluded.working_directory,
+                updated_at = excluded.updated_at",
         )
         .bind(&new_conv.id)
         .bind(settings.use_provider_defaults as i32)
@@ -393,6 +460,7 @@ impl Database {
         .bind(&mcp_json)
         .bind(&skill_json)
         .bind(&settings.working_directory)
+        .bind(Utc::now().to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
 

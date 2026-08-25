@@ -76,7 +76,7 @@ impl Database {
 
     pub async fn get_fetch_result(&self, id: &str) -> Result<FetchResult> {
         let query = format!(
-            "SELECT {} FROM fetch_results WHERE id = ?",
+            "SELECT {} FROM fetch_results WHERE fetch_results.deleted_at IS NULL AND id = ?",
             FETCH_RESULT_COLUMNS
         );
 
@@ -91,7 +91,7 @@ impl Database {
 
     pub async fn find_fetch_by_hash(&self, content_hash: &str) -> Result<Option<FetchResult>> {
         let query = format!(
-            "SELECT {} FROM fetch_results WHERE content_hash = ? LIMIT 1",
+            "SELECT {} FROM fetch_results WHERE fetch_results.deleted_at IS NULL AND content_hash = ? LIMIT 1",
             FETCH_RESULT_COLUMNS
         );
 
@@ -109,7 +109,7 @@ impl Database {
         source_id: &str,
     ) -> Result<Vec<FetchResult>> {
         let query = format!(
-            "SELECT {} FROM fetch_results WHERE source_type = ? AND source_id = ? ORDER BY created_at",
+            "SELECT {} FROM fetch_results WHERE fetch_results.deleted_at IS NULL AND source_type = ? AND source_id = ? ORDER BY created_at",
             FETCH_RESULT_COLUMNS
         );
 
@@ -131,7 +131,7 @@ impl Database {
                     f.favicon_url, f.content_hash, f.created_at, f.updated_at
              FROM fetch_results f
              INNER JOIN message_contexts mc ON mc.context_id = f.id AND mc.context_type = 'fetch_result'
-             WHERE mc.message_id = ?
+             WHERE mc.deleted_at IS NULL AND f.deleted_at IS NULL AND mc.message_id = ?
              ORDER BY mc.display_order, mc.created_at";
 
         let rows = sqlx::query(query)
@@ -160,10 +160,14 @@ impl Database {
     }
 
     pub async fn delete_fetch_result(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM fetch_results WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "fetch_results",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 }

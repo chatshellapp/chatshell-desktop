@@ -75,7 +75,7 @@ impl Database {
              p.created_at as preset_created_at, p.updated_at as preset_updated_at
              FROM assistants a
              LEFT JOIN model_parameter_presets p ON a.model_parameter_preset_id = p.id
-             WHERE a.id = ?",
+             WHERE p.deleted_at IS NULL AND a.deleted_at IS NULL AND a.id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -130,7 +130,7 @@ impl Database {
              p.created_at as preset_created_at, p.updated_at as preset_updated_at
              FROM assistants a
              LEFT JOIN model_parameter_presets p ON a.model_parameter_preset_id = p.id
-             ORDER BY a.created_at DESC",
+             WHERE p.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY a.created_at DESC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -235,11 +235,32 @@ impl Database {
     }
 
     pub async fn delete_assistant(&self, id: &str) -> Result<()> {
-        // assistant_tools and assistant_skills are cascade-deleted via FK constraint
-        sqlx::query("DELETE FROM assistants WHERE id = ?")
+        let now = Utc::now().to_rfc3339();
+        // Soft-delete the assistant and its junction rows explicitly - the
+        // old FK-cascade trick no longer fires now that removal is a
+        // tombstone update, and tombstones are what propagate via merge.
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "assistants",
+            "id = ?2",
+        ))
+        .bind(&now)
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
+        for table in [
+            "assistant_tools",
+            "assistant_skills",
+            "assistant_knowledge_bases",
+        ] {
+            sqlx::query(&crate::db::soft_delete::tombstone_update(
+                table,
+                "assistant_id = ?2 AND deleted_at IS NULL",
+            ))
+            .bind(&now)
             .bind(id)
             .execute(self.pool.as_ref())
             .await?;
+        }
         Ok(())
     }
 
@@ -247,13 +268,18 @@ impl Database {
     // Assistant-Tool junction operations
     // ========================================================================
 
-    /// Sync the assistant_tools junction table: delete all existing and insert new ones
+    /// Sync the assistant_tools junction table: tombstone existing
+    /// associations and insert the requested ones as fresh rows.
     async fn sync_assistant_tools(&self, assistant_id: &str, tool_ids: &[String]) -> Result<()> {
-        // Delete existing associations
-        sqlx::query("DELETE FROM assistant_tools WHERE assistant_id = ?")
-            .bind(assistant_id)
-            .execute(self.pool.as_ref())
-            .await?;
+        // Tombstone existing associations (soft-delete propagates via merge)
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "assistant_tools",
+            "assistant_id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(Utc::now().to_rfc3339())
+        .bind(assistant_id)
+        .execute(self.pool.as_ref())
+        .await?;
 
         // Insert new associations
         let now = Utc::now().to_rfc3339();

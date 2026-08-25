@@ -58,7 +58,7 @@ impl Database {
         &self,
         id: &str,
     ) -> Result<Option<ModelParameterPreset>> {
-        let row = sqlx::query("SELECT * FROM model_parameter_presets WHERE id = ?")
+        let row = sqlx::query("SELECT * FROM model_parameter_presets WHERE model_parameter_presets.deleted_at IS NULL AND id = ?")
             .bind(id)
             .fetch_optional(self.pool.as_ref())
             .await?;
@@ -90,7 +90,7 @@ impl Database {
     }
 
     pub async fn list_model_parameter_presets(&self) -> Result<Vec<ModelParameterPreset>> {
-        let rows = sqlx::query("SELECT * FROM model_parameter_presets ORDER BY is_default DESC, is_system DESC, name ASC")
+        let rows = sqlx::query("SELECT * FROM model_parameter_presets WHERE model_parameter_presets.deleted_at IS NULL ORDER BY is_default DESC, is_system DESC, name ASC")
             .fetch_all(self.pool.as_ref())
             .await?;
 
@@ -121,7 +121,7 @@ impl Database {
     }
 
     pub async fn get_default_model_parameter_preset(&self) -> Result<Option<ModelParameterPreset>> {
-        let row = sqlx::query("SELECT * FROM model_parameter_presets WHERE is_default = 1 LIMIT 1")
+        let row = sqlx::query("SELECT * FROM model_parameter_presets WHERE model_parameter_presets.deleted_at IS NULL AND is_default = 1 LIMIT 1")
             .fetch_optional(self.pool.as_ref())
             .await?;
 
@@ -270,7 +270,7 @@ impl Database {
 
         // Check if any assistants are using this preset
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM assistants WHERE model_parameter_preset_id = ?",
+            "SELECT COUNT(*) FROM assistants WHERE assistants.deleted_at IS NULL AND model_parameter_preset_id = ?",
         )
         .bind(id)
         .fetch_one(self.pool.as_ref())
@@ -283,10 +283,14 @@ impl Database {
             ));
         }
 
-        sqlx::query("DELETE FROM model_parameter_presets WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "model_parameter_presets",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
 
         Ok(())
     }
@@ -294,7 +298,7 @@ impl Database {
     /// Create system default presets if they don't exist
     pub async fn ensure_default_presets(&self) -> Result<()> {
         // Check if any presets exist
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM model_parameter_presets")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM model_parameter_presets WHERE model_parameter_presets.deleted_at IS NULL")
             .fetch_one(self.pool.as_ref())
             .await?;
 

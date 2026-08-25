@@ -16,8 +16,8 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, content_hash, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO files (id, file_name, file_size, mime_type, storage_path, content_hash, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&req.file_name)
@@ -25,6 +25,7 @@ impl Database {
         .bind(&req.mime_type)
         .bind(&req.storage_path)
         .bind(&req.content_hash)
+        .bind(&now)
         .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
@@ -35,7 +36,7 @@ impl Database {
     pub async fn get_file_attachment(&self, id: &str) -> Result<FileAttachment> {
         let row = sqlx::query(
             "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
-             FROM files WHERE id = ?",
+             FROM files WHERE files.deleted_at IS NULL AND id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -56,7 +57,7 @@ impl Database {
     pub async fn find_file_by_hash(&self, content_hash: &str) -> Result<Option<FileAttachment>> {
         let row = sqlx::query(
             "SELECT id, file_name, file_size, mime_type, storage_path, content_hash, created_at
-             FROM files WHERE content_hash = ? LIMIT 1",
+             FROM files WHERE files.deleted_at IS NULL AND content_hash = ? LIMIT 1",
         )
         .bind(content_hash)
         .fetch_optional(self.pool.as_ref())
@@ -77,10 +78,14 @@ impl Database {
     }
 
     pub async fn delete_file_attachment(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM files WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "files",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -115,7 +120,7 @@ impl Database {
         let rows = sqlx::query(
             "SELECT attachment_id, display_order
              FROM message_attachments
-             WHERE message_id = ?
+             WHERE message_attachments.deleted_at IS NULL AND message_id = ?
              ORDER BY display_order, created_at",
         )
         .bind(message_id)
@@ -139,11 +144,15 @@ impl Database {
         message_id: &str,
         attachment_id: &str,
     ) -> Result<()> {
-        sqlx::query("DELETE FROM message_attachments WHERE message_id = ? AND attachment_id = ?")
-            .bind(message_id)
-            .bind(attachment_id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "message_attachments",
+            "message_id = ?2 AND attachment_id = ?3 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(message_id)
+        .bind(attachment_id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 }

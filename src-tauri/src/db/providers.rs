@@ -246,10 +246,14 @@ impl Database {
         // Clear cached API key if any
         crate::crypto::remove_cached_api_key(id);
 
-        sqlx::query("DELETE FROM providers WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "providers",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 }

@@ -51,7 +51,7 @@ impl Database {
         let rows = sqlx::query(
             "SELECT context_type, context_id, display_order
              FROM message_contexts
-             WHERE message_id = ?
+             WHERE message_contexts.deleted_at IS NULL AND message_id = ?
              ORDER BY display_order, created_at",
         )
         .bind(message_id)
@@ -86,9 +86,11 @@ impl Database {
         context_type: ContextType,
         context_id: &str,
     ) -> Result<()> {
-        sqlx::query(
-            "DELETE FROM message_contexts WHERE message_id = ? AND context_type = ? AND context_id = ?",
-        )
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "message_contexts",
+            "message_id = ?2 AND context_type = ?3 AND context_id = ?4 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
         .bind(message_id)
         .bind(context_type.to_string())
         .bind(context_id)

@@ -38,7 +38,8 @@ pub async fn create_files_table(pool: &SqlitePool) -> Result<()> {
             mime_type TEXT NOT NULL,
             storage_path TEXT NOT NULL,
             content_hash TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT ''
         )",
     )
     .execute(pool)

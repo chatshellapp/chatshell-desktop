@@ -28,6 +28,7 @@ pub async fn create_conversations_table(pool: &SqlitePool) -> Result<()> {
             left_at TEXT,
             last_read_at TEXT,
             metadata TEXT,
+            updated_at TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
             UNIQUE(conversation_id, participant_type, participant_id)
         )",

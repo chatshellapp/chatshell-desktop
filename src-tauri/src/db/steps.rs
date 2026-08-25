@@ -39,7 +39,7 @@ impl Database {
 
     pub async fn get_thinking_step(&self, id: &str) -> Result<ThinkingStep> {
         let row = sqlx::query(
-            "SELECT id, message_id, content, source, display_order, created_at FROM thinking_steps WHERE id = ?"
+            "SELECT id, message_id, content, source, display_order, created_at FROM thinking_steps WHERE thinking_steps.deleted_at IS NULL AND id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -62,7 +62,7 @@ impl Database {
     ) -> Result<Vec<ThinkingStep>> {
         let rows = sqlx::query(
             "SELECT id, message_id, content, source, display_order, created_at 
-             FROM thinking_steps WHERE message_id = ? ORDER BY display_order, created_at",
+             FROM thinking_steps WHERE thinking_steps.deleted_at IS NULL AND message_id = ? ORDER BY display_order, created_at",
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -82,10 +82,14 @@ impl Database {
     }
 
     pub async fn delete_thinking_step(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM thinking_steps WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "thinking_steps",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -119,7 +123,7 @@ impl Database {
     pub async fn get_search_decision(&self, id: &str) -> Result<SearchDecision> {
         let row = sqlx::query(
             "SELECT id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at
-             FROM search_decisions WHERE id = ?"
+             FROM search_decisions WHERE search_decisions.deleted_at IS NULL AND id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -146,7 +150,7 @@ impl Database {
     ) -> Result<Vec<SearchDecision>> {
         let rows = sqlx::query(
             "SELECT id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at
-             FROM search_decisions WHERE message_id = ? ORDER BY display_order, created_at"
+             FROM search_decisions WHERE search_decisions.deleted_at IS NULL AND message_id = ? ORDER BY display_order, created_at"
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -171,10 +175,14 @@ impl Database {
     }
 
     pub async fn delete_search_decision(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM search_decisions WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "search_decisions",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -186,8 +194,8 @@ impl Database {
         let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO tool_calls (id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO tool_calls (id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&req.call_id)
@@ -201,6 +209,7 @@ impl Database {
         .bind(display_order)
         .bind(&now)
         .bind(&req.completed_at)
+        .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
 
@@ -271,12 +280,13 @@ impl Database {
     ) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
-            "UPDATE tool_calls SET status = ?, tool_output = ?, error = ?, duration_ms = ?, completed_at = ? WHERE id = ?"
+            "UPDATE tool_calls SET status = ?, tool_output = ?, error = ?, duration_ms = ?, completed_at = ?, updated_at = ? WHERE id = ?"
         )
         .bind(status)
         .bind(output)
         .bind(error)
         .bind(duration_ms)
+        .bind(&now)
         .bind(&now)
         .bind(id)
         .execute(self.pool.as_ref())
@@ -285,10 +295,14 @@ impl Database {
     }
 
     pub async fn delete_tool_call(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM tool_calls WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "tool_calls",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -303,8 +317,8 @@ impl Database {
         let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO code_executions (id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO code_executions (id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&req.message_id)
@@ -318,6 +332,7 @@ impl Database {
         .bind(display_order)
         .bind(&now)
         .bind(&req.completed_at)
+        .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
 
@@ -327,7 +342,7 @@ impl Database {
     pub async fn get_code_execution(&self, id: &str) -> Result<CodeExecution> {
         let row = sqlx::query(
             "SELECT id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at
-             FROM code_executions WHERE id = ?"
+             FROM code_executions WHERE code_executions.deleted_at IS NULL AND id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -356,7 +371,7 @@ impl Database {
     ) -> Result<Vec<CodeExecution>> {
         let rows = sqlx::query(
             "SELECT id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at
-             FROM code_executions WHERE message_id = ? ORDER BY display_order, created_at"
+             FROM code_executions WHERE code_executions.deleted_at IS NULL AND message_id = ? ORDER BY display_order, created_at"
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -382,10 +397,14 @@ impl Database {
     }
 
     pub async fn delete_code_execution(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM code_executions WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "code_executions",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
@@ -414,7 +433,7 @@ impl Database {
 
     pub async fn get_content_block(&self, id: &str) -> Result<ContentBlock> {
         let row = sqlx::query(
-            "SELECT id, message_id, content, display_order, created_at FROM content_blocks WHERE id = ?",
+            "SELECT id, message_id, content, display_order, created_at FROM content_blocks WHERE content_blocks.deleted_at IS NULL AND id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -436,7 +455,7 @@ impl Database {
     ) -> Result<Vec<ContentBlock>> {
         let rows = sqlx::query(
             "SELECT id, message_id, content, display_order, created_at
-             FROM content_blocks WHERE message_id = ? ORDER BY display_order, created_at",
+             FROM content_blocks WHERE content_blocks.deleted_at IS NULL AND message_id = ? ORDER BY display_order, created_at",
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -455,10 +474,14 @@ impl Database {
     }
 
     pub async fn delete_content_block(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM content_blocks WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "content_blocks",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 

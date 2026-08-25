@@ -21,9 +21,13 @@ impl Database {
         .await?;
 
         if let Some(id) = existing_id {
-            // Restore the soft-deleted model
+            // Restore the soft-deleted model. Clearing `deleted_at` is part
+            // of the restore: a row left with `is_deleted = 0` and a stale
+            // tombstone would contradict every read path that filters
+            // `deleted_at IS NULL` (the canonical mechanism since the
+            // tombstone migration; `is_deleted` is legacy-only).
             sqlx::query(
-                "UPDATE models SET is_deleted = 0, name = ?, description = ?, is_starred = ?, updated_at = ? WHERE id = ?"
+                "UPDATE models SET is_deleted = 0, deleted_at = NULL, name = ?, description = ?, is_starred = ?, updated_at = ? WHERE id = ?",
             )
             .bind(&req.name)
             .bind(&req.description)
@@ -94,7 +98,7 @@ impl Database {
     pub async fn list_models(&self) -> Result<Vec<Model>> {
         let rows = sqlx::query(
             "SELECT id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at
-             FROM models WHERE is_deleted = 0 ORDER BY created_at ASC"
+             FROM models WHERE deleted_at IS NULL ORDER BY created_at ASC"
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -176,20 +180,114 @@ impl Database {
     }
 
     pub async fn delete_model(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM models WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "models",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
+}
 
-    pub async fn soft_delete_model(&self, id: &str) -> Result<()> {
-        let now = Utc::now().to_rfc3339();
-        sqlx::query("UPDATE models SET is_deleted = 1, updated_at = ? WHERE id = ?")
-            .bind(&now)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        // models.provider_id has an enforced FK to providers.
+        sqlx::query(
+            "INSERT INTO providers (id, name, provider_type, created_at, updated_at) \
+             VALUES ('prov-1', 'Test Provider', 'openai', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        (db, dir)
+    }
+
+    fn req(model_id: &str) -> CreateModelRequest {
+        CreateModelRequest {
+            name: format!("Model {model_id}"),
+            provider_id: "prov-1".into(),
+            model_id: model_id.into(),
+            description: None,
+            is_starred: None,
+        }
+    }
+
+    async fn raw_row(db: &Database, id: &str) -> (String, String, i32, Option<String>) {
+        // (name, model_id, is_deleted, deleted_at)
+        sqlx::query_as("SELECT name, model_id, is_deleted, deleted_at FROM models WHERE id = ?")
             .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
-        Ok(())
+            .fetch_one(db.pool())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn delete_model_tombstones_wipes_payload_and_hides() {
+        let (db, _dir) = test_db().await;
+        let created = db.create_model(req("gpt-x")).await.unwrap();
+
+        db.delete_model(&created.id).await.unwrap();
+
+        // Row survives as an identity-skeleton tombstone (merge propagation)
+        // and disappears from the canonical live listing.
+        let (name, model_id, is_deleted, deleted_at) = raw_row(&db, &created.id).await;
+        assert_eq!(name, "");
+        assert_eq!(model_id, "");
+        assert_eq!(is_deleted, 1);
+        assert!(deleted_at.is_some(), "tombstone timestamp must be set");
+        assert!(db.list_models().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_model_restores_legacy_flag_row_and_clears_tombstone() {
+        let (db, _dir) = test_db().await;
+        let created = db.create_model(req("gpt-x")).await.unwrap();
+
+        // Legacy deletion shape (pre-tombstone `soft_delete_model`): flag
+        // set, `deleted_at` still NULL.
+        sqlx::query("UPDATE models SET is_deleted = 1 WHERE id = ?")
+            .bind(&created.id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        let restored = db.create_model(req("gpt-x")).await.unwrap();
+        assert_eq!(restored.id, created.id, "restore path reuses the row");
+
+        let (name, _model_id, is_deleted, deleted_at) = raw_row(&db, &created.id).await;
+        assert_eq!(name, "Model gpt-x");
+        assert_eq!(is_deleted, 0);
+        assert!(deleted_at.is_none(), "restore must clear the tombstone");
+    }
+
+    #[tokio::test]
+    async fn create_model_after_tombstone_mints_fresh_row() {
+        let (db, _dir) = test_db().await;
+        let first = db.create_model(req("gpt-x")).await.unwrap();
+        db.delete_model(&first.id).await.unwrap();
+
+        // The tombstone wipe blanked model_id, so the restore lookup cannot
+        // match it; re-adding the same logical model mints a fresh row and
+        // the old tombstone stays put.
+        let second = db.create_model(req("gpt-x")).await.unwrap();
+        assert_ne!(second.id, first.id);
+
+        let (_, _, is_deleted, deleted_at) = raw_row(&db, &first.id).await;
+        assert_eq!(is_deleted, 1);
+        assert!(deleted_at.is_some());
+
+        let live = db.list_models().await.unwrap();
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].id, second.id);
     }
 }

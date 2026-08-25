@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::Utc;
 use sqlx::Row;
 
 use super::Database;
@@ -129,8 +130,8 @@ impl Database {
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
                 user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-                enabled_mcp_server_ids, enabled_skill_ids, working_directory
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
@@ -145,7 +146,8 @@ impl Database {
                 custom_user_prompt = excluded.custom_user_prompt,
                 enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
                 enabled_skill_ids = excluded.enabled_skill_ids,
-                working_directory = excluded.working_directory",
+                working_directory = excluded.working_directory,
+                updated_at = excluded.updated_at",
         )
         .bind(conversation_id)
         .bind(use_provider_defaults as i32)
@@ -162,6 +164,7 @@ impl Database {
         .bind(&enabled_mcp_server_ids_json)
         .bind(&enabled_skill_ids_json)
         .bind(&working_directory)
+        .bind(Utc::now().to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
 
@@ -200,10 +203,14 @@ impl Database {
 
     /// Delete settings for a conversation
     pub async fn delete_conversation_settings(&self, conversation_id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM conversation_settings WHERE conversation_id = ?")
-            .bind(conversation_id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "conversation_settings",
+            "conversation_id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(conversation_id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 

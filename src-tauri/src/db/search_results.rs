@@ -16,8 +16,8 @@ impl Database {
         let display_order = req.display_order.unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO search_results (id, message_id, query, engine, total_results, display_order, searched_at, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO search_results (id, message_id, query, engine, total_results, display_order, searched_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(&req.message_id)
@@ -26,6 +26,7 @@ impl Database {
         .bind(req.total_results)
         .bind(display_order)
         .bind(&req.searched_at)
+        .bind(&now)
         .bind(&now)
         .execute(self.pool.as_ref())
         .await?;
@@ -36,7 +37,7 @@ impl Database {
     pub async fn get_search_result(&self, id: &str) -> Result<SearchResult> {
         let row = sqlx::query(
             "SELECT id, message_id, query, engine, total_results, display_order, searched_at, created_at
-             FROM search_results WHERE id = ?",
+             FROM search_results WHERE search_results.deleted_at IS NULL AND id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -61,7 +62,7 @@ impl Database {
     ) -> Result<Vec<SearchResult>> {
         let rows = sqlx::query(
             "SELECT id, message_id, query, engine, total_results, display_order, searched_at, created_at
-             FROM search_results WHERE message_id = ? ORDER BY display_order, created_at",
+             FROM search_results WHERE search_results.deleted_at IS NULL AND message_id = ? ORDER BY display_order, created_at",
         )
         .bind(message_id)
         .fetch_all(self.pool.as_ref())
@@ -87,8 +88,10 @@ impl Database {
         id: &str,
         total_results: i64,
     ) -> Result<SearchResult> {
-        sqlx::query("UPDATE search_results SET total_results = ? WHERE id = ?")
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE search_results SET total_results = ?, updated_at = ? WHERE id = ?")
             .bind(total_results)
+            .bind(&now)
             .bind(id)
             .execute(self.pool.as_ref())
             .await?;
@@ -97,10 +100,14 @@ impl Database {
     }
 
     pub async fn delete_search_result(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM search_results WHERE id = ?")
-            .bind(id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(&crate::db::soft_delete::tombstone_update(
+            "search_results",
+            "id = ?2 AND deleted_at IS NULL",
+        ))
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 }
