@@ -9,6 +9,7 @@ use super::processors::{
     process_html_with_readability, process_json_content, process_text_content, process_xml_content,
 };
 use super::types::{FetchedWebResource, HTTP_CLIENT};
+use chatshell_agent_core::web_fetch::decode_body_bytes;
 
 /// Fetch mode from settings
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -56,7 +57,6 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
     let response = match HTTP_CLIENT
         .get(url)
         .header("Accept", "text/markdown, text/html, */*")
-        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .send()
         .await
     {
@@ -96,7 +96,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         .trim()
         .to_string();
 
-    let body = match response.text().await {
+    let raw = match response.bytes().await {
         Ok(c) => c,
         Err(e) => {
             return FetchedWebResource::error(
@@ -107,6 +107,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
             );
         }
     };
+    let body = decode_body_bytes(&raw, &content_type);
 
     // Handle different content types
     match mime_type.clone().as_str() {
@@ -207,7 +208,6 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
     let response = match HTTP_CLIENT
         .get(url)
         .header("Accept", "text/markdown, text/html, */*")
-        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .send()
         .await
     {
@@ -245,7 +245,7 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
         .trim()
         .to_string();
 
-    let body = match response.text().await {
+    let raw = match response.bytes().await {
         Ok(c) => c,
         Err(e) => {
             return FetchedWebResource::error(
@@ -256,6 +256,7 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
             );
         }
     };
+    let body = decode_body_bytes(&raw, &content_type);
 
     // Handle different content types (same as fetch_web_resource)
     match mime_type.clone().as_str() {

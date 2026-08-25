@@ -1,100 +1,49 @@
 use chrono::Utc;
 
+use chatshell_agent_core::web_fetch as core_fetch;
+
 use super::extractors::extract_favicon_url;
-use super::types::{FetchedWebResource, HTTP_CLIENT, WebFetchMetadata};
+use super::types::{FetchedWebResource, WebFetchMetadata};
 
-const JINA_READER_BASE_URL: &str = "https://r.jina.ai/";
-
-/// Fetch webpage content using Jina Reader API
+/// Fetch webpage content using the Jina Reader API.
+///
+/// The request/response handling is the shared core implementation
+/// (`core_fetch::fetch_jina`); desktop adapts the result into its richer
+/// `FetchedWebResource` (favicon metadata, content format bookkeeping).
 pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebResource {
     tracing::info!("📡 [jina] Fetching via Jina Reader: {}", url);
 
-    let jina_url = format!("{}{}", JINA_READER_BASE_URL, url);
+    let resource = core_fetch::fetch_jina(url, api_key).await;
 
-    let mut request = HTTP_CLIENT.get(&jina_url).header("Accept", "text/markdown");
-
-    // Add API key if provided (optional - Jina works without it)
-    if let Some(key) = api_key
-        && !key.is_empty()
-    {
-        request = request.header("Authorization", format!("Bearer {}", key));
+    if let Some(error) = resource.extraction_error.as_deref() {
+        tracing::info!("❌ [jina] Jina Reader failed: {}", error);
+        return FetchedWebResource::error(url, String::new(), error.to_string(), None);
     }
 
-    match request.send().await {
-        Ok(response) => {
-            if !response.status().is_success() {
-                tracing::info!(
-                    "❌ [jina] Jina Reader returned status: {}",
-                    response.status()
-                );
-                return FetchedWebResource::error(
-                    url,
-                    String::new(),
-                    format!("Jina Reader returned status: {}", response.status()),
-                    None,
-                );
-            }
+    tracing::info!(
+        "✅ [jina] Successfully fetched {} bytes from Jina",
+        resource.content.len()
+    );
 
-            match response.text().await {
-                Ok(content) => {
-                    tracing::info!(
-                        "✅ [jina] Successfully fetched {} bytes from Jina",
-                        content.len()
-                    );
+    let favicon_url = extract_favicon_url(url, None);
 
-                    let title = extract_title_from_markdown(&content);
-                    let favicon_url = extract_favicon_url(url, None);
-
-                    FetchedWebResource {
-                        url: url.to_string(),
-                        title,
-                        description: None,
-                        mime_type: "text/html".to_string(), // Original content type
-                        content_format: "text/markdown".to_string(),
-                        content,
-                        extraction_error: None,
-                        metadata: WebFetchMetadata {
-                            keywords: None,
-                            headings: vec![],
-                            fetched_at: Utc::now().to_rfc3339(),
-                            original_length: None,
-                            truncated: false,
-                            favicon_url,
-                        },
-                    }
-                }
-                Err(e) => {
-                    tracing::info!("❌ [jina] Failed to read Jina response: {}", e);
-                    FetchedWebResource::error(
-                        url,
-                        String::new(),
-                        format!("Failed to read Jina response: {}", e),
-                        None,
-                    )
-                }
-            }
-        }
-        Err(e) => {
-            tracing::info!("❌ [jina] Jina Reader request failed: {}", e);
-            FetchedWebResource::error(
-                url,
-                String::new(),
-                format!("Jina Reader request failed: {}", e),
-                None,
-            )
-        }
+    FetchedWebResource {
+        url: resource.url,
+        title: resource.title,
+        description: resource.description,
+        mime_type: "text/html".to_string(), // Original content type
+        content_format: "text/markdown".to_string(),
+        content: resource.content,
+        extraction_error: None,
+        metadata: WebFetchMetadata {
+            keywords: None,
+            headings: vec![],
+            fetched_at: Utc::now().to_rfc3339(),
+            original_length: None,
+            truncated: false,
+            favicon_url,
+        },
     }
-}
-
-/// Extract title from markdown content (first # heading)
-fn extract_title_from_markdown(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(stripped) = trimmed.strip_prefix("# ") {
-            return Some(stripped.trim().to_string());
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -103,25 +52,17 @@ mod tests {
 
     #[test]
     fn test_extract_title_from_markdown() {
-        let content = "# Hello World\n\nSome content here";
         assert_eq!(
-            extract_title_from_markdown(content),
-            Some("Hello World".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_title_from_markdown_with_leading_whitespace() {
-        let content = "  # Title with spaces  \n\nContent";
-        assert_eq!(
-            extract_title_from_markdown(content),
-            Some("Title with spaces".to_string())
+            core_fetch::extract_title_from_markdown("# Title\n\nSome content").as_deref(),
+            Some("Title")
         );
     }
 
     #[test]
     fn test_extract_title_from_markdown_no_title() {
-        let content = "No title here\n## This is h2";
-        assert_eq!(extract_title_from_markdown(content), None);
+        assert_eq!(
+            core_fetch::extract_title_from_markdown("No heading here"),
+            None
+        );
     }
 }

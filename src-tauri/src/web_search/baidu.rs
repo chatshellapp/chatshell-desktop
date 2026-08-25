@@ -5,13 +5,15 @@
 
 use anyhow::Result;
 use chrono::Utc;
-use scraper::{Html, Selector};
 use std::time::Duration;
 use url::form_urlencoded;
 
+use chatshell_agent_core::web_search as core_search;
+
 use crate::web_fetch::{STEALTH_JS, create_new_browser};
 
-use super::types::{SearchProvider, SearchResultItem, WebSearchResponse};
+use super::types::SearchResultItem;
+use super::types::{SearchProvider, WebSearchResponse};
 
 /// Perform Baidu search using headless Chrome
 ///
@@ -93,75 +95,18 @@ fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResult
 
     tracing::info!("📄 [web_search] Got {} bytes of HTML", html.len());
 
-    // Parse search results
-    let results = parse_baidu_results(&html, max_results);
+    // Parse via the shared core parser (single home for extraction semantics)
+    let results: Vec<SearchResultItem> = core_search::parse_baidu_results(&html, max_results)
+        .into_iter()
+        .map(|r| SearchResultItem {
+            title: r.title,
+            url: r.url,
+            snippet: r.snippet,
+        })
+        .collect();
     tracing::info!("✅ [web_search] Found {} results", results.len());
 
     Ok(results)
-}
-
-/// Parse Baidu HTML search results
-fn parse_baidu_results(html: &str, max_results: usize) -> Vec<SearchResultItem> {
-    let document = Html::parse_document(html);
-    let mut results = Vec::new();
-
-    // Baidu search results are in div.result or div.c-container elements
-    // Each result contains:
-    // - h3.t > a for the title and URL
-    // - div.c-abstract or span.content-right_8Zs40 for the snippet
-
-    let result_selector = Selector::parse("div.result, div.c-container").unwrap();
-    let title_selector = Selector::parse("h3 a, h3.c-title a").unwrap();
-    let snippet_selector =
-        Selector::parse("div.c-abstract, span.content-right_8Zs40, div.c-span-last").unwrap();
-
-    for result_el in document.select(&result_selector).take(max_results * 2) {
-        // Extract title and URL
-        let (title, url) = match result_el.select(&title_selector).next() {
-            Some(el) => {
-                let title = el.text().collect::<String>().trim().to_string();
-                let href = el.value().attr("href").unwrap_or_default();
-                // Baidu uses redirect URLs, we'll use them as-is
-                // The actual URL resolution would require following the redirect
-                (title, href.to_string())
-            }
-            None => continue,
-        };
-
-        // Skip if URL is empty
-        if url.is_empty() {
-            continue;
-        }
-
-        // Skip Baidu's own pages
-        if url.contains("baidu.com/sf")
-            || url.contains("baike.baidu.com")
-            || url.contains("tieba.baidu.com")
-        {
-            continue;
-        }
-
-        // Extract snippet
-        let snippet = result_el
-            .select(&snippet_selector)
-            .next()
-            .map(|el| el.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
-
-        if !title.is_empty() {
-            results.push(SearchResultItem {
-                title,
-                url,
-                snippet,
-            });
-
-            if results.len() >= max_results {
-                break;
-            }
-        }
-    }
-
-    results
 }
 
 #[cfg(test)]
@@ -170,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_parse_empty_html() {
-        let results = parse_baidu_results("<html></html>", 5);
+        let results = core_search::parse_baidu_results("<html></html>", 5);
         assert!(results.is_empty());
     }
 }

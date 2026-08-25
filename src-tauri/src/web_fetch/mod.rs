@@ -6,7 +6,7 @@ mod processors;
 mod types;
 
 // Re-export public types
-pub use types::{FetchedWebResource, STEALTH_JS};
+pub use types::{FetchedWebResource, STEALTH_JS, WebFetchMetadata};
 
 // Re-export public functions
 pub use fetcher::{
