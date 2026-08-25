@@ -1,7 +1,6 @@
-//! Context-compaction runner (Wave 2b follow-up): threshold check after a
-//! completed turn, cut-point selection, and the capability-aware method
-//! chain — snapcompact for vision models, soft LLM summary as the
-//! always-available floor. Design: internal-docs/features/compaction-v1.md.
+//! Context-compaction runner: threshold check after a completed turn,
+//! cut-point selection, and the capability-aware method chain — snapcompact
+//! for vision models, soft LLM summary as the always-available floor.
 
 use anyhow::Result;
 use chatshell_agent_core::compaction::{

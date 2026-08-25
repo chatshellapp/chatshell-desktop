@@ -6,7 +6,9 @@ lazy_static! {
 }
 
 /// Tokenize text for indexing in FTS. Uses search mode for overlapping segments
-/// (e.g. "机器学习" -> ["机器", "学习", "机器学习"]) for maximum recall.
+/// so CJK text without word boundaries still matches, e.g.
+/// "机器学习" -> ["机器", "学习", "机器学习"]. Japanese and Korean input
+/// ("機械学習", "기계 학습") flows through the same segmentation path.
 pub fn tokenize_for_search(text: &str) -> String {
     JIEBA
         .cut_for_search(text, true)

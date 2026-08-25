@@ -14,10 +14,9 @@
 #
 # Why not Developer ID: the ubiquity-container and keychain-access-groups
 # entitlements are only honored when granted by a provisioning profile
-# (macOS 26 hard requirement, see internal-docs
-# planning/synchronizable-keychain-macos26-blocker.md), and Developer ID
-# profiles are distribution-only. A stable Apple Development identity keeps
-# the signature stable across rebuilds, so the one-time keychain
+# (macOS 26 hard requirement), and Developer ID profiles are
+# distribution-only. A stable Apple Development identity keeps the
+# signature stable across rebuilds, so the one-time keychain
 # authorization and TCC grants persist.
 #
 # Profile regeneration (when it expires or on a new machine) — requires
