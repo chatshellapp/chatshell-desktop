@@ -383,6 +383,7 @@ pub fn run() {
             commands::complete_sync_onboarding,
             commands::decline_sync_onboarding,
             commands::unlock_sync,
+            commands::try_join_sync,
             commands::enable_sync,
             commands::disable_sync,
             commands::rotate_sync_key,

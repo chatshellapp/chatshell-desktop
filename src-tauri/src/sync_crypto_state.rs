@@ -141,14 +141,28 @@ pub fn persist_chain(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
 /// the master-key rule against loser-overwrites-winner).
 fn persist_all(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
     persist_chain(app_data_dir, crypto)?;
-    // Write the synchronizable item only when absent (mint or a failed
-    // mint-time write being retried): steady state never writes — an
+    // Unproven-adoption path: write the item only when absent — an
     // unconditional write-back would overwrite the ecosystem key with a
     // stale local one whenever the item read transiently fails.
     let key_b64 = current_key_b64(crypto);
     if keychain_content_key().is_none() {
         publish_keychain_content_key(&key_b64);
     }
+    Ok(())
+}
+
+/// Persist with a PROVEN current key and overwrite the item. Two callers
+/// only, both with positive proof the key is the live group's:
+/// - **bootstrap** mints a fresh group; the artifact-existence guard means
+///   no live group competes, so any existing item is an orphan from a dead
+///   group (real-device finding: a stale orphaned item otherwise blocks
+///   the minted key from ever reaching iCloud Keychain, and every later
+///   device degrades to the passphrase rung).
+/// - **unlock** decrypted the live artifact with this key seconds ago; an
+///   item carrying a different value is provably stale.
+fn persist_all_proven(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
+    persist_chain(app_data_dir, crypto)?;
+    publish_keychain_content_key(&current_key_b64(crypto));
     Ok(())
 }
 
@@ -212,7 +226,7 @@ pub fn resolve_content_key(
 /// fails.
 pub fn bootstrap_group(app_data_dir: &Path, passphrase: &str) -> Result<SyncCrypto> {
     let crypto = SyncCrypto::bootstrap(passphrase.trim())?;
-    persist_all(app_data_dir, &crypto)?;
+    persist_all_proven(app_data_dir, &crypto)?;
     tracing::info!("Sync group bootstrapped (content key v1)");
     Ok(crypto)
 }
@@ -232,7 +246,7 @@ pub fn unlock_with_passphrase(
         .ok()
         .and_then(|bytes| ContentKeys::decode(&bytes).ok());
     let crypto = SyncCrypto::from_passphrase(&header, passphrase.trim(), known.as_ref(), true)?;
-    persist_all(app_data_dir, &crypto)?;
+    persist_all_proven(app_data_dir, &crypto)?;
     let mut settings = load_settings(app_data_dir);
     settings.needs_unlock = false;
     save_settings(app_data_dir, &settings)?;

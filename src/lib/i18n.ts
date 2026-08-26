@@ -13,6 +13,8 @@ import sidebar_en from '@/locales/en/sidebar.json'
 import sidebar_zhCN from '@/locales/zh-CN/sidebar.json'
 import onboarding_en from '@/locales/en/onboarding.json'
 import onboarding_zhCN from '@/locales/zh-CN/onboarding.json'
+import sync_en from '@/locales/en/sync.json'
+import sync_zhCN from '@/locales/zh-CN/sync.json'
 import assistants_en from '@/locales/en/assistants.json'
 import assistants_zhCN from '@/locales/zh-CN/assistants.json'
 import tools_en from '@/locales/en/tools.json'
@@ -43,6 +45,7 @@ const resources = {
     providers: providers_en,
     sidebar: sidebar_en,
     onboarding: onboarding_en,
+    sync: sync_en,
     assistants: assistants_en,
     tools: tools_en,
     prompts: prompts_en,
@@ -57,6 +60,7 @@ const resources = {
     providers: providers_zhCN,
     sidebar: sidebar_zhCN,
     onboarding: onboarding_zhCN,
+    sync: sync_zhCN,
     assistants: assistants_zhCN,
     tools: tools_zhCN,
     prompts: prompts_zhCN,

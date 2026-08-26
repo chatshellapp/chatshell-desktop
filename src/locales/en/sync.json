@@ -15,7 +15,9 @@
     "enable": "Turn on sync",
     "decline": "Not now",
     "enabled": "Sync enabled — encrypted and running in the background",
-    "error": "Failed to set up sync encryption"
+    "error": "Failed to set up sync encryption",
+    "joinExplainer": "A synced history already exists on this account. Enter its sync passphrase to join — your consent to sync still applies.",
+    "joined": "Sync joined — pulling your cloud history"
   },
   "locked": {
     "banner": "History locked — cloud sync is waiting for your sync passphrase. Everything on this device keeps working.",

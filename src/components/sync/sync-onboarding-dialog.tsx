@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 import { logger } from '@/lib/logger'
 
@@ -24,19 +25,58 @@ import { logger } from '@/lib/logger'
  */
 export function SyncOnboardingDialog() {
   const { t } = useTranslation('sync')
-  const { info, startOnboarding, completeOnboarding, declineOnboarding } = useSyncSetupStore()
+  const { info, startOnboarding, completeOnboarding, declineOnboarding, unlock, tryJoin } =
+    useSyncSetupStore()
   const [passphrase, setPassphrase] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  // A remote group already exists (fresh device joining): consent still
+  // applies, but joining is the passphrase-unlock path — never a competing
+  // bootstrap (ADR 04 §3).
+  const [joinMode, setJoinMode] = useState(false)
+  const [joinPassphrase, setJoinPassphrase] = useState('')
+  const [errorText, setErrorText] = useState<string | null>(null)
 
-  const open = Boolean(info?.needsOnboarding)
+  const open = Boolean(info?.needs_onboarding)
 
   useEffect(() => {
     if (!open) {
       setPassphrase(null)
       setSaved(false)
+      setJoinMode(false)
+      setJoinPassphrase('')
+      setErrorText(null)
     }
   }, [open])
+
+  useEffect(() => {
+    if (info?.group_exists && passphrase === null && !joinMode) {
+      setJoinMode(true)
+      // Silent Keychain adoption first (ADR 04 §3 rung 1); the passphrase
+      // input below is the fallback this attempt rejects into.
+      tryJoin()
+        .then(() => {
+          setBusy(false)
+          toast.success(t('onboarding.joined'))
+        })
+        .catch(() => {
+          // Passphrase rung — the join input stays visible.
+        })
+    }
+  }, [info?.group_exists])
+
+  async function handleJoin() {
+    setBusy(true)
+    setErrorText(null)
+    try {
+      await unlock(joinPassphrase)
+      toast.success(t('locked.unlocked'))
+    } catch (err) {
+      setErrorText(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleBegin() {
     try {
@@ -83,7 +123,19 @@ export function SyncOnboardingDialog() {
           <DialogDescription>{t('onboarding.description')}</DialogDescription>
         </DialogHeader>
 
-        {passphrase === null ? (
+        {joinMode ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t('onboarding.joinExplainer')}</p>
+            <Input
+              type="password"
+              value={joinPassphrase}
+              onChange={(e) => setJoinPassphrase(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && joinPassphrase && handleJoin()}
+              placeholder={t('locked.placeholder')}
+            />
+            {errorText && <p className="text-sm text-red-500">{errorText}</p>}
+          </div>
+        ) : passphrase === null ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">{t('onboarding.explainer')}</p>
             <ul className="space-y-2 text-sm text-muted-foreground">
@@ -131,7 +183,12 @@ export function SyncOnboardingDialog() {
           <Button variant="ghost" onClick={handleDecline} disabled={busy}>
             {t('onboarding.decline')}
           </Button>
-          {passphrase === null ? (
+          {joinMode ? (
+            <Button onClick={handleJoin} disabled={!joinPassphrase || busy}>
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('locked.unlock')}
+            </Button>
+          ) : passphrase === null ? (
             <Button onClick={handleBegin} disabled={busy}>
               <KeyRound className="mr-2 h-4 w-4" />
               {t('onboarding.begin')}

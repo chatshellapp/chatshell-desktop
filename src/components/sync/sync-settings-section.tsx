@@ -30,7 +30,7 @@ export function SyncSettingsSection() {
   const [passphrase, setPassphrase] = useState('')
 
   const enabled = info?.enabled ?? false
-  const needsPassphrase = info?.needsPassphrase ?? false
+  const needsPassphrase = info?.needs_passphrase ?? false
 
   async function handleEnable() {
     setBusy(true)

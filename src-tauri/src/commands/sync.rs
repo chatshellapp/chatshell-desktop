@@ -59,6 +59,10 @@ pub struct SyncSetupState {
     /// should be shown; the app stays fully usable meanwhile.
     pub needs_passphrase: bool,
     pub container_available: bool,
+    /// A remote sync group already exists (encrypted artifact present):
+    /// joining is the passphrase-unlock path, never a competing bootstrap
+    /// (ADR 04 §3).
+    pub group_exists: bool,
     pub engine_active: bool,
 }
 
@@ -82,7 +86,13 @@ fn current_setup_state(app: &tauri::AppHandle, state: &AppState) -> Result<SyncS
     let wiring = wiring(app)?;
     let settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
     let container = crate::sync::resolve_sync_target(&wiring.app_data_dir);
-    let needs_passphrase = settings.enabled
+    let group_exists = container
+        .as_ref()
+        .is_some_and(|(dir, _)| sync_crypto_state::artifact_path(dir).is_file());
+    // Joining an existing group needs its passphrase regardless of the
+    // enabled flag — a fresh device that never enabled sync must still see
+    // the unlock surface (ADR 04 §3).
+    let needs_passphrase = group_exists
         && container.as_ref().is_some_and(|(dir, _)| {
             matches!(
                 sync_crypto_state::resolve_content_key(&wiring.app_data_dir, dir, &settings),
@@ -100,6 +110,7 @@ fn current_setup_state(app: &tauri::AppHandle, state: &AppState) -> Result<SyncS
         needs_onboarding: !settings.onboarded && settings.declined_count < 2,
         needs_passphrase,
         container_available: container.is_some(),
+        group_exists,
         engine_active,
     })
 }
@@ -145,6 +156,14 @@ pub async fn complete_sync_onboarding(
     let Some((cloud_dir, reason)) = crate::sync::resolve_sync_target(&wiring.app_data_dir) else {
         return Err("No sync target available (iCloud container absent)".into());
     };
+    // A remote artifact means the sync group already exists — joining is
+    // the passphrase-unlock path, never a competing mint (ADR 04 §3).
+    if sync_crypto_state::artifact_path(&cloud_dir).is_file() {
+        return Err(
+            "A synced history already exists on this account — enter its              sync passphrase to join instead"
+                .into(),
+        );
+    }
     let crypto = sync_crypto_state::bootstrap_group(&wiring.app_data_dir, &passphrase)
         .map_err(|e| format!("Failed to bootstrap sync encryption: {e:#}"))?;
     wiring
@@ -197,14 +216,33 @@ pub async fn unlock_sync(
     match sync_crypto_state::unlock_with_passphrase(&wiring.app_data_dir, &cloud_dir, &passphrase) {
         Ok(crypto) => {
             wiring
-                .install_engine(&state.sync_engine, cloud_dir, crypto)
+                .install_engine(&state.sync_engine, cloud_dir.clone(), crypto)
                 .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+            let mut settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+            settings.enabled = true;
+            settings.onboarded = true;
+            settings.needs_unlock = false;
+            sync_crypto_state::save_settings(&wiring.app_data_dir, &settings)
+                .map_err(|e| e.to_string())?;
             let engine = state.sync_engine.clone();
             let db = state.db.clone();
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(err) = crate::sync::run_sync_pass(engine, db, handle).await {
+                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle).await {
                     tracing::warn!("Post-unlock sync pass failed: {err:?}");
+                }
+                // Terminal flush for the join path: this device just
+                // unlocked a group whose local state may be far ahead of
+                // the remote snapshot (e.g. joining with years of local
+                // history). `sync_now` may legitimately report up-to-date
+                // against a stale remote counter and skip shipping — the
+                // unthrottled publish here lands it immediately (the same
+                // policy as the exit publish).
+                if let Ok(mut guard) = engine.lock()
+                    && let Some(engine) = guard.as_mut()
+                    && let Err(err) = engine.publish()
+                {
+                    tracing::warn!("Post-unlock publish failed: {err}");
                 }
             });
             current_setup_state(&app, &state)
@@ -216,6 +254,62 @@ pub async fn unlock_sync(
                 _ => Err(format!("Unlock failed: {err:#}")),
             }
         }
+    }
+}
+
+/// Silent-join attempt for a device facing an existing sync group (ADR 04
+/// §3 rung 1): when the graded ladder already resolves a usable key (iCloud
+/// Keychain item propagated, or a cached chain), adoption + enablement
+/// happen with zero user interaction — the passphrase input is the fallback
+/// this command's error signals to the UI.
+#[tauri::command]
+pub async fn try_join_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SyncSetupState, String> {
+    let wiring = wiring(&app)?;
+    let Some((cloud_dir, _)) = crate::sync::resolve_sync_target(&wiring.app_data_dir) else {
+        return Err("No sync target available".into());
+    };
+    if !sync_crypto_state::artifact_path(&cloud_dir).is_file() {
+        return Err("No existing sync group on this account".into());
+    }
+    let settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+    match sync_crypto_state::resolve_content_key(&wiring.app_data_dir, &cloud_dir, &settings) {
+        sync_crypto_state::CkResolution::Ready(crypto) => {
+            // Adoption from the ladder carries no proof the item is stale;
+            // persist the chain only — never overwrite the keychain item.
+            sync_crypto_state::persist_chain(&wiring.app_data_dir, &crypto)
+                .map_err(|e| e.to_string())?;
+            let mut settings = settings;
+            settings.enabled = true;
+            settings.onboarded = true;
+            settings.needs_unlock = false;
+            sync_crypto_state::save_settings(&wiring.app_data_dir, &settings)
+                .map_err(|e| e.to_string())?;
+            wiring
+                .install_engine(&state.sync_engine, cloud_dir, crypto)
+                .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+            let engine = state.sync_engine.clone();
+            let db = state.db.clone();
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle).await {
+                    tracing::warn!("Post-join sync pass failed: {err:?}");
+                }
+                // The join path ships local state that may be far ahead of
+                // the remote snapshot without waiting for quit/pool writes.
+                if let Ok(mut guard) = engine.lock()
+                    && let Some(engine) = guard.as_mut()
+                    && let Err(err) = engine.publish()
+                {
+                    tracing::warn!("Post-join publish failed: {err}");
+                }
+            });
+            tracing::info!("Joined existing sync group silently (ladder adoption)");
+            current_setup_state(&app, &state)
+        }
+        _ => Err("Passphrase required".into()),
     }
 }
 
