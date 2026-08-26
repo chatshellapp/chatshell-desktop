@@ -1,14 +1,26 @@
-//! Blob sidecar transport (ADR 02).
+//! Blob sidecar transport (ADR 02; Tier 2 carrier is ciphertext per ADR 04
+//! §5).
 //!
 //! Attachment bytes never enter snapshot.db. `files.content_hash` carries a
 //! BLAKE3 hex digest (see `storage::hash_bytes`); the bytes travel as
 //! content-addressed sidecar files (`<cloud>/blobs/<hash>`), uploaded before
 //! any snapshot referencing them, so peers never see a dangling reference
 //! through the normal publish path. Identical content means identical file
-//! name: concurrent uploads from two devices write the same bytes, so iCloud
+//! name, and encryption is deterministic in the digest, so concurrent
+//! uploads from two devices still write byte-identical ciphertext — iCloud
 //! conflict copies and folder-sync conflicts cannot occur.
+//!
+//! Filenames remain `blake3(plaintext)`: dedup, GC, the fetch `gone`
+//! status, and budget logic are untouched. The pre-encrypt
+//! `blake3(plaintext) == filename` assertion lives in core
+//! `sync_crypto::encrypt_blob` (same-name-different-bytes would be GCM
+//! nonce reuse — catastrophic); fetch verifies the hash again after
+//! decryption. Budget accounting uses ciphertext byte counts (the actual
+//! download cost). An unexpected magic is an error, never a plaintext
+//! parse.
 
 use anyhow::Context;
+use chatshell_agent_core::sync_crypto::{ContentKeys, SyncCryptoError};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -58,6 +70,7 @@ pub async fn ensure_referenced_blobs_uploaded(
     db: &crate::db::Database,
     cloud_dir: &Path,
     base_dir: &Path,
+    keys: &ContentKeys,
 ) -> anyhow::Result<usize> {
     let rows = sqlx::query_as::<_, (String, String)>(
         "SELECT storage_path, content_hash FROM files \
@@ -107,10 +120,20 @@ pub async fn ensure_referenced_blobs_uploaded(
             );
             continue;
         }
+        // Encrypt under the content key. The pre-encrypt hash assertion
+        // above is what makes the deterministic per-blob nonce safe; core
+        // re-asserts it (security-critical, single implementation point).
+        let sealed = match chatshell_agent_core::sync_crypto::encrypt_blob(keys, &hash, &bytes) {
+            Ok(sealed) => sealed,
+            Err(err) => {
+                tracing::warn!("Blob {} failed to encrypt; skipped: {err}", hash);
+                continue;
+            }
+        };
         // Temp-in-destination-dir + rename keeps a partial upload from ever
         // being visible under the content-addressed name.
         let tmp = dest.with_extension("tmp-uploading");
-        if std::fs::write(&tmp, &bytes)
+        if std::fs::write(&tmp, &sealed)
             .and_then(|_| std::fs::rename(&tmp, &dest))
             .is_err()
         {
@@ -139,7 +162,8 @@ pub async fn fetch_conversation_blobs(
     cloud_dir: &Path,
     base_dir: &Path,
     conversation_id: &str,
-) -> anyhow::Result<Vec<crate::models::BlobFetchStatus>> {
+    keys: &ContentKeys,
+) -> anyhow::Result<FetchOutcome> {
     let rows = sqlx::query_as::<_, (String, String, String, i64)>(
         "SELECT f.content_hash, f.storage_path, f.mime_type, f.file_size \
          FROM message_attachments ma \
@@ -169,6 +193,7 @@ pub async fn fetch_conversation_blobs(
 
     let mut statuses = Vec::with_capacity(order.len());
     let mut repairs: Vec<(String, String)> = Vec::new();
+    let mut needs_unlock = false;
     let mut item_budget = FETCH_ITEM_BUDGET;
     let mut byte_budget = FETCH_BYTE_BUDGET;
 
@@ -186,7 +211,11 @@ pub async fn fetch_conversation_blobs(
             continue;
         }
 
-        let size = refs.iter().map(|(_, _, s)| *s).max().unwrap_or(0).max(0) as u64;
+        // Budget on ciphertext bytes — the actual download cost (ADR 04 §5).
+        let blob = blob_path(cloud_dir, &hash);
+        let size = std::fs::metadata(&blob)
+            .map(|m| m.len())
+            .unwrap_or_else(|_| refs.iter().map(|(_, _, s)| *s).max().unwrap_or(0).max(0) as u64);
         if item_budget == 0 || size > byte_budget {
             statuses.push(crate::models::BlobFetchStatus {
                 content_hash: hash,
@@ -195,20 +224,38 @@ pub async fn fetch_conversation_blobs(
             continue;
         }
 
-        let blob = blob_path(cloud_dir, &hash);
         match std::fs::read(&blob) {
-            Ok(bytes) if bytes.len() as u64 <= MAX_BLOB_BYTES => {
-                if crate::storage::hash_bytes(&bytes) != hash {
-                    tracing::warn!(
-                        "Blob {} does not match its content hash; not materializing",
-                        hash
-                    );
-                    statuses.push(crate::models::BlobFetchStatus {
-                        content_hash: hash,
-                        status: "gone".into(),
-                    });
-                    continue;
-                }
+            Ok(sealed) if sealed.len() as u64 <= MAX_BLOB_BYTES => {
+                let bytes =
+                    match chatshell_agent_core::sync_crypto::decrypt_blob(keys, &hash, &sealed) {
+                        Ok(bytes) => bytes,
+                        Err(SyncCryptoError::UnknownKeyVersion(version)) => {
+                            // Rotated elsewhere (or this device never learned the
+                            // version): the acquisition ladder must run before
+                            // these bytes can ever materialize.
+                            tracing::warn!(
+                                "Blob {} needs content key v{version}; unlock required",
+                                hash
+                            );
+                            needs_unlock = true;
+                            statuses.push(crate::models::BlobFetchStatus {
+                                content_hash: hash,
+                                status: "gone".into(),
+                            });
+                            continue;
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                "Blob {} failed to decrypt; not materializing: {err}",
+                                hash
+                            );
+                            statuses.push(crate::models::BlobFetchStatus {
+                                content_hash: hash,
+                                status: "gone".into(),
+                            });
+                            continue;
+                        }
+                    };
                 // Derive the local relative path from an existing extension
                 // when available, else from the mime type.
                 let ext = refs
@@ -270,7 +317,19 @@ pub async fn fetch_conversation_blobs(
         .await?;
     }
 
-    Ok(statuses)
+    Ok(FetchOutcome {
+        statuses,
+        needs_unlock,
+    })
+}
+
+/// Result of one fetch pass: per-hash statuses plus whether any blob needed
+/// a content-key version this device does not hold (the acquisition ladder
+/// must run before those bytes can materialize).
+#[derive(Debug, Default)]
+pub struct FetchOutcome {
+    pub statuses: Vec<crate::models::BlobFetchStatus>,
+    pub needs_unlock: bool,
 }
 
 /// Remove orphan blobs older than the grace period: entries in the container
@@ -385,6 +444,15 @@ mod tests {
         (db, cloud, dir)
     }
 
+    fn test_keys() -> chatshell_agent_core::sync_crypto::ContentKeys {
+        let crypto = chatshell_agent_core::sync_crypto::SyncCrypto::bootstrap_with_params(
+            "blob test passphrase",
+            chatshell_agent_core::sync_crypto::ArgonParams::test(),
+        )
+        .unwrap();
+        crypto.keys().clone()
+    }
+
     #[tokio::test]
     async fn uploads_verified_blobs_and_skips_existing() {
         let (db, cloud, _dir) = test_db("upload").await;
@@ -401,16 +469,33 @@ mod tests {
         .await
         .unwrap();
 
-        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud)
+        let keys = test_keys();
+        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud, &keys)
             .await
             .unwrap();
         assert_eq!(uploaded, 1);
-        assert!(cloud.join(BLOB_DIR).join(&hash).exists());
+        let blob = cloud.join(BLOB_DIR).join(&hash);
+        assert!(blob.exists());
+        // The sidecar carries ciphertext, not the plaintext attachment.
+        let raw = std::fs::read(&blob).unwrap();
+        assert_ne!(raw, content);
+        assert_eq!(&raw[..8], chatshell_agent_core::sync_crypto::BLOB_MAGIC);
+        // Deterministic: re-encrypting under the same key yields identical
+        // bytes (concurrent uploads never conflict).
+        assert_eq!(crypto_encrypt_again(&keys, &hash, &content), raw);
         // Second pass: already present, nothing to do.
-        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud)
+        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud, &keys)
             .await
             .unwrap();
         assert_eq!(uploaded, 0);
+    }
+
+    fn crypto_encrypt_again(
+        keys: &chatshell_agent_core::sync_crypto::ContentKeys,
+        hash: &str,
+        content: &[u8],
+    ) -> Vec<u8> {
+        chatshell_agent_core::sync_crypto::encrypt_blob(keys, hash, content).unwrap()
     }
 
     #[tokio::test]
@@ -426,7 +511,7 @@ mod tests {
         .await
         .unwrap();
 
-        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud)
+        let uploaded = ensure_referenced_blobs_uploaded(&db, &cloud, &cloud, &test_keys())
             .await
             .unwrap();
         assert_eq!(uploaded, 0);
@@ -513,7 +598,15 @@ mod tests {
         let content = b"fetched-bytes".to_vec();
         let hash = crate::storage::hash_bytes(&content);
         std::fs::create_dir_all(cloud.join(BLOB_DIR)).unwrap();
-        std::fs::write(cloud.join(BLOB_DIR).join(&hash), &content).unwrap();
+        // Seed the sidecar the way the upload path now writes it: ciphertext.
+        let crypto = chatshell_agent_core::sync_crypto::SyncCrypto::bootstrap_with_params(
+            "blob test passphrase",
+            chatshell_agent_core::sync_crypto::ArgonParams::test(),
+        )
+        .unwrap();
+        let sealed = crypto.encrypt_blob(&hash, &content).unwrap();
+        std::fs::write(cloud.join(BLOB_DIR).join(&hash), &sealed).unwrap();
+        let keys = crypto.keys().clone();
         // iOS-authored row: absolute path into a foreign sandbox.
         seed_conversation(&db, "c1", "2026-01-02T00:00:00Z", &[(&hash.clone(), 13)]).await;
         sqlx::query("UPDATE files SET storage_path = '/var/mobile/sandbox/files/x.png' WHERE content_hash = ?1")
@@ -522,11 +615,12 @@ mod tests {
             .await
             .unwrap();
 
-        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1")
+        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1", &keys)
             .await
             .unwrap();
-        assert_eq!(statuses.len(), 1);
-        assert_eq!(statuses[0].status, "fetched");
+        assert_eq!(statuses.statuses.len(), 1);
+        assert_eq!(statuses.statuses[0].status, "fetched");
+        assert!(!statuses.needs_unlock);
         // Bytes materialized at the hash-derived relative path; the row now
         // points there instead of the foreign sandbox path.
         assert!(attach.join("files").join(format!("{hash}.png")).exists());
@@ -538,10 +632,10 @@ mod tests {
                 .unwrap();
         assert_eq!(stored, format!("files/{hash}.png"));
         // Second pass: cached, no rework.
-        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1")
+        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1", &keys)
             .await
             .unwrap();
-        assert_eq!(statuses[0].status, "cached");
+        assert_eq!(statuses.statuses[0].status, "cached");
     }
 
     #[tokio::test]
@@ -551,11 +645,11 @@ mod tests {
         let hash = crate::storage::hash_bytes(b"never-shipped");
         seed_conversation(&db, "c1", "2026-01-02T00:00:00Z", &[(&hash.clone(), 13)]).await;
 
-        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1")
+        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1", &test_keys())
             .await
             .unwrap();
-        assert_eq!(statuses.len(), 1);
-        assert_eq!(statuses[0].status, "gone");
+        assert_eq!(statuses.statuses.len(), 1);
+        assert_eq!(statuses.statuses[0].status, "gone");
     }
 
     #[tokio::test]
@@ -574,10 +668,10 @@ mod tests {
         )
         .await;
 
-        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1")
+        let statuses = fetch_conversation_blobs(&db, &cloud, &attach, "c1", &test_keys())
             .await
             .unwrap();
-        assert_eq!(statuses[0].status, "skipped");
+        assert_eq!(statuses.statuses[0].status, "skipped");
         assert!(!attach.join("files").exists());
     }
 }

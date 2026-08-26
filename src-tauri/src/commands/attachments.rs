@@ -1,6 +1,7 @@
 use super::AppState;
 use crate::blob_sync;
 use crate::models::{BlobFetchStatus, FileAttachment, UserAttachment};
+use tauri::Manager as _;
 use tauri::State;
 
 // ==========================================================================
@@ -41,22 +42,46 @@ pub async fn fetch_conversation_blobs(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Vec<BlobFetchStatus>, String> {
-    let cloud_dir = {
+    let (cloud_dir, keys) = {
         let guard = state
             .sync_engine
             .lock()
             .map_err(|_| "sync engine poisoned".to_string())?;
-        guard
-            .as_ref()
-            .map(|engine| engine.cloud_dir().to_path_buf())
+        match guard.as_ref() {
+            Some(engine) => (
+                Some(engine.cloud_dir().to_path_buf()),
+                engine.crypto().map(|c| c.keys().clone()),
+            ),
+            None => (None, None),
+        }
     };
     let Some(cloud_dir) = cloud_dir else {
         // Sync disabled: every local row is already materialized by
         // construction, nothing to fetch.
         return Ok(Vec::new());
     };
+    let Some(keys) = keys else {
+        // Engine without crypto state (debug staging): nothing decryptable
+        // to fetch.
+        return Ok(Vec::new());
+    };
     let attach_dir = crate::storage::get_attachments_dir(&app).map_err(|e| e.to_string())?;
-    blob_sync::fetch_conversation_blobs(&state.db, &cloud_dir, &attach_dir, &conversation_id)
-        .await
-        .map_err(|e| e.to_string())
+    let outcome = blob_sync::fetch_conversation_blobs(
+        &state.db,
+        &cloud_dir,
+        &attach_dir,
+        &conversation_id,
+        &keys,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if outcome.needs_unlock {
+        let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        crate::sync_crypto_state::enter_needs_unlock(&app_data_dir);
+        use tauri::Emitter;
+        if let Err(err) = app.emit("sync-locked", ()) {
+            tracing::warn!("Failed to emit sync-locked: {err}");
+        }
+    }
+    Ok(outcome.statuses)
 }

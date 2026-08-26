@@ -1,0 +1,47 @@
+{
+  "onboarding": {
+    "title": "在多台设备间同步你的对话",
+    "description": "对话通过 iCloud Drive 同步，端到端加密。",
+    "explainer": "ChatShell 可以让你拥有的每台设备上的对话历史保持一致，使用你现有的 iCloud Drive 空间。云端副本使用永不离开你设备的密钥加密。",
+    "pointEncrypted": "快照与附件以密文传输；云服务提供商只能看到加密数据。",
+    "pointOffDevice": "随时可以在设置中关闭；你的其他设备继续正常同步。",
+    "passphraseTitle": "保存你的同步口令",
+    "passphraseGuidance": "请写下或存入密码管理器。此口令无法从应用中找回。",
+    "confirmSaved": "我已将口令保存在安全的地方",
+    "recoveryEducation": "此口令用于在新设备上解锁云端历史。如果遗失，已加入的设备不受影响，但云端备份无法在新设备上恢复。",
+    "copy": "复制",
+    "copied": "口令已复制",
+    "begin": "设置加密",
+    "enable": "开启同步",
+    "decline": "暂不开启",
+    "enabled": "同步已开启 — 已加密并在后台运行",
+    "error": "同步加密设置失败"
+  },
+  "locked": {
+    "banner": "历史已锁定 — 云同步正在等待你的同步口令。本设备上的一切照常可用。",
+    "action": "输入口令",
+    "dialogTitle": "解锁同步",
+    "dialogDescription": "输入首次开启同步时保存的同步口令。它将解包云端历史的加密密钥。",
+    "placeholder": "同步口令",
+    "unlock": "解锁",
+    "unlocked": "同步已解锁 — 正在拉取云端历史"
+  },
+  "settings": {
+    "title": "云同步",
+    "description": "通过 iCloud Drive 的加密对话同步。云端副本在没有你设备上持有的密钥时无法读取。",
+    "statusEnabled": "同步已开启。",
+    "statusDisabled": "同步已关闭。",
+    "statusLocked": "正在等待你的同步口令。",
+    "enable": "开启同步",
+    "stopPublishing": "停止发布",
+    "rotateKey": "轮换加密密钥",
+    "rotateTitle": "轮换同步加密密钥",
+    "rotateDescription": "适用于疑似密钥泄露或设备丢失。轮换后的新快照与附件将不受旧密钥持有者影响；轮换前写入的数据对其仍可读。输入同步口令以确认。",
+    "rotateConfirm": "轮换密钥",
+    "deleteCloudData": "删除云端数据",
+    "deleteTitle": "删除云端数据？",
+    "deleteDescription": "这将从 iCloud Drive 移除加密快照与附件存储。你的其他设备将停止接收更新。本设备上的数据不受影响。此操作不可撤销。",
+    "deleteCancel": "取消",
+    "deleteConfirm": "删除云端数据"
+  }
+}

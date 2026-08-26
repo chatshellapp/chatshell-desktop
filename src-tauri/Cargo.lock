@@ -199,6 +199,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "argon2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
+dependencies = [
+ "base64ct",
+ "blake2",
+ "cpufeatures",
+ "password-hash",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1156,6 +1168,7 @@ dependencies = [
  "ab_glyph",
  "aes-gcm",
  "anyhow",
+ "argon2",
  "async-stream",
  "base64 0.22.1",
  "blake3",
@@ -1164,6 +1177,7 @@ dependencies = [
  "futures",
  "grep-regex",
  "grep-searcher",
+ "hkdf",
  "htmd",
  "ignore",
  "nanoid",
@@ -1179,6 +1193,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -6770,6 +6785,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
 ]
 
 [[package]]

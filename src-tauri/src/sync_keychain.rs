@@ -25,6 +25,10 @@ use security_framework_sys::item::kSecAttrAccessGroup;
 
 const SERVICE: &str = "app.chatshell.sync";
 const ACCOUNT: &str = "master_encryption_key";
+/// Account of the content-key (CK) item — a dedicated synchronizable item
+/// separate from the master key's (ADR 04 §3: the CK lives in its own item
+/// so the two failure radii stay independent).
+pub const CONTENT_KEY_ACCOUNT: &str = "content_key";
 /// Suffix of the shared keychain group; the full identifier is
 /// `<team>.app.chatshell.sync`, identical on iOS (`ProviderKeySync`).
 const SYNC_ACCESS_GROUP_SUFFIX: &str = "app.chatshell.sync";
@@ -35,9 +39,9 @@ fn sync_access_group() -> Option<String> {
     option_env!("CHATSHELL_TEAM_ID").map(|team| format!("{team}.{SYNC_ACCESS_GROUP_SUFFIX}"))
 }
 
-fn shared_group_options() -> Option<PasswordOptions> {
+fn shared_group_options_for(account: &str) -> Option<PasswordOptions> {
     let group = sync_access_group()?;
-    let mut options = PasswordOptions::new_generic_password(SERVICE, ACCOUNT);
+    let mut options = PasswordOptions::new_generic_password(SERVICE, account);
     options.set_access_synchronized(Some(true));
     // security-framework's PasswordOptions has no access-group builder; the
     // query vec is public-but-deprecated, so push the attribute directly.
@@ -45,6 +49,40 @@ fn shared_group_options() -> Option<PasswordOptions> {
     #[allow(deprecated)]
     options.query.push((key, CFString::new(&group).as_CFType()));
     Some(options)
+}
+
+fn shared_group_options() -> Option<PasswordOptions> {
+    shared_group_options_for(ACCOUNT)
+}
+
+fn content_key_options() -> Option<PasswordOptions> {
+    shared_group_options_for(CONTENT_KEY_ACCOUNT)
+}
+
+/// Write a base64 value to the iCloud-synchronizable content-key item.
+/// Idempotent. No-ops (logged) when the build lacked the team injection.
+pub fn set_synchronizable_content_key(value_b64: &str) -> Result<()> {
+    let Some(options) = content_key_options() else {
+        tracing::warn!(
+            "CHATSHELL_TEAM_ID missing at build time — skipping the \
+             synchronizable content key write"
+        );
+        return Ok(());
+    };
+    passwords::set_generic_password_options(value_b64.as_bytes(), options)
+        .context("set synchronizable content key in keychain")?;
+    Ok(())
+}
+
+/// Read the content key from its synchronizable item, if present and
+/// readable. Errors degrade to `None` — an invisible transport item is a
+/// ladder miss, not a failure.
+pub fn get_synchronizable_content_key() -> Option<String> {
+    let options = content_key_options()?;
+    match passwords::generic_password(options) {
+        Ok(data) => String::from_utf8(data).ok().filter(|v| !v.is_empty()),
+        Err(_) => None,
+    }
 }
 
 /// Write the base64-encoded master key to the iCloud-synchronizable keychain.

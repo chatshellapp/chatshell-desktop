@@ -12,6 +12,7 @@ mod search;
 pub mod skills;
 pub mod storage;
 pub mod sync;
+pub mod sync_crypto_state;
 #[cfg(target_os = "macos")]
 pub mod sync_keychain;
 mod thinking_parser;
@@ -176,35 +177,28 @@ pub fn run() {
                     tracing::warn!("Failed to store sync master key: {err:?}");
                 }
             }
-
-            // Snapshot sync against the iCloud container. When Apple hasn't
-            // provisioned it yet (or on machines without iCloud), fall back
-            // to a local staging dir so publish/sync_now stay exercisable -
-            // the engine only needs a writable directory.
-            let sync_target = sync::detect_icloud_container()
-                .map(|dir| (dir, "iCloud container".to_string()))
-                .or_else(|| {
-                    let staging = app_data_dir.join("sync-staging");
-                    std::fs::create_dir_all(&staging)
-                        .ok()
-                        .map(|_| (staging, "local staging dir".to_string()))
-                });
-            let sync_engine = match sync_target
-                .map(|(dir, reason)| sync::SyncEngine::new(&db_path, dir).map(|e| (e, reason)))
-            {
-                Some(Ok((engine, reason))) => {
-                    tracing::info!("Snapshot sync enabled ({reason})");
-                    Some(engine)
-                }
-                Some(Err(err)) => {
-                    tracing::warn!("Snapshot sync disabled: {err}");
-                    None
-                }
-                None => {
-                    tracing::warn!("Snapshot sync disabled: no sync target available");
-                    None
-                }
+            // Snapshot sync (ADR 04 §7): explicit opt-in — silent-on is
+            // rejected. The engine exists only while sync is enabled AND
+            // the graded content-key ladder resolves (Keychain item →
+            // cached chain → retry-on-tick → passphrase banner); the tick
+            // re-runs the ladder so iCloud Keychain propagation delay
+            // never strands the device. Debug builds keep a local staging
+            // fallback; release builds are structurally off without the
+            // iCloud container.
+            let app_cache_dir = app
+                .path()
+                .app_cache_dir()
+                .expect("FATAL: Failed to get app cache directory")
+                .join("sync-stage");
+            std::fs::create_dir_all(&app_cache_dir).ok();
+            let sync_wiring = sync::SyncWiring {
+                app_data_dir: app_data_dir.clone(),
+                db_path: db_path.clone(),
+                cache_dir: app_cache_dir,
             };
+            let sync_engine: sync::SyncEngineHandle =
+                Arc::new(std::sync::Mutex::new(None));
+            sync_wiring.ensure_engine(app.handle(), &sync_engine);
 
             let app_state = AppState {
                 db,
@@ -213,19 +207,22 @@ pub fn run() {
                 pending_oauth: Arc::new(RwLock::new(HashMap::new())),
                 bash_session_manager: Arc::new(BashSessionManager::new()),
                 capabilities_cache,
-                sync_engine: Arc::new(std::sync::Mutex::new(sync_engine)),
+                sync_engine: sync_engine.clone(),
             };
 
             // Pull remote changes shortly after startup, then keep ticking
             // on an interval so mid-session changes converge without waiting
-            // for the next relaunch. Idle passes are near-free (the engine
-            // skips publishing unless the pool wrote since the last one).
+            // for the next relaunch. Idle passes are near-free (header-only
+            // compare + dirty detection), and each tick re-runs the content
+            // key ladder before the pass — the ADR 04 backoff.
             {
                 let engine = app_state.sync_engine.clone();
                 let db = app_state.db.clone();
                 let handle = app.handle().clone();
+                let wiring = sync_wiring.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    wiring.ensure_engine(&handle, &engine);
                     if let Err(err) =
                         sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
                     {
@@ -235,6 +232,7 @@ pub fn run() {
                     ticker.tick().await; // consume the immediate first tick
                     loop {
                         ticker.tick().await;
+                        wiring.ensure_engine(&handle, &engine);
                         if let Err(err) =
                             sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
                         {
@@ -380,6 +378,14 @@ pub fn run() {
             commands::toggle_mcp_server,
             commands::set_all_tools_enabled,
             commands::sync_now,
+            commands::get_sync_setup_state,
+            commands::start_sync_onboarding,
+            commands::complete_sync_onboarding,
+            commands::decline_sync_onboarding,
+            commands::unlock_sync,
+            commands::enable_sync,
+            commands::disable_sync,
+            commands::rotate_sync_key,
             commands::test_mcp_connection,
             commands::test_mcp_stdio_connection,
             commands::disconnect_mcp_server,
@@ -422,12 +428,15 @@ pub fn run() {
                 // the latest local state. New attachment bytes go first:
                 // blobs-before-snapshots keeps peer references dangling-free.
                 if let Ok(mut guard) = state.sync_engine.lock() {
-                    let cloud_dir = guard
-                        .as_ref()
-                        .map(|engine| engine.cloud_dir().to_path_buf());
-                    if let Some(dir) = cloud_dir
-                        && let Ok(attach_dir) =
-                            crate::storage::get_attachments_dir(app_handle)
+                    let (cloud_dir, keys) = match guard.as_ref() {
+                        Some(engine) => (
+                            Some(engine.cloud_dir().to_path_buf()),
+                            engine.crypto().map(|c| c.keys().clone()),
+                        ),
+                        None => (None, None),
+                    };
+                    if let (Some(dir), Some(keys)) = (cloud_dir, keys)
+                        && let Ok(attach_dir) = crate::storage::get_attachments_dir(app_handle)
                     {
                         let db = state.db.clone();
                         if let Err(err) = tauri::async_runtime::block_on(
@@ -435,6 +444,7 @@ pub fn run() {
                                 &db,
                                 &dir,
                                 &attach_dir,
+                                &keys,
                             ),
                         ) {
                             tracing::warn!("Final blob upload failed: {err:#}");

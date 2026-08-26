@@ -19,12 +19,22 @@ import { Toaster } from '@/components/ui/sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppInit } from '@/hooks/useAppInit'
 import { OnboardingDialog } from '@/components/onboarding-dialog'
+import { SyncOnboardingDialog } from '@/components/sync/sync-onboarding-dialog'
+import { SyncLockedBanner } from '@/components/sync/sync-locked-banner'
+import { useSyncSetupStore } from '@/stores/syncSetupStore'
 
 export function ChatPage() {
   const { t } = useTranslation()
   // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError, keychainAvailable } = useAppInit()
   const [showKeychainWarning, setShowKeychainWarning] = useState(true)
+
+  // Sync enablement state (ADR 04): drives the onboarding card and the
+  // history-locked banner.
+  const loadSyncSetup = useSyncSetupStore((state) => state.load)
+  useEffect(() => {
+    loadSyncSetup()
+  }, [loadSyncSetup])
 
   // Prevent default browser drag-drop behavior (which opens files)
   // This allows only the chat-input component to handle file drops
@@ -109,6 +119,7 @@ export function ChatPage() {
               </BreadcrumbList>
             </Breadcrumb>
           </header>
+          <SyncLockedBanner />
           {!keychainAvailable && showKeychainWarning && (
             <div className="flex items-center justify-between gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
               <div className="flex items-center gap-2">
@@ -129,6 +140,7 @@ export function ChatPage() {
       </SidebarProvider>
       <Toaster position="top-center" />
       <OnboardingDialog />
+      <SyncOnboardingDialog />
       <SearchDialog />
     </>
   )

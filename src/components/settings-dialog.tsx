@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Bot,
   Check,
+  Cloud,
   ChevronDown,
   Eye,
   EyeOff,
@@ -85,6 +86,7 @@ import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i1
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
+import { SyncSettingsSection } from '@/components/sync/sync-settings-section'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 const data = {
@@ -96,6 +98,7 @@ const data = {
     { name: 'conversationTitle', icon: Heading },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
+    { name: 'sync', icon: Cloud },
     { name: 'language', icon: Globe },
     { name: 'advanced', icon: Settings },
     // { name: 'Navigation', icon: Menu },
@@ -1100,6 +1103,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         </div>
       )
+    }
+
+    if (activeSection === 'sync') {
+      return <SyncSettingsSection />
     }
 
     if (activeSection === 'language') {

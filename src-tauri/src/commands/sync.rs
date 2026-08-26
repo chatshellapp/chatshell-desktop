@@ -39,3 +39,254 @@ pub async fn sync_now(
         },
     })
 }
+
+// ==========================================================================
+// Sync enablement lifecycle (ADR 04 §7)
+// ==========================================================================
+
+use crate::sync_crypto_state;
+use tauri::Manager;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncSetupState {
+    pub enabled: bool,
+    pub onboarded: bool,
+    /// The onboarding card should be shown (enabled never chosen, and the
+    /// re-ask budget not exhausted: once more at next launch, then settings
+    /// only — ADR 04 §7).
+    pub needs_onboarding: bool,
+    /// The non-blocking "history locked — enter sync passphrase" banner
+    /// should be shown; the app stays fully usable meanwhile.
+    pub needs_passphrase: bool,
+    pub container_available: bool,
+    pub engine_active: bool,
+}
+
+fn wiring(app: &tauri::AppHandle) -> Result<crate::sync::SyncWiring, String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let db_path = app_data_dir.join("data.db");
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("sync-stage");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    Ok(crate::sync::SyncWiring {
+        app_data_dir,
+        db_path,
+        cache_dir,
+    })
+}
+
+fn current_setup_state(app: &tauri::AppHandle, state: &AppState) -> Result<SyncSetupState, String> {
+    let wiring = wiring(app)?;
+    let settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+    let container = crate::sync::resolve_sync_target(&wiring.app_data_dir);
+    let needs_passphrase = settings.enabled
+        && container.as_ref().is_some_and(|(dir, _)| {
+            matches!(
+                sync_crypto_state::resolve_content_key(&wiring.app_data_dir, dir, &settings),
+                sync_crypto_state::CkResolution::NeedPassphrase
+            )
+        });
+    let engine_active = state
+        .sync_engine
+        .lock()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false);
+    Ok(SyncSetupState {
+        enabled: settings.enabled,
+        onboarded: settings.onboarded,
+        needs_onboarding: !settings.onboarded && settings.declined_count < 2,
+        needs_passphrase,
+        container_available: container.is_some(),
+        engine_active,
+    })
+}
+
+#[tauri::command]
+pub async fn get_sync_setup_state(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SyncSetupState, String> {
+    current_setup_state(&app, &state)
+}
+
+#[derive(Debug, Serialize)]
+pub struct SyncPassphrase {
+    pub passphrase: String,
+}
+
+/// Step 1 of the onboarding confirmation: generate the high-entropy
+/// diceware-style group passphrase and show it once with save guidance
+/// (ADR 04 §3). The frontend passes the user-confirmed passphrase back to
+/// `complete_sync_onboarding`.
+#[tauri::command]
+pub async fn start_sync_onboarding() -> Result<SyncPassphrase, String> {
+    Ok(SyncPassphrase {
+        passphrase: chatshell_agent_core::sync_crypto::generate_passphrase(),
+    })
+}
+
+/// Step 2: consent + passphrase bootstrap + enablement. One confirmation
+/// merges the three jobs (ADR 04 §7): consent, CK bootstrap, and recovery
+/// education (the UI copy around the passphrase display).
+#[tauri::command]
+pub async fn complete_sync_onboarding(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    passphrase: String,
+) -> Result<SyncSetupState, String> {
+    let passphrase = passphrase.trim().to_string();
+    if passphrase.len() < 12 {
+        return Err("Passphrase is too short".into());
+    }
+    let wiring = wiring(&app)?;
+    let Some((cloud_dir, reason)) = crate::sync::resolve_sync_target(&wiring.app_data_dir) else {
+        return Err("No sync target available (iCloud container absent)".into());
+    };
+    let crypto = sync_crypto_state::bootstrap_group(&wiring.app_data_dir, &passphrase)
+        .map_err(|e| format!("Failed to bootstrap sync encryption: {e:#}"))?;
+    wiring
+        .install_engine(&state.sync_engine, cloud_dir, crypto)
+        .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+    let mut settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+    settings.enabled = true;
+    settings.onboarded = true;
+    settings.needs_unlock = false;
+    sync_crypto_state::save_settings(&wiring.app_data_dir, &settings).map_err(|e| e.to_string())?;
+    tracing::info!("Sync enabled via onboarding ({reason})");
+    // Ship the first pass without waiting for the startup-delayed tick.
+    let engine = state.sync_engine.clone();
+    let db = state.db.clone();
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = crate::sync::run_sync_pass(engine, db, handle).await {
+            tracing::warn!("Post-onboarding sync pass failed: {err:?}");
+        }
+    });
+    current_setup_state(&app, &state)
+}
+
+#[tauri::command]
+pub async fn decline_sync_onboarding(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SyncSetupState, String> {
+    let wiring = wiring(&app)?;
+    let mut settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+    settings.enabled = false;
+    settings.declined_count += 1;
+    sync_crypto_state::save_settings(&wiring.app_data_dir, &settings).map_err(|e| e.to_string())?;
+    current_setup_state(&app, &state)
+}
+/// Ladder rung 4: the user entered the sync passphrase after the
+/// "history locked" banner (or a settings unlock). Unwraps the artifact's
+/// slot chain, persists it, and immediately runs a pass so the unlocked
+/// history lands in this session.
+#[tauri::command]
+pub async fn unlock_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    passphrase: String,
+) -> Result<SyncSetupState, String> {
+    let wiring = wiring(&app)?;
+    let Some((cloud_dir, _)) = crate::sync::resolve_sync_target(&wiring.app_data_dir) else {
+        return Err("No sync target available".into());
+    };
+    match sync_crypto_state::unlock_with_passphrase(&wiring.app_data_dir, &cloud_dir, &passphrase) {
+        Ok(crypto) => {
+            wiring
+                .install_engine(&state.sync_engine, cloud_dir, crypto)
+                .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+            let engine = state.sync_engine.clone();
+            let db = state.db.clone();
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = crate::sync::run_sync_pass(engine, db, handle).await {
+                    tracing::warn!("Post-unlock sync pass failed: {err:?}");
+                }
+            });
+            current_setup_state(&app, &state)
+        }
+        Err(err) => {
+            use chatshell_agent_core::sync_crypto::SyncCryptoError;
+            match err.downcast_ref::<SyncCryptoError>() {
+                Some(SyncCryptoError::Auth) => Err("Wrong passphrase".into()),
+                _ => Err(format!("Unlock failed: {err:#}")),
+            }
+        }
+    }
+}
+
+/// Two-tier disable (ADR 04 §7): stop publishing (default — the peers' sync
+/// group is untouched) versus delete my cloud data (destructive, separately
+/// confirmed in the UI, multi-device warning).
+#[tauri::command]
+pub async fn disable_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    delete_cloud_data: bool,
+) -> Result<String, String> {
+    let wiring = wiring(&app)?;
+    let cloud_dir = crate::sync::resolve_sync_target(&wiring.app_data_dir).map(|(dir, _)| dir);
+    let summary = sync_crypto_state::disable_sync(
+        &wiring.app_data_dir,
+        cloud_dir.as_deref(),
+        delete_cloud_data,
+    )
+    .map_err(|e| format!("Disable failed: {e:#}"))?;
+    wiring.drop_engine(&state.sync_engine);
+    Ok(summary)
+}
+
+/// Re-enable after onboarding was completed earlier (settings toggle).
+#[tauri::command]
+pub async fn enable_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<SyncSetupState, String> {
+    let wiring = wiring(&app)?;
+    let mut settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
+    if !settings.onboarded {
+        return Err("Complete onboarding first".into());
+    }
+    settings.enabled = true;
+    sync_crypto_state::save_settings(&wiring.app_data_dir, &settings).map_err(|e| e.to_string())?;
+    wiring.ensure_engine(&app, &state.sync_engine);
+    current_setup_state(&app, &state)
+}
+
+/// Explicit content-key rotation (suspected compromise, lost device).
+/// Forward-only revocation — see ADR 04 §5. Requires the group passphrase
+/// to wrap the new key.
+#[tauri::command]
+pub async fn rotate_sync_key(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    passphrase: String,
+) -> Result<String, String> {
+    let wiring = wiring(&app)?;
+    let cloud_dir = crate::sync::resolve_sync_target(&wiring.app_data_dir).map(|(dir, _)| dir);
+    let Some(cloud_dir) = cloud_dir else {
+        return Err("No sync target available".into());
+    };
+    let crypto =
+        sync_crypto_state::rotate_content_key(&wiring.app_data_dir, &cloud_dir, &passphrase)
+            .map_err(|e| {
+                use chatshell_agent_core::sync_crypto::SyncCryptoError;
+                match e.downcast_ref::<SyncCryptoError>() {
+                    Some(SyncCryptoError::Auth) => "Wrong passphrase".to_string(),
+                    _ => format!("Rotation failed: {e:#}"),
+                }
+            })?;
+    wiring
+        .install_engine(&state.sync_engine, cloud_dir, crypto)
+        .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+    Ok(
+        "Content key rotated. New snapshots and attachments are protected \
+        from any holder of the old key; data written before the rotation \
+        stays readable to them."
+            .into(),
+    )
+}
