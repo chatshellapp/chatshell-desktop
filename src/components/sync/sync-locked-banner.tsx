@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { syncErrorCopy } from '@/lib/sync-error'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 
 /**
@@ -25,18 +26,19 @@ export function SyncLockedBanner() {
   const [open, setOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState(false)
-
+  const [errorText, setErrorText] = useState<string | null>(null)
   if (!lockedEvent) return null
 
   async function handleUnlock() {
     setBusy(true)
+    setErrorText(null)
     try {
       await unlock(passphrase)
       setPassphrase('')
       setOpen(false)
       toast.success(t('locked.unlocked'))
     } catch (err) {
-      toast.error(String(err))
+      setErrorText(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -67,6 +69,7 @@ export function SyncLockedBanner() {
             onKeyDown={(e) => e.key === 'Enter' && passphrase && handleUnlock()}
             placeholder={t('locked.placeholder')}
           />
+          {errorText && <p className="text-sm text-red-500">{errorText}</p>}
           <DialogFooter>
             <Button onClick={handleUnlock} disabled={!passphrase || busy}>
               {t('locked.unlock')}

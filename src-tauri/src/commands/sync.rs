@@ -47,6 +47,60 @@ pub async fn sync_now(
 use crate::sync_crypto_state;
 use tauri::Manager;
 
+/// Machine-readable error contract for the sync passphrase commands
+/// (`unlock_sync`, `rotate_sync_key`). The frontend maps `code` to
+/// user-facing copy — the same mapping the iOS app applies in
+/// `SyncErrorCopy` — instead of surfacing raw error strings.
+#[derive(Debug, thiserror::Error, Serialize)]
+#[error("{message}")]
+pub struct SyncCommandError {
+    pub code: SyncErrorCode,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncErrorCode {
+    /// The entered passphrase does not unwrap the artifact slots (an AEAD
+    /// open failure — wrong passphrase and tampered data are
+    /// indistinguishable by design).
+    WrongPassphrase,
+    /// The remote artifact cannot be parsed: corrupt, or written by a newer
+    /// app version (unknown format / key version).
+    CorruptData,
+    /// Anything else; `message` carries the raw detail for diagnostics.
+    Failed,
+}
+
+impl SyncCommandError {
+    /// Map a crypto-layer failure into the code the frontend renders.
+    fn map_crypto(err: &anyhow::Error, context: &str) -> Self {
+        use chatshell_agent_core::sync_crypto::SyncCryptoError;
+        match err.downcast_ref::<SyncCryptoError>() {
+            Some(SyncCryptoError::Auth | SyncCryptoError::WrongPassphrase) => Self {
+                code: SyncErrorCode::WrongPassphrase,
+                message: "wrong passphrase".into(),
+            },
+            Some(
+                SyncCryptoError::Corrupt(_)
+                | SyncCryptoError::UnsupportedFormat(_)
+                | SyncCryptoError::UnknownKeyVersion(_),
+            ) => Self {
+                code: SyncErrorCode::CorruptData,
+                message: err.to_string(),
+            },
+            _ => Self::failed(context, format_args!("{err:#}")),
+        }
+    }
+
+    fn failed(context: &str, detail: impl std::fmt::Display) -> Self {
+        Self {
+            code: SyncErrorCode::Failed,
+            message: format!("{context}: {detail}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncSetupState {
     pub enabled: bool,
@@ -208,22 +262,31 @@ pub async fn unlock_sync(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     passphrase: String,
-) -> Result<SyncSetupState, String> {
-    let wiring = wiring(&app)?;
+) -> Result<SyncSetupState, SyncCommandError> {
+    let wiring =
+        wiring(&app).map_err(|e| SyncCommandError::failed("Failed to resolve the app paths", e))?;
     let Some((cloud_dir, _)) = crate::sync::resolve_sync_target(&wiring.app_data_dir) else {
-        return Err("No sync target available".into());
+        return Err(SyncCommandError::failed(
+            "No sync target available",
+            "iCloud container absent",
+        ));
     };
     match sync_crypto_state::unlock_with_passphrase(&wiring.app_data_dir, &cloud_dir, &passphrase) {
         Ok(crypto) => {
             wiring
                 .install_engine(&state.sync_engine, cloud_dir.clone(), crypto)
-                .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+                .map_err(|e| {
+                    SyncCommandError::failed(
+                        "Failed to construct the sync engine",
+                        format_args!("{e:#}"),
+                    )
+                })?;
             let mut settings = sync_crypto_state::load_settings(&wiring.app_data_dir);
             settings.enabled = true;
             settings.onboarded = true;
             settings.needs_unlock = false;
             sync_crypto_state::save_settings(&wiring.app_data_dir, &settings)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| SyncCommandError::failed("Failed to persist sync settings", e))?;
             let engine = state.sync_engine.clone();
             let db = state.db.clone();
             let handle = app.clone();
@@ -246,14 +309,9 @@ pub async fn unlock_sync(
                 }
             });
             current_setup_state(&app, &state)
+                .map_err(|e| SyncCommandError::failed("Failed to read the sync state", e))
         }
-        Err(err) => {
-            use chatshell_agent_core::sync_crypto::SyncCryptoError;
-            match err.downcast_ref::<SyncCryptoError>() {
-                Some(SyncCryptoError::Auth) => Err("Wrong passphrase".into()),
-                _ => Err(format!("Unlock failed: {err:#}")),
-            }
-        }
+        Err(err) => Err(SyncCommandError::map_crypto(&err, "Unlock failed")),
     }
 }
 
@@ -359,24 +417,24 @@ pub async fn rotate_sync_key(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     passphrase: String,
-) -> Result<String, String> {
-    let wiring = wiring(&app)?;
+) -> Result<String, SyncCommandError> {
+    let wiring =
+        wiring(&app).map_err(|e| SyncCommandError::failed("Failed to resolve the app paths", e))?;
     let cloud_dir = crate::sync::resolve_sync_target(&wiring.app_data_dir).map(|(dir, _)| dir);
     let Some(cloud_dir) = cloud_dir else {
-        return Err("No sync target available".into());
+        return Err(SyncCommandError::failed(
+            "No sync target available",
+            "iCloud container absent",
+        ));
     };
     let crypto =
         sync_crypto_state::rotate_content_key(&wiring.app_data_dir, &cloud_dir, &passphrase)
-            .map_err(|e| {
-                use chatshell_agent_core::sync_crypto::SyncCryptoError;
-                match e.downcast_ref::<SyncCryptoError>() {
-                    Some(SyncCryptoError::Auth) => "Wrong passphrase".to_string(),
-                    _ => format!("Rotation failed: {e:#}"),
-                }
-            })?;
+            .map_err(|e| SyncCommandError::map_crypto(&e, "Rotation failed"))?;
     wiring
         .install_engine(&state.sync_engine, cloud_dir, crypto)
-        .map_err(|e| format!("Failed to construct the sync engine: {e:#}"))?;
+        .map_err(|e| {
+            SyncCommandError::failed("Failed to construct the sync engine", format_args!("{e:#}"))
+        })?;
     Ok(
         "Content key rotated. New snapshots and attachments are protected \
         from any holder of the old key; data written before the rotation \

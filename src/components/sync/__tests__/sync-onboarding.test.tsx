@@ -262,6 +262,44 @@ describe('sync onboarding embedded in the general onboarding flow', () => {
     expect(useSyncSetupStore.getState().info?.needs_onboarding).toBe(false)
   })
 
+  it('shows the iOS-parity guidance inline when the join passphrase is wrong', async () => {
+    // Silent adoption rejected (passphrase rung) → the join input renders;
+    // a typed wrong-passphrase rejection must surface as inline guidance
+    // copy, not a raw backend toast.
+    mockInvokeByCommand({})
+    // Lazy rejections: an eagerly-created rejected promise would trip the
+    // unhandled-rejection detector before the component attaches its catch.
+    mockedInvoke.mockImplementation(((
+      cmd: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) =>
+      Promise.reject(
+        cmd === 'try_join_sync' || cmd === 'unlock_sync'
+          ? { code: 'wrongPassphrase', message: 'wrong passphrase' }
+          : new Error(`unexpected command ${cmd}`)
+      )) as never)
+    useSyncSetupStore.setState({ info: syncInfo({ group_exists: true }) })
+    useOnboardingStore.setState({
+      step: 'sync',
+      isDialogOpen: true,
+      flowOwnsSyncOffer: true,
+    })
+
+    renderDialogs()
+
+    const input = await screen.findByPlaceholderText('Sync passphrase')
+    fireEvent.change(input, { target: { value: 'not the real one' } })
+    fireEvent.click(screen.getByRole('button', { name: /join sync/i }))
+
+    expect(
+      await screen.findByText(
+        "That passphrase doesn't match. Check the phrase you saved when sync was first enabled."
+      )
+    ).toBeInTheDocument()
+    // The flow stays open for a retry.
+    expect(useOnboardingStore.getState().isDialogOpen).toBe(true)
+  })
+
   it('shows the standalone card when the general flow does not own the offer', async () => {
     // Upgrade path: general onboarding finished long ago, sync is new.
     useSyncSetupStore.setState({ info: syncInfo() })

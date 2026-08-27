@@ -17,10 +17,16 @@
     "enabled": "Sync enabled — encrypted and running in the background",
     "error": "Failed to set up sync encryption",
     "joinExplainer": "A synced history already exists on this account. Enter its sync passphrase to join — your consent to sync still applies.",
-    "joined": "Sync joined — pulling your cloud history"
+    "joined": "Sync joined — pulling your cloud history",
+    "join": "Join sync"
+  },
+  "errors": {
+    "wrongPassphrase": "That passphrase doesn't match. Check the phrase you saved when sync was first enabled.",
+    "corruptData": "The synced data in iCloud Drive appears damaged or was written by a newer version of ChatShell. Update the app on every device and try again.",
+    "failed": "That didn't work. Check your connection to iCloud Drive and try again."
   },
   "locked": {
-    "banner": "History locked — cloud sync is waiting for your sync passphrase. Everything on this device keeps working.",
+    "banner": "Cloud sync is waiting for your sync passphrase. Everything on this device keeps working.",
     "action": "Enter passphrase",
     "dialogTitle": "Unlock sync",
     "dialogDescription": "Enter the sync passphrase you saved when sync was first enabled. It unwraps the encryption key for your cloud history.",

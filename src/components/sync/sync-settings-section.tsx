@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { syncErrorCopy } from '@/lib/sync-error'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 
 /**
@@ -28,6 +29,7 @@ export function SyncSettingsSection() {
   const [rotateOpen, setRotateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
+  const [errorText, setErrorText] = useState<string | null>(null)
 
   const enabled = info?.enabled ?? false
   const needsPassphrase = info?.needs_passphrase ?? false
@@ -59,16 +61,23 @@ export function SyncSettingsSection() {
 
   async function handleRotate() {
     setBusy(true)
+    setErrorText(null)
     try {
       const summary = await rotateKey(passphrase)
       toast.info(summary)
       setRotateOpen(false)
       setPassphrase('')
     } catch (err) {
-      toast.error(String(err))
+      setErrorText(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
+  }
+
+  function openRotateDialog() {
+    setPassphrase('')
+    setErrorText(null)
+    setRotateOpen(true)
   }
 
   return (
@@ -101,7 +110,7 @@ export function SyncSettingsSection() {
             <Button variant="outline" onClick={() => handleDisable(false)} disabled={busy}>
               {t('settings.stopPublishing')}
             </Button>
-            <Button variant="outline" onClick={() => setRotateOpen(true)} disabled={busy}>
+            <Button variant="outline" onClick={openRotateDialog} disabled={busy}>
               <RotateCcw className="mr-2 h-4 w-4" />
               {t('settings.rotateKey')}
             </Button>
@@ -125,6 +134,7 @@ export function SyncSettingsSection() {
             onChange={(e) => setPassphrase(e.target.value)}
             placeholder={t('locked.placeholder')}
           />
+          {errorText && <p className="text-sm text-red-500">{errorText}</p>}
           <DialogFooter>
             <Button onClick={handleRotate} disabled={!passphrase || busy}>
               {t('settings.rotateConfirm')}

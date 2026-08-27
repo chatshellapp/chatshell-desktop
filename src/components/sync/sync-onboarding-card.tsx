@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
+import { syncErrorCopy } from '@/lib/sync-error'
 import { logger } from '@/lib/logger'
 
 /**
@@ -60,7 +61,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
       toast.success(t('locked.unlocked'))
       onDone?.()
     } catch (err) {
-      setErrorText(String(err))
+      setErrorText(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -174,7 +175,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
         {joinMode ? (
           <Button onClick={handleJoin} disabled={!joinPassphrase || busy}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('locked.unlock')}
+            {t('onboarding.join')}
           </Button>
         ) : passphrase === null ? (
           <Button onClick={handleBegin} disabled={busy}>
