@@ -103,3 +103,5 @@ ts-rs = { version = "12", features = ["serde-json-impl"] }
 
 [dev-dependencies]
 tempfile = "3"
+zstd = "0.13"
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -1,4 +1,4 @@
-mod blob_sync;
+pub mod blob_sync;
 pub mod commands;
 mod crypto;
 pub mod db;

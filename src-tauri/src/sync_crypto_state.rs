@@ -97,75 +97,6 @@ fn publish_keychain_content_key(value_b64: &str) {
 #[cfg(not(target_os = "macos"))]
 fn publish_keychain_content_key(_value_b64: &str) {}
 
-fn decode_key_b64(value: &str) -> Option<[u8; 32]> {
-    use base64::{Engine as _, engine::general_purpose};
-    general_purpose::STANDARD
-        .decode(value)
-        .ok()
-        .and_then(|bytes| bytes.try_into().ok())
-}
-
-fn current_key_b64(crypto: &SyncCrypto) -> String {
-    use base64::{Engine as _, engine::general_purpose};
-    general_purpose::STANDARD.encode(crypto.keys().current_key())
-}
-
-/// Slots + declared key version carried by the remote artifact, when one
-/// exists. Slots are public ciphertext: every publish carries them forward
-/// so passphrase-only peers keep their fallback (ADR 04 §4).
-fn carried_slots(cloud_dir: &Path) -> (Vec<chatshell_agent_core::sync_crypto::ArgonSlot>, u32) {
-    match chatshell_agent_core::sync_crypto::read_artifact_header(&artifact_path(cloud_dir)) {
-        Ok(header) => (header.slots, header.key_version),
-        Err(_) => (Vec::new(), 1),
-    }
-}
-
-/// Persist the chain into the device-local cache. The file sits beside the
-/// plaintext local DB by design (ADR 04 §2): the neighboring database is
-/// already plaintext, so the cache adds no local exposure — the CK exists
-/// solely to protect the cloud copy.
-pub fn persist_chain(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
-    let path = chain_cache_path(app_data_dir);
-    std::fs::write(&path, crypto.keys().encode())
-        .with_context(|| format!("write {}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    Ok(())
-}
-
-/// Persist the chain and republish the current key into the synchronizable
-/// item (mint or item-absent paths — steady state never writes, mirroring
-/// the master-key rule against loser-overwrites-winner).
-fn persist_all(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
-    persist_chain(app_data_dir, crypto)?;
-    // Unproven-adoption path: write the item only when absent — an
-    // unconditional write-back would overwrite the ecosystem key with a
-    // stale local one whenever the item read transiently fails.
-    let key_b64 = current_key_b64(crypto);
-    if keychain_content_key().is_none() {
-        publish_keychain_content_key(&key_b64);
-    }
-    Ok(())
-}
-
-/// Persist with a PROVEN current key and overwrite the item. Two callers
-/// only, both with positive proof the key is the live group's:
-/// - **bootstrap** mints a fresh group; the artifact-existence guard means
-///   no live group competes, so any existing item is an orphan from a dead
-///   group (real-device finding: a stale orphaned item otherwise blocks
-///   the minted key from ever reaching iCloud Keychain, and every later
-///   device degrades to the passphrase rung).
-/// - **unlock** decrypted the live artifact with this key seconds ago; an
-///   item carrying a different value is provably stale.
-fn persist_all_proven(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
-    persist_chain(app_data_dir, crypto)?;
-    publish_keychain_content_key(&current_key_b64(crypto));
-    Ok(())
-}
-
 /// Run the graded acquisition ladder (ADR 04 §3 rule 2). When
 /// `settings.needs_unlock` is set (artifact failed to unwrap under held
 /// keys), the ladder re-enters directly at the passphrase rung.
@@ -173,6 +104,21 @@ pub fn resolve_content_key(
     app_data_dir: &Path,
     cloud_dir: &Path,
     settings: &SyncSettings,
+) -> CkResolution {
+    resolve_content_key_with_item(
+        app_data_dir,
+        cloud_dir,
+        settings,
+        keychain_content_key().as_deref(),
+    )
+}
+
+/// Ladder core with the synchronizable-item value injected (tests).
+fn resolve_content_key_with_item(
+    app_data_dir: &Path,
+    cloud_dir: &Path,
+    settings: &SyncSettings,
+    keychain_item: Option<&str>,
 ) -> CkResolution {
     let has_artifact = artifact_path(cloud_dir).is_file();
     if settings.needs_unlock {
@@ -185,30 +131,52 @@ pub fn resolve_content_key(
         };
     }
 
-    // Rung 1: iCloud Keychain synchronizable item (Apple platforms). A
-    // fresh adopter learns the current key version from the artifact
-    // header; a stale item fails at first decrypt and re-enters the ladder
-    // at the passphrase rung.
-    if let Some(value) = keychain_content_key()
-        && let Some(ck) = decode_key_b64(&value)
+    // Rung 1: iCloud Keychain synchronizable item (Apple platforms). The
+    // item carries its key version (`v<version>:<b64>`); it is adopted ONLY
+    // on an exact match with the artifact header's key version (ADR 05). A
+    // stale item — the group rotated elsewhere — must fall through to the
+    // cached-chain rung rather than install a wrong-key engine, which
+    // would bounce already-unlocked devices through the needs-unlock latch
+    // and delete their good cached chains.
+    if let Some((item_version, ck)) =
+        keychain_item.and_then(chatshell_agent_core::sync_crypto::parse_synchronizable_item)
     {
         let (slots, version) = carried_slots(cloud_dir);
-        if let Ok(keys) = ContentKeys::from_entries(vec![(version, ck)])
+        if item_version == version
+            && let Ok(keys) = ContentKeys::from_entries(vec![(item_version, ck)])
             && let Ok(crypto) = SyncCrypto::from_keys(keys, slots, true)
         {
             return CkResolution::Ready(crypto);
         }
     }
 
-    // Rung 2: locally cached chain (full version history — also the only
-    // place old post-rotation keys survive on this device).
+    // Rung 2: locally cached full state (keys AND wrapped slots — the
+    // bootstrap device needs its slot to publish the FIRST artifact, when
+    // no artifact exists to carry slots from; real-device finding
+    // 2026-08-27). Also the only place old post-rotation keys survive.
+    // Version-gated exactly like rung 1: a cached chain whose current
+    // version is OLDER than the artifact's declared key_version means the
+    // group rotated elsewhere — adopting the stale chain would let this
+    // device PUBLISH under the old key and clobber the rotated artifact
+    // (real-device finding: a stale v1 publisher overwrote a v2 rotation).
     if let Ok(bytes) = std::fs::read(chain_cache_path(app_data_dir))
-        && let Ok(keys) = ContentKeys::decode(&bytes)
+        && let Ok(mut crypto) = SyncCrypto::decode_state(&bytes)
     {
-        let (slots, _) = carried_slots(cloud_dir);
-        if let Ok(crypto) = SyncCrypto::from_keys(keys, slots, true) {
-            return CkResolution::Ready(crypto);
+        if let Ok(header) = chatshell_agent_core::sync_crypto::read_artifact_header(
+            &artifact_path(cloud_dir),
+        ) {
+            if header.key_version > crypto.keys().current_version() {
+                // Rotation happened elsewhere; only the passphrase rung
+                // can recover the new key (ADR 05 freeze applies).
+                return if has_artifact {
+                    CkResolution::NeedPassphrase
+                } else {
+                    CkResolution::NeedBootstrap
+                };
+            }
+            crypto.carry_slots_from(&header);
         }
+        return CkResolution::Ready(crypto);
     }
 
     // Rung 3 is time: the sync tick re-runs this ladder silently (backoff),
@@ -218,6 +186,76 @@ pub fn resolve_content_key(
     } else {
         CkResolution::NeedBootstrap
     }
+}
+
+/// Slots + declared key version carried by the remote artifact, when one
+/// exists. Slots are public ciphertext: every publish carries them forward
+/// so passphrase-only peers keep their fallback (ADR 04 §4).
+fn carried_slots(cloud_dir: &Path) -> (Vec<chatshell_agent_core::sync_crypto::ArgonSlot>, u32) {
+    match chatshell_agent_core::sync_crypto::read_artifact_header(&artifact_path(cloud_dir)) {
+        Ok(header) => (header.slots, header.key_version),
+        Err(_) => (Vec::new(), 1),
+    }
+}
+
+/// Persist the full crypto state (keys AND wrapped slots) into the
+/// device-local cache. The file sits beside the plaintext local DB by
+/// design (ADR 04 §2): the neighboring database is already plaintext, so
+/// the cache adds no local exposure — the CK exists solely to protect the
+/// cloud copy. Slots ride along because the bootstrapping first device
+/// must publish the FIRST artifact before any artifact exists to carry
+/// them (real-device finding 2026-08-27).
+pub fn persist_chain(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
+    let path = chain_cache_path(app_data_dir);
+    std::fs::write(&path, crypto.encode_state())
+        .with_context(|| format!("write {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// Persist the chain and (when absent AND permitted) seed the
+/// synchronizable item — steady state never writes, mirroring the
+/// master-key rule against loser-overwrites-winner.
+fn persist_all(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
+    persist_chain(app_data_dir, crypto)?;
+    // Unproven-adoption path: write the item only when absent — an
+    // unconditional write-back would overwrite the ecosystem key with a
+    // stale local one whenever the item read transiently fails. And per
+    // the freeze rule (ADR 05) only the bootstrap-era (v1) key may ride
+    // the item at all: a rotated group never refreshes it, so the rotated
+    // CK cannot re-enter the zero-ritual channel a lost device also reads.
+    if keychain_content_key().is_none()
+        && let Some(value) = crypto.synchronizable_item_value()
+    {
+        publish_keychain_content_key(&value);
+    }
+    Ok(())
+}
+
+/// Persist with a PROVEN current key and overwrite the item — subject to
+/// the freeze rule (ADR 05): only version-1 keys may ride the item. Two
+/// callers only, both with positive proof the key is the live group's:
+/// - **bootstrap** mints a fresh group (always v1); the artifact-existence
+///   guard means no live group competes, so any existing item is an orphan
+///   from a dead group (real-device finding: a stale orphaned item
+///   otherwise blocks the minted key from ever reaching iCloud Keychain,
+///   and every later device degrades to the passphrase rung).
+/// - **unlock** decrypted the live artifact with this key seconds ago. On
+///   a never-rotated group this repairs an item whose bootstrap-time write
+///   failed; on a rotated group (v >= 2) `synchronizable_item_value()` is
+///   `None` and the item stays frozen — refreshing it would re-deliver the
+///   rotated CK to every device under the Apple ID, including a lost one,
+///   defeating forward-only revocation.
+fn persist_all_proven(app_data_dir: &Path, crypto: &SyncCrypto) -> Result<()> {
+    persist_chain(app_data_dir, crypto)?;
+    if let Some(value) = crypto.synchronizable_item_value() {
+        publish_keychain_content_key(&value);
+    }
+    Ok(())
 }
 
 /// First device of a sync group: mint a CK and wrap it under the group
@@ -244,7 +282,11 @@ pub fn unlock_with_passphrase(
         .context("read the cloud artifact header")?;
     let known = std::fs::read(chain_cache_path(app_data_dir))
         .ok()
-        .and_then(|bytes| ContentKeys::decode(&bytes).ok());
+        .and_then(|bytes| {
+            SyncCrypto::decode_state(&bytes)
+                .ok()
+                .map(|c| c.keys().clone())
+        });
     let crypto = SyncCrypto::from_passphrase(&header, passphrase.trim(), known.as_ref(), true)?;
     persist_all_proven(app_data_dir, &crypto)?;
     let mut settings = load_settings(app_data_dir);
@@ -266,10 +308,15 @@ pub fn rotate_content_key(
     passphrase: &str,
 ) -> Result<SyncCrypto> {
     let bytes = std::fs::read(chain_cache_path(app_data_dir))
-        .context("read the cached key chain (unlock sync first)")?;
-    let keys = ContentKeys::decode(&bytes)?;
-    let (slots, _) = carried_slots(cloud_dir);
-    let mut crypto = SyncCrypto::from_keys(keys, slots, true)?;
+        .context("read the cached sync state (unlock sync first)")?;
+    let mut crypto = SyncCrypto::decode_state(&bytes)?;
+    // Carry any newer slot chain from the live artifact (rotation may have
+    // happened on a peer since this device cached its state).
+    if let Ok(header) =
+        chatshell_agent_core::sync_crypto::read_artifact_header(&artifact_path(cloud_dir))
+    {
+        crypto.carry_slots_from(&header);
+    }
     crypto.rotate(passphrase.trim())?;
     persist_all(app_data_dir, &crypto)?;
     tracing::info!(
@@ -464,7 +511,97 @@ mod tests {
         assert_eq!(rotated.decrypt_blob(&digest, &sealed).unwrap(), data);
         // Persisted chain carries both versions.
         let chain = std::fs::read(chain_cache_path(dir.path())).unwrap();
-        assert_eq!(ContentKeys::decode(&chain).unwrap(), *rotated.keys());
+        let decoded = SyncCrypto::decode_state(&chain).unwrap();
+        assert_eq!(decoded.keys(), rotated.keys());
+        assert_eq!(
+            decoded.slots_for_publish().len(),
+            rotated.keys().current_version() as usize
+        );
+    }
+
+    /// Publish an artifact under `crypto`'s current key so the ladder can
+    /// see a real header (payload contents are irrelevant to rung 1).
+    fn publish_test_artifact(crypto: &SyncCrypto, cloud: &Path) {
+        let (header, salt) = crypto.build_header("1:test", 1).unwrap();
+        let payload = chatshell_agent_core::sync_crypto::encrypt_snapshot_payload(
+            crypto.keys(),
+            &salt,
+            b"test payload",
+        )
+        .unwrap();
+        std::fs::write(
+            artifact_path(cloud),
+            chatshell_agent_core::sync_crypto::build_artifact(&header, &payload),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rung1_adopts_item_only_on_exact_version_match() {
+        let dir = space();
+        let cloud = dir.path().join("cloud");
+        std::fs::create_dir_all(&cloud).unwrap();
+        let crypto = bootstrap_group(dir.path(), "versioned item passphrase").unwrap();
+        publish_test_artifact(&crypto, &cloud);
+        let item = crypto.synchronizable_item_value().unwrap();
+        let settings = SyncSettings {
+            enabled: true,
+            onboarded: true,
+            ..Default::default()
+        };
+        // No cached chain on this device: the item alone must resolve.
+        std::fs::remove_file(chain_cache_path(dir.path())).unwrap();
+        match resolve_content_key_with_item(dir.path(), &cloud, &settings, Some(item.as_str())) {
+            CkResolution::Ready(resolved) => assert_eq!(resolved.keys(), crypto.keys()),
+            other => panic!("expected Ready, got {other:?}"),
+        }
+        // A legacy bare-base64 item must not adopt (version is the
+        // anti-stale guard; ADR 05).
+        use base64::{Engine as _, engine::general_purpose};
+        let legacy = general_purpose::STANDARD.encode(crypto.keys().current_key());
+        assert!(matches!(
+            resolve_content_key_with_item(dir.path(), &cloud, &settings, Some(legacy.as_str())),
+            CkResolution::NeedPassphrase
+        ));
+    }
+
+    #[test]
+    fn rung1_rejects_stale_item_after_rotation() {
+        // The F1 shape: the group rotated elsewhere; this device holds only
+        // the frozen v1 item (a lost device's exact position). The item must
+        // NOT install a wrong-key engine — the passphrase is the only way
+        // in, which the lost device does not have.
+        let dir = space();
+        let cloud = dir.path().join("cloud");
+        std::fs::create_dir_all(&cloud).unwrap();
+        let mut crypto = bootstrap_group(dir.path(), "rotation lockout").unwrap();
+        let frozen_item = crypto.synchronizable_item_value().unwrap();
+        crypto.rotate("rotation lockout").unwrap();
+        publish_test_artifact(&crypto, &cloud);
+
+        let lost = space(); // no cached chain, only the stale item
+        assert!(matches!(
+            resolve_content_key_with_item(
+                lost.path(),
+                &cloud,
+                &SyncSettings::default(),
+                Some(frozen_item.as_str())
+            ),
+            CkResolution::NeedPassphrase
+        ));
+
+        // An already-unlocked device (full cached chain) must NOT bounce
+        // through needs-unlock because of the stale item: rung 2 resolves.
+        persist_chain(dir.path(), &crypto).unwrap();
+        match resolve_content_key_with_item(
+            dir.path(),
+            &cloud,
+            &SyncSettings::default(),
+            Some(frozen_item.as_str()),
+        ) {
+            CkResolution::Ready(resolved) => assert_eq!(resolved.keys(), crypto.keys()),
+            other => panic!("expected Ready via cached chain, got {other:?}"),
+        }
     }
 
     #[test]

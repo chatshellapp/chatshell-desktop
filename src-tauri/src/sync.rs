@@ -330,7 +330,8 @@ mod tests {
         let a_db = make_db(&base, "a", "from A").await;
 
         let cloud = cloud_dir("converge");
-        let mut a = SyncEngine::new(&base, cloud.clone(), std::env::temp_dir(), None).unwrap();
+        let staging_a = std::env::temp_dir().join(format!("sync-stage-a-{tag}"));
+        let mut a = SyncEngine::new(&base, cloud.clone(), staging_a, None).unwrap();
 
         // Device A publishes its initial state.
         let out = a.sync_now().unwrap();
@@ -338,7 +339,8 @@ mod tests {
 
         // Device B (second database file) pulls A's rows and republishes.
         let b_db = make_db(&b_path, "c2", "from B").await;
-        let mut b = SyncEngine::new(&b_path, cloud.clone(), std::env::temp_dir(), None).unwrap();
+        let staging_b = std::env::temp_dir().join(format!("sync-stage-b-{tag}"));
+        let mut b = SyncEngine::new(&b_path, cloud.clone(), staging_b, None).unwrap();
         let out_b = b.sync_now().unwrap();
         assert!(out_b.rows_merged > 0, "B must pull A's rows: {out_b:?}");
         assert!(out_b.republished, "B republishes the merged state");
@@ -387,7 +389,8 @@ mod tests {
         remove_db(&path);
         let _db = make_db(&path, "c1", "t").await;
         let cloud = cloud_dir("publish");
-        let mut engine = SyncEngine::new(&path, cloud.clone(), std::env::temp_dir(), None).unwrap();
+        let staging = std::env::temp_dir().join(format!("sync-stage-p-{}", unique_tag()));
+        let mut engine = SyncEngine::new(&path, cloud.clone(), staging, None).unwrap();
         engine.publish().unwrap();
         let v1 = get_meta(engine.connection(), META_SYNC_VERSION)
             .unwrap()
@@ -408,7 +411,8 @@ mod tests {
         remove_db(&path);
         let db = make_db(&path, "c1", "t").await;
         let cloud = cloud_dir("dirty");
-        let mut engine = SyncEngine::new(&path, cloud.clone(), std::env::temp_dir(), None).unwrap();
+        let staging = std::env::temp_dir().join(format!("sync-stage-d-{}", unique_tag()));
+        let mut engine = SyncEngine::new(&path, cloud.clone(), staging, None).unwrap();
         engine.publish().unwrap();
         let v1 = get_meta(engine.connection(), META_SYNC_VERSION)
             .unwrap()

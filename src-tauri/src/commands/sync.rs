@@ -380,7 +380,8 @@ pub async fn rotate_sync_key(
     Ok(
         "Content key rotated. New snapshots and attachments are protected \
         from any holder of the old key; data written before the rotation \
-        stays readable to them."
+        stays readable to them. Joining devices now need the sync \
+        passphrase once (the iCloud key no longer updates after a rotation)."
             .into(),
     )
 }

@@ -1240,6 +1240,7 @@ dependencies = [
  "reqwest 0.13.2",
  "rig",
  "rmcp",
+ "rusqlite",
  "scraper",
  "security-framework 3.7.0",
  "security-framework-sys",
@@ -1263,6 +1264,7 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

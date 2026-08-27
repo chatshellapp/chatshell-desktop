@@ -132,7 +132,11 @@ pub async fn ensure_referenced_blobs_uploaded(
         };
         // Temp-in-destination-dir + rename keeps a partial upload from ever
         // being visible under the content-addressed name.
-        let tmp = dest.with_extension("tmp-uploading");
+        // Unique per upload: concurrent engines sharing the container must
+        // not truncate/rename each other's partial temp into the
+        // content-addressed destination (a corrupt blob there blocks
+        // re-upload forever because dest.exists() skips).
+        let tmp = dest.with_extension(format!("tmp-{}", uuid::Uuid::now_v7()));
         if std::fs::write(&tmp, &sealed)
             .and_then(|_| std::fs::rename(&tmp, &dest))
             .is_err()
@@ -359,8 +363,16 @@ pub async fn gc_orphan_blobs(
         let Some(name) = name.to_str() else { continue };
         // A crashed peer may leave `<hash>.tmp-uploading` behind; those are
         // reclaimable under the same grace rule, keyed by their hash.
-        let hash = name.strip_suffix(".tmp-uploading").unwrap_or(name);
-        if live.contains(hash) {
+        let hash = name
+            .strip_suffix(".tmp-uploading")
+            .map(String::from)
+            .or_else(|| {
+                name.rsplit_once(".tmp-")
+                    .filter(|(h, _)| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+                    .map(|(h, _)| h.to_string())
+            })
+            .unwrap_or_else(|| name.to_string());
+        if live.contains(hash.as_str()) {
             continue;
         }
         let age_ok = entry
