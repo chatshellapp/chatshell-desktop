@@ -5,9 +5,9 @@ import i18n from '@/lib/i18n'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useSyncSetupStore, type SyncSetupStateInfo } from '@/stores/syncSetupStore'
 import { useModelStore } from '@/stores/modelStore'
-import type { Model } from '@/types'
-import { OnboardingDialog } from '@/components/onboarding-dialog'
+import type { Model, Provider } from '@/types'
 import { SyncOnboardingDialog } from '@/components/sync/sync-onboarding-dialog'
+import { OnboardingDialog } from '@/components/onboarding-dialog'
 
 const mockedInvoke = vi.mocked(invoke)
 
@@ -38,11 +38,26 @@ function makeModel(overrides: Partial<Model> = {}): Model {
   }
 }
 
+function makeProvider(overrides: Partial<Provider> = {}): Provider {
+  return {
+    id: 'provider-1',
+    name: 'OpenAI',
+    provider_type: 'openai',
+    is_enabled: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
 function mockInvokeByCommand(results: Record<string, unknown>) {
   mockedInvoke.mockImplementation(((
-    cmd: string,
+    cmd: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) => (cmd in results ? results[cmd] : Promise.reject(new Error(`unexpected command ${cmd}`)))) as never)
+  ) =>
+    cmd in results
+      ? results[cmd]
+      : Promise.reject(new Error(`unexpected command ${cmd}`))) as never)
 }
 
 /** Both surfaces mounted exactly as ChatPage mounts them. */
@@ -51,7 +66,7 @@ function renderDialogs() {
     <>
       <OnboardingDialog />
       <SyncOnboardingDialog />
-    </>,
+    </>
   )
 }
 
@@ -63,7 +78,7 @@ describe('onboarding flow: provider stage -> embedded sync step', () => {
   beforeEach(() => {
     mockedInvoke.mockReset()
     useSyncSetupStore.setState({ info: null, lockedEvent: false })
-    useModelStore.setState({ models: [] })
+    useModelStore.setState({ models: [], providers: [] })
     useOnboardingStore.setState({
       step: 'checking',
       isDialogOpen: false,
@@ -71,11 +86,11 @@ describe('onboarding flow: provider stage -> embedded sync step', () => {
     })
   })
 
-  it('skips provider setup when models exist and lands on the embedded sync card', async () => {
+  it('goes straight to the sync card for explicitly configured providers', async () => {
     mockInvokeByCommand({ get_setting: null, set_setting: undefined })
-    // DB seed auto-imported Ollama models (or providers were configured
-    // before) — the provider stage is already satisfied.
-    useModelStore.setState({ models: [makeModel()] })
+    // The provider choice was already made (e.g. a cloud provider
+    // configured before) — the provider stage is satisfied.
+    useModelStore.setState({ models: [makeModel()], providers: [makeProvider()] })
     useSyncSetupStore.setState({ info: syncInfo() })
     useOnboardingStore.setState({ isDialogOpen: true, flowOwnsSyncOffer: true })
 
@@ -83,6 +98,37 @@ describe('onboarding flow: provider stage -> embedded sync step', () => {
 
     expect(await screen.findByText('Sync your chats across devices')).toBeInTheDocument()
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(useOnboardingStore.getState().step).toBe('sync')
+    expect(mockedInvoke).toHaveBeenCalledWith('set_setting', {
+      key: 'onboarding_complete',
+      value: 'true',
+    })
+  })
+
+  it('shows the local-ready step for auto-imported Ollama models, then continues to sync', async () => {
+    mockInvokeByCommand({ get_setting: null, set_setting: undefined })
+    const ollama = makeProvider({ id: 'provider-ollama', provider_type: 'ollama', name: 'Ollama' })
+    useModelStore.setState({
+      models: [
+        makeModel({ id: 'm1', name: 'Llama 3', provider_id: 'provider-ollama' }),
+        makeModel({ id: 'm2', name: 'Qwen 3', provider_id: 'provider-ollama' }),
+      ],
+      providers: [ollama],
+    })
+    useSyncSetupStore.setState({ info: syncInfo() })
+    useOnboardingStore.setState({ isDialogOpen: true, flowOwnsSyncOffer: true })
+
+    renderDialogs()
+
+    // Detected + auto-imported: acknowledge, but keep the provider stage
+    // visible ("Add More Providers") instead of silently skipping it.
+    expect(await screen.findByText('Ollama is ready')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add more providers/i })).toBeInTheDocument()
+    expect(useOnboardingStore.getState().step).toBe('local-ready')
+    expect(screen.queryByText('Sync your chats across devices')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    expect(await screen.findByText('Sync your chats across devices')).toBeInTheDocument()
     expect(useOnboardingStore.getState().step).toBe('sync')
     expect(mockedInvoke).toHaveBeenCalledWith('set_setting', {
       key: 'onboarding_complete',

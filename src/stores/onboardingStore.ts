@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
-export type OnboardingStep = 'checking' | 'no-provider' | 'sync' | 'complete'
+export type OnboardingStep = 'checking' | 'no-provider' | 'local-ready' | 'sync' | 'complete'
 
 interface OnboardingStore {
   step: OnboardingStep
@@ -40,5 +40,5 @@ export const useOnboardingStore = create<OnboardingStore>()(
         draft.flowOwnsSyncOffer = true
       })
     },
-  })),
+  }))
 )

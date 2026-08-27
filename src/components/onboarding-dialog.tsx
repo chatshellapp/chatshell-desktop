@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, Bot, BotIcon, Loader2 } from 'lucide-react'
+import { ArrowRight, Bot, BotIcon, CheckCircle2, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useOnboardingStore } from '@/stores/onboardingStore'
@@ -14,13 +14,23 @@ export function OnboardingDialog() {
   const { t } = useTranslation('onboarding')
   const { step, isDialogOpen, setStep, setDialogOpen } = useOnboardingStore()
 
-  const { models, loadAll: loadModelsAndProviders } = useModelStore()
+  const { models, providers, loadAll: loadModelsAndProviders } = useModelStore()
   const { saveSetting, getSetting } = useSettingsStore()
 
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
 
   // Get active (non-deleted) models
   const activeModels = useMemo(() => models.filter((m) => !m.is_deleted), [models])
+  // Models belonging to the auto-seeded local Ollama provider: the DB seed
+  // detects a running Ollama instance on every startup and imports its
+  // models, so presence here means "detected and auto-imported".
+  const localModels = useMemo(
+    () =>
+      activeModels.filter((m) =>
+        providers.some((p) => p.id === m.provider_id && p.provider_type === 'ollama')
+      ),
+    [activeModels, providers]
+  )
 
   // Initial check when dialog opens
   useEffect(() => {
@@ -37,14 +47,22 @@ export function OnboardingDialog() {
       return
     }
 
-    // Models are already usable — the DB seed auto-imports local Ollama
-    // models at first launch, or providers were configured before — so the
-    // provider stage is satisfied.
+    // A running Ollama was detected and its models auto-imported by the
+    // seed: acknowledge the import but keep the provider stage visible —
+    // the user may still want other providers and models.
+    if (localModels.length > 0) {
+      setStep('local-ready')
+      return
+    }
+
+    // Models from explicitly configured providers: the provider choice was
+    // already made, so the provider stage is satisfied.
     if (activeModels.length > 0) {
       await proceedToSyncOrFinish()
-    } else {
-      setStep('no-provider')
+      return
     }
+
+    setStep('no-provider')
   }
 
   // When provider dialog closes, refresh data
@@ -111,6 +129,31 @@ export function OnboardingDialog() {
               {t('setupProvider')}
               <ArrowRight className="size-4 ml-2" />
             </Button>
+          </div>
+        )
+
+      case 'local-ready':
+        return (
+          <div className="flex flex-col items-center justify-center py-8 space-y-6">
+            <div className="rounded-full bg-green-500/10 p-4">
+              <CheckCircle2 className="size-12 text-green-500" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-semibold">{t('ollamaReady')}</h3>
+              <p className="text-muted-foreground max-w-md">
+                {t('ollamaFoundModels', { count: localModels.length })}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <Button onClick={proceedToSyncOrFinish} size="lg">
+                {t('continue')}
+                <ArrowRight className="size-4 ml-2" />
+              </Button>
+              <Button variant="outline" onClick={() => setProviderDialogOpen(true)}>
+                <Bot className="size-4 mr-2" />
+                {t('addMoreProviders')}
+              </Button>
+            </div>
           </div>
         )
 
