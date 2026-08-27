@@ -91,7 +91,9 @@ async fn main() {
                 chatshell_agent_core::sync_crypto::split_artifact(&artifact).unwrap();
             let state = chain().expect("chain");
             let zst = chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                state.keys(), &h, payload,
+                state.keys(),
+                &h,
+                payload,
             )
             .expect("decrypt");
             let plain = zstd::stream::decode_all(&zst[..]).expect("zstd");
@@ -106,7 +108,9 @@ async fn main() {
                 chatshell_agent_core::sync_crypto::split_artifact(&artifact).unwrap();
             let state = chain().expect("chain");
             let zst = chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                state.keys(), &h, payload,
+                state.keys(),
+                &h,
+                payload,
             )
             .expect("decrypt");
             println!("zst len={}", zst.len());
@@ -169,11 +173,10 @@ async fn main() {
                 sync_crypto_state::CkResolution::Ready(crypto) => {
                     if let Some(state) = chain() {
                         let keys = state.keys().clone();
-                        let db = chatshell_desktop_lib::db::Database::new(
-                            db_path().to_str().unwrap(),
-                        )
-                        .await
-                        .expect("db");
+                        let db =
+                            chatshell_desktop_lib::db::Database::new(db_path().to_str().unwrap())
+                                .await
+                                .expect("db");
                         let attach = app_data().join("attachments");
                         match chatshell_desktop_lib::blob_sync::ensure_referenced_blobs_uploaded(
                             &db,
@@ -224,7 +227,9 @@ async fn main() {
                     chatshell_agent_core::sync_crypto::split_artifact(&artifact)
             {
                 match chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                    state.keys(), &h, payload,
+                    state.keys(),
+                    &h,
+                    payload,
                 ) {
                     Ok(zst) => {
                         let plain = zstd::stream::decode_all(&zst[..]).expect("zstd");
@@ -242,7 +247,9 @@ async fn main() {
                             "snapshot content: conversations={} messages={} files={}",
                             q("SELECT COUNT(*) FROM conversations WHERE deleted_at IS NULL"),
                             q("SELECT COUNT(*) FROM messages WHERE deleted_at IS NULL"),
-                            q("SELECT COUNT(*) FROM files WHERE deleted_at IS NULL AND content_hash IS NOT NULL"),
+                            q(
+                                "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL AND content_hash IS NOT NULL"
+                            ),
                         );
                     }
                     Err(e) => println!("decrypt failed: {e}"),
@@ -270,7 +277,11 @@ async fn main() {
             println!("container blobs: {n}");
         }
         "chain" => match chain() {
-            Some(state) => println!("chain current v{} slots={}", state.keys().current_version(), state.slots_for_publish().len()),
+            Some(state) => println!(
+                "chain current v{} slots={}",
+                state.keys().current_version(),
+                state.slots_for_publish().len()
+            ),
             None => println!(
                 "no chain cache at {}",
                 sync_crypto_state::chain_cache_path(&app_data()).display()

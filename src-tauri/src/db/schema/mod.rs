@@ -6,7 +6,6 @@ mod assistants;
 mod compactions;
 mod conversation_settings;
 mod conversations;
-mod knowledge;
 mod messages;
 mod model_parameter_presets;
 mod prompts;
@@ -15,10 +14,11 @@ mod search;
 mod settings;
 mod skills;
 mod steps;
+mod tools;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 12;
+const CURRENT_SCHEMA_VERSION: i32 = 13;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -124,6 +124,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         let changed = crate::db::system_ids::migrate_deterministic_system_ids(pool).await?;
         set_user_version(pool, 12).await?;
         tracing::info!("Migration to v12 completed ({changed} rows remapped/tombstoned)");
+    }
+
+    if current_version < 13 {
+        migrate_v12_to_v13(pool).await?;
+        set_user_version(pool, 13).await?;
+        tracing::info!("Migration to v13 completed");
     }
 
     // Ensure columns exist (idempotent, fixes databases
@@ -255,11 +261,9 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "message_attachments",
         "message_contexts",
         "message_prompts",
-        "message_knowledge_bases",
         "message_tools",
         "assistant_tools",
         "assistant_skills",
-        "assistant_knowledge_bases",
         "conversation_settings",
         "conversation_participants",
     ] {
@@ -278,9 +282,7 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "prompts",
         "skills",
         "model_parameter_presets",
-        "knowledge_bases",
         "users",
-        "user_relationships",
         "fetch_results",
         "search_results",
         "settings",
@@ -292,11 +294,9 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "message_attachments",
         "message_contexts",
         "message_prompts",
-        "message_knowledge_bases",
         "message_tools",
         "assistant_tools",
         "assistant_skills",
-        "assistant_knowledge_bases",
     ] {
         sqlx::query(&format!("ALTER TABLE {table} ADD COLUMN deleted_at TEXT"))
             .execute(pool)
@@ -324,6 +324,24 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
     );
     Ok(())
 }
+
+/// Migration v12 -> v13: Drop the never-shipped knowledge-base tables and
+/// `user_relationships`. No feature code ever wrote them; they existed only
+/// in the sync schema's merge registry, where they cost cross-device schema
+/// lockstep for nothing. Children drop before parents so FK constraints hold.
+async fn migrate_v12_to_v13(pool: &SqlitePool) -> Result<()> {
+    for table in [
+        "message_knowledge_bases",
+        "assistant_knowledge_bases",
+        "knowledge_bases",
+        "user_relationships",
+    ] {
+        sqlx::query(&format!("DROP TABLE IF EXISTS {table}"))
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
 /// Initial schema (v1) - used for fresh installations
 async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     providers::create_providers_table(pool).await?;
@@ -332,8 +350,7 @@ async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     assistants::create_assistants_table(pool).await?;
     users::create_users_table(pool).await?;
     conversations::create_conversations_table(pool).await?;
-    knowledge::create_knowledge_bases_table(pool).await?;
-    knowledge::create_tools_table(pool).await?;
+    tools::create_tools_table(pool).await?;
     skills::create_skills_table(pool).await?;
     messages::create_messages_table(pool).await?;
     messages::create_files_table(pool).await?;
@@ -633,7 +650,6 @@ mod tests {
             "prompts",
             "skills",
             "model_parameter_presets",
-            "knowledge_bases",
             "users",
             "fetch_results",
         ] {

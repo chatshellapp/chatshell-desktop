@@ -21,9 +21,6 @@ export type {
 // Assistant types
 export type { Assistant, CreateAssistantRequest } from './assistant'
 
-// Knowledge base types
-export type { KnowledgeBase, CreateKnowledgeBaseRequest } from './knowledge-base'
-
 // Tool types
 export type {
   Tool,
@@ -53,12 +50,7 @@ export {
 } from './skill'
 
 // User types
-export type {
-  User,
-  CreateUserRequest,
-  UserRelationship,
-  CreateUserRelationshipRequest,
-} from './user'
+export type { User, CreateUserRequest } from './user'
 
 // Conversation types
 export type {

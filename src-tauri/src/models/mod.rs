@@ -3,7 +3,6 @@ mod attachment;
 mod context;
 mod conversation;
 mod conversation_settings;
-mod knowledge_base;
 mod message;
 mod message_resources;
 mod model;
@@ -31,14 +30,11 @@ pub use model_parameter_preset::{
 // Assistant
 pub use assistant::{Assistant, CreateAssistantRequest};
 
-// Knowledge Base
-pub use knowledge_base::{CreateKnowledgeBaseRequest, KnowledgeBase};
-
 // Tool
 pub use tool::{CreateToolRequest, McpAuthType, McpConfig, McpTransportType, OAuthMetadata, Tool};
 
 // User
-pub use user::{CreateUserRelationshipRequest, CreateUserRequest, User, UserRelationship};
+pub use user::{CreateUserRequest, User};
 
 // Conversation
 pub use conversation::{

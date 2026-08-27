@@ -244,26 +244,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         }
         break
       case 'library':
-        if (activeLibraryTab === 'prompts') {
-          return (
-            <div className="px-3 pt-2 pb-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center gap-2 h-9"
-                onClick={() => {
-                  setEditingPrompt(null)
-                  setPromptDialogMode('create')
-                  setPromptDialogOpen(true)
-                }}
-              >
-                <Plus className="size-4" />
-                {t('sidebar:addPrompt')}
-              </Button>
-            </div>
-          )
-        }
-        break
+        return (
+          <div className="px-3 pt-2 pb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-center gap-2 h-9"
+              onClick={() => {
+                setEditingPrompt(null)
+                setPromptDialogMode('create')
+                setPromptDialogOpen(true)
+              }}
+            >
+              <Plus className="size-4" />
+              {t('sidebar:addPrompt')}
+            </Button>
+          </div>
+        )
       case 'settings':
         return null
       default:

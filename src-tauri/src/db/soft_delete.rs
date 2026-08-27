@@ -100,7 +100,7 @@ pub fn wipe_fragment(table: &str) -> Option<&'static str> {
              content_hash = NULL"
         }
         // Junction rows are all-key already: only the tombstone is added.
-        "assistant_tools" | "assistant_skills" | "assistant_knowledge_bases" => "",
+        "assistant_tools" | "assistant_skills" => "",
         _ => return None,
     })
 }
@@ -200,7 +200,6 @@ mod tests {
             ("files", "id = ?2"),
             ("assistant_tools", "assistant_id = ?2"),
             ("assistant_skills", "assistant_id = ?2"),
-            ("assistant_knowledge_bases", "assistant_id = ?2"),
         ];
         for (table, where_clause) in cases {
             let sql = tombstone_update(table, where_clause);

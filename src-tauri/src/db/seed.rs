@@ -75,8 +75,7 @@ impl Database {
             // cross-device merges converge on one provider instead of
             // duplicating "Ollama" per machine (system-seed rule; the row
             // is brand new, nothing references the old id yet).
-            let deterministic_id =
-                super::system_ids::system_uuid("chatshell.provider.ollama");
+            let deterministic_id = super::system_ids::system_uuid("chatshell.provider.ollama");
             if provider.id != deterministic_id {
                 sqlx::query("UPDATE providers SET id = ?1 WHERE id = ?2")
                     .bind(&deterministic_id)
@@ -288,9 +287,8 @@ impl Database {
                 // fresh device joining a group merges them by pk (whole-row
                 // LWW) instead of duplicating all of them by name
                 // (system-seed rule; user-created prompts keep random ids).
-                let deterministic_id = super::system_ids::system_uuid(&format!(
-                    "chatshell.prompt.{name}"
-                ));
+                let deterministic_id =
+                    super::system_ids::system_uuid(&format!("chatshell.prompt.{name}"));
                 if prompt.id != deterministic_id {
                     sqlx::query("UPDATE prompts SET id = ?1 WHERE id = ?2")
                         .bind(&deterministic_id)

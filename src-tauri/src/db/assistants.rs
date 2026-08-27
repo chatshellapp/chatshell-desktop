@@ -247,11 +247,7 @@ impl Database {
         .bind(id)
         .execute(self.pool.as_ref())
         .await?;
-        for table in [
-            "assistant_tools",
-            "assistant_skills",
-            "assistant_knowledge_bases",
-        ] {
+        for table in ["assistant_tools", "assistant_skills"] {
             sqlx::query(&crate::db::soft_delete::tombstone_update(
                 table,
                 "assistant_id = ?2 AND deleted_at IS NULL",

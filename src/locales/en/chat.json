@@ -102,7 +102,6 @@
   "settingsComingSoon": "Settings panel coming soon...",
   "preWebSearch": "Pre Web Search",
   "artifacts": "Artifacts",
-  "knowledge": "Knowledge",
   "temp": "Temp: {{value}}",
   "topPValue": "Top P: {{value}}",
   "maxTokensValue": "Max: {{value}}",

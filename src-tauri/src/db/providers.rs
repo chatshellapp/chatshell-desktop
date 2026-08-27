@@ -30,10 +30,7 @@ impl Database {
             }
         }
         let id = if chatshell_agent_core::is_builtin_provider_type(&req.provider_type) {
-            crate::db::system_ids::system_uuid(&format!(
-                "chatshell.provider.{}",
-                req.provider_type
-            ))
+            crate::db::system_ids::system_uuid(&format!("chatshell.provider.{}", req.provider_type))
         } else {
             Uuid::now_v7().to_string()
         };

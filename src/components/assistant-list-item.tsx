@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { MoreVertical, Star, FileText, Database, Boxes } from 'lucide-react'
+import { MoreVertical, Star, FileText, Boxes } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeleteAssistantDialog } from './assistant-list-item/delete-dialog'
 import { useTranslation } from 'react-i18next'
@@ -29,10 +29,6 @@ export interface AssistantCapabilities {
    * Whether the assistant can use files
    */
   hasFiles?: boolean
-  /**
-   * Whether the assistant can use knowledge base
-   */
-  hasKnowledgeBase?: boolean
   /**
    * Whether the assistant can use Tools
    */
@@ -327,7 +323,6 @@ export function AssistantListItem({
               />
             )}
             {capabilities.hasFiles && <FileText className="size-3 text-muted-foreground" />}
-            {capabilities.hasKnowledgeBase && <Database className="size-3 text-muted-foreground" />}
             {capabilities.hasTools && <Boxes className="size-3 text-muted-foreground" />}
           </div>
         )}

@@ -3,7 +3,3 @@
 
 export type { User } from './generated/User'
 export type { CreateUserRequest } from './generated/CreateUserRequest'
-
-// User relationship types
-export type { UserRelationship } from './generated/UserRelationship'
-export type { CreateUserRelationshipRequest } from './generated/CreateUserRelationshipRequest'

@@ -162,9 +162,9 @@ fn resolve_content_key_with_item(
     if let Ok(bytes) = std::fs::read(chain_cache_path(app_data_dir))
         && let Ok(mut crypto) = SyncCrypto::decode_state(&bytes)
     {
-        if let Ok(header) = chatshell_agent_core::sync_crypto::read_artifact_header(
-            &artifact_path(cloud_dir),
-        ) {
+        if let Ok(header) =
+            chatshell_agent_core::sync_crypto::read_artifact_header(&artifact_path(cloud_dir))
+        {
             if header.key_version > crypto.keys().current_version() {
                 // Rotation happened elsewhere; only the passphrase rung
                 // can recover the new key (ADR 05 freeze applies).

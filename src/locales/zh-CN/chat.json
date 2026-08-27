@@ -102,7 +102,6 @@
   "settingsComingSoon": "设置面板即将推出...",
   "preWebSearch": "网页搜索前",
   "artifacts": "制品",
-  "knowledge": "知识库",
   "temp": "温度: {{value}}",
   "topPValue": "Top P: {{value}}",
   "maxTokensValue": "最大: {{value}}",

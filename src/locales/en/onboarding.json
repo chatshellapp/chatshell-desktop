@@ -4,5 +4,9 @@
   "checkingForModels": "Checking for available models",
   "setupProvider": "Setup your LLM provider",
   "configureProvider": "Configure a provider to get started",
-  "configureProviderDesc": "To start chatting, you'll need to configure an AI provider. Choose from local options like Ollama or cloud services like OpenAI and OpenRouter."
+  "configureProviderDesc": "To start chatting, you'll need to configure an AI provider. Choose from local options like Ollama or cloud services like OpenAI and OpenRouter.",
+  "ollamaReady": "Ollama is ready",
+  "ollamaFoundModels": "Found {{count}} local model(s), imported automatically. Your AI runs on your machine - fast and private. You can add more providers anytime.",
+  "addMoreProviders": "Add More Providers",
+  "continue": "Continue"
 }

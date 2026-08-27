@@ -259,10 +259,6 @@ export function InputToolbar({
               <span className="text-xs text-muted-foreground">{skillsLabel}</span>
             </DropdownMenuItem>
           )}
-          {/* <DropdownMenuItem onClick={onKnowledgeBaseSelect} className="gap-2">
-            <BookOpen className="size-4" />
-            <span>{t('knowledge')}</span>
-          </DropdownMenuItem> */}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
             <FolderOpen className="size-4" />

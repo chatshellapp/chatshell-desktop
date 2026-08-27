@@ -58,7 +58,6 @@ export function useAssistantGroups(): AssistantGroup[] {
               modelLogo: modelLogo,
               hasModel: true,
               hasFiles: false,
-              hasKnowledgeBase: false,
               hasMcpServer: false,
             },
             isStarred: a.is_starred || false,

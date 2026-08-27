@@ -4,5 +4,9 @@
   "checkingForModels": "正在检查可用模型",
   "setupProvider": "设置你的 LLM 提供商",
   "configureProvider": "配置提供商以开始使用",
-  "configureProviderDesc": "要开始聊天，你需要配置 AI 提供商。可以选择本地选项如 Ollama 或云服务如 OpenAI 和 OpenRouter。"
+  "configureProviderDesc": "要开始聊天，你需要配置 AI 提供商。可以选择本地选项如 Ollama 或云服务如 OpenAI 和 OpenRouter。",
+  "ollamaReady": "Ollama 已就绪",
+  "ollamaFoundModels": "发现 {{count}} 个本地模型并已自动导入。你的 AI 在本地运行 - 快速且隐私。你可以随时添加更多提供商。",
+  "addMoreProviders": "添加更多提供商",
+  "continue": "继续"
 }

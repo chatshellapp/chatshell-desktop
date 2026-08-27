@@ -1,7 +1,7 @@
-import { Globe, FileText, Image, BookOpen, Plug } from 'lucide-react'
+import { Globe, FileText, Image, Plug } from 'lucide-react'
 import React from 'react'
 
-export type AttachmentType = 'webpage' | 'file' | 'image' | 'knowledge' | 'tools'
+export type AttachmentType = 'webpage' | 'file' | 'image' | 'tools'
 
 export interface Attachment {
   id: string
@@ -118,8 +118,6 @@ export function getAttachmentIcon(type: AttachmentType): React.ReactNode {
       return React.createElement(FileText, { className: 'size-3' })
     case 'image':
       return React.createElement(Image, { className: 'size-3' })
-    case 'knowledge':
-      return React.createElement(BookOpen, { className: 'size-3' })
     case 'tools':
       return React.createElement(Plug, { className: 'size-3' })
   }

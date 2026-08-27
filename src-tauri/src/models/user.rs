@@ -47,22 +47,3 @@ pub struct CreateUserRequest {
     #[ts(optional)]
     pub is_self: Option<bool>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
-#[ts(export)]
-pub struct UserRelationship {
-    pub id: String,
-    pub user_id: String,
-    pub related_user_id: String,
-    pub relationship_type: String, // "friend", "blocked", "pending"
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct CreateUserRelationshipRequest {
-    pub user_id: String,
-    pub related_user_id: String,
-    pub relationship_type: String,
-}

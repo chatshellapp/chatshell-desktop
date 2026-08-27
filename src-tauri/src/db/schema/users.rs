@@ -24,29 +24,5 @@ pub async fn create_users_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    // User relationships table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS user_relationships (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            related_user_id TEXT NOT NULL,
-            relationship_type TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (related_user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(user_id, related_user_id)
-        )",
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_user_relationships_user 
-         ON user_relationships(user_id, relationship_type)",
-    )
-    .execute(pool)
-    .await?;
-
     Ok(())
 }

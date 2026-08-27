@@ -94,9 +94,9 @@ async fn rewrite_refs(
     type_val: Option<&str>,
 ) -> Result<u64> {
     let sql = match (type_col, type_val) {
-        (Some(tc), Some(tv)) => format!(
-            "UPDATE {table} SET {column} = ?1 WHERE {column} = ?2 AND {tc} = ?3"
-        ),
+        (Some(tc), Some(tv)) => {
+            format!("UPDATE {table} SET {column} = ?1 WHERE {column} = ?2 AND {tc} = ?3")
+        }
         _ => format!("UPDATE {table} SET {column} = ?1 WHERE {column} = ?2"),
     };
     let mut q = sqlx::query(&sql).bind(to).bind(from);
@@ -189,16 +189,17 @@ async fn tombstone(pool: &SqlitePool, table: &str, id: &str) -> Result<()> {
 pub async fn migrate_deterministic_system_ids(pool: &SqlitePool) -> Result<usize> {
     // FKs reference the ids being renamed; the clone-tombstone pattern
     // keeps referential content coherent by construction.
-    sqlx::query("PRAGMA foreign_keys = OFF").execute(pool).await?;
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(pool)
+        .await?;
     let mut changed = 0usize;
 
     // ---- 1. self user -------------------------------------------------
     let self_target = system_uuid("chatshell.user.self");
-    let selves: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, updated_at FROM users WHERE is_self = 1 AND deleted_at IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let selves: Vec<(String, String)> =
+        sqlx::query_as("SELECT id, updated_at FROM users WHERE is_self = 1 AND deleted_at IS NULL")
+            .fetch_all(pool)
+            .await?;
     let group = pick_group(selves, &self_target);
     if let Some(g) = group {
         changed += apply_user_remap(pool, g).await?;
@@ -267,7 +268,10 @@ pub async fn migrate_deterministic_system_ids(pool: &SqlitePool) -> Result<usize
     for (id, ptype, updated) in &providers {
         let target = system_uuid(&format!("chatshell.provider.{ptype}"));
         provider_target.insert(id.clone(), target.clone());
-        by_target.entry(target).or_default().push((id.clone(), updated.clone()));
+        by_target
+            .entry(target)
+            .or_default()
+            .push((id.clone(), updated.clone()));
     }
     for (target, rows) in by_target {
         if let Some(g) = pick_group(rows, &target) {
@@ -281,12 +285,18 @@ pub async fn migrate_deterministic_system_ids(pool: &SqlitePool) -> Result<usize
     let mut provider_ids: Vec<String> = provider_target.keys().cloned().collect();
     provider_ids.extend(provider_target.values().cloned());
     let mut resolve_provider = |pid: &str| -> Option<String> {
-        provider_target
-            .get(pid)
-            .cloned()
-            .or_else(|| provider_target.values().any(|v| v == pid).then(|| pid.to_string()))
+        provider_target.get(pid).cloned().or_else(|| {
+            provider_target
+                .values()
+                .any(|v| v == pid)
+                .then(|| pid.to_string())
+        })
     };
-    let placeholders = provider_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = provider_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let model_sql = format!(
         "SELECT m.id, m.provider_id, m.model_id, m.updated_at FROM models m \
          WHERE m.provider_id IN ({placeholders}) AND m.deleted_at IS NULL"
@@ -303,7 +313,9 @@ pub async fn migrate_deterministic_system_ids(pool: &SqlitePool) -> Result<usize
             continue;
         };
         model_groups
-            .entry(system_uuid(&format!("chatshell.model.{prov_target}.{model_id}")))
+            .entry(system_uuid(&format!(
+                "chatshell.model.{prov_target}.{model_id}"
+            )))
             .or_default()
             .push((id, updated));
     }
@@ -313,17 +325,16 @@ pub async fn migrate_deterministic_system_ids(pool: &SqlitePool) -> Result<usize
         }
     }
 
-    sqlx::query("PRAGMA foreign_keys = ON").execute(pool).await?;
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(pool)
+        .await?;
     Ok(changed)
 }
 
 /// Choose the survivor (a row already on the target id wins; otherwise the
 /// newest row, lexicographic id as the deterministic tiebreak) and split
 /// the group into keep/retire. `None` when already converged.
-fn pick_group(
-    rows: Vec<(String, String)>,
-    target: &str,
-) -> Option<Remap> {
+fn pick_group(rows: Vec<(String, String)>, target: &str) -> Option<Remap> {
     if rows.is_empty() {
         return None;
     }
@@ -362,10 +373,13 @@ async fn apply_user_remap(pool: &SqlitePool, g: Remap) -> Result<usize> {
     }
     for old in &g.retire_ids {
         for (table, col, tc, tv) in [
-            ("conversation_participants", "participant_id", Some("participant_type"), Some("user")),
+            (
+                "conversation_participants",
+                "participant_id",
+                Some("participant_type"),
+                Some("user"),
+            ),
             ("messages", "sender_id", Some("sender_type"), Some("user")),
-            ("user_relationships", "user_id", None, None),
-            ("user_relationships", "related_user_id", None, None),
         ] {
             changed += rewrite_refs(pool, table, col, old, &g.target_id, tc, tv).await? as usize;
         }
@@ -385,7 +399,13 @@ async fn apply_preset_remap(pool: &SqlitePool, g: Remap) -> Result<usize> {
     }
     for old in &g.retire_ids {
         changed += rewrite_refs(
-            pool, "assistants", "model_parameter_preset_id", old, &g.target_id, None, None,
+            pool,
+            "assistants",
+            "model_parameter_preset_id",
+            old,
+            &g.target_id,
+            None,
+            None,
         )
         .await? as usize;
         if *old != g.keep_id {
@@ -408,7 +428,8 @@ async fn apply_prompt_remap(pool: &SqlitePool, g: Remap) -> Result<usize> {
             ("conversation_settings", "selected_system_prompt_id"),
             ("conversation_settings", "selected_user_prompt_id"),
         ] {
-            changed += rewrite_refs(pool, table, col, old, &g.target_id, None, None).await? as usize;
+            changed +=
+                rewrite_refs(pool, table, col, old, &g.target_id, None, None).await? as usize;
         }
         if *old != g.keep_id {
             tombstone(pool, "prompts", old).await?;
@@ -425,9 +446,8 @@ async fn apply_provider_remap(pool: &SqlitePool, g: Remap) -> Result<usize> {
         changed += 1;
     }
     for old in &g.retire_ids {
-        changed +=
-            rewrite_refs(pool, "models", "provider_id", old, &g.target_id, None, None).await?
-                as usize;
+        changed += rewrite_refs(pool, "models", "provider_id", old, &g.target_id, None, None)
+            .await? as usize;
         if *old != g.keep_id {
             tombstone(pool, "providers", old).await?;
             changed += 1;
@@ -444,7 +464,12 @@ async fn apply_model_remap(pool: &SqlitePool, g: Remap) -> Result<usize> {
     }
     for old in &g.retire_ids {
         for (table, col, tc, tv) in [
-            ("conversation_participants", "participant_id", Some("participant_type"), Some("model")),
+            (
+                "conversation_participants",
+                "participant_id",
+                Some("participant_type"),
+                Some("model"),
+            ),
             ("messages", "sender_id", Some("sender_type"), Some("model")),
             ("assistants", "model_id", None, None),
         ] {
@@ -477,7 +502,6 @@ mod tests {
     async fn fixture_schema(pool: &SqlitePool) {
         for sql in [
             "CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE, is_self INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)",
-            "CREATE TABLE user_relationships (id TEXT PRIMARY KEY, user_id TEXT, related_user_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)",
             "CREATE TABLE model_parameter_presets (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, is_system INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)",
             "CREATE TABLE prompts (id TEXT PRIMARY KEY, name TEXT NOT NULL, is_system INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)",
             "CREATE TABLE message_prompts (id TEXT PRIMARY KEY, message_id TEXT, prompt_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)",
@@ -539,43 +563,52 @@ mod tests {
         assert!(changed > 0);
 
         // Survivor rows live under deterministic ids.
-        let live: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM prompts WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(&det_prompt)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let live: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM prompts WHERE id = ?1 AND deleted_at IS NULL")
+                .bind(&det_prompt)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(live.0, 1, "deterministic prompt row must exist");
-        let prov: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM providers WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(&det_prov)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let prov: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM providers WHERE id = ?1 AND deleted_at IS NULL")
+                .bind(&det_prov)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(prov.0, 1);
-        let model: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM models WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(&det_model)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let model: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM models WHERE id = ?1 AND deleted_at IS NULL")
+                .bind(&det_model)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(model.0, 1);
 
         // References rewritten to the deterministic ids.
         let a: (String,) = sqlx::query_as("SELECT model_id FROM assistants WHERE id = 'a1'")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(a.0, det_model);
-        let mp: (String,) = sqlx::query_as("SELECT prompt_id FROM message_prompts WHERE id = 'mp1'")
-            .fetch_one(&pool).await.unwrap();
+        let mp: (String,) =
+            sqlx::query_as("SELECT prompt_id FROM message_prompts WHERE id = 'mp1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(mp.0, det_prompt);
-        let cs: (String,) = sqlx::query_as("SELECT selected_system_prompt_id FROM conversation_settings WHERE id = 'cs1'")
-            .fetch_one(&pool).await.unwrap();
+        let cs: (String,) = sqlx::query_as(
+            "SELECT selected_system_prompt_id FROM conversation_settings WHERE id = 'cs1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(cs.0, det_prompt);
-        let cp: (String,) = sqlx::query_as("SELECT participant_id FROM conversation_participants WHERE id = 'cp1'")
-            .fetch_one(&pool).await.unwrap();
+        let cp: (String,) =
+            sqlx::query_as("SELECT participant_id FROM conversation_participants WHERE id = 'cp1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(cp.0, det_model);
 
         // Old ids tombstoned (duplicate loser included).

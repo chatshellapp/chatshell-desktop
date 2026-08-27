@@ -84,10 +84,12 @@ impl Database {
         // A dead row holding the deterministic id (deleted-then-recreated
         // same logical model) is replaced outright: the live rewrite wins
         // LWW on peers. A LIVE row with this id was handled above.
-        sqlx::query("DELETE FROM models WHERE id = ? AND (deleted_at IS NOT NULL OR is_deleted = 1)")
-            .bind(&id)
-            .execute(self.pool.as_ref())
-            .await?;
+        sqlx::query(
+            "DELETE FROM models WHERE id = ? AND (deleted_at IS NOT NULL OR is_deleted = 1)",
+        )
+        .bind(&id)
+        .execute(self.pool.as_ref())
+        .await?;
         sqlx::query(
             "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
@@ -324,7 +326,10 @@ mod tests {
         // same DETERMINISTIC id, replaces the dead row, and one live row
         // remains (cross-device adds converge on the same id).
         let second = db.create_model(req("gpt-x")).await.unwrap();
-        assert_eq!(second.id, first.id, "deterministic id is the model identity");
+        assert_eq!(
+            second.id, first.id,
+            "deterministic id is the model identity"
+        );
 
         let (_, _, is_deleted, deleted_at) = raw_row(&db, &first.id).await;
         assert_eq!(is_deleted, 0);
