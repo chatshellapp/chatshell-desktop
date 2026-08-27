@@ -1,65 +1,27 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { invoke } from '@tauri-apps/api/core'
-import type { ModelInfo } from '@/types'
-import { logger } from '@/lib/logger'
 
-export type OnboardingStep =
-  | 'checking'
-  | 'ollama-detected'
-  | 'no-provider'
-  | 'creating-assistant'
-  | 'complete'
+export type OnboardingStep = 'checking' | 'no-provider' | 'sync' | 'complete'
 
 interface OnboardingStore {
   step: OnboardingStep
   isDialogOpen: boolean
-  ollamaModels: ModelInfo[]
-  isCheckingOllama: boolean
-  error: string | null
+  /** True once this session's general onboarding flow is triggered: the
+   * sync-enable card (ADR 04 §7) is a step of that flow, so the standalone
+   * launch-time sync dialog must stay suppressed for the whole session. */
+  flowOwnsSyncOffer: boolean
 
   // Actions
-  checkOllama: () => Promise<boolean>
   setStep: (step: OnboardingStep) => void
   setDialogOpen: (open: boolean) => void
-  setError: (error: string | null) => void
-  resetOnboarding: () => void
+  markFlowOwnsSyncOffer: () => void
 }
 
 export const useOnboardingStore = create<OnboardingStore>()(
   immer((set) => ({
     step: 'checking',
     isDialogOpen: false,
-    ollamaModels: [],
-    isCheckingOllama: false,
-    error: null,
-
-    checkOllama: async () => {
-      set((draft) => {
-        draft.isCheckingOllama = true
-        draft.error = null
-      })
-
-      try {
-        const models = await invoke<ModelInfo[]>('fetch_ollama_models', {
-          baseUrl: 'http://localhost:11434',
-        })
-
-        set((draft) => {
-          draft.ollamaModels = models
-          draft.isCheckingOllama = false
-        })
-
-        return models.length > 0
-      } catch (error) {
-        logger.info('[onboarding] Ollama not available:', error)
-        set((draft) => {
-          draft.ollamaModels = []
-          draft.isCheckingOllama = false
-        })
-        return false
-      }
-    },
+    flowOwnsSyncOffer: false,
 
     setStep: (step) => {
       set((draft) => {
@@ -73,19 +35,10 @@ export const useOnboardingStore = create<OnboardingStore>()(
       })
     },
 
-    setError: (error) => {
+    markFlowOwnsSyncOffer: () => {
       set((draft) => {
-        draft.error = error
+        draft.flowOwnsSyncOffer = true
       })
     },
-
-    resetOnboarding: () => {
-      set((draft) => {
-        draft.step = 'checking'
-        draft.isDialogOpen = false
-        draft.ollamaModels = []
-        draft.error = null
-      })
-    },
-  }))
+  })),
 )

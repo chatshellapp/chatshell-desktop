@@ -74,13 +74,18 @@ export function useAppInit() {
           logger.warn('Failed to check keychain availability:', err)
         }
 
-        // Check if onboarding is needed
+        // Check if onboarding is needed. Assistants are no longer part of
+        // the flow's completion semantics — they are optional personas the
+        // user can create anytime from the sidebar.
         const onboardingComplete = await settingsStore.getSetting('onboarding_complete')
-        const hasAssistants = assistantStore.assistants.length > 0
 
-        if (onboardingComplete !== 'true' && !hasAssistants) {
+        if (onboardingComplete !== 'true') {
           logger.info('[useAppInit] Triggering onboarding flow...')
           const onboardingStore = useOnboardingStore.getState()
+          // The sync-enable card is the flow's final step (ADR 04 §7);
+          // suppress the standalone launch-time sync dialog for this
+          // session so the two never stack.
+          onboardingStore.markFlowOwnsSyncOffer()
           onboardingStore.setDialogOpen(true)
         }
 
