@@ -12,6 +12,7 @@ mod models;
 mod prompts;
 mod providers;
 mod schema;
+pub mod system_ids;
 mod search_results;
 mod seed;
 mod settings;

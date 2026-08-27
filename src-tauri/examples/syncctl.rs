@@ -11,10 +11,17 @@ use chatshell_agent_core::sync::{SyncEngine, SyncOutcome};
 use chatshell_desktop_lib::sync_crypto_state;
 
 const APP_DATA: &str = "/Users/sean/Library/Application Support/app.chatshell.desktop";
+const PEER3_DATA: &str = "/tmp/chatshell-peer3";
 const CONTAINER: &str = "/Users/sean/Library/Mobile Documents/iCloud~app~chatshell";
 
 fn app_data() -> std::path::PathBuf {
-    std::path::PathBuf::from(APP_DATA)
+    // PEER3=1 isolates the data dir (S6: a second Mac client sharing the
+    // container but with its own db/cache/settings).
+    if std::env::var_os("PEER3").is_some() {
+        std::path::PathBuf::from(PEER3_DATA)
+    } else {
+        std::path::PathBuf::from(APP_DATA)
+    }
 }
 
 fn cloud() -> std::path::PathBuf {
@@ -66,6 +73,32 @@ async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cmd = args.first().map(String::as_str).unwrap_or("help");
     match cmd {
+        "publish" => {
+            match sync_crypto_state::resolve_content_key(&app_data(), &cloud(), &settings()) {
+                sync_crypto_state::CkResolution::Ready(crypto) => {
+                    let mut eng = engine(crypto).unwrap();
+                    eng.publish().expect("publish");
+                    println!("published (unthrottled)");
+                }
+                other => println!("publish: ladder said {other:?}"),
+            }
+        }
+        "stage" => {
+            let out = args[1].clone();
+            let path = cloud().join("snapshot.db.enc");
+            let artifact = std::fs::read(&path).expect("read artifact");
+            let (h, payload) =
+                chatshell_agent_core::sync_crypto::split_artifact(&artifact).unwrap();
+            let state = chain().expect("chain");
+            let zst = chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
+                state.keys(), &h, payload,
+            )
+            .expect("decrypt");
+            let plain = zstd::stream::decode_all(&zst[..]).expect("zstd");
+            let n = plain.len();
+            std::fs::write(&out, plain).expect("write");
+            println!("staged {n} bytes to {out}");
+        }
         "peek" => {
             let path = cloud().join("snapshot.db.enc");
             let artifact = std::fs::read(&path).expect("read artifact");

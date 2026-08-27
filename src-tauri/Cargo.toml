@@ -55,7 +55,7 @@ blake3 = "1"
 jieba-rs = "0.7"
 
 # Utilities
-uuid = { version = "1", features = ["v7", "serde"] }
+uuid = { version = "1", features = ["v7", "v5", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 # Ripgrep core (in-process search)

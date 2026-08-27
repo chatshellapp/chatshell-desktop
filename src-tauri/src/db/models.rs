@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use sqlx::Row;
-use uuid::Uuid;
+use uuid;
 
 use super::Database;
 use crate::models::{CreateModelRequest, Model};
@@ -11,9 +11,39 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let is_starred = req.is_starred.unwrap_or(false);
 
+        // Natural-key singleton: a live row with the same (provider_id,
+        // model_id) IS this model — update it in place instead of creating
+        // a duplicate (two rows for one model broke the pickers and, across
+        // devices, the merge duplicated defaults; real-device finding).
+        let existing_live: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM models WHERE model_id = ? AND provider_id = ? \
+             AND deleted_at IS NULL AND is_deleted = 0",
+        )
+        .bind(&req.model_id)
+        .bind(&req.provider_id)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        if let Some(id) = existing_live {
+            sqlx::query(
+                "UPDATE models SET name = ?, description = ?, is_starred = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(&req.name)
+            .bind(&req.description)
+            .bind(is_starred as i32)
+            .bind(&now)
+            .bind(&id)
+            .execute(self.pool.as_ref())
+            .await?;
+            return self
+                .get_model(&id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Failed to retrieve existing model"));
+        }
+
         // Check if a soft-deleted model with same model_id and provider_id exists
         let existing_id: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM models WHERE model_id = ? AND provider_id = ? AND is_deleted = 1",
+            "SELECT id FROM models WHERE model_id = ? AND provider_id = ? \
+             AND (deleted_at IS NOT NULL OR is_deleted = 1)",
         )
         .bind(&req.model_id)
         .bind(&req.provider_id)
@@ -43,8 +73,21 @@ impl Database {
                 .ok_or_else(|| anyhow::anyhow!("Failed to retrieve restored model"));
         }
 
-        // Create new model
-        let id = Uuid::now_v7().to_string();
+        // Deterministic id (UUID v5 over provider+model): devices adding
+        // the same model to the same (deterministic-id) provider produce
+        // the same row, so merges converge instead of duplicating
+        // (system-seed rule; custom providers differ per device anyway).
+        let id = super::system_ids::system_uuid(&format!(
+            "chatshell.model.{}.{}",
+            req.provider_id, req.model_id
+        ));
+        // A dead row holding the deterministic id (deleted-then-recreated
+        // same logical model) is replaced outright: the live rewrite wins
+        // LWW on peers. A LIVE row with this id was handled above.
+        sqlx::query("DELETE FROM models WHERE id = ? AND (deleted_at IS NOT NULL OR is_deleted = 1)")
+            .bind(&id)
+            .execute(self.pool.as_ref())
+            .await?;
         sqlx::query(
             "INSERT INTO models (id, name, provider_id, model_id, description, is_starred, is_deleted, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
@@ -271,20 +314,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_model_after_tombstone_mints_fresh_row() {
+    async fn create_model_after_tombstone_reuses_deterministic_id() {
         let (db, _dir) = test_db().await;
         let first = db.create_model(req("gpt-x")).await.unwrap();
         db.delete_model(&first.id).await.unwrap();
 
-        // The tombstone wipe blanked model_id, so the restore lookup cannot
-        // match it; re-adding the same logical model mints a fresh row and
-        // the old tombstone stays put.
+        // The tombstone wipe blanked model_id, so the natural-key lookups
+        // cannot match it; re-adding the same logical model computes the
+        // same DETERMINISTIC id, replaces the dead row, and one live row
+        // remains (cross-device adds converge on the same id).
         let second = db.create_model(req("gpt-x")).await.unwrap();
-        assert_ne!(second.id, first.id);
+        assert_eq!(second.id, first.id, "deterministic id is the model identity");
 
         let (_, _, is_deleted, deleted_at) = raw_row(&db, &first.id).await;
-        assert_eq!(is_deleted, 1);
-        assert!(deleted_at.is_some());
+        assert_eq!(is_deleted, 0);
+        assert!(deleted_at.is_none(), "recreated row must be live");
 
         let live = db.list_models().await.unwrap();
         assert_eq!(live.len(), 1);

@@ -15,7 +15,7 @@ impl Database {
             }
             None => {
                 tracing::info!("🌱 [db] Creating default self user...");
-                let user = self
+                let mut user = self
                     .create_user(CreateUserRequest {
                         username: "self".to_string(),
                         display_name: "You".to_string(),
@@ -28,6 +28,19 @@ impl Database {
                         is_self: Some(true),
                     })
                     .await?;
+                // Deterministic id: the seeded self user is the same row on
+                // every device, so conversations/messages authored elsewhere
+                // reference it by id across the merge instead of dangling
+                // against the tnk(username) twin's local id.
+                let deterministic_id = super::system_ids::system_uuid("chatshell.user.self");
+                if user.id != deterministic_id {
+                    sqlx::query("UPDATE users SET id = ?1 WHERE id = ?2")
+                        .bind(&deterministic_id)
+                        .bind(&user.id)
+                        .execute(self.pool.as_ref())
+                        .await?;
+                    user.id = deterministic_id;
+                }
                 tracing::info!("✅ [db] Created self user: {}", user.display_name);
                 user
             }
@@ -46,7 +59,7 @@ impl Database {
                 })?
         } else {
             tracing::info!("🌱 [db] Seeding default Ollama provider...");
-            let provider = self
+            let mut provider = self
                 .create_provider(CreateProviderRequest {
                     name: "Ollama".to_string(),
                     provider_type: "ollama".to_string(),
@@ -57,7 +70,21 @@ impl Database {
                     is_enabled: Some(true),
                 })
                 .await?;
-            tracing::info!("✅ [db] Created provider: {}", provider.name);
+            // Deterministic id for the auto-seeded local Ollama provider:
+            // every machine that auto-seeds it produces the SAME row, so
+            // cross-device merges converge on one provider instead of
+            // duplicating "Ollama" per machine (system-seed rule; the row
+            // is brand new, nothing references the old id yet).
+            let deterministic_id =
+                super::system_ids::system_uuid("chatshell.provider.ollama");
+            if provider.id != deterministic_id {
+                sqlx::query("UPDATE providers SET id = ?1 WHERE id = ?2")
+                    .bind(&deterministic_id)
+                    .bind(&provider.id)
+                    .execute(self.pool.as_ref())
+                    .await?;
+                provider.id = deterministic_id;
+            }
             provider
         };
 
@@ -256,6 +283,21 @@ impl Database {
                         is_system: Some(true),
                     })
                     .await?;
+                // Deterministic id (UUID v5 over the name): system prompts
+                // seeded on different devices become the SAME row, so a
+                // fresh device joining a group merges them by pk (whole-row
+                // LWW) instead of duplicating all of them by name
+                // (system-seed rule; user-created prompts keep random ids).
+                let deterministic_id = super::system_ids::system_uuid(&format!(
+                    "chatshell.prompt.{name}"
+                ));
+                if prompt.id != deterministic_id {
+                    sqlx::query("UPDATE prompts SET id = ?1 WHERE id = ?2")
+                        .bind(&deterministic_id)
+                        .bind(&prompt.id)
+                        .execute(self.pool.as_ref())
+                        .await?;
+                }
                 tracing::info!(
                     "✅ [db] Created prompt: {} ({})",
                     prompt.name,

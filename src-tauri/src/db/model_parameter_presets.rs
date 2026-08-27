@@ -308,8 +308,16 @@ impl Database {
 
         let now = Utc::now().to_rfc3339();
 
+        // Deterministic ids (UUID v5 over a fixed namespace): every device
+        // seeds the SAME rows, so a fresh database merging a remote snapshot
+        // meets identical preset ids instead of colliding on the UNIQUE
+        // name while remote assistants still reference the old random ids
+        // (real-device S6 finding: the FK failure aborted the whole merge).
+        let balanced_id = super::system_ids::system_uuid("chatshell.preset.balanced");
+        let creative_id = super::system_ids::system_uuid("chatshell.preset.creative");
+        let precise_id = super::system_ids::system_uuid("chatshell.preset.precise");
+
         // Create Balanced preset (default)
-        let balanced_id = Uuid::now_v7().to_string();
         sqlx::query(
             "INSERT INTO model_parameter_presets 
              (id, name, description, temperature, max_tokens, top_p, frequency_penalty, 
@@ -330,7 +338,6 @@ impl Database {
         .await?;
 
         // Create Creative preset
-        let creative_id = Uuid::now_v7().to_string();
         sqlx::query(
             "INSERT INTO model_parameter_presets 
              (id, name, description, temperature, max_tokens, top_p, frequency_penalty, 
@@ -351,7 +358,6 @@ impl Database {
         .await?;
 
         // Create Precise preset
-        let precise_id = Uuid::now_v7().to_string();
         sqlx::query(
             "INSERT INTO model_parameter_presets 
              (id, name, description, temperature, max_tokens, top_p, frequency_penalty, 

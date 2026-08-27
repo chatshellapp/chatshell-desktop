@@ -8,7 +8,35 @@ use crate::models::{CreateProviderRequest, Provider};
 
 impl Database {
     pub async fn create_provider(&self, req: CreateProviderRequest) -> Result<Provider> {
-        let id = Uuid::now_v7().to_string();
+        // Built-in provider types are singletons by type with a
+        // DETERMINISTIC id (UUID v5): every device adding "OpenAI" produces
+        // the same row, so merges converge instead of duplicating the
+        // provider — type-based singleton lookups in the UI then never
+        // pick the wrong twin (real-device finding: two MiniMax CN rows
+        // made model switching appear broken). An existing same-type row
+        // is updated in place rather than duplicated.
+        if chatshell_agent_core::is_builtin_provider_type(&req.provider_type) {
+            if let Some(existing) = self
+                .list_providers()
+                .await?
+                .into_iter()
+                .find(|p| p.provider_type == req.provider_type)
+            {
+                tracing::info!(
+                    "🔁 [db] Built-in provider {} already exists; updating in place",
+                    req.provider_type
+                );
+                return self.update_provider(&existing.id, req).await;
+            }
+        }
+        let id = if chatshell_agent_core::is_builtin_provider_type(&req.provider_type) {
+            crate::db::system_ids::system_uuid(&format!(
+                "chatshell.provider.{}",
+                req.provider_type
+            ))
+        } else {
+            Uuid::now_v7().to_string()
+        };
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
 

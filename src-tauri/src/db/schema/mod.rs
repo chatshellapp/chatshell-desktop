@@ -18,7 +18,7 @@ mod steps;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 11;
+const CURRENT_SCHEMA_VERSION: i32 = 12;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -113,6 +113,17 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         migrate_v10_to_v11(pool).await?;
         set_user_version(pool, 11).await?;
         tracing::info!("Migration to v11 completed");
+    }
+
+    if current_version < 12 {
+        // Data migration: converge system-seeded rows (self user, presets,
+        // system prompts, built-in providers and their models) onto
+        // deterministic UUID-v5 ids; duplicates collapse, references are
+        // rewritten, and tombstones at the retired ids propagate the
+        // change to synced peers. Idempotent.
+        let changed = crate::db::system_ids::migrate_deterministic_system_ids(pool).await?;
+        set_user_version(pool, 12).await?;
+        tracing::info!("Migration to v12 completed ({changed} rows remapped/tombstoned)");
     }
 
     // Ensure columns exist (idempotent, fixes databases
