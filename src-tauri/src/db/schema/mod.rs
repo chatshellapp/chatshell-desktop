@@ -18,7 +18,7 @@ mod tools;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 13;
+const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -115,23 +115,6 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v11 completed");
     }
 
-    if current_version < 12 {
-        // Data migration: converge system-seeded rows (self user, presets,
-        // system prompts, built-in providers and their models) onto
-        // deterministic UUID-v5 ids; duplicates collapse, references are
-        // rewritten, and tombstones at the retired ids propagate the
-        // change to synced peers. Idempotent.
-        let changed = crate::db::system_ids::migrate_deterministic_system_ids(pool).await?;
-        set_user_version(pool, 12).await?;
-        tracing::info!("Migration to v12 completed ({changed} rows remapped/tombstoned)");
-    }
-
-    if current_version < 13 {
-        migrate_v12_to_v13(pool).await?;
-        set_user_version(pool, 13).await?;
-        tracing::info!("Migration to v13 completed");
-    }
-
     // Ensure columns exist (idempotent, fixes databases
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
@@ -191,7 +174,12 @@ async fn ensure_natural_key_unique_indexes(pool: &SqlitePool) -> Result<()> {
 /// Migration v10 -> v11: sync-readiness rollout, compaction events, and
 /// natural-key indexes (ADR 01 snapshot sync). This collapses what shipped
 /// as v11-v15 across local development builds into a single step; no
-/// released build ever wrote a user_version above 10.
+/// released build ever wrote a user_version above 10. It also folds in the
+/// short-lived dev-build v12/v13: system rows seed deterministic ids at
+/// insert time (db::system_ids), and the never-shipped knowledge-base /
+/// user-relationship tables are dropped here. Databases stamped 12/13 by
+/// intermediate dev builds are already converged or disposable - dev
+/// stage, no migration debt carried.
 ///
 /// - `updated_at` on every synced table (validate_registry requires it on
 ///   ALL of them): NOT NULL with '' default, backfilled from
@@ -319,17 +307,10 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    tracing::info!(
-        "Added sync-readiness columns, meta/compactions tables, and natural-key indexes"
-    );
-    Ok(())
-}
-
-/// Migration v12 -> v13: Drop the never-shipped knowledge-base tables and
-/// `user_relationships`. No feature code ever wrote them; they existed only
-/// in the sync schema's merge registry, where they cost cross-device schema
-/// lockstep for nothing. Children drop before parents so FK constraints hold.
-async fn migrate_v12_to_v13(pool: &SqlitePool) -> Result<()> {
+    // Folded from dev-build v13: tables created by the v1 ladder that no
+    // feature code ever wrote; they existed only in the sync schema's
+    // merge registry, costing cross-device schema lockstep for nothing.
+    // Children drop before parents so FK constraints hold.
     for table in [
         "message_knowledge_bases",
         "assistant_knowledge_bases",
@@ -340,8 +321,14 @@ async fn migrate_v12_to_v13(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+
+    tracing::info!(
+        "Added sync-readiness columns, meta/compactions tables, and natural-key indexes; \
+         dropped never-shipped tables"
+    );
     Ok(())
 }
+
 /// Initial schema (v1) - used for fresh installations
 async fn migrate_v0_to_v1(pool: &SqlitePool) -> Result<()> {
     providers::create_providers_table(pool).await?;
