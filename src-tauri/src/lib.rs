@@ -224,7 +224,7 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     wiring.ensure_engine(&handle, &engine);
                     if let Err(err) =
-                        sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
+                        sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false).await
                     {
                         tracing::warn!("Sync pass failed: {err:?}");
                     }
@@ -234,7 +234,8 @@ pub fn run() {
                         ticker.tick().await;
                         wiring.ensure_engine(&handle, &engine);
                         if let Err(err) =
-                            sync::run_sync_pass(engine.clone(), db.clone(), handle.clone()).await
+                            sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false)
+                                .await
                         {
                             tracing::warn!("Sync pass failed: {err:?}");
                         }

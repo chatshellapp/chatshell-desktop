@@ -121,10 +121,12 @@ impl SyncWiring {
 }
 
 /// Run one sync pass against the cloud snapshot: pull/merge, then flush
-/// pending local writes (throttled inside the engine). When the merge pulled
-/// rows, incrementally reconcile the FTS index (merged rows bypass the sqlx
-/// insert path that normally maintains it) and emit `sync-merged` so the
-/// frontend can reload its stores without an app restart.
+/// pending local writes (throttled inside the engine; `manual` bypasses
+/// the throttle so user-triggered passes ship same-session writes
+/// immediately — real-device finding 2026-08-28 #6). When the merge pulled
+/// rows, incrementally reconcile the FTS index (merged rows bypass the
+/// sqlx insert path that normally maintains it) and emit `sync-merged` so
+/// the frontend can reload its stores without an app restart.
 ///
 /// Returns the engine outcome (`None` = sync disabled on this machine) so
 /// the manual `sync_now` command can run the exact same path as the
@@ -137,6 +139,7 @@ pub async fn run_sync_pass(
     engine: SyncEngineHandle,
     db: crate::db::Database,
     app: tauri::AppHandle,
+    manual: bool,
 ) -> anyhow::Result<Option<SyncOutcome>> {
     use tauri::Emitter;
 
@@ -149,7 +152,14 @@ pub async fn run_sync_pass(
                 .lock()
                 .map_err(|_| anyhow::anyhow!("sync engine poisoned"))?;
             match guard.as_mut() {
-                Some(engine) => Ok(Some(engine.sync_now()?)),
+                Some(engine) => {
+                    let outcome = if manual {
+                        engine.sync_now_manual()?
+                    } else {
+                        engine.sync_now()?
+                    };
+                    Ok(Some(outcome))
+                }
                 None => Ok(None),
             }
         })

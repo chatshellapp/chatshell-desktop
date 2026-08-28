@@ -25,9 +25,10 @@ pub async fn sync_now(
     // the content-key ladder and engine construction before the pass, so a
     // dropped/wedged engine recovers here instead of waiting for a tick.
     wiring(&app)?.ensure_engine(&app, &state.sync_engine);
-    let outcome = crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app)
-        .await
-        .map_err(|e| e.to_string())?;
+    let outcome =
+        crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app, true)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(match outcome {
         None => SyncNowResult {
             enabled: false,
@@ -239,7 +240,7 @@ pub async fn complete_sync_onboarding(
     let db = state.db.clone();
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(err) = crate::sync::run_sync_pass(engine, db, handle).await {
+        if let Err(err) = crate::sync::run_sync_pass(engine, db, handle, true).await {
             tracing::warn!("Post-onboarding sync pass failed: {err:?}");
         }
     });
@@ -296,7 +297,8 @@ pub async fn unlock_sync(
             let db = state.db.clone();
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle).await {
+                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle, true).await
+                {
                     tracing::warn!("Post-unlock sync pass failed: {err:?}");
                 }
                 // Terminal flush for the join path: this device just
@@ -357,7 +359,8 @@ pub async fn try_join_sync(
             let db = state.db.clone();
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle).await {
+                if let Err(err) = crate::sync::run_sync_pass(engine.clone(), db, handle, true).await
+                {
                     tracing::warn!("Post-join sync pass failed: {err:?}");
                 }
                 // The join path ships local state that may be far ahead of
@@ -433,9 +436,10 @@ pub async fn force_sync_publish(
         .map_err(|e| e.to_string())?;
     // Report the post-force state through the shared pass so the result
     // also refreshes stores/events; outcome text says what happened.
-    let outcome = crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app)
-        .await
-        .map_err(|e| e.to_string())?;
+    let outcome =
+        crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app, true)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(match outcome {
         None => SyncNowResult {
             enabled: false,
