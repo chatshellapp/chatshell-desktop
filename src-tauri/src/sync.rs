@@ -365,6 +365,27 @@ async fn handle_pass_error(
     err
 }
 
+/// Terminal flush for the join/unlock paths: publish this device's state
+/// without the pass flow, on a blocking thread — `VACUUM INTO` plus file
+/// IO must not run on an async worker (audit 2026-08-28, low).
+pub async fn terminal_publish(engine: SyncEngineHandle) {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let Ok(mut guard) = engine.lock() else {
+            return Ok(());
+        };
+        match guard.as_mut() {
+            Some(engine) => engine.publish(),
+            None => Ok(()),
+        }
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => tracing::warn!("Terminal sync publish failed: {err:#}"),
+        Err(err) => tracing::warn!("Terminal sync publish task failed: {err}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 /// Device-local enablement record. Lives in the app data dir; never synced.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SyncSettings {
     pub enabled: bool,
     pub onboarded: bool,
@@ -37,7 +38,19 @@ pub struct SyncSettings {
     /// trigger for the escape hatches (Sync now / Force publish /
     /// passphrase unlock). Cleared by the next successful pass.
     pub last_pass_error: Option<String>,
+    /// Wrong-passphrase unlock attempts inside the current window (ADR 04
+    /// §3 rule 3 — local rate limiting; Argon2id is the cost, this is the
+    /// bound). Reset by a successful unlock or an expired window.
+    pub unlock_attempts: u32,
+    /// Unix seconds of the first attempt in the current window (0 = none).
+    pub unlock_window_start: i64,
 }
+
+/// Wrong-passphrase unlock budget (ADR 04 §3 rule 3): at most this many
+/// attempts per rolling [`UNLOCK_WINDOW_SECS`] window. Argon2id raises the
+/// per-attempt cost; this bounds automated in-app hammering on top.
+const MAX_UNLOCK_ATTEMPTS: u32 = 5;
+const UNLOCK_WINDOW_SECS: i64 = 10 * 60;
 
 const SETTINGS_FILE: &str = "sync-settings.json";
 const CHAIN_CACHE: &str = "sync-ck-chain.bin";
@@ -236,16 +249,32 @@ pub fn unlock_with_passphrase(
     cloud_dir: &Path,
     passphrase: &str,
 ) -> Result<SyncCrypto> {
+    // Local rate limit before any Argon2 work (ADR 04 §3 rule 3; audit
+    // F5, closed 2026-08-28).
+    if let Some(wait_secs) = unlock_retry_after(app_data_dir) {
+        anyhow::bail!(
+            "Too many wrong passphrase attempts — try again in {} seconds",
+            wait_secs
+        );
+    }
     let header = chatshell_agent_core::sync_crypto::read_artifact_header(&artifact_path(cloud_dir))
         .map_err(anyhow::Error::new)
         .context("read the cloud artifact header")?;
-    let crypto = SyncCrypto::from_passphrase(&header, passphrase.trim(), true)?;
-    persist_all_proven(app_data_dir, &crypto)?;
-    let mut settings = load_settings(app_data_dir);
-    settings.needs_unlock = false;
-    save_settings(app_data_dir, &settings)?;
-    tracing::info!("Sync content key unlocked via passphrase");
-    Ok(crypto)
+    match SyncCrypto::from_passphrase(&header, passphrase.trim(), true) {
+        Ok(crypto) => {
+            persist_all_proven(app_data_dir, &crypto)?;
+            let mut settings = load_settings(app_data_dir);
+            settings.needs_unlock = false;
+            save_settings(app_data_dir, &settings)?;
+            clear_unlock_attempts(app_data_dir);
+            tracing::info!("Sync content key unlocked via passphrase");
+            Ok(crypto)
+        }
+        Err(err) => {
+            record_unlock_failure(app_data_dir);
+            Err(err.into())
+        }
+    }
 }
 
 /// Record a failed sync pass so Settings can surface it (auto-sync failure
@@ -299,11 +328,12 @@ pub fn disable_sync(
 ) -> Result<String> {
     let mut settings = load_settings(app_data_dir);
     settings.enabled = false;
-    save_settings(app_data_dir, &settings)?;
     if !delete_cloud_data {
+        save_settings(app_data_dir, &settings)?;
         return Ok("Stopped publishing. Your other devices keep syncing.".into());
     }
     let Some(cloud_dir) = cloud_dir else {
+        save_settings(app_data_dir, &settings)?;
         return Ok("Stopped publishing (no cloud container was present).".into());
     };
     let mut removed = 0usize;
@@ -320,15 +350,76 @@ pub fn disable_sync(
     {
         tracing::warn!("Failed to remove the cloud blob store: {err}");
     }
-    // Local key material is void with the cloud data gone; a future
-    // enablement bootstraps a fresh group.
+    // The group is void: drop every trace of it so a future enablement is
+    // a clean bootstrap instead of a dead end (audit 2026-08-28, M5). The
+    // chain cache is local; the synchronizable CK item would otherwise
+    // hand every fresh device a key for a group that no longer exists.
     let _ = std::fs::remove_file(chain_cache_path(app_data_dir));
-    let mut settings = load_settings(app_data_dir);
+    delete_keychain_content_key();
     settings.needs_unlock = false;
+    settings.onboarded = false;
+    settings.declined_count = 0;
+    settings.last_pass_error = None;
+    settings.unlock_attempts = 0;
+    settings.unlock_window_start = 0;
     save_settings(app_data_dir, &settings)?;
     Ok(format!(
         "Stopped publishing and deleted the cloud snapshot and blob store ({removed} snapshot file(s))."
     ))
+}
+
+#[cfg(target_os = "macos")]
+fn delete_keychain_content_key() {
+    if let Err(err) = crate::sync_keychain::delete_synchronizable_content_key() {
+        tracing::warn!("Failed to delete the synchronizable content key: {err:?}");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn delete_keychain_content_key() {}
+
+/// Returns the number of seconds the caller must wait when the unlock
+/// budget is exhausted; `None` when an attempt is allowed.
+pub fn unlock_retry_after(app_data_dir: &Path) -> Option<i64> {
+    let settings = load_settings(app_data_dir);
+    if settings.unlock_attempts < MAX_UNLOCK_ATTEMPTS {
+        return None;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let elapsed = now.saturating_sub(settings.unlock_window_start);
+    (elapsed < UNLOCK_WINDOW_SECS).then(|| UNLOCK_WINDOW_SECS - elapsed)
+}
+
+/// Record one failed unlock attempt (window-aware).
+fn record_unlock_failure(app_data_dir: &Path) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut settings = load_settings(app_data_dir);
+    // A window that already expired restarts the count from this attempt.
+    if now.saturating_sub(settings.unlock_window_start) >= UNLOCK_WINDOW_SECS {
+        settings.unlock_attempts = 0;
+        settings.unlock_window_start = now;
+    } else if settings.unlock_attempts == 0 {
+        settings.unlock_window_start = now;
+    }
+    settings.unlock_attempts += 1;
+    if let Err(err) = save_settings(app_data_dir, &settings) {
+        tracing::warn!("Failed to record the unlock attempt: {err}");
+    }
+}
+
+fn clear_unlock_attempts(app_data_dir: &Path) {
+    let mut settings = load_settings(app_data_dir);
+    if settings.unlock_attempts != 0 || settings.unlock_window_start != 0 {
+        settings.unlock_attempts = 0;
+        settings.unlock_window_start = 0;
+        let _ = save_settings(app_data_dir, &settings);
+    }
 }
 
 #[cfg(test)]
@@ -502,12 +593,47 @@ mod tests {
         assert!(chain_cache_path(dir.path()).exists());
         assert!(!load_settings(dir.path()).enabled);
 
-        // Delete tier: snapshot + blobs + chain gone.
+        // Delete tier: snapshot + blobs + chain gone, and the group state
+        // resets so a future enablement bootstraps cleanly instead of
+        // hitting the onboarding dead end (audit 2026-08-28, M5).
         let msg = disable_sync(dir.path(), Some(&cloud), true).unwrap();
         assert!(msg.contains("deleted"));
         assert!(!artifact_path(&cloud).exists());
         assert!(!cloud.join("blobs").exists());
         assert!(!chain_cache_path(dir.path()).exists());
+        let after = load_settings(dir.path());
+        assert!(!after.enabled);
+        assert!(
+            !after.onboarded,
+            "delete tier must clear the onboarding latch"
+        );
+        assert_eq!(after.declined_count, 0);
+        assert!(!after.needs_unlock);
+    }
+
+    #[test]
+    fn unlock_rate_limit_window() {
+        // ADR 04 §3 rule 3: five wrong attempts inside the window lock the
+        // unlock path out; an expired window reopens it.
+        let dir = space();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let mut settings = SyncSettings::default();
+        settings.unlock_attempts = MAX_UNLOCK_ATTEMPTS;
+        settings.unlock_window_start = now;
+        save_settings(dir.path(), &settings).unwrap();
+        assert!(unlock_retry_after(dir.path()).is_some());
+
+        settings.unlock_window_start = now - UNLOCK_WINDOW_SECS - 1;
+        save_settings(dir.path(), &settings).unwrap();
+        assert_eq!(unlock_retry_after(dir.path()), None);
+
+        settings.unlock_attempts = 1;
+        settings.unlock_window_start = now;
+        save_settings(dir.path(), &settings).unwrap();
+        assert_eq!(unlock_retry_after(dir.path()), None);
     }
 
     #[test]

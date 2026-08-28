@@ -44,7 +44,7 @@ export function SyncSettingsSection() {
       await enable()
       toast.success(t('settings.statusEnabled'))
     } catch (err) {
-      toast.error(String(err))
+      toast.error(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -57,7 +57,7 @@ export function SyncSettingsSection() {
       toast.info(summary)
       setDeleteOpen(false)
     } catch (err) {
-      toast.error(String(err))
+      toast.error(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -75,7 +75,7 @@ export function SyncSettingsSection() {
         toast.info(t('settings.statusDisabled'))
       }
     } catch (err) {
-      toast.error(String(err))
+      toast.error(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -93,7 +93,7 @@ export function SyncSettingsSection() {
         toast.info(t('settings.statusDisabled'))
       }
     } catch (err) {
-      toast.error(String(err))
+      toast.error(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
@@ -200,6 +200,9 @@ export function SyncSettingsSection() {
             type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && passphrase && !busy) void handleUnlock()
+            }}
             placeholder={t('locked.placeholder')}
           />
           {errorText && <p className="text-sm text-red-500">{errorText}</p>}

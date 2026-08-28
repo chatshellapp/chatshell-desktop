@@ -31,6 +31,7 @@ interface SyncSetupStore {
   /** Fired when the backend ladder reaches the passphrase rung. */
   lockedEvent: boolean
   load: () => Promise<void>
+  refreshInfo: () => Promise<void>
   startOnboarding: () => Promise<string>
   completeOnboarding: (passphrase: string) => Promise<void>
   declineOnboarding: () => Promise<void>
@@ -49,28 +50,51 @@ interface SyncSetupStore {
 }
 
 let unsubscribeLocked: (() => void) | null = null
+let unsubscribeError: (() => void) | null = null
+let listenersRegistered = false
+let listenersReady: Promise<void> | null = null
 
 export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
   info: null,
   lockedEvent: false,
 
   load: async () => {
-    try {
-      const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
-      set({ info, lockedEvent: info.needs_passphrase })
-      if (!unsubscribeLocked) {
+    // Register listeners exactly once; concurrent loads await the same
+    // registration promise instead of racing duplicate listeners (audit
+    // 2026-08-28, low). Unlisten handles are retained so a future store
+    // teardown could release them (they were previously discarded).
+    if (!listenersRegistered) {
+      listenersRegistered = true
+      listenersReady = (async () => {
         unsubscribeLocked = await listen('sync-locked', () => {
           set({ lockedEvent: true })
           const current = get().info
           if (current) set({ info: { ...current, needs_passphrase: true } })
         })
-        await listen<string>('sync-error', (event) => {
+        unsubscribeError = await listen<string>('sync-error', (event) => {
+          // Info may not be loaded yet (banner shown at launch): refresh
+          // it so the latch is not silently dropped (audit 2026-08-28, low).
           const current = get().info
           if (current) set({ info: { ...current, last_pass_error: event.payload } })
+          else void get().refreshInfo()
         })
-      }
+      })()
+    }
+    await listenersReady
+    try {
+      const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
+      set({ info, lockedEvent: info.needs_passphrase })
     } catch (err) {
       logger.error('Failed to load sync setup state:', err)
+    }
+  },
+
+  refreshInfo: async () => {
+    try {
+      const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
+      set({ info })
+    } catch (err) {
+      logger.error('Failed to refresh sync setup state:', err)
     }
   },
 
@@ -86,7 +110,7 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
 
   declineOnboarding: async () => {
     const info = await invoke<SyncSetupStateInfo>('decline_sync_onboarding')
-    set({ info })
+    set({ info, lockedEvent: false })
   },
 
   unlock: async (passphrase: string) => {
@@ -96,7 +120,7 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
 
   enable: async () => {
     const info = await invoke<SyncSetupStateInfo>('enable_sync')
-    set({ info })
+    set({ info, lockedEvent: info.needs_passphrase })
   },
 
   tryJoin: async () => {
@@ -107,7 +131,10 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
   disable: async (deleteCloudData: boolean) => {
     const summary = await invoke<string>('disable_sync', { deleteCloudData })
     const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
-    set({ info })
+    // Any disable clears a stale locked banner: the ladder re-runs on the
+    // next pass and re-arms it if the passphrase rung is genuinely reached
+    // (audit 2026-08-28, M9 — the ghost banner after delete-cloud-data).
+    set({ info, lockedEvent: info.needs_passphrase })
     return summary
   },
 
@@ -125,3 +152,13 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
     return result
   },
 }))
+
+/** Release the store's Tauri event listeners (test/teardown hook). */
+export function releaseSyncSetupListeners(): void {
+  unsubscribeLocked?.()
+  unsubscribeError?.()
+  unsubscribeLocked = null
+  unsubscribeError = null
+  listenersRegistered = false
+  listenersReady = null
+}

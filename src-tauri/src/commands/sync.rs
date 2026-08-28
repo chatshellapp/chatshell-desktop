@@ -220,7 +220,7 @@ pub async fn complete_sync_onboarding(
     // the passphrase-unlock path, never a competing mint (ADR 04 §3).
     if sync_crypto_state::artifact_path(&cloud_dir).is_file() {
         return Err(
-            "A synced history already exists on this account — enter its              sync passphrase to join instead"
+            "A synced history already exists on this account — enter its sync passphrase to join instead"
                 .into(),
         );
     }
@@ -308,12 +308,7 @@ pub async fn unlock_sync(
                 // against a stale remote counter and skip shipping — the
                 // unthrottled publish here lands it immediately (the same
                 // policy as the exit publish).
-                if let Ok(mut guard) = engine.lock()
-                    && let Some(engine) = guard.as_mut()
-                    && let Err(err) = engine.publish()
-                {
-                    tracing::warn!("Post-unlock publish failed: {err}");
-                }
+                crate::sync::terminal_publish(engine).await;
             });
             current_setup_state(&app, &state)
                 .map_err(|e| SyncCommandError::failed("Failed to read the sync state", e))
@@ -365,12 +360,7 @@ pub async fn try_join_sync(
                 }
                 // The join path ships local state that may be far ahead of
                 // the remote snapshot without waiting for quit/pool writes.
-                if let Ok(mut guard) = engine.lock()
-                    && let Some(engine) = guard.as_mut()
-                    && let Err(err) = engine.publish()
-                {
-                    tracing::warn!("Post-join publish failed: {err}");
-                }
+                crate::sync::terminal_publish(engine).await;
             });
             tracing::info!("Joined existing sync group silently (ladder adoption)");
             current_setup_state(&app, &state)

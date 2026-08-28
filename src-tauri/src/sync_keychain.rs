@@ -84,6 +84,19 @@ pub fn get_synchronizable_content_key() -> Option<String> {
         Err(_) => None,
     }
 }
+/// Delete the synchronizable content-key item. Called when the user
+/// deletes the cloud data (two-tier disable): the group is void, so the
+/// item must not linger in iCloud Keychain and hand every fresh device a
+/// dead key (audit 2026-08-28, M5). Best-effort — a missing item or a
+/// build without the team injection is not an error.
+pub fn delete_synchronizable_content_key() -> Result<()> {
+    let Some(options) = content_key_options() else {
+        return Ok(());
+    };
+    passwords::delete_generic_password_options(options)
+        .context("delete synchronizable content key item")?;
+    Ok(())
+}
 
 /// Write the base64-encoded master key to the iCloud-synchronizable keychain.
 /// Idempotent — updates in place if already present. No-ops (logged) when

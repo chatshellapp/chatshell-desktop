@@ -43,7 +43,6 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
       // input below is the fallback this attempt rejects into.
       tryJoin()
         .then(() => {
-          setBusy(false)
           toast.success(t('onboarding.joined'))
           onDone?.()
         })
@@ -51,7 +50,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
           // Passphrase rung — the join input stays visible.
         })
     }
-  }, [info?.group_exists])
+  }, [info?.group_exists, passphrase, joinMode, tryJoin, t, onDone])
 
   async function handleJoin() {
     setBusy(true)
@@ -84,7 +83,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
       onDone?.()
     } catch (err) {
       logger.error('Failed to enable sync:', err)
-      toast.error(String(err))
+      toast.error(syncErrorCopy(err))
     } finally {
       setBusy(false)
     }
