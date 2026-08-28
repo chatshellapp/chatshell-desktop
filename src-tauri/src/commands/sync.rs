@@ -21,6 +21,10 @@ pub async fn sync_now(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<SyncNowResult, String> {
+    // Manual trigger doubles as the "reset auto-sync" escape hatch: re-run
+    // the content-key ladder and engine construction before the pass, so a
+    // dropped/wedged engine recovers here instead of waiting for a tick.
+    wiring(&app)?.ensure_engine(&app, &state.sync_engine);
     let outcome = crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app)
         .await
         .map_err(|e| e.to_string())?;
@@ -48,7 +52,7 @@ use crate::sync_crypto_state;
 use tauri::Manager;
 
 /// Machine-readable error contract for the sync passphrase commands
-/// (`unlock_sync`, `rotate_sync_key`). The frontend maps `code` to
+/// (`unlock_sync`). The frontend maps `code` to
 /// user-facing copy — the same mapping the iOS app applies in
 /// `SyncErrorCopy` — instead of surfacing raw error strings.
 #[derive(Debug, thiserror::Error, Serialize)]
@@ -81,11 +85,7 @@ impl SyncCommandError {
                 code: SyncErrorCode::WrongPassphrase,
                 message: "wrong passphrase".into(),
             },
-            Some(
-                SyncCryptoError::Corrupt(_)
-                | SyncCryptoError::UnsupportedFormat(_)
-                | SyncCryptoError::UnknownKeyVersion(_),
-            ) => Self {
+            Some(SyncCryptoError::Corrupt(_) | SyncCryptoError::UnsupportedFormat(_)) => Self {
                 code: SyncErrorCode::CorruptData,
                 message: err.to_string(),
             },
@@ -118,6 +118,10 @@ pub struct SyncSetupState {
     /// (ADR 04 §3).
     pub group_exists: bool,
     pub engine_active: bool,
+    /// Last failed sync pass (auto or manual), if any — the "auto-sync
+    /// broke" signal the escape hatches (Sync now / Force publish /
+    /// passphrase) exist for. `None` after a successful pass.
+    pub last_pass_error: Option<String>,
 }
 
 fn wiring(app: &tauri::AppHandle) -> Result<crate::sync::SyncWiring, String> {
@@ -166,6 +170,7 @@ fn current_setup_state(app: &tauri::AppHandle, state: &AppState) -> Result<SyncS
         container_available: container.is_some(),
         group_exists,
         engine_active,
+        last_pass_error: settings.last_pass_error,
     })
 }
 
@@ -409,37 +414,40 @@ pub async fn enable_sync(
     current_setup_state(&app, &state)
 }
 
-/// Explicit content-key rotation (suspected compromise, lost device).
-/// Forward-only revocation — see ADR 04 §5. Requires the group passphrase
-/// to wrap the new key.
+/// Manual escape hatch: publish the local state unconditionally WITH a
+/// version bump, even when the engine believes everything is up-to-date.
+/// The rescue for the counter-strand failure mode (rows stranded on this
+/// device while every pass reports up-to-date) and for a wedged tick —
+/// the same lossless merge runs on the peers. Blobs ship first, exactly
+/// like `run_sync_pass`, so the forced snapshot never references bytes a
+/// peer cannot fetch.
 #[tauri::command]
-pub async fn rotate_sync_key(
+pub async fn force_sync_publish(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-    passphrase: String,
-) -> Result<String, SyncCommandError> {
-    let wiring =
-        wiring(&app).map_err(|e| SyncCommandError::failed("Failed to resolve the app paths", e))?;
-    let cloud_dir = crate::sync::resolve_sync_target(&wiring.app_data_dir).map(|(dir, _)| dir);
-    let Some(cloud_dir) = cloud_dir else {
-        return Err(SyncCommandError::failed(
-            "No sync target available",
-            "iCloud container absent",
-        ));
-    };
-    let crypto =
-        sync_crypto_state::rotate_content_key(&wiring.app_data_dir, &cloud_dir, &passphrase)
-            .map_err(|e| SyncCommandError::map_crypto(&e, "Rotation failed"))?;
-    wiring
-        .install_engine(&state.sync_engine, cloud_dir, crypto)
-        .map_err(|e| {
-            SyncCommandError::failed("Failed to construct the sync engine", format_args!("{e:#}"))
-        })?;
-    Ok(
-        "Content key rotated. New snapshots and attachments are protected \
-        from any holder of the old key; data written before the rotation \
-        stays readable to them. Joining devices now need the sync \
-        passphrase once (the iCloud key no longer updates after a rotation)."
-            .into(),
-    )
+) -> Result<SyncNowResult, String> {
+    let wiring = wiring(&app)?;
+    wiring.ensure_engine(&app, &state.sync_engine);
+    crate::sync::run_forced_publish(state.sync_engine.clone(), state.db.clone(), app.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+    // Report the post-force state through the shared pass so the result
+    // also refreshes stores/events; outcome text says what happened.
+    let outcome = crate::sync::run_sync_pass(state.sync_engine.clone(), state.db.clone(), app)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(match outcome {
+        None => SyncNowResult {
+            enabled: false,
+            action: "disabled".into(),
+            rows_merged: 0,
+            republished: false,
+        },
+        Some(outcome) => SyncNowResult {
+            enabled: true,
+            action: format!("force-published-then-{}", outcome.action),
+            rows_merged: outcome.rows_merged,
+            republished: outcome.republished,
+        },
+    })
 }

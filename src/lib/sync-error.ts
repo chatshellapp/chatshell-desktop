@@ -2,10 +2,10 @@ import i18n from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 
 /**
- * Error contract for the sync passphrase commands (`unlock_sync`,
- * `rotate_sync_key`), mirroring the Rust `SyncCommandError`. `code` maps to
- * the same user-facing copy the iOS app surfaces via `SyncErrorCopy` — raw
- * backend strings never reach the passphrase UI.
+ * Error contract for the sync passphrase command (`unlock_sync`),
+ * mirroring the Rust `SyncCommandError`. `code` maps to the same
+ * user-facing copy the iOS app surfaces via `SyncErrorCopy` — raw backend
+ * strings never reach the passphrase UI.
  */
 export interface SyncCommandError {
   code: 'wrongPassphrase' | 'corruptData' | 'failed'

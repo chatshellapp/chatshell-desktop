@@ -14,6 +14,16 @@ export interface SyncSetupStateInfo {
   /** A remote sync group exists — joining is unlock, never bootstrap. */
   group_exists: boolean
   engine_active: boolean
+  /** Last failed pass (auto or manual), surfaced as the escape-hatch cue. */
+  last_pass_error: string | null
+}
+
+/** Outcome of `sync_now` / `force_sync_publish`. */
+export interface SyncNowResultInfo {
+  enabled: boolean
+  action: string
+  rows_merged: number
+  republished: boolean
 }
 
 interface SyncSetupStore {
@@ -30,7 +40,12 @@ interface SyncSetupStore {
    * "Passphrase required" when only the passphrase rung is left. */
   tryJoin: () => Promise<void>
   disable: (deleteCloudData: boolean) => Promise<string>
-  rotateKey: (passphrase: string) => Promise<string>
+  /** Manual escape hatch: full pass (pull + merge + publish) that also
+   * re-runs the content-key ladder and rebuilds a wedged engine. */
+  syncNow: () => Promise<SyncNowResultInfo>
+  /** Manual escape hatch: unconditional version-bumped publish for
+   * stranded-row rescue. */
+  forcePublish: () => Promise<SyncNowResultInfo>
 }
 
 let unsubscribeLocked: (() => void) | null = null
@@ -48,6 +63,10 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
           set({ lockedEvent: true })
           const current = get().info
           if (current) set({ info: { ...current, needs_passphrase: true } })
+        })
+        await listen<string>('sync-error', (event) => {
+          const current = get().info
+          if (current) set({ info: { ...current, last_pass_error: event.payload } })
         })
       }
     } catch (err) {
@@ -92,7 +111,17 @@ export const useSyncSetupStore = create<SyncSetupStore>((set, get) => ({
     return summary
   },
 
-  rotateKey: async (passphrase: string) => {
-    return invoke<string>('rotate_sync_key', { passphrase })
+  syncNow: async () => {
+    const result = await invoke<SyncNowResultInfo>('sync_now')
+    const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
+    set({ info })
+    return result
+  },
+
+  forcePublish: async () => {
+    const result = await invoke<SyncNowResultInfo>('force_sync_publish')
+    const info = await invoke<SyncSetupStateInfo>('get_sync_setup_state')
+    set({ info })
+    return result
   },
 }))

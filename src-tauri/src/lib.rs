@@ -386,7 +386,7 @@ pub fn run() {
             commands::try_join_sync,
             commands::enable_sync,
             commands::disable_sync,
-            commands::rotate_sync_key,
+            commands::force_sync_publish,
             commands::test_mcp_connection,
             commands::test_mcp_stdio_connection,
             commands::disconnect_mcp_server,
@@ -432,7 +432,7 @@ pub fn run() {
                     let (cloud_dir, keys) = match guard.as_ref() {
                         Some(engine) => (
                             Some(engine.cloud_dir().to_path_buf()),
-                            engine.crypto().map(|c| c.keys().clone()),
+                            engine.crypto().map(|c| *c.current_key()),
                         ),
                         None => (None, None),
                     };

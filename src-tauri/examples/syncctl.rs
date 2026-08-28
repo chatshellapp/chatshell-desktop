@@ -91,8 +91,8 @@ async fn main() {
                 chatshell_agent_core::sync_crypto::split_artifact(&artifact).unwrap();
             let state = chain().expect("chain");
             let zst = chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                state.keys(),
-                &h,
+                state.current_key(),
+                &h.payload_salt,
                 payload,
             )
             .expect("decrypt");
@@ -108,8 +108,8 @@ async fn main() {
                 chatshell_agent_core::sync_crypto::split_artifact(&artifact).unwrap();
             let state = chain().expect("chain");
             let zst = chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                state.keys(),
-                &h,
+                state.current_key(),
+                &h.payload_salt,
                 payload,
             )
             .expect("decrypt");
@@ -172,7 +172,7 @@ async fn main() {
             match sync_crypto_state::resolve_content_key(&app_data(), &cloud(), &settings()) {
                 sync_crypto_state::CkResolution::Ready(crypto) => {
                     if let Some(state) = chain() {
-                        let keys = state.keys().clone();
+                        let key = *state.current_key();
                         let db =
                             chatshell_desktop_lib::db::Database::new(db_path().to_str().unwrap())
                                 .await
@@ -182,7 +182,7 @@ async fn main() {
                             &db,
                             &cloud(),
                             &attach,
-                            &keys,
+                            &key,
                         )
                         .await
                         {
@@ -197,16 +197,17 @@ async fn main() {
                 other => println!("pass: ladder said {other:?}"),
             }
         }
-        "rotate" => {
-            // args: rotate <passphrase> — mirrors rotate_sync_key + republish.
-            let passphrase = args[1].clone();
-            let crypto = sync_crypto_state::rotate_content_key(&app_data(), &cloud(), &passphrase)
-                .map_err(|e| format!("rotate: {e:#}"))
-                .unwrap();
-            println!("rotated to v{}", crypto.keys().current_version());
-            let mut eng = engine(crypto).unwrap();
-            eng.publish().expect("post-rotation publish");
-            println!("republished under the rotated key");
+        "force" => {
+            // Escape hatch for the counter-strand wedge: bump + republish
+            // the local state unconditionally.
+            match sync_crypto_state::resolve_content_key(&app_data(), &cloud(), &settings()) {
+                sync_crypto_state::CkResolution::Ready(crypto) => {
+                    let mut eng = engine(crypto).unwrap();
+                    eng.force_publish().expect("force publish");
+                    println!("force-published (version bumped, full state re-shipped)");
+                }
+                other => println!("force: ladder said {other:?}"),
+            }
         }
         "inspect" => {
             let path = cloud().join("snapshot.db.enc");
@@ -227,8 +228,8 @@ async fn main() {
                     chatshell_agent_core::sync_crypto::split_artifact(&artifact)
             {
                 match chatshell_agent_core::sync_crypto::decrypt_snapshot_payload(
-                    state.keys(),
-                    &h,
+                    state.current_key(),
+                    &h.payload_salt,
                     payload,
                 ) {
                     Ok(zst) => {
@@ -277,11 +278,7 @@ async fn main() {
             println!("container blobs: {n}");
         }
         "chain" => match chain() {
-            Some(state) => println!(
-                "chain current v{} slots={}",
-                state.keys().current_version(),
-                state.slots_for_publish().len()
-            ),
+            Some(state) => println!("chain cached (single-key group)"),
             None => println!(
                 "no chain cache at {}",
                 sync_crypto_state::chain_cache_path(&app_data()).display()
@@ -290,7 +287,7 @@ async fn main() {
         _ => {
             println!(
                 "commands: bootstrap <pw> | join-silent | join-passphrase <pw> | pass | \n\
-                 rotate <pw> | inspect | dbstats | blobs | chain"
+                 force | inspect | dbstats | blobs | chain"
             );
         }
     }

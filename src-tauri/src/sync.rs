@@ -130,7 +130,7 @@ impl SyncWiring {
 /// the manual `sync_now` command can run the exact same path as the
 /// scheduler. Blob upload runs first either way: blobs-before-snapshots is
 /// what keeps peers from ever seeing a dangling hash. A key-material
-/// failure (sync group reset elsewhere, rotated key we never learned) drops
+/// failure (sync group reset elsewhere, a key we never learned) drops
 /// the engine and re-enters the acquisition ladder at the passphrase rung —
 /// never an error loop (ADR 04 §3 rule 2).
 pub async fn run_sync_pass(
@@ -140,29 +140,7 @@ pub async fn run_sync_pass(
 ) -> anyhow::Result<Option<SyncOutcome>> {
     use tauri::Emitter;
 
-    // Ship new attachment bytes before the pass: any snapshot this pass
-    // publishes may reference them, and blobs-before-snapshots is what keeps
-    // peers from ever seeing a dangling hash.
-    let (cloud_dir, keys) = match engine.lock() {
-        Ok(guard) => match guard.as_ref() {
-            Some(engine) => (
-                Some(engine.cloud_dir().to_path_buf()),
-                engine.crypto().map(|c| c.keys().clone()),
-            ),
-            None => (None, None),
-        },
-        Err(_) => {
-            tracing::warn!("sync engine poisoned; skipping blob upload");
-            (None, None)
-        }
-    };
-    let attach_dir = crate::storage::get_attachments_dir(&app).ok();
-    if let (Some(dir), Some(attach), Some(keys)) =
-        (cloud_dir.as_ref(), attach_dir.as_ref(), keys.as_ref())
-        && let Err(err) = blob_sync::ensure_referenced_blobs_uploaded(&db, dir, attach, keys).await
-    {
-        tracing::warn!("Blob upload before sync failed: {err:#}");
-    }
+    upload_blobs_before_publish(&engine, &db, &app).await;
 
     let engine_for_task = engine.clone();
     let sync_result =
@@ -181,20 +159,14 @@ pub async fn run_sync_pass(
     let outcome = match sync_result {
         Ok(outcome) => outcome,
         Err(err) => {
-            // Classify: key-material failures re-enter the ladder at the
-            // passphrase rung (latching needs_unlock so the ladder cannot
-            // loop on the stale rungs); everything else stays a logged
-            // error the next tick retries.
+            // Key-material failures re-enter the ladder at the passphrase
+            // rung (latching needs_unlock so the ladder cannot loop on the
+            // stale rungs) and read as "locked", not errored; everything
+            // else is recorded/emitted so Settings offers the escape
+            // hatches while the next tick retries.
+            let err = handle_pass_error(err, &engine, &app).await;
             if sync_crypto_state::is_key_material_error(&err) {
-                tracing::warn!("Sync content key rejected by the cloud artifact: {err:#}");
-                if let Ok(app_data_dir) = app.path().app_data_dir() {
-                    engine.lock().ok().and_then(|mut guard| guard.take());
-                    sync_crypto_state::enter_needs_unlock(&app_data_dir);
-                    if let Err(err) = app.emit("sync-locked", ()) {
-                        tracing::warn!("Failed to emit sync-locked: {err}");
-                    }
-                    return Ok(None);
-                }
+                return Ok(None);
             }
             return Err(err);
         }
@@ -215,6 +187,12 @@ pub async fn run_sync_pass(
         let _ = sync_crypto_state::persist_chain(&app_data_dir, crypto);
     }
 
+    // A completed pass clears the surfaced failure latch (Settings drops
+    // the error row; the escape hatches stay available anyway).
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        sync_crypto_state::clear_pass_error(&app_data_dir);
+    }
+
     if outcome.rows_merged > 0 {
         tracing::info!("Sync pulled {} rows", outcome.rows_merged);
         if let Err(err) = db.sync_fts_incremental().await {
@@ -230,6 +208,10 @@ pub async fn run_sync_pass(
     // Opportunistic blob GC, at most once a day per process. Only after a
     // pass that shipped something - an idle up-to-date tick has no new
     // information about orphans anyway.
+    let cloud_dir = engine
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|e| e.cloud_dir().to_path_buf()));
     if (outcome.republished || outcome.rows_merged > 0)
         && let Some(dir) = cloud_dir.clone()
     {
@@ -270,6 +252,107 @@ pub fn detect_icloud_container() -> Option<std::path::PathBuf> {
         .join("Mobile Documents")
         .join("iCloud~app~chatshell");
     path.is_dir().then_some(path)
+}
+
+/// Ship new attachment bytes before any publish: blobs-before-snapshots is
+/// what keeps peers from ever seeing a dangling hash (ADR 02). Warn-only —
+/// the pass itself decides whether to proceed.
+async fn upload_blobs_before_publish(
+    engine: &SyncEngineHandle,
+    db: &crate::db::Database,
+    app: &tauri::AppHandle,
+) {
+    let (cloud_dir, keys) = match engine.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(engine) => (
+                Some(engine.cloud_dir().to_path_buf()),
+                engine.crypto().map(|c| *c.current_key()),
+            ),
+            None => (None, None),
+        },
+        Err(_) => {
+            tracing::warn!("sync engine poisoned; skipping blob upload");
+            (None, None)
+        }
+    };
+    let attach_dir = crate::storage::get_attachments_dir(app).ok();
+    if let (Some(dir), Some(attach), Some(keys)) =
+        (cloud_dir.as_ref(), attach_dir.as_ref(), keys.as_ref())
+        && let Err(err) = blob_sync::ensure_referenced_blobs_uploaded(db, dir, attach, keys).await
+    {
+        tracing::warn!("Blob upload before sync failed: {err:#}");
+    }
+}
+
+/// Manual escape hatch behind the `force_sync_publish` command: publish
+/// unconditionally WITH a version bump (see the engine's `force_publish`).
+/// Shares the pass error latch and events so Settings reflects the outcome.
+pub async fn run_forced_publish(
+    engine: SyncEngineHandle,
+    db: crate::db::Database,
+    app: tauri::AppHandle,
+) -> anyhow::Result<()> {
+    upload_blobs_before_publish(&engine, &db, &app).await;
+
+    let engine_for_task = engine.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<()> {
+        let mut guard = engine_for_task
+            .lock()
+            .map_err(|_| anyhow::anyhow!("sync engine poisoned"))?;
+        match guard.as_mut() {
+            Some(engine) => engine.force_publish(),
+            None => Ok(()),
+        }
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("sync task join failed: {e}"))?;
+
+    match result {
+        Ok(()) => {
+            if let (Ok(app_data_dir), Ok(guard)) = (app.path().app_data_dir(), engine.lock())
+                && let Some(engine) = guard.as_ref()
+                && let Some(crypto) = engine.crypto()
+            {
+                let _ = sync_crypto_state::persist_chain(&app_data_dir, crypto);
+            }
+            tracing::info!("Sync force-published the local state");
+            Ok(())
+        }
+        Err(err) => Err(handle_pass_error(err, &engine, &app).await),
+    }
+}
+
+/// Shared failure tail of the pass paths: key-material failures drop the
+/// engine and latch the passphrase rung; everything else is recorded as
+/// the surfaced `last_pass_error` and emitted as `sync-error` so the
+/// Settings surface can offer the escape hatches. Returns the error for
+/// propagation.
+async fn handle_pass_error(
+    err: anyhow::Error,
+    engine: &SyncEngineHandle,
+    app: &tauri::AppHandle,
+) -> anyhow::Error {
+    use tauri::Emitter;
+
+    if sync_crypto_state::is_key_material_error(&err) {
+        tracing::warn!("Sync content key rejected by the cloud artifact: {err:#}");
+        if let Ok(app_data_dir) = app.path().app_data_dir() {
+            engine.lock().ok().and_then(|mut guard| guard.take());
+            sync_crypto_state::enter_needs_unlock(&app_data_dir);
+            if let Err(emit_err) = app.emit("sync-locked", ()) {
+                tracing::warn!("Failed to emit sync-locked: {emit_err}");
+            }
+        }
+        return err;
+    }
+    tracing::error!("Sync pass failed: {err:#}");
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        sync_crypto_state::record_pass_error(&app_data_dir, &format!("{err:#}"));
+    }
+    if let Err(emit_err) = app.emit("sync-error", format!("{err:#}")) {
+        tracing::warn!("Failed to emit sync-error: {emit_err}");
+    }
+    err
 }
 
 #[cfg(test)]

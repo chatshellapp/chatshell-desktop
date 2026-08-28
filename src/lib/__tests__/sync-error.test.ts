@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import i18n from '@/lib/i18n'
+import zhSync from '@/locales/zh-CN/sync.json'
 import { syncErrorCopy } from '@/lib/sync-error'
 
 /** The rejection shape the Rust `SyncCommandError` serializes to. */
@@ -33,9 +34,7 @@ describe('syncErrorCopy', () => {
   it('renders the localized copy when the language changes', async () => {
     await i18n.changeLanguage('zh-CN')
     try {
-      expect(syncErrorCopy(typedError('wrongPassphrase'))).toBe(
-        '口令不匹配。请核对首次开启同步时保存的口令。'
-      )
+      expect(syncErrorCopy(typedError('wrongPassphrase'))).toBe(zhSync.errors.wrongPassphrase)
     } finally {
       await i18n.changeLanguage('en')
     }

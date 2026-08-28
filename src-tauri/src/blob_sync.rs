@@ -20,7 +20,7 @@
 //! parse.
 
 use anyhow::Context;
-use chatshell_agent_core::sync_crypto::{ContentKeys, SyncCryptoError};
+use chatshell_agent_core::sync_crypto::{CK_LEN, SyncCryptoError};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -70,7 +70,7 @@ pub async fn ensure_referenced_blobs_uploaded(
     db: &crate::db::Database,
     cloud_dir: &Path,
     base_dir: &Path,
-    keys: &ContentKeys,
+    key: &[u8; CK_LEN],
 ) -> anyhow::Result<usize> {
     let rows = sqlx::query_as::<_, (String, String)>(
         "SELECT storage_path, content_hash FROM files \
@@ -123,7 +123,7 @@ pub async fn ensure_referenced_blobs_uploaded(
         // Encrypt under the content key. The pre-encrypt hash assertion
         // above is what makes the deterministic per-blob nonce safe; core
         // re-asserts it (security-critical, single implementation point).
-        let sealed = match chatshell_agent_core::sync_crypto::encrypt_blob(keys, &hash, &bytes) {
+        let sealed = match chatshell_agent_core::sync_crypto::encrypt_blob(key, &hash, &bytes) {
             Ok(sealed) => sealed,
             Err(err) => {
                 tracing::warn!("Blob {} failed to encrypt; skipped: {err}", hash);
@@ -166,7 +166,7 @@ pub async fn fetch_conversation_blobs(
     cloud_dir: &Path,
     base_dir: &Path,
     conversation_id: &str,
-    keys: &ContentKeys,
+    key: &[u8; CK_LEN],
 ) -> anyhow::Result<FetchOutcome> {
     let rows = sqlx::query_as::<_, (String, String, String, i64)>(
         "SELECT f.content_hash, f.storage_path, f.mime_type, f.file_size \
@@ -231,16 +231,13 @@ pub async fn fetch_conversation_blobs(
         match std::fs::read(&blob) {
             Ok(sealed) if sealed.len() as u64 <= MAX_BLOB_BYTES => {
                 let bytes =
-                    match chatshell_agent_core::sync_crypto::decrypt_blob(keys, &hash, &sealed) {
+                    match chatshell_agent_core::sync_crypto::decrypt_blob(key, &hash, &sealed) {
                         Ok(bytes) => bytes,
-                        Err(SyncCryptoError::UnknownKeyVersion(version)) => {
-                            // Rotated elsewhere (or this device never learned the
-                            // version): the acquisition ladder must run before
-                            // these bytes can ever materialize.
-                            tracing::warn!(
-                                "Blob {} needs content key v{version}; unlock required",
-                                hash
-                            );
+                        Err(SyncCryptoError::Corrupt(_)) => {
+                            // Legacy rotation-era blob or structurally
+                            // foreign bytes: this key can never materialize
+                            // them.
+                            tracing::warn!("Blob {} is undecodable under the current key", hash);
                             needs_unlock = true;
                             statuses.push(crate::models::BlobFetchStatus {
                                 content_hash: hash,
@@ -456,13 +453,13 @@ mod tests {
         (db, cloud, dir)
     }
 
-    fn test_keys() -> chatshell_agent_core::sync_crypto::ContentKeys {
+    fn test_keys() -> [u8; CK_LEN] {
         let crypto = chatshell_agent_core::sync_crypto::SyncCrypto::bootstrap_with_params(
             "blob test passphrase",
             chatshell_agent_core::sync_crypto::ArgonParams::test(),
         )
         .unwrap();
-        crypto.keys().clone()
+        *crypto.current_key()
     }
 
     #[tokio::test]
@@ -502,12 +499,8 @@ mod tests {
         assert_eq!(uploaded, 0);
     }
 
-    fn crypto_encrypt_again(
-        keys: &chatshell_agent_core::sync_crypto::ContentKeys,
-        hash: &str,
-        content: &[u8],
-    ) -> Vec<u8> {
-        chatshell_agent_core::sync_crypto::encrypt_blob(keys, hash, content).unwrap()
+    fn crypto_encrypt_again(key: &[u8; CK_LEN], hash: &str, content: &[u8]) -> Vec<u8> {
+        chatshell_agent_core::sync_crypto::encrypt_blob(key, hash, content).unwrap()
     }
 
     #[tokio::test]
@@ -618,7 +611,7 @@ mod tests {
         .unwrap();
         let sealed = crypto.encrypt_blob(&hash, &content).unwrap();
         std::fs::write(cloud.join(BLOB_DIR).join(&hash), &sealed).unwrap();
-        let keys = crypto.keys().clone();
+        let keys = *crypto.current_key();
         // iOS-authored row: absolute path into a foreign sandbox.
         seed_conversation(&db, "c1", "2026-01-02T00:00:00Z", &[(&hash.clone(), 13)]).await;
         sqlx::query("UPDATE files SET storage_path = '/var/mobile/sandbox/files/x.png' WHERE content_hash = ?1")

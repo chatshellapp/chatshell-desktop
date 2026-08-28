@@ -50,7 +50,7 @@ pub async fn fetch_conversation_blobs(
         match guard.as_ref() {
             Some(engine) => (
                 Some(engine.cloud_dir().to_path_buf()),
-                engine.crypto().map(|c| c.keys().clone()),
+                engine.crypto().map(|c| *c.current_key()),
             ),
             None => (None, None),
         }

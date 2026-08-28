@@ -20,6 +20,7 @@ function syncInfo(overrides: Partial<SyncSetupStateInfo> = {}): SyncSetupStateIn
     container_available: true,
     group_exists: false,
     engine_active: false,
+    last_pass_error: null,
     ...overrides,
   }
 }

@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { CloudCog, KeyRound, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { CloudCog, CloudUpload, KeyRound, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -13,32 +11,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { syncErrorCopy } from '@/lib/sync-error'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 
 /**
  * Settings surface for sync enablement (ADR 04 §7): status, re-enable,
  * two-tier disable (stop publishing — default, peers untouched — versus
- * delete my cloud data, destructive and separately confirmed), and explicit
- * content-key rotation (suspected compromise / lost device; forward-only).
+ * delete my cloud data, destructive and separately confirmed), and the
+ * manual escape hatches for a broken auto-sync: Sync now (full pass that
+ * also rebuilds a wedged engine), Force publish (unconditional version
+ * bump for stranded rows), and the passphrase unlock when the content key
+ * cannot be resolved automatically.
  */
 export function SyncSettingsSection() {
   const { t } = useTranslation('sync')
-  const { info, enable, disable, rotateKey } = useSyncSetupStore()
+  const { info, enable, disable, unlock, syncNow, forcePublish } = useSyncSetupStore()
   const [busy, setBusy] = useState(false)
-  const [rotateOpen, setRotateOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [unlockOpen, setUnlockOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
 
   const enabled = info?.enabled ?? false
   const needsPassphrase = info?.needs_passphrase ?? false
+  const lastError = info?.last_pass_error ?? null
 
   async function handleEnable() {
     setBusy(true)
     try {
       await enable()
-      toast.success(t('settings.enabled'))
+      toast.success(t('settings.statusEnabled'))
     } catch (err) {
       toast.error(String(err))
     } finally {
@@ -59,13 +63,49 @@ export function SyncSettingsSection() {
     }
   }
 
-  async function handleRotate() {
+  async function handleSyncNow() {
+    setBusy(true)
+    try {
+      const result = await syncNow()
+      if (result.enabled) {
+        toast.success(
+          t('settings.syncNowDone', { action: result.action, rows: result.rows_merged })
+        )
+      } else {
+        toast.info(t('settings.statusDisabled'))
+      }
+    } catch (err) {
+      toast.error(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleForcePublish() {
+    setBusy(true)
+    try {
+      const result = await forcePublish()
+      if (result.enabled) {
+        toast.success(
+          t('settings.syncNowDone', { action: result.action, rows: result.rows_merged })
+        )
+      } else {
+        toast.info(t('settings.statusDisabled'))
+      }
+    } catch (err) {
+      toast.error(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUnlock() {
     setBusy(true)
     setErrorText(null)
     try {
-      const summary = await rotateKey(passphrase)
-      toast.info(summary)
-      setRotateOpen(false)
+      await unlock(passphrase)
+      toast.success(t('locked.unlocked'))
+      setUnlockOpen(false)
       setPassphrase('')
     } catch (err) {
       setErrorText(syncErrorCopy(err))
@@ -74,10 +114,10 @@ export function SyncSettingsSection() {
     }
   }
 
-  function openRotateDialog() {
+  function openUnlockDialog() {
     setPassphrase('')
     setErrorText(null)
-    setRotateOpen(true)
+    setUnlockOpen(true)
   }
 
   return (
@@ -96,6 +136,11 @@ export function SyncSettingsSection() {
             </span>
           )}
         </p>
+        {enabled && lastError && (
+          <p className="text-sm text-red-500 max-w-md">
+            {t('settings.lastErrorPrefix')} {lastError}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -107,12 +152,35 @@ export function SyncSettingsSection() {
         )}
         {enabled && (
           <>
+            <Button variant="outline" onClick={handleSyncNow} disabled={busy}>
+              {busy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {t('settings.syncNow')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleForcePublish}
+              disabled={busy}
+              title={t('settings.forcePublishHint')}
+            >
+              {busy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CloudUpload className="mr-2 h-4 w-4" />
+              )}
+              {t('settings.forcePublish')}
+            </Button>
+            {needsPassphrase && (
+              <Button variant="outline" onClick={openUnlockDialog} disabled={busy}>
+                <KeyRound className="mr-2 h-4 w-4" />
+                {t('settings.unlock')}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => handleDisable(false)} disabled={busy}>
               {t('settings.stopPublishing')}
-            </Button>
-            <Button variant="outline" onClick={openRotateDialog} disabled={busy}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              {t('settings.rotateKey')}
             </Button>
             <Button variant="destructive" onClick={() => setDeleteOpen(true)} disabled={busy}>
               <Trash2 className="mr-2 h-4 w-4" />
@@ -122,11 +190,11 @@ export function SyncSettingsSection() {
         )}
       </div>
 
-      <Dialog open={rotateOpen} onOpenChange={setRotateOpen}>
+      <Dialog open={unlockOpen} onOpenChange={setUnlockOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('settings.rotateTitle')}</DialogTitle>
-            <DialogDescription>{t('settings.rotateDescription')}</DialogDescription>
+            <DialogTitle>{t('locked.dialogTitle')}</DialogTitle>
+            <DialogDescription>{t('locked.dialogDescription')}</DialogDescription>
           </DialogHeader>
           <Input
             type="password"
@@ -136,8 +204,8 @@ export function SyncSettingsSection() {
           />
           {errorText && <p className="text-sm text-red-500">{errorText}</p>}
           <DialogFooter>
-            <Button onClick={handleRotate} disabled={!passphrase || busy}>
-              {t('settings.rotateConfirm')}
+            <Button onClick={handleUnlock} disabled={!passphrase || busy}>
+              {t('locked.unlock')}
             </Button>
           </DialogFooter>
         </DialogContent>
