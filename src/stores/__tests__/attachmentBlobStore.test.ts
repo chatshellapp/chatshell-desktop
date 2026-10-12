@@ -78,4 +78,30 @@ describe('useAttachmentBlobStore', () => {
     expect(mockInvoke).toHaveBeenCalledTimes(2)
     expect(useAttachmentBlobStore.getState().states.ccc).toBe('cached')
   })
+
+  // Real-device S9 finding 2026-09-12: a pass that materializes blobs also
+  // repairs the referencing rows' storage_path, so chat-view must re-resolve
+  // already-rendered message resources. The boolean return is that contract.
+  it('fetchForConversation reports whether the pass materialized anything', async () => {
+    mockInvoke.mockResolvedValue([status('aaa', 'cached'), status('bbb', 'skipped')])
+    await expect(
+      useAttachmentBlobStore.getState().fetchForConversation('c-materialized')
+    ).resolves.toBe(false)
+
+    mockInvoke.mockResolvedValue([
+      status('aaa', 'cached'),
+      status('bbb', 'fetched'),
+      status('ccc', 'gone'),
+    ])
+    await expect(useAttachmentBlobStore.getState().fetchForConversation('c-quiet')).resolves.toBe(
+      true
+    )
+  })
+
+  it('fetchForConversation resolves false when the pass throws', async () => {
+    mockInvoke.mockRejectedValue(new Error('ladder said NeedPassphrase'))
+    await expect(useAttachmentBlobStore.getState().fetchForConversation('c-error')).resolves.toBe(
+      false
+    )
+  })
 })
