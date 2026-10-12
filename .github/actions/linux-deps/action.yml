@@ -1,0 +1,16 @@
+name: 'Install Linux system dependencies'
+description: 'GTK/WebKit/etc dev packages needed to compile the Tauri crate'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Linux dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          patchelf \
+          libssl-dev \
+          libdbus-1-dev

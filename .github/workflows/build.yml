@@ -47,6 +47,11 @@ jobs:
         # points at ../../chatshell-agent — bridge with a symlink.
         run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
+      - name: Linux system dependencies
+        # types:check compiles the Rust lib (tauri -> gtk/webkit sys crates);
+        # a bare ubuntu runner lacks the pkg-config metadata they need.
+        uses: ./.github/actions/linux-deps
+
       - name: Setup
         uses: ./.github/actions/setup
 
@@ -204,16 +209,8 @@ jobs:
       - name: Link chatshell-agent at the sibling path Cargo expects
         run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            libdbus-1-dev
+      - name: Linux system dependencies
+        uses: ./.github/actions/linux-deps
 
       - name: Setup
         uses: ./.github/actions/setup
