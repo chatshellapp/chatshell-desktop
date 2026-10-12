@@ -132,7 +132,9 @@ pub fn run() {
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        tracing::warn!("Master-key ciphertext repair failed (will retry next launch): {e:#}")
+                        tracing::warn!(
+                            "Master-key ciphertext repair failed (will retry next launch): {e:#}"
+                        )
                     }
                 }
             });
@@ -153,19 +155,24 @@ pub fn run() {
                 }
             });
 
-            // Load bundled model capabilities data
+            // Load model capabilities: a snapshot persisted by an earlier
+            // refresh takes precedence over the copy bundled with the app.
             let capabilities_cache = {
+                let persisted_path = app_data_dir.join("models_dev.json");
                 let resource_path = app
                     .path()
-                    .resolve("resources/models_dev.json", tauri::path::BaseDirectory::Resource)
+                    .resolve(
+                        "resources/models_dev.json",
+                        tauri::path::BaseDirectory::Resource,
+                    )
                     .expect("FATAL: Failed to resolve bundled models_dev.json path");
                 rt.block_on(async {
-                    match CapabilitiesCache::load_from_file(&resource_path).await {
+                    match CapabilitiesCache::load_preferred(&persisted_path, &resource_path).await {
                         Ok(cache) => Arc::new(cache),
                         Err(e) => {
                             tracing::warn!(
-                                "Failed to load model capabilities from {:?}: {}. Using empty cache.",
-                                resource_path, e
+                                "No usable model capabilities snapshot ({}). Using empty cache.",
+                                e
                             );
                             Arc::new(CapabilitiesCache::new())
                         }
@@ -206,8 +213,7 @@ pub fn run() {
                 db_path: db_path.clone(),
                 cache_dir: app_cache_dir,
             };
-            let sync_engine: sync::SyncEngineHandle =
-                Arc::new(std::sync::Mutex::new(None));
+            let sync_engine: sync::SyncEngineHandle = Arc::new(std::sync::Mutex::new(None));
             sync_wiring.ensure_engine(app.handle(), &sync_engine);
 
             let app_state = AppState {

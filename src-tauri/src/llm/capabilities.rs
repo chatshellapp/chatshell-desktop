@@ -73,7 +73,8 @@ impl CapabilitiesCache {
         }
     }
 
-    pub async fn load_from_bytes(&self, data: &[u8]) -> anyhow::Result<usize> {
+    /// Parse a models.dev api.json payload into cache entries.
+    fn parse_entries(data: &[u8]) -> anyhow::Result<HashMap<CacheKey, ModelCapabilities>> {
         let providers: HashMap<String, RawProvider> = serde_json::from_slice(data)?;
         let mut map = HashMap::new();
 
@@ -86,6 +87,11 @@ impl CapabilitiesCache {
             }
         }
 
+        Ok(map)
+    }
+
+    pub async fn load_from_bytes(&self, data: &[u8]) -> anyhow::Result<usize> {
+        let map = Self::parse_entries(data)?;
         let count = map.len();
         *self.entries.write().await = map;
         Ok(count)
@@ -103,20 +109,57 @@ impl CapabilitiesCache {
         Ok(cache)
     }
 
-    pub async fn load_from_url(url: &str) -> anyhow::Result<Self> {
-        let resp = reqwest::get(url).await?;
-        let data = resp.bytes().await?;
-        let cache = Self::new();
-        let count = cache.load_from_bytes(&data).await?;
-        tracing::info!("Loaded {} model capability entries from {}", count, url);
-        Ok(cache)
+    /// Load the preferred snapshot: a previously persisted refresh wins over
+    /// the copy bundled with the app; a missing or corrupt persisted file
+    /// falls back to the bundled resource.
+    pub async fn load_preferred(persisted: &Path, bundled: &Path) -> anyhow::Result<Self> {
+        match Self::load_from_file(persisted).await {
+            Ok(cache) => {
+                tracing::info!(
+                    "Using persisted model capabilities snapshot at {}",
+                    persisted.display()
+                );
+                Ok(cache)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Persisted model capabilities unusable ({}: {}); falling back to bundled {}",
+                    persisted.display(),
+                    e,
+                    bundled.display()
+                );
+                Self::load_from_file(bundled).await
+            }
+        }
     }
 
-    /// Replace all entries from a freshly fetched source.
-    pub async fn refresh_from_url(&self, url: &str) -> anyhow::Result<usize> {
+    /// Validate a payload, persist it to `persist_path`, then install it.
+    /// A malformed payload never replaces a previously persisted snapshot.
+    pub async fn install_and_persist(
+        &self,
+        data: &[u8],
+        persist_path: &Path,
+    ) -> anyhow::Result<usize> {
+        let map = Self::parse_entries(data)?;
+        if let Some(parent) = persist_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(persist_path, data).await?;
+        let count = map.len();
+        *self.entries.write().await = map;
+        Ok(count)
+    }
+
+    /// Replace all entries from a freshly fetched source and persist the raw
+    /// snapshot so subsequent launches load it instead of the bundled copy.
+    pub async fn refresh_from_url_persisted(
+        &self,
+        url: &str,
+        persist_path: &Path,
+    ) -> anyhow::Result<usize> {
         let resp = reqwest::get(url).await?;
         let data = resp.bytes().await?;
-        self.load_from_bytes(&data).await
+        self.install_and_persist(&data, persist_path).await
     }
 
     /// Resolve capabilities for a given provider type and model ID.
@@ -196,3 +239,112 @@ fn map_provider_type(provider_type: &str) -> &str {
 }
 
 pub const MODELS_DEV_URL: &str = "https://models.dev/api.json";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn payload(model_id: &str, tool_call: bool) -> Vec<u8> {
+        serde_json::json!({
+            "test-provider": {
+                "models": {
+                    model_id: {
+                        "tool_call": tool_call,
+                        "reasoning": false,
+                        "limit": { "context": 4096, "output": 1024 },
+                        "modalities": { "input": ["text", "image"], "output": ["text"] }
+                    }
+                }
+            }
+        })
+        .to_string()
+        .into_bytes()
+    }
+
+    #[tokio::test]
+    async fn load_preferred_uses_persisted_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let persisted = dir.path().join("persisted.json");
+        let bundled = dir.path().join("bundled.json");
+        std::fs::write(&persisted, payload("persisted-model", true)).unwrap();
+        std::fs::write(&bundled, payload("bundled-model", false)).unwrap();
+
+        let cache = CapabilitiesCache::load_preferred(&persisted, &bundled)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            cache
+                .resolve("test-provider", "persisted-model")
+                .await
+                .supports_tool_use,
+            Some(true)
+        );
+        // The bundled entry must not leak through when a persisted copy exists.
+        assert_eq!(
+            cache
+                .resolve("test-provider", "bundled-model")
+                .await
+                .supports_tool_use,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn load_preferred_falls_back_to_bundled_when_persisted_unusable() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundled = dir.path().join("bundled.json");
+        std::fs::write(&bundled, payload("bundled-model", false)).unwrap();
+
+        // Corrupt persisted file
+        let corrupt = dir.path().join("corrupt.json");
+        std::fs::write(&corrupt, b"not json").unwrap();
+        let cache = CapabilitiesCache::load_preferred(&corrupt, &bundled)
+            .await
+            .unwrap();
+        assert_eq!(
+            cache
+                .resolve("test-provider", "bundled-model")
+                .await
+                .supports_tool_use,
+            Some(false)
+        );
+
+        // Missing persisted file
+        let missing = dir.path().join("missing.json");
+        let cache = CapabilitiesCache::load_preferred(&missing, &bundled)
+            .await
+            .unwrap();
+        assert_eq!(
+            cache
+                .resolve("test-provider", "bundled-model")
+                .await
+                .supports_tool_use,
+            Some(false)
+        );
+    }
+
+    #[tokio::test]
+    async fn install_and_persist_validates_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snapshots").join("models_dev.json");
+        let cache = CapabilitiesCache::new();
+
+        let count = cache
+            .install_and_persist(&payload("m1", true), &path)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(path.is_file());
+
+        // A malformed refresh must fail without clobbering disk or memory.
+        assert!(cache.install_and_persist(b"garbage", &path).await.is_err());
+        assert_eq!(
+            cache.resolve("test-provider", "m1").await.supports_tool_use,
+            Some(true)
+        );
+        let on_disk: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(on_disk["test-provider"]["models"]["m1"].is_object());
+    }
+}
