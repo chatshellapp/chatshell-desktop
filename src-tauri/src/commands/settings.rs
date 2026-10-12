@@ -28,6 +28,20 @@ pub async fn get_all_settings(state: State<'_, AppState>) -> Result<Vec<Setting>
     state.db.get_all_settings().await.map_err(|e| e.to_string())
 }
 
+/// Whether an obscura binary is installed on this machine. Gates the
+/// "Always use Obscura" fetch-strategy option in settings.
+#[tauri::command]
+pub fn is_obscura_available() -> bool {
+    crate::web_fetch::obscura_is_configured()
+}
+
+/// Whether a Chromium-family browser (Chrome/Chromium/Edge) is installed.
+/// Gates the "Always use Chrome" fetch-strategy option in settings.
+#[tauri::command]
+pub fn is_chrome_available() -> bool {
+    crate::web_fetch::chrome_is_available()
+}
+
 #[tauri::command]
 pub async fn set_log_level(state: State<'_, AppState>, level: String) -> Result<(), String> {
     // Set the log level in the logger

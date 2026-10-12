@@ -9,7 +9,7 @@ export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu'
 
 // Web Fetch types
 export type WebFetchMode = 'local' | 'api'
-export type WebFetchLocalMethod = 'auto' | 'fetch' | 'headless'
+export type WebFetchLocalMethod = 'auto' | 'fetch' | 'obscura' | 'webview' | 'headless'
 export type WebFetchApiProvider = 'jina'
 
 // Logging types

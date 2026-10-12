@@ -1,7 +1,7 @@
 //! Baidu search provider
 //!
-//! Implements web search using headless Chrome with stealth mode
-//! to bypass bot detection.
+//! Scrapes result pages through the Obscura browser tier when configured,
+//! falling back to headless Chrome with stealth mode to bypass bot detection.
 
 use anyhow::Result;
 use chrono::Utc;
@@ -24,12 +24,31 @@ use super::types::{SearchProvider, WebSearchResponse};
 /// # Returns
 /// A `WebSearchResponse` containing the search results
 pub async fn search_baidu(query: &str, max_results: usize) -> Result<WebSearchResponse> {
-    let query_owned = query.to_string();
     let searched_at = Utc::now().to_rfc3339();
+    let encoded_query: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
+    let search_url = format!("https://www.baidu.com/s?wd={}", encoded_query);
 
-    // Run in blocking thread since headless_chrome is sync
+    // Fetch tier chain: HTTP → obscura (if installed) → system WebView
+    if let Some(results) = super::utils::scrape_search_results(
+        &search_url,
+        core_search::parse_baidu_results,
+        max_results,
+    )
+    .await
+    {
+        let total_results = results.len();
+        return Ok(WebSearchResponse {
+            query: query.to_string(),
+            results,
+            total_results,
+            searched_at,
+            provider: SearchProvider::Baidu,
+        });
+    }
+
+    // Fall back to headless Chrome (blocking thread since headless_chrome is sync)
     let results =
-        tokio::task::spawn_blocking(move || search_baidu_sync(&query_owned, max_results)).await??;
+        tokio::task::spawn_blocking(move || search_baidu_sync(&search_url, max_results)).await??;
 
     let total_results = results.len();
 
@@ -42,9 +61,9 @@ pub async fn search_baidu(query: &str, max_results: usize) -> Result<WebSearchRe
     })
 }
 
-/// Synchronous Baidu search implementation
-fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResultItem>> {
-    tracing::info!("🔍 [web_search] Starting Baidu search for: {}", query);
+/// Synchronous Baidu search implementation via headless Chrome
+fn search_baidu_sync(search_url: &str, max_results: usize) -> Result<Vec<SearchResultItem>> {
+    tracing::info!("🔍 [web_search] Starting Baidu search for: {}", search_url);
 
     let browser = create_new_browser()?;
 
@@ -71,14 +90,10 @@ fn search_baidu_sync(query: &str, max_results: usize) -> Result<Vec<SearchResult
 
     tracing::info!("🛡️ [web_search] Stealth mode enabled, navigating to Baidu...");
 
-    // Build search URL
-    let encoded_query: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
-    let search_url = format!("https://www.baidu.com/s?wd={}", encoded_query);
-
     tracing::info!("🌐 [web_search] Navigating to: {}", search_url);
 
     // Navigate to search URL
-    tab.navigate_to(&search_url)
+    tab.navigate_to(search_url)
         .map_err(|e| anyhow::anyhow!("Failed to navigate: {}", e))?;
 
     // Wait for navigation to complete

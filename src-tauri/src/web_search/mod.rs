@@ -6,7 +6,10 @@
 //! - Yahoo
 //! - Baidu
 //!
-//! All providers use headless Chrome with stealth mode to bypass bot detection.
+//! Providers scrape result pages through a fetch tier chain: plain HTTP
+//! first, then Obscura when the binary is installed (see
+//! `web_fetch::obscura`), then the system WebView, falling back to headless
+//! Chrome.
 
 mod baidu;
 mod decision;

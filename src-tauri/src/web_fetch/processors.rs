@@ -10,6 +10,13 @@ use super::extractors::{
 };
 use super::types::{FetchedWebResource, WebFetchMetadata};
 
+/// Shared post-processing for HTML rendered by a browser tier (Obscura or
+/// headless Chrome): favicon extraction plus Readability extraction.
+pub fn process_browser_html(url: &str, html: &str, max_chars: Option<usize>) -> FetchedWebResource {
+    let favicon_url = super::extractors::extract_favicon_url(url, Some(html));
+    process_html_with_readability(url, html, "text/html".to_string(), max_chars, favicon_url)
+}
+
 /// Process HTML content using Mozilla's Readability algorithm and convert to markdown
 pub fn process_html_with_readability(
     url: &str,

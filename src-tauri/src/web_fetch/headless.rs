@@ -2,9 +2,16 @@ use anyhow::Result;
 use headless_chrome::{Browser, LaunchOptions};
 use std::time::Duration;
 
-use super::processors::process_html_with_readability;
+use super::processors::process_browser_html;
 use super::types::{FetchedWebResource, STEALTH_JS};
-use crate::web_fetch::extractors::extract_favicon_url;
+
+/// Whether a Chromium-family browser (Chrome/Chromium/Edge) is installed.
+/// Uses the exact same discovery the launch path uses (`CHROME` env, PATH
+/// candidates, platform install locations), so the settings UI can hide the
+/// Chrome fetch strategy when launching it would be guaranteed to fail.
+pub fn is_chrome_available() -> bool {
+    headless_chrome::browser::default_executable().is_ok()
+}
 
 /// Create a new headless browser instance
 pub fn create_new_browser() -> Result<Browser> {
@@ -117,17 +124,7 @@ pub async fn fetch_with_headless_fallback(
         tokio::task::spawn_blocking(move || fetch_with_headless_browser(&url_owned)).await;
 
     match html_result {
-        Ok(Ok(html)) => {
-            // Successfully got HTML from headless browser
-            let favicon_url = extract_favicon_url(url, Some(&html));
-            process_html_with_readability(
-                url,
-                &html,
-                "text/html".to_string(),
-                max_chars,
-                favicon_url,
-            )
-        }
+        Ok(Ok(html)) => process_browser_html(url, &html, max_chars),
         Ok(Err(e)) => {
             // Headless browser fetch failed
             FetchedWebResource::error(

@@ -46,10 +46,20 @@ pub fn run() {
     }
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
+        .register_uri_scheme_protocol(web_fetch::WEBVIEW_SCHEME, |_ctx, request| {
+            let uri = request.uri().to_string();
+            let status = web_fetch::webview_deliver(&uri, request.body());
+            tauri::http::Response::builder()
+                .header("Content-Type", "text/plain")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(status.as_bytes().to_vec().into())
+                .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+        })
         .setup(|app| {
+            // The system-WebView fetch tier needs the app handle to create
+            // hidden fetch webviews at runtime.
+            web_fetch::webview_set_app_handle(app.handle().clone());
+
             // Initialize app data directory
             let app_data_dir = app
                 .path()
@@ -350,7 +360,8 @@ pub fn run() {
             // Settings commands
             commands::get_setting,
             commands::set_setting,
-            commands::get_all_settings,
+            commands::is_obscura_available,
+            commands::is_chrome_available,
             commands::set_log_level,
             // Crypto commands
             commands::generate_keypair,

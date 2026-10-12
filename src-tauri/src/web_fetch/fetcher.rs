@@ -3,12 +3,16 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use super::extractors::extract_favicon_url;
-use super::headless::{fetch_with_headless_browser, fetch_with_headless_fallback};
+use super::headless::fetch_with_headless_fallback;
 use super::jina::fetch_with_jina;
+use super::obscura;
 use super::processors::{
-    process_html_with_readability, process_json_content, process_text_content, process_xml_content,
+    process_browser_html, process_html_with_readability, process_json_content,
+    process_text_content, process_xml_content,
 };
 use super::types::{FetchedWebResource, HTTP_CLIENT};
+use super::webview_fetch;
+
 use chatshell_agent_core::web_fetch::decode_body_bytes;
 
 /// Fetch mode from settings
@@ -22,10 +26,19 @@ pub enum FetchMode {
 /// Local fetch method
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum LocalMethod {
+    /// HTTP first, then the full browser chain.
     #[default]
     Auto,
+    /// Plain HTTP only, no browser fallback.
     FetchOnly,
-    HeadlessOnly,
+    /// Skip plain HTTP; Obscura first (offered in settings only when the
+    /// binary is installed), degrading through WebView to Chrome.
+    ObscuraOnly,
+    /// Skip plain HTTP and Obscura; system WebView first, degrading to
+    /// headless Chrome.
+    WebViewOnly,
+    /// Headless Chrome directly (the classic heavy-weight path).
+    ChromeOnly,
 }
 
 /// Configuration for web fetching
@@ -38,7 +51,8 @@ pub struct FetchConfig {
 
 /// Fetch and parse a web resource using Mozilla's Readability algorithm for HTML.
 /// max_chars: None = no truncation, Some(n) = truncate to n characters
-/// Falls back to headless browser if direct HTTP fetch fails with non-200 status.
+/// Falls back to the browser tier (Obscura when configured, then headless
+/// Chrome) if direct HTTP fetch fails with a non-200 status.
 pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
     tracing::info!("📡 [fetcher] Starting fetch for: {}", url);
 
@@ -67,7 +81,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 "⚠️ [fetcher] HTTP request failed: {}, trying headless browser...",
                 e
             );
-            return fetch_with_headless_fallback(url, max_chars).await;
+            return fetch_with_browser_tier(url, max_chars).await;
         }
     };
 
@@ -79,7 +93,7 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
             "⚠️ [fetcher] HTTP error {}, trying headless browser fallback...",
             response.status()
         );
-        return fetch_with_headless_fallback(url, max_chars).await;
+        return fetch_with_browser_tier(url, max_chars).await;
     }
 
     let content_type = response
@@ -186,7 +200,9 @@ pub async fn fetch_web_resource_with_config(
         FetchMode::Local => match config.local_method {
             LocalMethod::Auto => fetch_web_resource(url, max_chars).await,
             LocalMethod::FetchOnly => fetch_with_http_only(url, max_chars).await,
-            LocalMethod::HeadlessOnly => fetch_with_headless_only(url, max_chars).await,
+            LocalMethod::ObscuraOnly => fetch_with_browser_tier(url, max_chars).await,
+            LocalMethod::WebViewOnly => fetch_with_webview_tier(url, max_chars).await,
+            LocalMethod::ChromeOnly => fetch_with_headless_fallback(url, max_chars).await,
         },
     }
 }
@@ -308,49 +324,51 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
     }
 }
 
-/// Fetch using headless Chrome only
-async fn fetch_with_headless_only(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
-    tracing::info!("📡 [fetcher] Starting headless Chrome fetch for: {}", url);
-
-    // Validate URL first
-    if Url::parse(url).is_err() {
-        return FetchedWebResource::error(
-            url,
-            String::new(),
-            format!("Invalid URL: {}", url),
-            None,
-        );
+/// One obscura attempt; `None` means unavailable or failed, continue the chain.
+async fn try_obscura(url: &str, max_chars: Option<usize>) -> Option<FetchedWebResource> {
+    if !obscura::is_configured() {
+        return None;
     }
-
-    // Run headless browser in blocking thread
-    let url_owned = url.to_string();
-    let html_result =
-        tokio::task::spawn_blocking(move || fetch_with_headless_browser(&url_owned)).await;
-
-    match html_result {
-        Ok(Ok(html)) => {
-            let favicon_url = extract_favicon_url(url, Some(&html));
-            process_html_with_readability(
-                url,
-                &html,
-                "text/html".to_string(),
-                max_chars,
-                favicon_url,
-            )
+    tracing::info!("🔄 [fetcher] Trying obscura browser tier for: {}", url);
+    match obscura::fetch_html(url).await {
+        Ok(html) => Some(process_browser_html(url, &html, max_chars)),
+        Err(e) => {
+            tracing::warn!("⚠️ [fetcher] Obscura fetch failed: {}", e);
+            None
         }
-        Ok(Err(e)) => FetchedWebResource::error(
-            url,
-            String::new(),
-            format!("Headless browser fetch failed: {}", e),
-            None,
-        ),
-        Err(e) => FetchedWebResource::error(
-            url,
-            String::new(),
-            format!("Headless browser task failed: {}", e),
-            None,
-        ),
     }
+}
+
+/// One system-WebView attempt; `None` means unavailable or failed.
+async fn try_webview(url: &str, max_chars: Option<usize>) -> Option<FetchedWebResource> {
+    if !webview_fetch::is_available() {
+        return None;
+    }
+    tracing::info!("🔄 [fetcher] Trying system webview tier for: {}", url);
+    match webview_fetch::fetch_html(url).await {
+        Ok(html) => Some(process_browser_html(url, &html, max_chars)),
+        Err(e) => {
+            tracing::warn!("⚠️ [fetcher] System webview fetch failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Full browser chain: Obscura (when installed) → system WebView → headless
+/// Chrome. The Auto-mode fallback and the ObscuraOnly local method.
+async fn fetch_with_browser_tier(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
+    if let Some(res) = try_obscura(url, max_chars).await {
+        return res;
+    }
+    fetch_with_webview_tier(url, max_chars).await
+}
+
+/// System WebView first, degrading to headless Chrome.
+async fn fetch_with_webview_tier(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
+    if let Some(res) = try_webview(url, max_chars).await {
+        return res;
+    }
+    fetch_with_headless_fallback(url, max_chars).await
 }
 
 /// Fetch multiple URLs in parallel with configuration

@@ -1,5 +1,130 @@
 //! Utility functions for web search
 
+use std::time::Duration;
+
+use chatshell_agent_core::web_search::SearchResult;
+
+use super::types::SearchResultItem;
+use crate::web_fetch::{
+    HTTP_CLIENT, obscura_fetch_html, obscura_is_configured, webview_fetch_html,
+    webview_is_available,
+};
+
+/// Realistic UA for plain-HTTP SERP requests; engines hard-block the default
+/// reqwest UA. Matches the UA the headless Chrome path sets.
+const SERP_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+/// Scrape a search-engine result page: plain HTTP first (cheap, works for
+/// engines that don't hard-block non-browser clients), then the browser tiers
+/// — Obscura when installed on the machine, then the system WebView.
+///
+/// Returns `None` when every tier is unavailable/fails or every parser run
+/// extracts no results; callers then fall back to headless Chrome.
+pub(super) async fn scrape_search_results(
+    search_url: &str,
+    parse: fn(&str, usize) -> Vec<SearchResult>,
+    max_results: usize,
+) -> Option<Vec<SearchResultItem>> {
+    if let Some(html) = try_http_serp(search_url).await {
+        if let Some(results) =
+            parse_tier_html(Some(html), parse, max_results, "http", search_url).await
+        {
+            return Some(results);
+        }
+    }
+
+    if obscura_is_configured() {
+        tracing::info!("🔄 [web_search] Trying obscura tier for: {}", search_url);
+        if let Some(results) = parse_tier_html(
+            obscura_fetch_html(search_url).await.ok(),
+            parse,
+            max_results,
+            "obscura",
+            search_url,
+        )
+        .await
+        {
+            return Some(results);
+        }
+    }
+    if webview_is_available() {
+        tracing::info!(
+            "🔄 [web_search] Trying system webview tier for: {}",
+            search_url
+        );
+        if let Some(results) = parse_tier_html(
+            webview_fetch_html(search_url).await.ok(),
+            parse,
+            max_results,
+            "webview",
+            search_url,
+        )
+        .await
+        {
+            return Some(results);
+        }
+    }
+    None
+}
+
+/// Parse one tier's HTML into result items; `None` means the tier produced
+/// nothing usable and the chain should continue.
+async fn parse_tier_html(
+    html: Option<String>,
+    parse: fn(&str, usize) -> Vec<SearchResult>,
+    max_results: usize,
+    tier: &str,
+    search_url: &str,
+) -> Option<Vec<SearchResultItem>> {
+    let html = html?;
+    let results = parse(&html, max_results);
+    if results.is_empty() {
+        tracing::warn!(
+            "⚠️ [web_search] {} tier yielded no results for {}",
+            tier,
+            search_url
+        );
+        return None;
+    }
+    Some(
+        results
+            .into_iter()
+            .map(|r| SearchResultItem {
+                title: r.title,
+                url: r.url,
+                snippet: r.snippet,
+            })
+            .collect(),
+    )
+}
+
+/// Cheapest tier: plain HTTP GET of the SERP URL. Works for engines that
+/// don't hard-block non-browser clients (e.g. DuckDuckGo's html endpoint).
+/// `None` on any transport error, non-200, or a suspiciously tiny body
+/// (challenge interstitials and empty shells).
+async fn try_http_serp(search_url: &str) -> Option<String> {
+    let response = HTTP_CLIENT
+        .get(search_url)
+        .header("User-Agent", SERP_USER_AGENT)
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body = response.text().await.ok()?;
+    if body.len() < 500 {
+        return None;
+    }
+    tracing::info!(
+        "⚡ [web_search] SERP fetched via plain HTTP: {} ({} bytes)",
+        search_url,
+        body.len()
+    );
+    Some(body)
+}
 /// Extract search keywords from user input
 ///
 /// This is a simple implementation that extracts the first few lines

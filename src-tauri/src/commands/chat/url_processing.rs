@@ -17,7 +17,9 @@ async fn load_fetch_config(state: &AppState) -> FetchConfig {
     let local_method = match state.db.get_setting("web_fetch_local_method").await {
         Ok(Some(m)) => match m.as_str() {
             "fetch" => LocalMethod::FetchOnly,
-            "headless" => LocalMethod::HeadlessOnly,
+            "headless" => LocalMethod::ChromeOnly,
+            "obscura" => LocalMethod::ObscuraOnly,
+            "webview" => LocalMethod::WebViewOnly,
             _ => LocalMethod::Auto,
         },
         _ => LocalMethod::Auto,

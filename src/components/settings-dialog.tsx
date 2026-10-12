@@ -89,6 +89,16 @@ import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { SyncSettingsSection } from '@/components/sync/sync-settings-section'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
+// Translation key per fetch strategy. Record<> forces exhaustiveness: adding
+// a WebFetchLocalMethod variant without a label here is a compile error.
+const FETCH_METHOD_LABELS: Record<WebFetchLocalMethod, string> = {
+  auto: 'auto',
+  obscura: 'alwaysUseObscura',
+  fetch: 'alwaysUseFetch',
+  webview: 'alwaysUseWebview',
+  headless: 'alwaysUseChrome',
+}
+
 const data = {
   nav: [
     { name: 'llmProvider', icon: Bot },
@@ -130,6 +140,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Web Fetch state
   const [webFetchMode, setWebFetchMode] = React.useState<WebFetchMode>('local')
   const [webFetchLocalMethod, setWebFetchLocalMethod] = React.useState<WebFetchLocalMethod>('auto')
+  const [obscuraAvailable, setObscuraAvailable] = React.useState(false)
+  const [chromeAvailable, setChromeAvailable] = React.useState(false)
   const [jinaApiKey, setJinaApiKey] = React.useState('')
   const [showJinaApiKey, setShowJinaApiKey] = React.useState(false)
 
@@ -221,6 +233,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
         const localMethod = await getWebFetchLocalMethod()
         setWebFetchLocalMethod(localMethod)
+
+        setObscuraAvailable(await invoke<boolean>('is_obscura_available'))
+        setChromeAvailable(await invoke<boolean>('is_chrome_available'))
 
         const jinaKey = await getJinaApiKey()
         if (jinaKey) setJinaApiKey(jinaKey)
@@ -956,11 +971,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full max-w-md justify-between">
-                    <span>
-                      {webFetchLocalMethod === 'auto' && t('auto')}
-                      {webFetchLocalMethod === 'fetch' && t('alwaysUseFetch')}
-                      {webFetchLocalMethod === 'headless' && t('alwaysUseHeadlessChrome')}
-                    </span>
+                    <span>{t(FETCH_METHOD_LABELS[webFetchLocalMethod])}</span>
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -976,6 +987,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       </div>
                     </div>
                   </DropdownMenuItem>
+
+                  {obscuraAvailable && (
+                    <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('obscura')}>
+                      <div className="flex items-center gap-2">
+                        {webFetchLocalMethod === 'obscura' && (
+                          <Check className="h-4 w-4 text-primary" />
+                        )}
+                        <div>
+                          <span className={webFetchLocalMethod === 'obscura' ? 'font-medium' : ''}>
+                            {t('alwaysUseObscura')}
+                          </span>
+                          <p className="text-xs text-muted-foreground">{t('obscuraSkipHttp')}</p>
+                        </div>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('fetch')}>
                     <div className="flex items-center gap-2">
                       {webFetchLocalMethod === 'fetch' && (
@@ -989,19 +1016,34 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       </div>
                     </div>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('headless')}>
+                  <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('webview')}>
                     <div className="flex items-center gap-2">
-                      {webFetchLocalMethod === 'headless' && (
+                      {webFetchLocalMethod === 'webview' && (
                         <Check className="h-4 w-4 text-primary" />
                       )}
                       <div>
-                        <span className={webFetchLocalMethod === 'headless' ? 'font-medium' : ''}>
-                          {t('alwaysUseHeadlessChrome')}
+                        <span className={webFetchLocalMethod === 'webview' ? 'font-medium' : ''}>
+                          {t('alwaysUseWebview')}
                         </span>
-                        <p className="text-xs text-muted-foreground">{t('slowerHandlesJs')}</p>
+                        <p className="text-xs text-muted-foreground">{t('webviewSkipHttp')}</p>
                       </div>
                     </div>
                   </DropdownMenuItem>
+                  {chromeAvailable && (
+                    <DropdownMenuItem onClick={() => handleSaveWebFetchLocalMethod('headless')}>
+                      <div className="flex items-center gap-2">
+                        {webFetchLocalMethod === 'headless' && (
+                          <Check className="h-4 w-4 text-primary" />
+                        )}
+                        <div>
+                          <span className={webFetchLocalMethod === 'headless' ? 'font-medium' : ''}>
+                            {t('alwaysUseChrome')}
+                          </span>
+                          <p className="text-xs text-muted-foreground">{t('chromeHeaviest')}</p>
+                        </div>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
