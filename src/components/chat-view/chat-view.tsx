@@ -75,12 +75,21 @@ export function ChatView() {
   })
 
   // Fetch-on-open (plan §5): materialize attachment bytes referenced by this
-  // conversation (newest-first, budgeted) so previews resolve locally.
+  // conversation (newest-first, budgeted) so previews resolve locally. A
+  // pass that MATERIALIZED bytes also repaired the referencing rows'
+  // storage_path (iOS-authored rows carry absolute sandbox paths) — re-resolve
+  // message resources so already-rendered tiles drop the stale foreign paths
+  // (real-device 2026-08-28: the synced image stayed broken until reload).
   const fetchBlobs = useAttachmentBlobStore((s) => s.fetchForConversation)
+  const incrementAttachmentRefreshKey = useMessageStore(
+    (state) => state.incrementAttachmentRefreshKey
+  )
   useEffect(() => {
     if (!conversationId) return
-    void fetchBlobs(conversationId)
-  }, [conversationId, fetchBlobs])
+    void fetchBlobs(conversationId).then((materialized) => {
+      if (materialized) incrementAttachmentRefreshKey(conversationId)
+    })
+  }, [conversationId, fetchBlobs, incrementAttachmentRefreshKey])
 
   const { getDisplayInfo, getMessageDisplayInfo } = useDisplayInfo({
     selectedModel,

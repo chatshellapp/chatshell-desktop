@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, MessageResources } from '@/types'
 import { logger } from '@/lib/logger'
@@ -17,10 +17,19 @@ export function useMessageResources({
   // Store resources for each message (keyed by message id)
   // Contains { attachments, contexts, steps } for each message
   const [messageResources, setMessageResources] = useState<Record<string, MessageResources>>({})
+  const lastRefreshKeyRef = useRef<number | null>(null)
 
   // Fetch resources (attachments, contexts, steps) for messages
   // Re-run when attachmentStatus changes to 'complete' or attachmentRefreshKey changes
   useEffect(() => {
+    // A refresh-key bump means storage_paths were just repaired by a blob
+    // pass (fetch-on-open rewrites iOS-authored absolute paths) — cached
+    // resources may hold stale foreign paths, so re-resolve EVERYTHING,
+    // not just the latest message (real-device 2026-08-28).
+    const refreshAll =
+      lastRefreshKeyRef.current !== null && lastRefreshKeyRef.current !== attachmentRefreshKey
+    lastRefreshKeyRef.current = attachmentRefreshKey
+
     const fetchResources = async () => {
       // Fetch resources for all messages (both user and assistant)
       const resourceMap: Record<string, MessageResources> = {}
@@ -30,7 +39,8 @@ export function useMessageResources({
         // Otherwise, skip if we already have resources for this message
         const isLatestMessage = messages.indexOf(msg) === messages.length - 1
         const shouldRefetch =
-          (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage
+          refreshAll ||
+          ((attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage)
 
         if (messageResources[msg.id] && !shouldRefetch) {
           resourceMap[msg.id] = messageResources[msg.id]
