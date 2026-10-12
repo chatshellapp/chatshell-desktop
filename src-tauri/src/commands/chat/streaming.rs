@@ -310,8 +310,14 @@ pub(crate) async fn handle_agent_streaming(
     let glob_enabled = all_enabled_tool_ids.contains(&BUILTIN_GLOB_ID.to_string());
 
     if web_search_enabled {
-        tracing::info!("🔍 [agent_streaming] Enabling web_search tool");
-        config = config.with_web_search();
+        let search_provider = state_clone.db.get_search_provider().await;
+        tracing::info!(
+            "🔍 [agent_streaming] Enabling web_search tool with provider: {}",
+            search_provider
+        );
+        config = config
+            .with_web_search()
+            .with_search_provider(search_provider);
     }
     if web_fetch_enabled {
         tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool");

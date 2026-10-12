@@ -83,7 +83,10 @@ impl Tool for WebSearchTool {
                 "provider": {
                     "type": "string",
                     "enum": ["duckduckgo", "yahoo", "baidu"],
-                    "description": "Search provider to use (default: duckduckgo)"
+                    "description": format!(
+                        "Search provider to use (default: {})",
+                        self.default_provider
+                    )
                 }
             },
             "required": ["query"]

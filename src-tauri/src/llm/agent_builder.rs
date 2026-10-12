@@ -35,6 +35,7 @@ use crate::llm::{
     together as together_provider, xai as xai_provider,
 };
 use crate::models::ModelParameters;
+use crate::web_search::SearchProvider;
 
 /// Configuration for building an agent.
 /// Combines system prompt with model parameters and tool configuration.
@@ -46,6 +47,8 @@ pub struct AgentConfig {
     pub model_params: ModelParameters,
     /// Enable built-in web search tool
     pub enable_web_search: bool,
+    /// Search provider used by the built-in web search tool
+    pub search_provider: SearchProvider,
     /// Enable built-in web fetch tool
     pub enable_web_fetch: bool,
     /// Enable built-in bash tool
@@ -129,6 +132,12 @@ impl AgentConfig {
     /// Enable the built-in web search tool
     pub fn with_web_search(mut self) -> Self {
         self.enable_web_search = true;
+        self
+    }
+
+    /// Set the search provider used by the built-in web search tool
+    pub fn with_search_provider(mut self, provider: SearchProvider) -> Self {
+        self.search_provider = provider;
         self
     }
 
@@ -562,7 +571,9 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
     macro_rules! first_tool {
         ($builder:expr) => {{
             match first_added(config) {
-                FirstTool::WebSearch => $builder.tool(WebSearchTool::new()),
+                FirstTool::WebSearch => {
+                    $builder.tool(WebSearchTool::with_provider(config.search_provider))
+                }
                 FirstTool::WebFetch => $builder.tool(WebFetchTool::new()),
                 FirstTool::Bash => $builder.tool(bash_tool_instance.as_ref().unwrap().clone()),
                 FirstTool::Read => $builder.tool(create_read_tool()),

@@ -2,21 +2,12 @@
 
 use super::super::AppState;
 use crate::models::{CreateSearchDecisionRequest, CreateSearchResultRequest};
-use crate::web_search::SearchProvider;
 use tauri::Emitter;
 
 /// Result of search processing
 pub(crate) struct SearchProcessingResult {
     pub urls: Vec<String>,
     pub search_result_id: Option<String>,
-}
-
-/// Get the configured search provider from settings
-async fn get_search_provider(state: &AppState) -> SearchProvider {
-    match state.db.get_setting("search_provider").await {
-        Ok(Some(provider_id)) => SearchProvider::from_id(&provider_id).unwrap_or_default(),
-        _ => SearchProvider::default(),
-    }
 }
 
 /// Process search decision and execute search if needed
@@ -116,7 +107,7 @@ pub(crate) async fn process_search_decision(
     );
 
     // Get the configured search provider
-    let provider = get_search_provider(state).await;
+    let provider = state.db.get_search_provider().await;
     let engine_id = provider.id().to_string();
     tracing::info!(
         "🔍 [search] Using search provider: {}",
