@@ -148,6 +148,21 @@ fn resolve_content_key_with_item(
         };
     }
 
+    // Before the first artifact exists, the Keychain rung is inert: a
+    // keys-only state can neither pull (nothing there) nor publish (no
+    // slot to adopt, and nothing to adopt one from). The full-state cache
+    // written at bootstrap is the only state that can mint the FIRST
+    // artifact, so it wins while the cloud is empty — otherwise the
+    // bootstrap device starves on "no wrapped slot on this device" and
+    // never ships a single artifact (real-device finding 2026-08-28).
+    if !has_artifact
+        && let Ok(bytes) = std::fs::read(chain_cache_path(app_data_dir))
+        && let Ok(mut crypto) = SyncCrypto::decode_state(&bytes)
+    {
+        adopt_remote_slot(&mut crypto, cloud_dir);
+        return CkResolution::Ready(crypto);
+    }
+
     // Rung 1: iCloud Keychain synchronizable item (Apple platforms). The
     // item carries the CK (`v1:<b64>`); adoption is format-gated — legacy
     // bare-base64 and rotation-era versions never parse. A stale-but-v1
@@ -456,6 +471,34 @@ mod tests {
             }
             other => panic!("expected Ready, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ladder_resolves_full_state_cache_before_first_artifact() {
+        let dir = space();
+        let cloud = dir.path().join("cloud");
+        std::fs::create_dir_all(&cloud).unwrap();
+        let crypto = bootstrap_group(dir.path(), "cache-first passphrase").unwrap();
+
+        // Regression (real-device 2026-08-28): with no artifact yet, the
+        // Keychain rung is keys-only and must NOT shadow the publishable
+        // cache rung — the bootstrap device could never ship its first
+        // artifact ("no wrapped slot on this device" on every pass).
+        let settings = SyncSettings {
+            enabled: true,
+            onboarded: true,
+            ..Default::default()
+        };
+        let resolved = match resolve_content_key_with_item(
+            dir.path(),
+            &cloud,
+            &settings,
+            Some(crypto.synchronizable_item_value().as_str()),
+        ) {
+            CkResolution::Ready(resolved) => resolved,
+            other => panic!("expected Ready, got {other:?}"),
+        };
+        assert!(resolved.build_header("1:test-device", 1).is_ok());
     }
 
     #[test]
