@@ -36,14 +36,14 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout chatshell-agent (sibling path dependency)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chatshellapp/chatshell-agent
           path: .chatshell-agent-sibling
       - name: Link chatshell-agent at the sibling path Cargo expects
-        # checkout@v4 forbids paths outside $GITHUB_WORKSPACE, but Cargo.toml
+        # checkout forbids paths outside $GITHUB_WORKSPACE, but Cargo.toml
         # points at ../../chatshell-agent — bridge with a symlink.
         run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
@@ -85,9 +85,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout chatshell-agent (sibling path dependency)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chatshellapp/chatshell-agent
           path: .chatshell-agent-sibling
@@ -129,9 +129,9 @@ jobs:
       HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_ISSUER != '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout chatshell-agent (sibling path dependency)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chatshellapp/chatshell-agent
           path: .chatshell-agent-sibling
@@ -153,7 +153,7 @@ jobs:
 
       - name: Import Code Signing Certificate
         if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
-        uses: apple-actions/import-codesign-certs@v2
+        uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -200,9 +200,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout chatshell-agent (sibling path dependency)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chatshellapp/chatshell-agent
           path: .chatshell-agent-sibling
@@ -284,7 +284,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout website repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ secrets.WEBSITE_REPO }}
           token: ${{ secrets.GH_PAT || github.token }}
