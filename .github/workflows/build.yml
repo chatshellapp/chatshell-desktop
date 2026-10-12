@@ -41,7 +41,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: chatshellapp/chatshell-agent
-          path: ../chatshell-agent
+          path: .chatshell-agent-sibling
+      - name: Link chatshell-agent at the sibling path Cargo expects
+        # checkout@v4 forbids paths outside $GITHUB_WORKSPACE, but Cargo.toml
+        # points at ../../chatshell-agent — bridge with a symlink.
+        run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -81,7 +85,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: chatshellapp/chatshell-agent
-          path: ../chatshell-agent
+          path: .chatshell-agent-sibling
+      - name: Link chatshell-agent at the sibling path Cargo expects
+        # Junction: no symlink privilege needed on Windows.
+        shell: pwsh
+        run: New-Item -ItemType Junction -Path "$env:GITHUB_WORKSPACE\..\chatshell-agent" -Target "$env:GITHUB_WORKSPACE\.chatshell-agent-sibling" | Out-Null
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -121,7 +129,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: chatshellapp/chatshell-agent
-          path: ../chatshell-agent
+          path: .chatshell-agent-sibling
+      - name: Link chatshell-agent at the sibling path Cargo expects
+        run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -190,7 +200,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: chatshellapp/chatshell-agent
-          path: ../chatshell-agent
+          path: .chatshell-agent-sibling
+      - name: Link chatshell-agent at the sibling path Cargo expects
+        run: ln -s "$GITHUB_WORKSPACE/.chatshell-agent-sibling" "$GITHUB_WORKSPACE/../chatshell-agent"
 
       - name: Install Linux dependencies
         run: |
