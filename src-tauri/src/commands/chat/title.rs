@@ -1,6 +1,7 @@
 //! Conversation title generation
 
 use super::super::AppState;
+use super::aux_models;
 use crate::llm::{self, ChatMessage};
 use crate::prompts;
 use anyhow::Result;
@@ -156,78 +157,22 @@ pub(crate) async fn generate_conversation_title(
 ) -> Result<String> {
     tracing::info!("🏷️ [generate_title] Starting title generation...");
 
-    // Check if there's a custom summary model setting
-    let summary_model_id = state
-        .db
-        .get_setting("conversation_summary_model_id")
-        .await
-        .ok()
-        .flatten();
-
-    let (summary_provider, summary_model, summary_api_key, summary_base_url, summary_api_style) =
-        if let Some(model_id) = summary_model_id {
-            // Get the custom model settings
-            match state.db.get_model(&model_id).await {
-                Ok(Some(m)) => {
-                    // Get provider info
-                    match state.db.get_provider(&m.provider_id).await {
-                        Ok(Some(p)) => {
-                            tracing::info!(
-                                "🏷️ [generate_title] Using custom summary model: {} from provider: {}",
-                                m.model_id,
-                                p.provider_type
-                            );
-                            (
-                                p.provider_type.clone(),
-                                m.model_id.clone(),
-                                p.api_key.clone(),
-                                p.base_url.clone(),
-                                p.api_style.clone(),
-                            )
-                        }
-                        _ => {
-                            tracing::info!(
-                                "🏷️ [generate_title] Custom model provider not found, using current model"
-                            );
-                            (
-                                provider.to_string(),
-                                model.to_string(),
-                                api_key.clone(),
-                                base_url.clone(),
-                                api_style.clone(),
-                            )
-                        }
-                    }
-                }
-                _ => {
-                    tracing::info!(
-                        "🏷️ [generate_title] Custom model not found, using current model"
-                    );
-                    (
-                        provider.to_string(),
-                        model.to_string(),
-                        api_key.clone(),
-                        base_url.clone(),
-                        api_style.clone(),
-                    )
-                }
-            }
-        } else {
-            // Use the current conversation model by default
-            tracing::info!("🏷️ [generate_title] No custom summary model set, using current model");
-            (
-                provider.to_string(),
-                model.to_string(),
-                api_key.clone(),
-                base_url.clone(),
-                api_style.clone(),
-            )
-        };
+    // Route to the lightweight aux model when configured: title generation
+    // is a cheap call, not main-model work.
+    let conversation = aux_models::ConversationModel {
+        provider_type: provider.to_string(),
+        model_id: model.to_string(),
+        api_key: api_key.clone(),
+        base_url: base_url.clone(),
+        api_style: api_style.clone(),
+        supports_vision: None,
+    };
+    let aux = aux_models::resolve_aux_tiny(state, &conversation).await;
 
     // Generate title using unified provider handler
     let response = llm::call_provider(
-        &summary_provider,
-        summary_model,
+        &aux.provider_type,
+        aux.model_id,
         vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -250,19 +195,17 @@ pub(crate) async fn generate_conversation_title(
                 reasoning_content: None,
             },
         ],
-        summary_api_key,
-        summary_base_url,
-        summary_api_style,
+        aux.api_key,
+        aux.base_url,
+        aux.api_style,
     )
     .await?;
 
-    // Clean up the title (remove quotes, extra whitespace, etc.)
-    let title = response
-        .content
-        .trim()
-        .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == ',' || c == '!' || c == '?')
-        .trim()
-        .to_string();
+    // Normalize and reject unusable output so auto-titling retries on the
+    // next message instead of latching onto model noise.
+    let Some(title) = normalize_generated_title(&response.content) else {
+        anyhow::bail!("Generated title was unusable: {:?}", response.content);
+    };
 
     tracing::info!("🏷️ [generate_title] Generated title: {}", title);
     Ok(title)
@@ -283,6 +226,11 @@ pub(crate) async fn auto_generate_title_if_needed(
     if let Ok(Some(conversation)) = state.db.get_conversation(conversation_id).await
         && conversation.title.is_empty()
     {
+        if is_low_signal_title_input(user_content) {
+            tracing::info!("🏷️ [auto_title] Low-signal first message, deferring title generation");
+            return;
+        }
+
         tracing::info!("🏷️ [auto_title] Generating title for new conversation...");
         match generate_conversation_title(
             state,
@@ -316,5 +264,185 @@ pub(crate) async fn auto_generate_title_if_needed(
             }
             Err(e) => tracing::warn!("⚠️  [auto_title] Failed to generate title: {}", e),
         }
+    }
+}
+
+/// Greeting / acknowledgement / filler tokens. A first user message made
+/// entirely of these (or bare numbers) carries no concrete task, so titling
+/// defers to a later message instead of latching onto "hi".
+const LOW_SIGNAL_TITLE_TOKENS: &[&str] = &[
+    // greetings
+    "hi",
+    "hii",
+    "hiii",
+    "hey",
+    "heya",
+    "hello",
+    "yo",
+    "sup",
+    "howdy",
+    "greetings",
+    "hola",
+    "ciao",
+    "gm",
+    "gn",
+    // politeness / acknowledgement
+    "thanks",
+    "thank",
+    "thx",
+    "ty",
+    "cheers",
+    "please",
+    "ok",
+    "okay",
+    "k",
+    "yep",
+    "yes",
+    "yeah",
+    "nope",
+    "no",
+    "nah",
+    "sure",
+    "cool",
+    "nice",
+    "great",
+    "lol",
+    "haha",
+    // poking the agent / fillers
+    "test",
+    "testing",
+    "ping",
+    "pong",
+    "there",
+    "you",
+    "hmm",
+    "um",
+    "so",
+    "well",
+    "anyway",
+    // CJK greetings / fillers. All three major CJK languages are covered so
+    // the low-signal detector works for the app's full locale set; these
+    // are functional string data, not UI copy.
+    // Simplified Chinese
+    "你好",
+    "您好",
+    "嗨",
+    "哈喽",
+    "在吗",
+    "在么",
+    "谢谢",
+    "好的",
+    "嗯",
+    // Japanese
+    "こんにちは",
+    "こんばんは",
+    "おはよう",
+    "ありがとう",
+    "ありがとうございます",
+    "はい",
+    "うん",
+    // Korean
+    "안녕",
+    "안녕하세요",
+    "감사",
+    "감사합니다",
+    "네",
+    "응",
+];
+
+/// True when a first user message is too low-signal to title: greetings,
+/// acknowledgements, bare numbers, or nothing once punctuation is stripped.
+fn is_low_signal_title_input(message: &str) -> bool {
+    let lowered = message.to_lowercase();
+    let words: Vec<&str> = lowered
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        return true;
+    }
+    words.iter().all(|word| {
+        LOW_SIGNAL_TITLE_TOKENS.contains(word) || word.chars().all(|c| c.is_ascii_digit())
+    })
+}
+
+/// Maximum accepted title length in characters.
+const MAX_TITLE_CHARS: usize = 80;
+/// Maximum accepted title word count.
+const MAX_TITLE_WORDS: usize = 12;
+
+/// Normalize a generated title: first line only, strip quotes/tags/trailing
+/// punctuation, and reject empty, punctuation-only, oversized, or wordy
+/// output (returns `None` so the caller defers titling instead of saving
+/// model noise).
+fn normalize_generated_title(value: &str) -> Option<String> {
+    let first_line = value.trim().lines().next()?.trim();
+    let title = first_line
+        .trim_start_matches(['"', '\''])
+        .trim_end_matches(['"', '\''])
+        .trim_start_matches("<title>")
+        .trim_end_matches("</title>")
+        .trim_start_matches(['"', '\''])
+        .trim_end_matches(['"', '\''])
+        .trim_end_matches(['.', '!', '?'])
+        .trim();
+    if title.is_empty() || !title.chars().any(char::is_alphanumeric) {
+        return None;
+    }
+    let words = title.split_whitespace().count();
+    if title.chars().count() > MAX_TITLE_CHARS || words > MAX_TITLE_WORDS {
+        return None;
+    }
+    Some(title.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_signal_inputs_are_detected() {
+        assert!(is_low_signal_title_input("hi"));
+        assert!(is_low_signal_title_input("Hello!"));
+        assert!(is_low_signal_title_input("ok ok"));
+        assert!(is_low_signal_title_input("42"));
+        assert!(is_low_signal_title_input("你好"));
+        assert!(is_low_signal_title_input(""));
+        assert!(!is_low_signal_title_input("Fix the login bug"));
+        assert!(!is_low_signal_title_input("帮我把标题改成蓝色"));
+        assert!(!is_low_signal_title_input("test the parser"));
+        assert!(is_low_signal_title_input("こんにちは"));
+        assert!(is_low_signal_title_input("안녕하세요"));
+        assert!(!is_low_signal_title_input("ログインバグを直して"));
+        assert!(!is_low_signal_title_input("로그인 버그를 수정해줘"));
+    }
+
+    #[test]
+    fn title_normalization_strips_and_rejects() {
+        assert_eq!(
+            normalize_generated_title("  \"Fix login bug\"  ").as_deref(),
+            Some("Fix login bug")
+        );
+        assert_eq!(
+            normalize_generated_title("Fix login bug.").as_deref(),
+            Some("Fix login bug")
+        );
+        assert_eq!(
+            normalize_generated_title("<title>Fix login bug</title>").as_deref(),
+            Some("Fix login bug")
+        );
+        assert_eq!(
+            normalize_generated_title("Fix.\nEverything after the first line is ignored."),
+            Some("Fix".to_string())
+        );
+        assert_eq!(normalize_generated_title(""), None);
+        assert_eq!(normalize_generated_title(".."), None);
+        assert_eq!(normalize_generated_title(&"x".repeat(81)), None);
+        assert_eq!(
+            normalize_generated_title(
+                "one two three four five six seven eight nine ten eleven twelve thirteen"
+            ),
+            None
+        );
     }
 }

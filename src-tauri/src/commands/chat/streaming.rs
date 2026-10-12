@@ -1,6 +1,7 @@
 //! Agent-based streaming for LLM responses
 
 use super::super::AppState;
+use super::aux_models::ConversationModel;
 use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
     build_tool_result_message, build_user_message, create_provider_agent, stream_chat_with_agent,
@@ -8,6 +9,7 @@ use crate::llm::agent_builder::{
 use crate::llm::tools::{BashTool, TempFileList};
 use crate::llm::tools::{
     McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool,
+    VisionQuestionResponder,
 };
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
@@ -358,6 +360,33 @@ pub(crate) async fn handle_agent_streaming(
     if read_enabled {
         tracing::info!("📖 [agent_streaming] Enabling read tool");
         config = config.with_read();
+
+        // Vision seam: wire an image-question responder when a vision model
+        // resolves, and declare whether the main model accepts image input
+        // (drives the read tool's metadata fallback for text-only models).
+        let conversation = ConversationModel {
+            provider_type: provider_type.clone(),
+            model_id: model_id.clone(),
+            api_key: api_key.clone(),
+            base_url: base_url.clone(),
+            api_style: api_style.clone(),
+            supports_vision: capabilities.supports_vision,
+        };
+        if let Some(aux) = super::aux_models::resolve_aux_vision(&state_clone, &conversation).await
+        {
+            config = config.with_read_image_question(Arc::new(VisionQuestionResponder::new(
+                aux.provider_type,
+                aux.model_id,
+                aux.api_key,
+                aux.base_url,
+                aux.api_style,
+            )));
+        } else {
+            tracing::info!(
+                "👁️ [agent_streaming] No vision model for image questions; metadata fallback only"
+            );
+        }
+        config = config.with_read_main_model_vision(capabilities.supports_vision != Some(false));
     }
     if edit_enabled {
         tracing::info!("✏️ [agent_streaming] Enabling edit tool");

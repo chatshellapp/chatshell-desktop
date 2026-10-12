@@ -11,12 +11,12 @@ import {
   EyeOff,
   FileDown,
   Globe,
-  Heading,
   Loader2,
   Plug,
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Settings,
   Trash2,
   Wrench,
@@ -61,6 +61,8 @@ import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSkillStore } from '@/stores/skillStore'
 import type {
+  Model,
+  Provider,
   SearchProviderId,
   WebFetchMode,
   WebFetchLocalMethod,
@@ -80,7 +82,7 @@ import {
   SKILL_SOURCE_ORDER,
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
-import { invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
+import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { logger } from '@/lib/logger'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
@@ -105,7 +107,7 @@ const data = {
     { name: 'builtInTools', icon: Wrench },
     { name: 'mcpServers', icon: Plug },
     { name: 'skills', icon: Zap },
-    { name: 'conversationTitle', icon: Heading },
+    { name: 'auxModels', icon: Sparkles },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
     { name: 'sync', icon: Cloud },
@@ -130,11 +132,64 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+// Dropdown list of confirmed vision-capable models. Capabilities resolve
+// asynchronously against the backend cache; models that are not confirmed
+// vision-capable (false or unknown) are filtered out. The default entry
+// ("use current conversation model") remains available regardless.
+function AuxVisionModelList({
+  models,
+  getProviderById,
+  onSelect,
+}: {
+  models: Model[]
+  getProviderById: (id: string) => Provider | undefined
+  onSelect: (id: string) => void
+}) {
+  const { t } = useTranslation('settings')
+  const [visionModels, setVisionModels] = React.useState<Model[] | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    const resolveVisionModels = async () => {
+      const resolved = await Promise.all(
+        models.map(async (model) => {
+          const provider = getProviderById(model.provider_id)
+          if (!provider) return null
+          const capabilities = await fetchModelCapabilities(provider.provider_type, model.model_id)
+          return capabilities.supports_vision === true ? model : null
+        })
+      )
+      if (!cancelled) {
+        setVisionModels(resolved.filter((model): model is Model => model !== null))
+      }
+    }
+    resolveVisionModels()
+    return () => {
+      cancelled = true
+    }
+  }, [models, getProviderById])
+
+  if (visionModels === null) {
+    return (
+      <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('checkingVisionModels')}</div>
+    )
+  }
+  if (visionModels.length === 0) {
+    return <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('noVisionModels')}</div>
+  }
+  return visionModels.map((model) => (
+    <DropdownMenuItem key={model.id} onClick={() => onSelect(model.id)}>
+      <span className="truncate">{model.name}</span>
+    </DropdownMenuItem>
+  ))
+}
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation('settings')
   const { t: tc } = useTranslation('common')
   const [activeSection, setActiveSection] = React.useState('llmProvider')
-  const [summaryModelId, setSummaryModelId] = React.useState('')
+  const [auxTinyModelId, setAuxTinyModelId] = React.useState('')
+  const [auxVisionModelId, setAuxVisionModelId] = React.useState('')
   const [searchProviderId, setSearchProviderId] = React.useState<SearchProviderId>('duckduckgo')
 
   // Web Fetch state
@@ -170,6 +225,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const models = useModelStore((state) => state.models)
   const loadModels = useModelStore((state) => state.loadModels)
   const getModelById = useModelStore((state) => state.getModelById)
+  const loadProviders = useModelStore((state) => state.loadProviders)
+  const getProviderById = useModelStore((state) => state.getProviderById)
 
   // Web Fetch store methods
   const getWebFetchMode = useSettingsStore((state) => state.getWebFetchMode)
@@ -213,14 +270,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Load models and settings when dialog opens
   React.useEffect(() => {
     if (open) {
+      loadProviders()
       loadModels()
       loadSearchProviders()
       ensureMcpLoaded()
       scanSkills()
       loadSkillSources()
       const loadSettings = async () => {
-        const summaryModelValue = await getSetting('conversation_summary_model_id')
-        if (summaryModelValue) setSummaryModelId(summaryModelValue)
+        const auxTinyValue = await getSetting('aux_tiny_model_id')
+        if (auxTinyValue) setAuxTinyModelId(auxTinyValue)
+        const auxVisionValue = await getSetting('aux_vision_model_id')
+        if (auxVisionValue) setAuxVisionModelId(auxVisionValue)
 
         const searchProviderValue = await getSetting('search_provider')
         if (searchProviderValue) {
@@ -252,6 +312,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [
     open,
     loadModels,
+    loadProviders,
     loadSearchProviders,
     ensureMcpLoaded,
     scanSkills,
@@ -263,12 +324,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     getLogLevelTypeScript,
   ])
 
-  const handleSaveSummaryModel = async (modelId: string) => {
-    setSummaryModelId(modelId)
+  const handleSaveAuxTinyModel = async (modelId: string) => {
+    setAuxTinyModelId(modelId)
     try {
-      await saveSetting('conversation_summary_model_id', modelId)
+      await saveSetting('aux_tiny_model_id', modelId)
     } catch (error) {
-      logger.error('Failed to save summary model setting:', error)
+      logger.error('Failed to save auxiliary tiny model setting:', error)
+    }
+  }
+
+  const handleSaveAuxVisionModel = async (modelId: string) => {
+    setAuxVisionModelId(modelId)
+    try {
+      await saveSetting('aux_vision_model_id', modelId)
+    } catch (error) {
+      logger.error('Failed to save auxiliary vision model setting:', error)
     }
   }
 
@@ -368,7 +438,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }
 
-  const selectedModel = summaryModelId ? getModelById(summaryModelId) : null
+  const selectedTinyModel = auxTinyModelId ? getModelById(auxTinyModelId) : undefined
+  const selectedVisionModel = auxVisionModelId ? getModelById(auxVisionModelId) : undefined
   const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
   // Separate builtin tools and MCP servers
@@ -900,33 +971,66 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       )
     }
 
-    if (activeSection === 'conversationTitle') {
-      return (
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="summary-model">{t('conversationTitleModel')}</Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full max-w-md justify-between">
-                  <span className="truncate">
-                    {selectedModel ? selectedModel.name : t('useCurrentConversationModel')}
-                  </span>
-                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[400px] max-h-[300px] overflow-y-auto">
-                <DropdownMenuItem onClick={() => handleSaveSummaryModel('')}>
-                  <span>{t('useCurrentConversationModelDefault')}</span>
-                </DropdownMenuItem>
-                {models.map((model) => (
-                  <DropdownMenuItem key={model.id} onClick={() => handleSaveSummaryModel(model.id)}>
+    if (activeSection === 'auxModels') {
+      const renderPicker = (
+        elementId: string,
+        label: string,
+        selected: Model | undefined,
+        onSave: (id: string) => void,
+        description: string,
+        showVisionBadge = false
+      ) => (
+        <div className="grid gap-2">
+          <Label htmlFor={elementId}>{label}</Label>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-full max-w-md justify-between">
+                <span className="truncate">
+                  {selected ? selected.name : t('useCurrentConversationModel')}
+                </span>
+                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[400px] max-h-[300px] overflow-y-auto">
+              <DropdownMenuItem onClick={() => onSave('')}>
+                <span>{t('useCurrentConversationModelDefault')}</span>
+              </DropdownMenuItem>
+              {showVisionBadge ? (
+                <AuxVisionModelList
+                  models={models}
+                  getProviderById={getProviderById}
+                  onSelect={onSave}
+                />
+              ) : (
+                models.map((model) => (
+                  <DropdownMenuItem key={model.id} onClick={() => onSave(model.id)}>
                     <span className="truncate">{model.name}</span>
                   </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <p className="text-xs text-muted-foreground max-w-md">{t('chooseModelForTitles')}</p>
-          </div>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <p className="text-xs text-muted-foreground max-w-md">{description}</p>
+        </div>
+      )
+
+      return (
+        <div className="grid gap-6">
+          {renderPicker(
+            'aux-tiny-model',
+            t('auxTinyModel'),
+            selectedTinyModel,
+            handleSaveAuxTinyModel,
+            t('chooseModelForTiny')
+          )}
+          {renderPicker(
+            'aux-vision-model',
+            t('auxVisionModel'),
+            selectedVisionModel,
+            handleSaveAuxVisionModel,
+            t('chooseModelForVision'),
+            true
+          )}
         </div>
       )
     }

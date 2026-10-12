@@ -10,6 +10,7 @@ use chatshell_agent_core::context_pruning::estimate_tokens;
 use chatshell_agent_core::snapcompact::{self, SnapcompactArchive};
 
 use super::AppState;
+use super::aux_models;
 use super::title::get_conversation_provider_info;
 use crate::db::compactions::CreateCompactionRequest;
 use crate::llm::{self, ChatMessage};
@@ -113,7 +114,19 @@ async fn run_post_turn_compaction_inner(state: &AppState, conversation_id: &str)
         }
     }
 
-    // Soft: one-shot LLM summary over the serialized prefix.
+    // Soft: one-shot LLM summary over the serialized prefix, routed to the
+    // lightweight aux model when configured (summary work does not need the
+    // conversation's main model).
+    let conversation = aux_models::ConversationModel {
+        provider_type: provider.clone(),
+        model_id: model.clone(),
+        api_key: api_key.clone(),
+        base_url: base_url.clone(),
+        api_style: api_style.clone(),
+        supports_vision: capabilities.supports_vision,
+    };
+    let aux = aux_models::resolve_aux_tiny(state, &conversation).await;
+
     let transcript = compaction::render_transcript(
         &compaction::build_transcript(discarded, &SerializeBudgets::default()),
         false,
@@ -123,8 +136,8 @@ async fn run_post_turn_compaction_inner(state: &AppState, conversation_id: &str)
         prior.as_ref().map(|previous| previous.summary.as_str()),
     );
     let response = llm::call_provider(
-        &provider,
-        model,
+        &aux.provider_type,
+        aux.model_id,
         vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -147,9 +160,9 @@ async fn run_post_turn_compaction_inner(state: &AppState, conversation_id: &str)
                 reasoning_content: None,
             },
         ],
-        api_key,
-        base_url,
-        api_style,
+        aux.api_key,
+        aux.base_url,
+        aux.api_style,
     )
     .await?;
     let summary = compaction::clamp_summary(response.content.trim());

@@ -3,6 +3,7 @@
 //! This module handles sending messages, streaming LLM responses, and related functionality.
 
 mod attachment_processing;
+mod aux_models;
 mod compaction;
 mod message_builder;
 mod participants;

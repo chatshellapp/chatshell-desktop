@@ -22,8 +22,9 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, KillShellTool, McpSchemaTool, McpToolUseTool, ReadTool,
-    SharedBashSession, SkillTool, TempFileList, WebFetchTool, WebSearchTool, WriteTool,
+    BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder, KillShellTool, McpSchemaTool,
+    McpToolUseTool, ReadTool, SharedBashSession, SkillTool, TempFileList, WebFetchTool,
+    WebSearchTool, WriteTool,
 };
 use crate::llm::{
     azure as azure_provider, cohere as cohere_provider, deepseek as deepseek_provider,
@@ -67,6 +68,12 @@ pub struct AgentConfig {
     pub enable_glob: bool,
     /// Enable built-in kill_shell tool
     pub enable_kill_shell: bool,
+    /// Host-injected vision-question seam for the read tool (one-shot
+    /// vision-model call answering `read`'s `question` argument)
+    pub read_image_question: Option<Arc<dyn ImageQuestionResponder>>,
+    /// Whether the conversation's main model accepts image input; drives
+    /// the read tool's metadata-plus-guidance fallback. `None` = unset.
+    pub read_main_model_vision: Option<bool>,
     /// Default working directory for grep tool
     pub grep_working_directory: Option<String>,
     /// Default working directory for glob tool
@@ -162,6 +169,18 @@ impl AgentConfig {
     /// Enable the built-in file read tool
     pub fn with_read(mut self) -> Self {
         self.enable_read = true;
+        self
+    }
+
+    /// Attach a vision-question responder to the read tool
+    pub fn with_read_image_question(mut self, responder: Arc<dyn ImageQuestionResponder>) -> Self {
+        self.read_image_question = Some(responder);
+        self
+    }
+
+    /// Declare whether the conversation's main model accepts image input
+    pub fn with_read_main_model_vision(mut self, supports: bool) -> Self {
+        self.read_main_model_vision = Some(supports);
         self
     }
 
@@ -508,11 +527,18 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
     };
 
     let create_read_tool = || -> ReadTool {
-        if let Some(ref root) = config.project_root {
+        let mut tool = if let Some(root) = &config.project_root {
             ReadTool::with_project_root(root.clone())
         } else {
             ReadTool::new()
+        };
+        if let Some(responder) = &config.read_image_question {
+            tool = tool.with_image_question(responder.clone());
         }
+        if let Some(supports) = config.read_main_model_vision {
+            tool = tool.with_main_model_vision(supports);
+        }
+        tool
     };
 
     let create_edit_tool = || -> EditTool {
