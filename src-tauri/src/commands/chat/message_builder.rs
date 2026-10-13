@@ -15,12 +15,10 @@ use std::collections::HashMap;
 
 /// The compaction-boundary message injected ahead of the kept history:
 /// summary text, and for snapcompact rows the archive's head/tail text
-/// slices plus its frame images.
+/// slices plus its frame images (re-rendered from the persisted shell for
+/// rows that no longer carry frames inline).
 fn compaction_boundary_message(row: &crate::db::compactions::Compaction) -> ChatMessage {
-    let archive = row
-        .archive_json
-        .as_deref()
-        .and_then(super::compaction::parse_archive);
+    let archive = super::compaction::archive_for_projection(row);
     ChatMessage {
         role: "user".to_string(),
         content: super::compaction::summary_message_text(&row.summary, archive.as_ref()),
@@ -489,8 +487,8 @@ mod tests {
         }
     }
 
-    fn fixture_archive_json() -> String {
-        let transcript: String = (0..24)
+    fn fixture_transcript_text() -> String {
+        (0..24)
             .map(|page| {
                 (0..40)
                     .map(|line| format!("page {page} line {line} of archived transcript"))
@@ -498,10 +496,15 @@ mod tests {
                     .join("\n")
             })
             .collect::<Vec<_>>()
-            .join("\n");
-        let archive =
-            chatshell_agent_core::snapcompact::build_archive(&transcript, "custom_openai")
-                .expect("archive builds");
+            .join("\n")
+    }
+
+    fn fixture_archive_json() -> String {
+        let archive = chatshell_agent_core::snapcompact::build_archive(
+            &fixture_transcript_text(),
+            "custom_openai",
+        )
+        .expect("archive builds");
         serde_json::to_string(&archive).expect("archive serializes")
     }
 
@@ -521,6 +524,27 @@ mod tests {
         for (image, frame) in message.images.iter().zip(archive.frames.iter()) {
             assert_eq!(image.media_type, "image/png");
             assert_eq!(image.base64, frame.png_base64);
+        }
+    }
+
+    #[test]
+    fn shell_row_re_renders_frames_for_injection() {
+        // New rows persist only the shell (no base64 frames); the boundary
+        // message must still carry the re-rendered frame images.
+        let full = chatshell_agent_core::snapcompact::build_archive(
+            &fixture_transcript_text(),
+            "custom_openai",
+        )
+        .expect("archive builds");
+        let shell_json = serde_json::to_string(&full.persisted_shell()).unwrap();
+        let row = compaction_row("snapcompact", Some(shell_json));
+
+        let message = compaction_boundary_message(&row);
+        assert!(message.content.contains("<archive-head>"));
+        assert_eq!(message.images.len(), full.frames.len());
+        for (image, frame) in message.images.iter().zip(full.frames.iter()) {
+            assert_eq!(image.base64, frame.png_base64);
+            assert_eq!(image.media_type, "image/png");
         }
     }
 
