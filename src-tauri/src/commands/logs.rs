@@ -163,7 +163,6 @@ pub async fn open_logs_directory(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Failed to open logs directory: {}", e))
 }
 
-
 /// Absolute paths of today's (local date) backend and frontend log files.
 /// Used by the AI-diagnosis flow so the model can read the files itself
 /// with its file tools instead of receiving a pasted excerpt.
@@ -297,7 +296,6 @@ mod tests {
         assert_eq!(freed, 100);
         assert!(dir.path().join("unrelated.log").exists());
     }
-
 
     #[test]
     fn total_bytes_matches_file_sizes() {
