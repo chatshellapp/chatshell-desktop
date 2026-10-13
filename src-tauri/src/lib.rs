@@ -55,6 +55,9 @@ pub fn run() {
                 .body(status.as_bytes().to_vec().into())
                 .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
         })
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // The system-WebView fetch tier needs the app handle to create
             // hidden fetch webviews at runtime.
