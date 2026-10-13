@@ -214,7 +214,6 @@ pub fn run() {
                 cache_dir: app_cache_dir,
             };
             let sync_engine: sync::SyncEngineHandle = Arc::new(std::sync::Mutex::new(None));
-            sync_wiring.ensure_engine(app.handle(), &sync_engine);
 
             let app_state = AppState {
                 db,
@@ -237,8 +236,18 @@ pub fn run() {
                 let handle = app.handle().clone();
                 let wiring = sync_wiring.clone();
                 tauri::async_runtime::spawn(async move {
+                    // The content-key ladder does blocking I/O: Keychain
+                    // reads plus the iCloud artifact header, whose first
+                    // read can trigger a dataless-file download measured
+                    // in seconds. It must never run on the main thread —
+                    // doing so from setup stalled app launch until the
+                    // download finished (first-launch hang, 2026-10-13).
+                    // The helper runs it on the blocking pool at the same
+                    // t=0 so the engine install and the sync-locked banner
+                    // keep their timing.
+                    sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    wiring.ensure_engine(&handle, &engine);
+                    sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
                     if let Err(err) =
                         sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false).await
                     {
@@ -248,7 +257,7 @@ pub fn run() {
                     ticker.tick().await; // consume the immediate first tick
                     loop {
                         ticker.tick().await;
-                        wiring.ensure_engine(&handle, &engine);
+                        sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
                         if let Err(err) =
                             sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false)
                                 .await

@@ -120,6 +120,26 @@ impl SyncWiring {
     }
 }
 
+/// Run [`SyncWiring::ensure_engine`] on the blocking pool and log a
+/// failed (panicking) run instead of dropping the error. The ladder does
+/// blocking I/O — Keychain reads plus the iCloud artifact header, whose
+/// first read can trigger a dataless-file download — so it must never
+/// block the main thread or an async worker.
+pub async fn ensure_engine_off_worker(
+    wiring: &SyncWiring,
+    app: &tauri::AppHandle,
+    slot: &SyncEngineHandle,
+) {
+    let wiring = wiring.clone();
+    let app = app.clone();
+    let slot = Arc::clone(slot);
+    if let Err(err) =
+        tauri::async_runtime::spawn_blocking(move || wiring.ensure_engine(&app, &slot)).await
+    {
+        tracing::warn!("Sync engine ladder failed: {err}");
+    }
+}
+
 /// Run one sync pass against the cloud snapshot: pull/merge, then flush
 /// pending local writes (throttled inside the engine; `manual` bypasses
 /// the throttle so user-triggered passes ship same-session writes
