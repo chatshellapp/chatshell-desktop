@@ -8,7 +8,9 @@
 //!   conversation model.
 //! - `aux_vision_model_id` — vision-capable model for image questions and
 //!   image analysis. Falls back to the conversation model when it accepts
-//!   image input, else the first configured model that does.
+//!   image input, else `None` (no automatic scan: a guessed model can be
+//!   stale or wrong, and `None` makes the input gate ask the user to
+//!   configure one explicitly).
 //!
 //! Resolution never fails hard: callers receive a usable model (tiny) or
 //! `None` (vision), and degrade to their existing behavior on `None`.
@@ -94,8 +96,13 @@ pub(crate) async fn resolve_aux_tiny(
 }
 
 /// Resolve the vision aux model. Order: configured setting → conversation
-/// model (when it accepts image input) → first configured model that does.
-/// `None` means no vision-capable model is available.
+/// model (when it accepts image input) → `None`.
+///
+/// No scan of other configured models, deliberately: an automatic pick the
+/// user never chose can be stale or wrong (2026-10-13 trial: the scan chose
+/// an unpulled `ollama/gemma3:270m` and every image question failed at
+/// runtime). `None` makes the input gate tell the user to configure a
+/// vision model instead of silently routing to a guess.
 pub(crate) async fn resolve_aux_vision(
     state: &AppState,
     conversation: &ConversationModel,
@@ -116,35 +123,38 @@ pub(crate) async fn resolve_aux_vision(
         );
         return Some(conversation.as_aux());
     }
-    // The conversation model is confirmed text-only: scan configured models
-    // for one that accepts image input (unknown capabilities count as
-    // capable; a provider rejection degrades at call time).
-    let models = state.db.list_models().await.unwrap_or_default();
-    for model in models {
-        let Ok(Some(provider)) = state.db.get_provider(&model.provider_id).await else {
-            continue;
-        };
-        let capabilities = state
-            .capabilities_cache
-            .resolve(&provider.provider_type, &model.model_id)
-            .await;
-        if capabilities.supports_vision != Some(false) {
-            tracing::info!(
-                "👁️ [aux_model] vision: conversation model is text-only, using {} / {}",
-                provider.provider_type,
-                model.model_id
-            );
-            return Some(AuxModel {
-                provider_type: provider.provider_type,
-                model_id: model.model_id,
-                api_key: provider.api_key,
-                base_url: provider.base_url,
-                api_style: provider.api_style,
-            });
-        }
-    }
     tracing::info!("👁️ [aux_model] vision: no vision-capable model configured");
     None
+}
+
+/// Frontend-facing probe: can a vision fallback serve a text-only main
+/// model? True only when the user explicitly configured `aux_vision_model_id`
+/// to a resolvable model — no scan, matching [`resolve_aux_vision`]. When
+/// this is false the input gate stays closed and points at the settings.
+#[derive(Debug, serde::Serialize)]
+pub struct VisionFallbackStatus {
+    pub available: bool,
+    pub provider_type: Option<String>,
+    pub model_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_vision_fallback_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<VisionFallbackStatus, String> {
+    let aux = model_from_setting(&state, VISION_SETTING).await;
+    Ok(match aux {
+        Some(aux) => VisionFallbackStatus {
+            available: true,
+            provider_type: Some(aux.provider_type),
+            model_id: Some(aux.model_id),
+        },
+        None => VisionFallbackStatus {
+            available: false,
+            provider_type: None,
+            model_id: None,
+        },
+    })
 }
 
 #[cfg(test)]

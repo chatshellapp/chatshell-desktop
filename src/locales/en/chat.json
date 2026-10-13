@@ -113,7 +113,7 @@
   "agentSkills": "Agent Skills",
   "resetToGlobalSettings": "Reset to Global Settings",
   "toolsUnsupportedByModel": "The selected model does not support tool use",
-  "imageUnsupportedByModel": "The selected model does not support image input",
+  "imageUnsupportedByModel": "No vision-capable model configured. Add one in Settings → Auxiliary Models to attach images.",
   "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools and skills will not be used.",
   "queued": "Queued",
   "queuedCount": "Queued ({{count}})",

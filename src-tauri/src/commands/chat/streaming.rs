@@ -1,6 +1,7 @@
 //! Agent-based streaming for LLM responses
 
 use super::super::AppState;
+use super::attachment_processing::StoredImage;
 use super::aux_models::ConversationModel;
 use crate::llm::agent_builder::{
     AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
@@ -69,6 +70,7 @@ pub(crate) async fn handle_agent_streaming(
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
     disable_tools: bool,
+    stored_images: Vec<StoredImage>,
 ) {
     tracing::info!(
         "✅ [agent_streaming] Using {} provider with agent API",
@@ -586,12 +588,16 @@ pub(crate) async fn handle_agent_streaming(
         }
     };
 
-    // Strip images if model does not support vision
+    // Strip images if model does not support vision. The current turn's
+    // images are persisted as file attachments, so instead of silently
+    // losing them, annotate the final user message with their storage
+    // paths — the model can inspect them with `read` (optionally with the
+    // `question` argument, answered by the aux vision model).
     let chat_messages = if capabilities.supports_vision == Some(false) {
         let image_count: usize = chat_messages.iter().map(|m| m.images.len()).sum();
         if image_count > 0 {
             tracing::warn!(
-                "🚫 [agent_streaming] Model '{}' does not support vision; dropping {} image(s) from messages",
+                "🚫 [agent_streaming] Model '{}' does not support vision; dropping {} image(s) from direct input",
                 model_id,
                 image_count
             );
@@ -600,16 +606,44 @@ pub(crate) async fn handle_agent_streaming(
                 serde_json::json!({
                     "conversation_id": conversation_id_clone,
                     "warning": "model_no_vision",
+                    "images": image_count,
+                    "annotated": !stored_images.is_empty(),
                 }),
             );
         }
+        let resolved_images: Vec<(String, String)> = stored_images
+            .iter()
+            .filter_map(
+                |img| match crate::storage::get_full_path(&app, &img.storage_path) {
+                    Ok(full) => Some((img.name.clone(), full.to_string_lossy().into_owned())),
+                    Err(e) => {
+                        tracing::warn!(
+                            "🚫 [agent_streaming] Could not resolve storage path for {}: {}",
+                            img.name,
+                            e
+                        );
+                        None
+                    }
+                },
+            )
+            .collect();
+        let annotation = format_image_annotations(&resolved_images, !disable_tools);
+        let mut chat_messages = chat_messages;
+        let annotate_last = image_count > 0 && !resolved_images.is_empty();
+        for m in chat_messages.iter_mut() {
+            m.images.clear();
+        }
+        if annotate_last
+            && let Some(last_user) = chat_messages
+                .iter_mut()
+                .rev()
+                .find(|m| m.role == "user")
+                .map(|m| &mut m.content)
+        {
+            last_user.push_str("\n\n");
+            last_user.push_str(&annotation);
+        }
         chat_messages
-            .into_iter()
-            .map(|mut m| {
-                m.images.clear();
-                m
-            })
-            .collect::<Vec<_>>()
     } else {
         chat_messages
     };
@@ -1638,4 +1672,64 @@ fn is_auth_error(output: &str) -> bool {
         || lower.contains("token has expired")
         || lower.contains("invalid_token")
         || lower.contains("authentication required")
+}
+
+/// Format the `<image_attachments>` block appended to the final user
+/// message when a text-only model's images are stripped from direct input.
+///
+/// `images` are (display name, absolute storage path) pairs. The note
+/// advertises the `read` tool escape hatch only when tools are available
+/// for the turn — a tool suggestion the model cannot act on is noise.
+pub(crate) fn format_image_annotations(
+    images: &[(String, String)],
+    tools_available: bool,
+) -> String {
+    if images.is_empty() {
+        return String::new();
+    }
+    let note = if tools_available {
+        "This model cannot view image pixels directly. Each attached image is preserved at its path; use the read tool on a path (optionally with the question argument to inspect it via the vision model)."
+    } else {
+        "This model cannot view image pixels directly. The attached images are preserved as files at the listed paths but cannot be inspected in this conversation."
+    };
+    let mut out = format!("<image_attachments note=\"{note}\">\n");
+    for (name, path) in images {
+        out.push_str(&format!("<image name=\"{name}\" path=\"{path}\" />\n"));
+    }
+    out.push_str("</image_attachments>");
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_image_annotations;
+
+    #[test]
+    fn empty_input_renders_nothing() {
+        assert_eq!(format_image_annotations(&[], true), "");
+        assert_eq!(format_image_annotations(&[], false), "");
+    }
+
+    #[test]
+    fn lists_every_image_with_absolute_path() {
+        let images = vec![
+            ("shot.png".to_string(), "/tmp/a/files/abc.png".to_string()),
+            ("photo.jpg".to_string(), "/tmp/a/files/def.jpg".to_string()),
+        ];
+        let out = format_image_annotations(&images, true);
+        assert!(out.starts_with("<image_attachments note=\""));
+        assert!(out.ends_with("</image_attachments>"));
+        assert!(out.contains("<image name=\"shot.png\" path=\"/tmp/a/files/abc.png\" />"));
+        assert!(out.contains("<image name=\"photo.jpg\" path=\"/tmp/a/files/def.jpg\" />"));
+    }
+
+    #[test]
+    fn tools_available_controls_read_guidance() {
+        let images = vec![("a.png".to_string(), "/x/a.png".to_string())];
+        let with_tools = format_image_annotations(&images, true);
+        let without_tools = format_image_annotations(&images, false);
+        assert!(with_tools.contains("use the read tool"));
+        assert!(!without_tools.contains("use the read tool"));
+        assert!(without_tools.contains("cannot be inspected"));
+    }
 }

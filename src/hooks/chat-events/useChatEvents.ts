@@ -5,6 +5,7 @@ import type {
   ChatStreamReasoningEvent,
   ChatStreamImageEvent,
   ChatCompleteEvent,
+  ChatWarningEvent,
   ChatErrorEvent,
   AttachmentProcessingStartedEvent,
   AttachmentProcessingCompleteEvent,
@@ -44,6 +45,7 @@ export function useChatEvents(conversationId: string | null) {
     handleStreamReasoningChunk,
     handleChatComplete,
     handleChatError,
+    handleChatWarning,
     handleReasoningStarted,
     handleStreamImage,
   } = useChatHandlers()
@@ -108,6 +110,13 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenChatError = listen<ChatErrorEvent>('chat-error', (event) => {
       logger.info('[useChatEvents] Received chat-error event:', event.payload)
       handleChatError(event.payload.conversation_id, event.payload.error)
+    })
+
+    // Listen for non-fatal chat warnings (e.g. images stripped from a
+    // text-only model's direct input)
+    const unlistenChatWarning = listen<ChatWarningEvent>('chat-warning', (event) => {
+      logger.info('[useChatEvents] Received chat-warning event:', event.payload)
+      handleChatWarning(event.payload.conversation_id, event.payload.warning, event.payload.images)
     })
 
     // Listen for attachment processing started
@@ -226,6 +235,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenStreamImage.then((fn) => fn())
       unlistenComplete.then((fn) => fn())
       unlistenChatError.then((fn) => fn())
+      unlistenChatWarning.then((fn) => fn())
       unlistenAttachmentStarted.then((fn) => fn())
       unlistenAttachmentComplete.then((fn) => fn())
       unlistenAttachmentError.then((fn) => fn())
@@ -246,6 +256,7 @@ export function useChatEvents(conversationId: string | null) {
     handleStreamImage,
     handleChatComplete,
     handleChatError,
+    handleChatWarning,
     handleAttachmentProcessingStarted,
     handleAttachmentProcessingComplete,
     handleAttachmentProcessingError,

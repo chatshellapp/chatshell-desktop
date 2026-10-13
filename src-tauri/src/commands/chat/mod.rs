@@ -3,7 +3,7 @@
 //! This module handles sending messages, streaming LLM responses, and related functionality.
 
 mod attachment_processing;
-mod aux_models;
+pub(crate) mod aux_models;
 mod compaction;
 mod message_builder;
 mod participants;
@@ -375,7 +375,7 @@ async fn process_llm_request(
     )
     .await;
 
-    attachment_processing::store_image_attachments(
+    let stored_images = attachment_processing::store_image_attachments(
         &state,
         &app,
         &user_images,
@@ -486,6 +486,7 @@ async fn process_llm_request(
         model_db_id,
         assistant_db_id,
         disable_tools,
+        stored_images,
     )
     .await;
 }

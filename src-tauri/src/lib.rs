@@ -441,6 +441,7 @@ pub fn run() {
             // Model capabilities commands
             commands::get_model_capabilities,
             commands::refresh_capabilities_cache,
+            commands::chat::aux_models::get_vision_fallback_status,
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|e| {

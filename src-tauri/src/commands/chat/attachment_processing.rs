@@ -13,6 +13,14 @@ pub(crate) struct ParsedImage {
     pub data: ImageData,
 }
 
+/// An image persisted for the current turn: display name plus the
+/// attachments-relative storage path (`files/<hash>.<ext>`). Consumed by the
+/// streaming strip path to annotate the LLM projection with readable paths.
+pub(crate) struct StoredImage {
+    pub name: String,
+    pub storage_path: String,
+}
+
 /// Parse image attachments from frontend input
 pub(crate) fn parse_image_attachments(
     images: Option<Vec<ImageAttachmentInput>>,
@@ -216,14 +224,17 @@ pub(crate) async fn store_file_attachments(
     }
 }
 
-/// Store image attachments to filesystem and database (with deduplication)
+/// Store image attachments to filesystem and database (with deduplication).
+/// Returns the images that were stored (name + relative storage path), in
+/// input order; images that failed to persist are skipped.
 pub(crate) async fn store_image_attachments(
     state: &AppState,
     app: &tauri::AppHandle,
     images: &[ParsedImage],
     user_message_id: &str,
     conversation_id: &str,
-) {
+) -> Vec<StoredImage> {
+    let mut stored = Vec::new();
     for image in images {
         let file_name = &image.name;
         let img = &image.data;
@@ -284,6 +295,10 @@ pub(crate) async fn store_image_attachments(
                                 "attachment_id": file_attachment.id,
                             }),
                         );
+                        stored.push(StoredImage {
+                            name: file_name.clone(),
+                            storage_path: existing.storage_path.clone(),
+                        });
                     }
                 }
                 Err(e) => {
@@ -345,6 +360,10 @@ pub(crate) async fn store_image_attachments(
                             "attachment_id": file_attachment.id,
                         }),
                     );
+                    stored.push(StoredImage {
+                        name: file_name.clone(),
+                        storage_path: storage_path.clone(),
+                    });
                 }
             }
             Err(e) => {
@@ -357,4 +376,5 @@ pub(crate) async fn store_image_attachments(
             }
         }
     }
+    stored
 }

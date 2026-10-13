@@ -83,6 +83,7 @@ import {
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
+import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { logger } from '@/lib/logger'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
@@ -104,10 +105,10 @@ const FETCH_METHOD_LABELS: Record<WebFetchLocalMethod, string> = {
 const data = {
   nav: [
     { name: 'llmProvider', icon: Bot },
+    { name: 'auxModels', icon: Sparkles },
     { name: 'builtInTools', icon: Wrench },
     { name: 'mcpServers', icon: Plug },
     { name: 'skills', icon: Zap },
-    { name: 'auxModels', icon: Sparkles },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
     { name: 'sync', icon: Cloud },
@@ -337,6 +338,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setAuxVisionModelId(modelId)
     try {
       await saveSetting('aux_vision_model_id', modelId)
+      // The input-box image gate depends on the resolved fallback
+      invalidateVisionFallbackStatus()
     } catch (error) {
       logger.error('Failed to save auxiliary vision model setting:', error)
     }

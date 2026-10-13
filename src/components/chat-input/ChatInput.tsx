@@ -33,6 +33,7 @@ import { useMcpStore } from '@/stores/mcpStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
+import { useVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { getContextCountOptions } from '@/types'
 import type { ModelParameterPreset, PromptMode } from '@/types'
 import { logger } from '@/lib/logger'
@@ -68,8 +69,12 @@ export function ChatInput(/* _props: ChatInputProps */) {
     [selectedModelEarly, getProviderById]
   )
   const capabilities = useModelCapabilities(selectedModelEarly, selectedProviderEarly ?? null)
+  const visionFallback = useVisionFallbackStatus()
   const toolsDisabled = capabilities.supports_tool_use === false
-  const visionDisabled = capabilities.supports_vision === false
+  // Images are only useless when the main model is text-only AND no vision
+  // fallback resolves — the backend annotates stripped images with storage
+  // paths so the model can inspect them via `read` + the aux vision model.
+  const visionDisabled = capabilities.supports_vision === false && !visionFallback.available
 
   // Attachment handling hook
   const {

@@ -1,6 +1,8 @@
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMessageStore } from '@/stores/message'
 import type { Message } from '@/types'
+import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 
 /**
@@ -59,11 +61,28 @@ export function useChatHandlers() {
     useMessageStore.getState().appendStreamingImage(convId, imageUrl)
   }, [])
 
+  const { t } = useTranslation('messages')
+
+  // model_no_vision: images were stripped from the model's direct input;
+  // attachments stay persisted and inspectable via the read tool.
+  const handleChatWarning = useCallback(
+    (convId: string, warning: string, images?: number) => {
+      logger.info('[useChatEvents] Received chat warning:', { conversation: convId, warning })
+      if (warning === 'model_no_vision' && (images ?? 0) > 0) {
+        toast.info(t('imagesNotDirectlyViewable'), {
+          description: t('imagesInspectViaReadTool'),
+        })
+      }
+    },
+    [t]
+  )
+
   return {
     handleStreamChunk,
     handleStreamReasoningChunk,
     handleChatComplete,
     handleChatError,
+    handleChatWarning,
     handleReasoningStarted,
     handleStreamImage,
   }

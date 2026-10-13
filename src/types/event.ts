@@ -22,6 +22,13 @@ export interface ChatErrorEvent {
   error: string
 }
 
+export interface ChatWarningEvent {
+  conversation_id: string
+  warning: string
+  images?: number
+  annotated?: boolean
+}
+
 export interface AttachmentProcessingStartedEvent {
   message_id: string
   conversation_id: string
