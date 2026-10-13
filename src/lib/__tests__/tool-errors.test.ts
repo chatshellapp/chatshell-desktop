@@ -19,6 +19,11 @@ describe('humanizeToolError', () => {
         'Edit error: Content anchor is stale: the file no longer hashes to tag abc (current def). Re-read.'
       )
     ).toBe('File changed since the last read; re-read and retry')
+    expect(
+      humanizeToolError(
+        'Edit error: edits[0]: The file changed since it was last read/written by this app and old_string has no exact match in the current content; fuzzy matching is not applied to changed content because it may target a misremembered location. Re-read the file and retry with the fresh tag.'
+      )
+    ).toBe('File changed since the last read; re-read and retry')
     expect(humanizeToolError('Read error: File not found: /nope.ts')).toBe('File not found')
     expect(humanizeToolError('Read error: Path is a directory, not a file: /tmp')).toBe(
       'Path is not a file'

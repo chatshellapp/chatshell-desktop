@@ -12,6 +12,7 @@ const ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; key: string }> = [
   { pattern: /old_string appears \d+ times/i, key: 'errors.ambiguousMatch' },
   { pattern: /old_string was not found/i, key: 'errors.staleFile' },
   { pattern: /Content anchor is stale/i, key: 'errors.staleAnchor' },
+  { pattern: /fuzzy matching is not applied to changed content/i, key: 'errors.staleAnchor' },
   { pattern: /File not found/i, key: 'errors.fileNotFound' },
   { pattern: /Not a file:|Path is a directory/i, key: 'errors.notAFile' },
   { pattern: /File is not valid UTF-8/i, key: 'errors.binaryFile' },

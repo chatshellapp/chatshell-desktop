@@ -354,10 +354,48 @@ export function BashOutput({ toolInput, toolOutput }: ToolOutputProps) {
 }
 
 export function EditOutput({ toolInput, toolOutput }: ToolOutputProps) {
+  // Caption: backend success line ("Successfully replaced N occurrence(s) in ..."
+  // / "Applied N edits to ...")
+  const caption = toolOutput?.split('\n')[0] || ''
+  const batchItems = useMemo(() => {
+    if (!toolInput) return []
+    try {
+      const input = JSON.parse(toolInput) as {
+        edits?: Array<{ old_string?: unknown; new_string?: unknown }>
+      }
+      if (!Array.isArray(input.edits)) return []
+      return input.edits.filter(
+        (item): item is { old_string: string; new_string: string } =>
+          !!item &&
+          typeof item === 'object' &&
+          typeof item.old_string === 'string' &&
+          typeof item.new_string === 'string'
+      )
+    } catch {
+      return []
+    }
+  }, [toolInput])
+
+  if (batchItems.length > 0) {
+    return (
+      <div className="space-y-2">
+        {caption && (
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="text-xs text-muted-foreground/50 truncate">{caption}</span>
+          </div>
+        )}
+        {batchItems.map((item, index) => (
+          <div key={index} className="space-y-1">
+            <div className="text-xs text-muted-foreground/50">edit {index + 1}</div>
+            <DiffView oldText={item.old_string} newText={item.new_string} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   const oldStr = safeParseField(toolInput, 'old_string') ?? ''
   const newStr = safeParseField(toolInput, 'new_string') ?? ''
-  // Caption: backend success line ("Successfully replaced N occurrence(s) in ...")
-  const caption = toolOutput?.split('\n')[0] || ''
 
   return (
     <div className="space-y-1">

@@ -115,6 +115,28 @@ describe('ToolCallPreview collapsed header stats', () => {
     expect(document.querySelector('[data-diff-row]')).toBeNull()
   })
 
+  it('aggregates the +N/-M badge over an edits array', () => {
+    render(
+      <ToolCallPreview
+        toolCall={makeToolCall({
+          tool_name: 'edit',
+          tool_input: JSON.stringify({
+            path: '/src/app.ts',
+            edits: [
+              { old_string: 'a\nb', new_string: 'a\nX\nb' },
+              { old_string: 'c', new_string: 'c\nc2' },
+            ],
+          }),
+          tool_output: 'Applied 2 edits to /src/app.ts',
+        })}
+      />
+    )
+
+    const badge = screen.getByTestId('diff-stats')
+    expect(badge.textContent).toMatch(/\+5/)
+    expect(badge.textContent).toMatch(/-3/)
+  })
+
   it('shows an all-green badge for write and the filename for read', () => {
     const { unmount } = render(
       <ToolCallPreview

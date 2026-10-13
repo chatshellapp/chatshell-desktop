@@ -173,6 +173,20 @@ export function ToolCallPreview({
     try {
       const input = toolInput ? JSON.parse(toolInput) : {}
       if (parsed.toolName === 'edit') {
+        const edits = Array.isArray(input.edits) ? input.edits : []
+        if (edits.length > 0) {
+          let additions = 0
+          let deletions = 0
+          for (const edit of edits) {
+            if (edit && typeof edit === 'object') {
+              additions +=
+                typeof edit.new_string === 'string' ? edit.new_string.split('\n').length : 0
+              deletions +=
+                typeof edit.old_string === 'string' ? edit.old_string.split('\n').length : 0
+            }
+          }
+          return { additions, deletions }
+        }
         return diffStatCounts(input.old_string ?? '', input.new_string ?? '')
       }
       if (parsed.toolName === 'write' && typeof input.content === 'string') {
