@@ -85,3 +85,122 @@ impl Database {
         Ok(row)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn seed_conversation(db: &Database, id: &str) {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO conversations (id, title, created_at, updated_at)
+             VALUES (?, 'test', ?, ?)",
+        )
+        .bind(id)
+        .bind(&now)
+        .bind(&now)
+        .execute(db.pool.as_ref())
+        .await
+        .unwrap();
+    }
+
+    fn request(
+        conversation_id: &str,
+        method: &str,
+        archive_json: Option<String>,
+    ) -> CreateCompactionRequest {
+        CreateCompactionRequest {
+            conversation_id: conversation_id.to_string(),
+            summary: format!("{method} summary"),
+            first_kept_message_id: format!("keep-{method}"),
+            tokens_before: 90_000,
+            method: method.to_string(),
+            archive_json,
+        }
+    }
+
+    #[tokio::test]
+    async fn latest_active_compaction_picks_newest_and_skips_deleted() {
+        let (db, _dir) = test_db().await;
+        seed_conversation(&db, "conv-1").await;
+        assert!(
+            db.latest_active_compaction("conv-1")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let first = db
+            .create_compaction(request("conv-1", "soft", None))
+            .await
+            .unwrap();
+        assert_eq!(
+            db.latest_active_compaction("conv-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            first.id
+        );
+
+        // Re-compaction: a newer row becomes the active boundary.
+        let archive_json = r#"{"shape":"11on16-bw","head_text":"h","tail_text":"t","frames":[],"chars_dropped":0}"#;
+        let second = db
+            .create_compaction(request(
+                "conv-1",
+                "snapcompact",
+                Some(archive_json.to_string()),
+            ))
+            .await
+            .unwrap();
+
+        let latest = db
+            .latest_active_compaction("conv-1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.id, second.id);
+        assert_eq!(latest.method, "snapcompact");
+        assert_eq!(latest.archive_json.as_deref(), Some(archive_json));
+
+        // Tombstoning the newest row rewinds the active boundary to the
+        // previous one (fork rewind path).
+        sqlx::query("UPDATE compactions SET deleted_at = ? WHERE id = ?")
+            .bind(Utc::now().to_rfc3339())
+            .bind(&second.id)
+            .execute(db.pool.as_ref())
+            .await
+            .unwrap();
+        let rewound = db
+            .latest_active_compaction("conv-1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(rewound.id, first.id);
+        assert_eq!(rewound.method, "soft");
+    }
+
+    #[tokio::test]
+    async fn compactions_of_other_conversations_are_isolated() {
+        let (db, _dir) = test_db().await;
+        seed_conversation(&db, "conv-a").await;
+        seed_conversation(&db, "conv-b").await;
+        db.create_compaction(request("conv-a", "soft", None))
+            .await
+            .unwrap();
+        assert!(
+            db.latest_active_compaction("conv-b")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+}

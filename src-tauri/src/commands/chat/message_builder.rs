@@ -13,6 +13,29 @@ use chatshell_agent_core::history::{HistoryRole, HistoryRow, ToolCallRow, pair_h
 use chatshell_agent_core::types::MessageRole as CoreMessageRole;
 use std::collections::HashMap;
 
+/// The compaction-boundary message injected ahead of the kept history:
+/// summary text, and for snapcompact rows the archive's head/tail text
+/// slices plus its frame images.
+fn compaction_boundary_message(row: &crate::db::compactions::Compaction) -> ChatMessage {
+    let archive = row
+        .archive_json
+        .as_deref()
+        .and_then(super::compaction::parse_archive);
+    ChatMessage {
+        role: "user".to_string(),
+        content: super::compaction::summary_message_text(&row.summary, archive.as_ref()),
+        images: archive
+            .as_ref()
+            .map(super::compaction::archive_images)
+            .unwrap_or_default(),
+        files: vec![],
+        tool_calls: vec![],
+        tool_call_id: None,
+        tool_result_call_id: None,
+        reasoning_content: None,
+    }
+}
+
 /// Build chat messages for LLM request
 ///
 /// # Arguments
@@ -82,23 +105,7 @@ pub async fn build_chat_messages(
         if let (Some(row), Some(start)) = (&compaction_row, compaction_start)
             && start > 0
         {
-            let archive = row
-                .archive_json
-                .as_deref()
-                .and_then(super::compaction::parse_archive);
-            chat_messages.push(ChatMessage {
-                role: "user".to_string(),
-                content: super::compaction::summary_message_text(&row.summary, archive.as_ref()),
-                images: archive
-                    .as_ref()
-                    .map(super::compaction::archive_images)
-                    .unwrap_or_default(),
-                files: vec![],
-                tool_calls: vec![],
-                tool_call_id: None,
-                tool_result_call_id: None,
-                reasoning_content: None,
-            });
+            chat_messages.push(compaction_boundary_message(row));
             history_messages = history_messages.split_off(start);
         }
 
@@ -462,5 +469,73 @@ mod tests {
 
         apply_tool_output_pruning(&mut messages, &records);
         assert!(messages[0].content.starts_with('s'), "skill output kept");
+    }
+
+    fn compaction_row(
+        method: &str,
+        archive_json: Option<String>,
+    ) -> crate::db::compactions::Compaction {
+        crate::db::compactions::Compaction {
+            id: "compaction-1".to_string(),
+            conversation_id: "conv-1".to_string(),
+            summary: "Conversation history before this point was archived as 3 bitmap frames \
+                      (snapcompact)."
+                .to_string(),
+            first_kept_message_id: "msg-keep".to_string(),
+            tokens_before: 90_000,
+            method: method.to_string(),
+            archive_json,
+            created_at: "2026-10-13T00:00:00Z".to_string(),
+        }
+    }
+
+    fn fixture_archive_json() -> String {
+        let transcript: String = (0..24)
+            .map(|page| {
+                (0..40)
+                    .map(|line| format!("page {page} line {line} of archived transcript"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let archive =
+            chatshell_agent_core::snapcompact::build_archive(&transcript, "custom_openai")
+                .expect("archive builds");
+        serde_json::to_string(&archive).expect("archive serializes")
+    }
+
+    #[test]
+    fn snapcompact_row_injects_archive_edges_and_frames() {
+        let row = compaction_row("snapcompact", Some(fixture_archive_json()));
+        let message = compaction_boundary_message(&row);
+        assert_eq!(message.role, "user");
+        assert!(message.content.contains("archived as"), "summary lead-in");
+        assert!(message.content.contains("<archive-head>"));
+        assert!(message.content.contains("<archive-tail>"));
+        assert!(message.tool_calls.is_empty());
+
+        let archive = super::super::compaction::parse_archive(row.archive_json.as_deref().unwrap())
+            .expect("archive parses");
+        assert_eq!(message.images.len(), archive.frames.len());
+        for (image, frame) in message.images.iter().zip(archive.frames.iter()) {
+            assert_eq!(image.media_type, "image/png");
+            assert_eq!(image.base64, frame.png_base64);
+        }
+    }
+
+    #[test]
+    fn soft_row_and_malformed_archive_fall_back_to_text_only() {
+        let soft = compaction_boundary_message(&compaction_row("soft", None));
+        assert!(soft.images.is_empty());
+        assert!(soft.content.contains("Summary of the previous context:"));
+        assert!(!soft.content.contains("<archive-head>"));
+
+        let malformed = compaction_boundary_message(&compaction_row(
+            "snapcompact",
+            Some("{not json".to_string()),
+        ));
+        assert!(malformed.images.is_empty());
+        assert!(!malformed.content.contains("<archive-head>"));
     }
 }

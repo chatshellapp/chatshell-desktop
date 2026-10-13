@@ -270,3 +270,35 @@ pub fn archive_images(archive: &SnapcompactArchive) -> Vec<crate::llm::ImageData
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chatshell_agent_core::snapcompact::build_archive;
+
+    #[test]
+    fn parse_archive_round_trips_archive_fields() {
+        let transcript: String = (0..24)
+            .map(|page| {
+                (0..40)
+                    .map(|line| format!("page {page} line {line} of archived transcript"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let archive = build_archive(&transcript, "custom_anthropic").expect("archive builds");
+        let json = serde_json::to_string(&archive).expect("serializes");
+        let parsed = parse_archive(&json).expect("parses");
+        assert_eq!(parsed.shape, archive.shape);
+        assert_eq!(parsed.head_text, archive.head_text);
+        assert_eq!(parsed.tail_text, archive.tail_text);
+        assert_eq!(parsed.chars_dropped, archive.chars_dropped);
+        assert_eq!(parsed.frames.len(), archive.frames.len());
+        for (got, want) in parsed.frames.iter().zip(archive.frames.iter()) {
+            assert_eq!(got.width, want.width);
+            assert_eq!(got.height, want.height);
+            assert_eq!(got.png_base64, want.png_base64);
+        }
+    }
+}

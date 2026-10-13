@@ -8,6 +8,8 @@ mod compaction;
 mod message_builder;
 mod participants;
 mod search_processing;
+#[cfg(test)]
+mod snapcompact_eval;
 mod streaming;
 pub mod title;
 mod types;
