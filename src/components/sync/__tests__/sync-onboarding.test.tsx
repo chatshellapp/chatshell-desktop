@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/lib/i18n'
 import { useOnboardingStore } from '@/stores/onboardingStore'
@@ -314,5 +314,54 @@ describe('sync onboarding embedded in the general onboarding flow', () => {
 
     const dialog = await screen.findByRole('dialog')
     expect(dialog.textContent).toContain('Sync your chats across devices')
+  })
+})
+
+describe('standalone launch-time dialog', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  beforeEach(() => {
+    mockedInvoke.mockReset()
+    useSyncSetupStore.setState({ info: null, lockedEvent: false })
+    useOnboardingStore.setState({
+      step: 'checking',
+      isDialogOpen: false,
+      flowOwnsSyncOffer: false,
+    })
+  })
+
+  it('closes for the rest of the session after one decline', async () => {
+    // Backend state after a first decline: the re-ask budget is not yet
+    // spent, so needs_onboarding stays true — the dialog must close
+    // anyway (the re-ask happens at the NEXT launch, ADR 04 §7).
+    mockInvokeByCommand({ decline_sync_onboarding: syncInfo({ needs_onboarding: true }) })
+    useSyncSetupStore.setState({ info: syncInfo() })
+
+    renderDialogs()
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(useSyncSetupStore.getState().info?.needs_onboarding).toBe(true)
+  })
+
+  it('renders a skippable notice instead of an offer when iCloud is unavailable', async () => {
+    // No sync container: consent cannot be collected, so the card must
+    // not offer enablement — only the notice and a one-click skip.
+    mockInvokeByCommand({ decline_sync_onboarding: syncInfo({ needs_onboarding: true }) })
+    useSyncSetupStore.setState({ info: syncInfo({ container_available: false }) })
+
+    renderDialogs()
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain('iCloud Drive is not available on this device')
+    expect(
+      within(dialog).queryByRole('button', { name: /set up encryption|turn on sync|join sync/i })
+    ).toBeNull()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Not now' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })

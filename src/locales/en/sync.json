@@ -18,7 +18,9 @@
     "error": "Failed to set up sync encryption",
     "joinExplainer": "A synced history already exists on this account. Enter its sync passphrase to join — your consent to sync still applies.",
     "joined": "Sync joined — pulling your cloud history",
-    "join": "Join sync"
+    "join": "Join sync",
+    "unavailable": "iCloud Drive is not available on this device, so sync cannot be turned on right now.",
+    "unavailableSettings": "Sign in to your iCloud account, then turn on sync any time in Settings."
   },
   "errors": {
     "wrongPassphrase": "That passphrase doesn't match. Check the phrase you saved when sync was first enabled.",
@@ -41,6 +43,7 @@
     "statusDisabled": "Sync is off.",
     "statusLocked": "Waiting for your sync passphrase.",
     "enable": "Turn on sync",
+    "icloudRequired": "iCloud Drive is not available on this device. Sign in to your iCloud account, then come back here to turn on sync.",
     "stopPublishing": "Stop publishing",
     "syncNow": "Sync now",
     "forcePublish": "Force publish",

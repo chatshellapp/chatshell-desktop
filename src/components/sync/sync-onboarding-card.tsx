@@ -35,6 +35,11 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
   const [joinMode, setJoinMode] = useState(false)
   const [joinPassphrase, setJoinPassphrase] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
+  // No sync container (no iCloud account): no consent can be collected,
+  // so the card degrades to a skippable notice — sync exists, turn it on
+  // in Settings after signing in. group_exists is impossible without a
+  // container, so this never competes with the join path.
+  const unavailable = info?.container_available === false
 
   useEffect(() => {
     if (info?.group_exists && passphrase === null && !joinMode) {
@@ -111,7 +116,12 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
         <DialogDescription>{t('onboarding.description')}</DialogDescription>
       </DialogHeader>
 
-      {joinMode ? (
+      {unavailable ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('onboarding.unavailable')}</p>
+          <p className="text-sm text-muted-foreground">{t('onboarding.unavailableSettings')}</p>
+        </div>
+      ) : joinMode ? (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">{t('onboarding.joinExplainer')}</p>
           <Input
@@ -171,22 +181,23 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
         <Button variant="ghost" onClick={handleDecline} disabled={busy}>
           {t('onboarding.decline')}
         </Button>
-        {joinMode ? (
-          <Button onClick={handleJoin} disabled={!joinPassphrase || busy}>
-            {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('onboarding.join')}
-          </Button>
-        ) : passphrase === null ? (
-          <Button onClick={handleBegin} disabled={busy}>
-            <KeyRound className="mr-2 h-4 w-4" />
-            {t('onboarding.begin')}
-          </Button>
-        ) : (
-          <Button onClick={handleEnable} disabled={!saved || busy}>
-            {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('onboarding.enable')}
-          </Button>
-        )}
+        {!unavailable &&
+          (joinMode ? (
+            <Button onClick={handleJoin} disabled={!joinPassphrase || busy}>
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('onboarding.join')}
+            </Button>
+          ) : passphrase === null ? (
+            <Button onClick={handleBegin} disabled={busy}>
+              <KeyRound className="mr-2 h-4 w-4" />
+              {t('onboarding.begin')}
+            </Button>
+          ) : (
+            <Button onClick={handleEnable} disabled={!saved || busy}>
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('onboarding.enable')}
+            </Button>
+          ))}
       </DialogFooter>
     </>
   )

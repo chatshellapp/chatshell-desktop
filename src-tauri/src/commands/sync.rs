@@ -106,9 +106,11 @@ impl SyncCommandError {
 pub struct SyncSetupState {
     pub enabled: bool,
     pub onboarded: bool,
-    /// The onboarding card should be shown (enabled never chosen, and the
-    /// re-ask budget not exhausted: once more at next launch, then settings
-    /// only — ADR 04 §7).
+    /// The onboarding card should be shown (enabled never chosen and the
+    /// re-ask budget not exhausted: once more at next launch, then the
+    /// settings section is the only entry — ADR 04 §7). Without a sync
+    /// container the card renders an informational, skippable variant
+    /// (see `container_available`).
     pub needs_onboarding: bool,
     /// The non-blocking "history locked — enter sync passphrase" banner
     /// should be shown; the app stays fully usable meanwhile.

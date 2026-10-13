@@ -18,7 +18,9 @@
     "error": "同步加密设置失败",
     "joinExplainer": "此账号下已存在同步的历史。输入其同步口令加入——开启同步的授权依然有效。",
     "joined": "已加入同步 — 正在拉取云端历史",
-    "join": "加入同步"
+    "join": "加入同步",
+    "unavailable": "此设备上的 iCloud Drive 不可用，暂时无法开启同步。",
+    "unavailableSettings": "登录你的 iCloud 账户后，随时可以在设置中开启同步。"
   },
   "errors": {
     "wrongPassphrase": "口令不匹配。请核对首次开启同步时保存的口令。",
@@ -41,6 +43,7 @@
     "statusDisabled": "同步已关闭。",
     "statusLocked": "正在等待你的同步口令。",
     "enable": "开启同步",
+    "icloudRequired": "此设备上的 iCloud Drive 不可用。请登录你的 iCloud 账户，然后回到此处开启同步。",
     "stopPublishing": "停止发布",
     "syncNow": "立即同步",
     "forcePublish": "强制发布",

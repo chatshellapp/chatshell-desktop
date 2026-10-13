@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { CloudCog, CloudUpload, KeyRound, Loader2, RefreshCw, Trash2 } from 'lucide-react'
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { syncErrorCopy } from '@/lib/sync-error'
+import { SyncOnboardingCard } from '@/components/sync/sync-onboarding-card'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 
 /**
@@ -24,19 +25,38 @@ import { useSyncSetupStore } from '@/stores/syncSetupStore'
  * also rebuilds a wedged engine), Force publish (unconditional version
  * bump for stranded rows), and the passphrase unlock when the content key
  * cannot be resolved automatically.
+ *
+ * This is also the always-available entry for a user who declined the
+ * onboarding card (after the re-ask budget is spent, the ONLY entry):
+ * "Turn on sync" opens the same onboarding card the launch dialog shows,
+ * so consent + passphrase bootstrap + join are never bypassed. Without an
+ * iCloud account (no sync container) no entry is offered — only an
+ * explanatory hint.
  */
 export function SyncSettingsSection() {
   const { t } = useTranslation('sync')
-  const { info, enable, disable, unlock, syncNow, forcePublish } = useSyncSetupStore()
+  const { info, refreshInfo, enable, disable, unlock, syncNow, forcePublish } = useSyncSetupStore()
   const [busy, setBusy] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [unlockOpen, setUnlockOpen] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
 
   const enabled = info?.enabled ?? false
+  const onboarded = info?.onboarded ?? false
+  const containerAvailable = info?.container_available ?? false
   const needsPassphrase = info?.needs_passphrase ?? false
   const lastError = info?.last_pass_error ?? null
+
+  // The sync state was loaded once at launch; the user may have signed
+  // into iCloud since (the onboarding notice and the hint here both point
+  // them back to Settings). Re-resolve the container exactly when this
+  // section becomes visible so the enable entry is not stuck on a stale
+  // `container_available`.
+  useEffect(() => {
+    void refreshInfo()
+  }, [refreshInfo])
 
   async function handleEnable() {
     setBusy(true)
@@ -141,12 +161,20 @@ export function SyncSettingsSection() {
             {t('settings.lastErrorPrefix')} {lastError}
           </p>
         )}
+        {!enabled && info !== null && !containerAvailable && (
+          <p className="text-sm text-muted-foreground max-w-md">{t('settings.icloudRequired')}</p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {!enabled && info?.onboarded && (
+        {!enabled && containerAvailable && onboarded && (
           <Button variant="outline" onClick={handleEnable} disabled={busy}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {t('settings.enable')}
+          </Button>
+        )}
+        {!enabled && containerAvailable && !onboarded && (
+          <Button variant="outline" onClick={() => setOnboardingOpen(true)}>
             {t('settings.enable')}
           </Button>
         )}
@@ -231,6 +259,12 @@ export function SyncSettingsSection() {
               {t('settings.deleteConfirm')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={onboardingOpen} onOpenChange={setOnboardingOpen}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <SyncOnboardingCard onDone={() => setOnboardingOpen(false)} />
         </DialogContent>
       </Dialog>
     </div>
