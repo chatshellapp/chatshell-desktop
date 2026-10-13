@@ -115,5 +115,17 @@
   "modelCapabilitiesDatabaseStatus": "{{count}} entries · data through {{date}} · {{source}}",
   "capabilitiesSourceBundled": "Bundled with the app",
   "capabilitiesSourceModelsDev": "Synced from models.dev",
-  "capabilitiesSourceUnavailable": "No snapshot loaded"
+  "capabilitiesSourceUnavailable": "No snapshot loaded",
+  "about": "About",
+  "aboutNoTelemetry": "ChatShell collects no telemetry by default, so we can't see how many people use it or which parts matter to them. Hearing from you is our best signal.",
+  "aboutSupportTitle": "Enjoying ChatShell?",
+  "aboutSupportDescription": "Star the repository on GitHub, or copy a short recommendation and send it to a friend.",
+  "aboutStarButton": "Star on GitHub",
+  "aboutRecommendButton": "Copy recommendation",
+  "aboutRecommendCopied": "Recommendation copied — paste it to a friend",
+  "aboutRecommendationText": "Try ChatShell — an open-source desktop AI chat app with built-in web search & fetch, MCP tools, and a skills system. Bring your own API key; your data stays in your hands, end to end. https://chatshell.app",
+  "aboutIssuesTitle": "Ran into a problem?",
+  "aboutIssuesDescription": "Bug reports and feature ideas both land on GitHub Issues.",
+  "aboutFileIssueButton": "File an issue",
+  "aboutVersion": "ChatShell v{{version}}"
 }

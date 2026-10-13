@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bot,
+  Bug,
   Check,
   Cloud,
   ChevronDown,
@@ -11,12 +12,15 @@ import {
   EyeOff,
   FileDown,
   Globe,
+  Heart,
   Loader2,
   Plug,
   Plus,
   RefreshCw,
   Search,
+  Share2,
   Sparkles,
+  Star,
   Settings,
   Stethoscope,
   Trash2,
@@ -28,7 +32,9 @@ import {
   LogIn,
 } from 'lucide-react'
 
+import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { toast } from 'sonner'
 import {
   Breadcrumb,
@@ -89,6 +95,7 @@ import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-s
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { logger } from '@/lib/logger'
+import appIcon from '@/assets/app-icon.png'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -106,6 +113,10 @@ const FETCH_METHOD_LABELS: Record<WebFetchLocalMethod, string> = {
   headless: 'alwaysUseChrome',
 }
 
+// External destinations for the About section.
+const GITHUB_REPO_URL = 'https://github.com/chatshellapp/chatshell-desktop'
+const GITHUB_ISSUES_URL = `${GITHUB_REPO_URL}/issues`
+
 const data = {
   nav: [
     { name: 'llmProvider', icon: Bot },
@@ -118,6 +129,7 @@ const data = {
     { name: 'sync', icon: Cloud },
     { name: 'language', icon: Globe },
     { name: 'advanced', icon: Settings },
+    { name: 'about', icon: Heart },
     // { name: 'Navigation', icon: Menu },
     // { name: 'Home', icon: Home },
     // { name: 'Appearance', icon: Paintbrush },
@@ -222,6 +234,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Skill search state
   const [skillSearchQuery, setSkillSearchQuery] = React.useState('')
 
+  // About section state
+  const [appVersion, setAppVersion] = React.useState<string | null>(null)
+
   const loadLogStorageInfo = React.useCallback(async () => {
     try {
       setLogStorageInfo(await invoke<LogStorageInfo>('get_log_storage_info'))
@@ -252,6 +267,25 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       await invoke('open_logs_directory')
     } catch (error) {
       logger.error('Failed to open logs directory:', error)
+      toast.error(String(error))
+    }
+  }
+
+  const openExternal = async (url: string) => {
+    try {
+      await openUrl(url)
+    } catch (error) {
+      logger.error('Failed to open URL:', error)
+      toast.error(String(error))
+    }
+  }
+
+  const handleCopyRecommendation = async () => {
+    try {
+      await navigator.clipboard.writeText(t('aboutRecommendationText'))
+      toast.success(t('aboutRecommendCopied'))
+    } catch (error) {
+      logger.error('Failed to copy recommendation:', error)
       toast.error(String(error))
     }
   }
@@ -296,6 +330,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   React.useEffect(() => {
     loadCapabilitiesInfo()
   }, [loadCapabilitiesInfo])
+
+  React.useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch((error) => logger.error('Failed to get app version:', error))
+  }, [])
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -1559,6 +1599,47 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </DropdownMenu>
             <p className="text-xs text-muted-foreground max-w-md">{t('logStorageDescription')}</p>
           </div>
+        </div>
+      )
+    }
+
+    if (activeSection === 'about') {
+      return (
+        <div className="grid gap-6">
+          <p className="text-sm text-muted-foreground max-w-md">{t('aboutNoTelemetry')}</p>
+
+          <div className="grid gap-2">
+            <Label>{t('aboutSupportTitle')}</Label>
+            <p className="text-xs text-muted-foreground max-w-md">{t('aboutSupportDescription')}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => openExternal(GITHUB_REPO_URL)}>
+                <Star className="mr-2 h-4 w-4" />
+                {t('aboutStarButton')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCopyRecommendation}>
+                <Share2 className="mr-2 h-4 w-4" />
+                {t('aboutRecommendButton')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>{t('aboutIssuesTitle')}</Label>
+            <p className="text-xs text-muted-foreground max-w-md">{t('aboutIssuesDescription')}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => openExternal(GITHUB_ISSUES_URL)}>
+                <Bug className="mr-2 h-4 w-4" />
+                {t('aboutFileIssueButton')}
+              </Button>
+            </div>
+          </div>
+
+          {appVersion !== null && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <img src={appIcon} alt="ChatShell" className="size-4 rounded-[4px]" />
+              {t('aboutVersion', { version: appVersion })}
+            </p>
+          )}
         </div>
       )
     }

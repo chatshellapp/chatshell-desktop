@@ -115,5 +115,17 @@
   "modelCapabilitiesDatabaseStatus": "{{count}} 个条目 · 数据截至 {{date}} · {{source}}",
   "capabilitiesSourceBundled": "应用内置",
   "capabilitiesSourceModelsDev": "已从 models.dev 同步",
-  "capabilitiesSourceUnavailable": "未加载快照"
+  "capabilitiesSourceUnavailable": "未加载快照",
+  "about": "关于",
+  "aboutNoTelemetry": "ChatShell 默认不收集遥测数据，我们看不到有多少人在用、哪些功能被用到。你的反馈是我们最重要的信号。",
+  "aboutSupportTitle": "喜欢 ChatShell？",
+  "aboutSupportDescription": "欢迎在 GitHub 给仓库点 Star，或复制一段推荐语发给朋友。",
+  "aboutStarButton": "在 GitHub 点 Star",
+  "aboutRecommendButton": "复制推荐语",
+  "aboutRecommendCopied": "推荐语已复制，粘贴发给朋友吧",
+  "aboutRecommendationText": "推荐试试 ChatShell——开源桌面 AI 聊天应用，自带 API Key 即用，内置网页搜索与抓取、MCP 工具和技能系统，数据端到端留在你手中。官网：https://chatshell.app",
+  "aboutIssuesTitle": "遇到了问题？",
+  "aboutIssuesDescription": "Bug 反馈和功能建议都欢迎提交到 GitHub Issues。",
+  "aboutFileIssueButton": "提交 Issue",
+  "aboutVersion": "ChatShell v{{version}}"
 }
