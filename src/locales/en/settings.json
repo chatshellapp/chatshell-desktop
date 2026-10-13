@@ -100,5 +100,9 @@
   "modelCapabilitiesDatabaseDescription": "The model capabilities database determines which features (tool use, vision, image generation) each model supports. It ships bundled with the app; a refresh from models.dev is saved locally and used on subsequent launches.",
   "refreshFromModelsDev": "Refresh from models.dev",
   "capabilitiesRefreshSuccess": "Model capabilities updated ({{count}} entries loaded)",
-  "capabilitiesRefreshError": "Failed to refresh model capabilities. Check your internet connection."
+  "capabilitiesRefreshError": "Failed to refresh model capabilities. Check your internet connection.",
+  "modelCapabilitiesDatabaseStatus": "{{count}} entries · data through {{date}} · {{source}}",
+  "capabilitiesSourceBundled": "Bundled with the app",
+  "capabilitiesSourceModelsDev": "Synced from models.dev",
+  "capabilitiesSourceUnavailable": "No snapshot loaded"
 }

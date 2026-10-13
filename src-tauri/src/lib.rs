@@ -440,6 +440,7 @@ pub fn run() {
             commands::set_skill_source_enabled,
             // Model capabilities commands
             commands::get_model_capabilities,
+            commands::get_capabilities_cache_info,
             commands::refresh_capabilities_cache,
             commands::chat::aux_models::get_vision_fallback_status,
         ])

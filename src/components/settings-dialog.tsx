@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 
 import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -64,6 +65,7 @@ import type {
   Model,
   Provider,
   SearchProviderId,
+  CapabilitiesCacheInfo,
   WebFetchMode,
   WebFetchLocalMethod,
   LogLevel,
@@ -217,6 +219,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
   const [oauthAuthorizingId, setOauthAuthorizingId] = React.useState<string | null>(null)
   const [capabilitiesRefreshing, setCapabilitiesRefreshing] = React.useState(false)
+  const [capabilitiesInfo, setCapabilitiesInfo] = React.useState<CapabilitiesCacheInfo | null>(null)
+
+  const loadCapabilitiesInfo = React.useCallback(async () => {
+    try {
+      setCapabilitiesInfo(await invoke<CapabilitiesCacheInfo>('get_capabilities_cache_info'))
+    } catch (error) {
+      logger.error('Failed to load capabilities cache info:', error)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    loadCapabilitiesInfo()
+  }, [loadCapabilitiesInfo])
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -1316,12 +1331,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   try {
                     const count = await invoke<number>('refresh_capabilities_cache')
                     invalidateCapabilitiesCache()
+                    await loadCapabilitiesInfo()
                     logger.info(`Refreshed capabilities: ${count} entries`)
-                    const { toast } = await import('sonner')
                     toast.success(t('capabilitiesRefreshSuccess', { count }))
                   } catch (error) {
                     logger.error('Failed to refresh capabilities:', error)
-                    const { toast } = await import('sonner')
                     toast.error(t('capabilitiesRefreshError'))
                   } finally {
                     setCapabilitiesRefreshing(false)
@@ -1337,6 +1351,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <p className="text-xs text-muted-foreground max-w-md">
               {t('modelCapabilitiesDatabaseDescription')}
             </p>
+            {capabilitiesInfo && (
+              <p className="text-xs text-muted-foreground">
+                {t('modelCapabilitiesDatabaseStatus', {
+                  count: capabilitiesInfo.entry_count,
+                  date: capabilitiesInfo.last_updated ?? '—',
+                  source:
+                    capabilitiesInfo.source === 'bundled'
+                      ? t('capabilitiesSourceBundled')
+                      : capabilitiesInfo.source === 'models_dev'
+                        ? t('capabilitiesSourceModelsDev')
+                        : t('capabilitiesSourceUnavailable'),
+                })}
+              </p>
+            )}
           </div>
 
           {/* Rust Log Level */}

@@ -9,6 +9,8 @@ export type {
   ModelInfo,
   ModelPricing,
   ModelCapabilities,
+  CapabilitiesCacheInfo,
+  CapabilitiesSource,
 } from './model'
 
 // Model Parameter Preset types

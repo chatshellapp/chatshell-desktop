@@ -16,12 +16,36 @@ pub struct ModelCapabilities {
     pub max_output_length: Option<i64>,
 }
 
+/// Provenance of the active capabilities snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilitiesSource {
+    /// The copy bundled with the app.
+    Bundled,
+    /// A snapshot fetched from models.dev, either this session or persisted
+    /// by an earlier refresh.
+    ModelsDev,
+    /// No usable snapshot loaded.
+    None,
+}
+
+/// Version/status of the active capabilities snapshot.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct CapabilitiesCacheInfo {
+    pub entry_count: usize,
+    /// Newest `last_updated` across models (YYYY-MM-DD); the snapshot's data version.
+    pub last_updated: Option<String>,
+    pub source: CapabilitiesSource,
+}
+
 /// Cache key: (provider_key, model_id)
 type CacheKey = (String, String);
 
-#[derive(Clone)]
 pub struct CapabilitiesCache {
     entries: Arc<RwLock<HashMap<CacheKey, ModelCapabilities>>>,
+    info: Arc<RwLock<CapabilitiesCacheInfo>>,
 }
 
 // --- Raw JSON structures mirroring models.dev/api.json ---
@@ -44,6 +68,9 @@ struct RawModel {
     modalities: Option<RawModalities>,
     #[serde(default)]
     limit: Option<RawLimit>,
+    /// models.dev data version stamp (YYYY-MM-DD).
+    #[serde(default)]
+    last_updated: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,37 +97,57 @@ impl CapabilitiesCache {
     pub fn new() -> Self {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
+            info: Arc::new(RwLock::new(CapabilitiesCacheInfo {
+                entry_count: 0,
+                last_updated: None,
+                source: CapabilitiesSource::None,
+            })),
         }
     }
 
-    /// Parse a models.dev api.json payload into cache entries.
-    fn parse_entries(data: &[u8]) -> anyhow::Result<HashMap<CacheKey, ModelCapabilities>> {
+    /// Parse a models.dev api.json payload into cache entries plus the
+    /// newest `last_updated` stamp across all models.
+    fn parse_entries(
+        data: &[u8],
+    ) -> anyhow::Result<(HashMap<CacheKey, ModelCapabilities>, Option<String>)> {
         let providers: HashMap<String, RawProvider> = serde_json::from_slice(data)?;
         let mut map = HashMap::new();
+        let mut last_updated: Option<String> = None;
 
         for (provider_key, provider) in &providers {
             if let Some(models) = &provider.models {
                 for (model_id, raw) in models {
                     let caps = convert_raw_model(raw);
                     map.insert((provider_key.clone(), model_id.clone()), caps);
+                    if let Some(stamp) = &raw.last_updated {
+                        if last_updated
+                            .as_deref()
+                            .is_none_or(|cur| stamp.as_str() > cur)
+                        {
+                            last_updated = Some(stamp.clone());
+                        }
+                    }
                 }
             }
         }
 
-        Ok(map)
+        Ok((map, last_updated))
     }
 
-    pub async fn load_from_bytes(&self, data: &[u8]) -> anyhow::Result<usize> {
-        let map = Self::parse_entries(data)?;
-        let count = map.len();
-        *self.entries.write().await = map;
-        Ok(count)
+    /// Parse and install a payload, recording where it came from.
+    async fn install_entries(
+        &self,
+        data: &[u8],
+        source: CapabilitiesSource,
+    ) -> anyhow::Result<usize> {
+        let (map, last_updated) = Self::parse_entries(data)?;
+        Ok(self.set_entries(map, last_updated, source).await)
     }
 
-    pub async fn load_from_file(path: &Path) -> anyhow::Result<Self> {
+    pub async fn load_from_file(path: &Path, source: CapabilitiesSource) -> anyhow::Result<Self> {
         let data = tokio::fs::read(path).await?;
         let cache = Self::new();
-        let count = cache.load_from_bytes(&data).await?;
+        let count = cache.install_entries(&data, source).await?;
         tracing::info!(
             "Loaded {} model capability entries from {}",
             count,
@@ -113,7 +160,8 @@ impl CapabilitiesCache {
     /// the copy bundled with the app; a missing or corrupt persisted file
     /// falls back to the bundled resource.
     pub async fn load_preferred(persisted: &Path, bundled: &Path) -> anyhow::Result<Self> {
-        match Self::load_from_file(persisted).await {
+        // A persisted snapshot only ever comes from a models.dev refresh.
+        match Self::load_from_file(persisted, CapabilitiesSource::ModelsDev).await {
             Ok(cache) => {
                 tracing::info!(
                     "Using persisted model capabilities snapshot at {}",
@@ -128,9 +176,26 @@ impl CapabilitiesCache {
                     e,
                     bundled.display()
                 );
-                Self::load_from_file(bundled).await
+                Self::load_from_file(bundled, CapabilitiesSource::Bundled).await
             }
         }
+    }
+
+    /// Swap in a parsed snapshot, recording its size, data version, and origin.
+    async fn set_entries(
+        &self,
+        map: HashMap<CacheKey, ModelCapabilities>,
+        last_updated: Option<String>,
+        source: CapabilitiesSource,
+    ) -> usize {
+        let count = map.len();
+        *self.entries.write().await = map;
+        *self.info.write().await = CapabilitiesCacheInfo {
+            entry_count: count,
+            last_updated,
+            source,
+        };
+        count
     }
 
     /// Validate a payload, persist it to `persist_path`, then install it.
@@ -140,14 +205,14 @@ impl CapabilitiesCache {
         data: &[u8],
         persist_path: &Path,
     ) -> anyhow::Result<usize> {
-        let map = Self::parse_entries(data)?;
+        let (map, last_updated) = Self::parse_entries(data)?;
         if let Some(parent) = persist_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
         tokio::fs::write(persist_path, data).await?;
-        let count = map.len();
-        *self.entries.write().await = map;
-        Ok(count)
+        Ok(self
+            .set_entries(map, last_updated, CapabilitiesSource::ModelsDev)
+            .await)
     }
 
     /// Replace all entries from a freshly fetched source and persist the raw
@@ -205,6 +270,11 @@ impl CapabilitiesCache {
         // 4. Fallback: unknown
         ModelCapabilities::default()
     }
+
+    /// Version/status of the currently active snapshot.
+    pub async fn info(&self) -> CapabilitiesCacheInfo {
+        self.info.read().await.clone()
+    }
 }
 
 fn convert_raw_model(raw: &RawModel) -> ModelCapabilities {
@@ -252,7 +322,8 @@ mod tests {
                         "tool_call": tool_call,
                         "reasoning": false,
                         "limit": { "context": 4096, "output": 1024 },
-                        "modalities": { "input": ["text", "image"], "output": ["text"] }
+                        "modalities": { "input": ["text", "image"], "output": ["text"] },
+                        "last_updated": "2026-01-02"
                     }
                 }
             }
@@ -346,5 +417,57 @@ mod tests {
         let on_disk: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert!(on_disk["test-provider"]["models"]["m1"].is_object());
+    }
+
+    #[tokio::test]
+    async fn info_tracks_source_entry_count_and_data_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundled = dir.path().join("bundled.json");
+        std::fs::write(&bundled, payload("bundled-model", false)).unwrap();
+
+        // Fresh cache: no snapshot loaded.
+        let empty = CapabilitiesCache::new();
+        let info = empty.info().await;
+        assert_eq!(info.entry_count, 0);
+        assert_eq!(info.last_updated, None);
+        assert_eq!(info.source, CapabilitiesSource::None);
+
+        // Missing persisted file falls back to the bundled copy.
+        let cache = CapabilitiesCache::load_preferred(&dir.path().join("missing.json"), &bundled)
+            .await
+            .unwrap();
+        let info = cache.info().await;
+        assert_eq!(info.entry_count, 1);
+        assert_eq!(info.source, CapabilitiesSource::Bundled);
+        assert_eq!(info.last_updated.as_deref(), Some("2026-01-02"));
+
+        // A persisted refresh wins and is attributed to models.dev; the data
+        // version is the newest last_updated across all models.
+        let two_models = serde_json::json!({
+            "test-provider": {
+                "models": {
+                    "old-model": { "tool_call": true, "last_updated": "2026-01-01" },
+                    "new-model": { "tool_call": true, "last_updated": "2026-03-04" }
+                }
+            }
+        });
+        let persisted = dir.path().join("models_dev.json");
+        std::fs::write(&persisted, two_models.to_string()).unwrap();
+        let cache = CapabilitiesCache::load_preferred(&persisted, &bundled)
+            .await
+            .unwrap();
+        let info = cache.info().await;
+        assert_eq!(info.entry_count, 2);
+        assert_eq!(info.source, CapabilitiesSource::ModelsDev);
+        assert_eq!(info.last_updated.as_deref(), Some("2026-03-04"));
+
+        // An in-session refresh updates the metadata too.
+        cache
+            .install_and_persist(&payload("m1", true), &persisted)
+            .await
+            .unwrap();
+        let info = cache.info().await;
+        assert_eq!(info.entry_count, 1);
+        assert_eq!(info.source, CapabilitiesSource::ModelsDev);
     }
 }

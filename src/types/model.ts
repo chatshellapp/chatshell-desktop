@@ -19,3 +19,5 @@ export type { ModelPricing } from './generated/ModelPricing'
 // Model capabilities resolved from models.dev data.
 // `null` means unknown (assume capable); `false` means confirmed unsupported.
 export type { ModelCapabilities } from './generated/ModelCapabilities'
+export type { CapabilitiesCacheInfo } from './generated/CapabilitiesCacheInfo'
+export type { CapabilitiesSource } from './generated/CapabilitiesSource'

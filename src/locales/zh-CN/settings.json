@@ -100,5 +100,9 @@
   "modelCapabilitiesDatabaseDescription": "模型能力数据库决定每个模型支持哪些功能（工具调用、视觉、图片生成）。它与应用程序一起打包；从 models.dev 刷新的数据会保存到本地，并在后续启动时使用。",
   "refreshFromModelsDev": "从 models.dev 刷新",
   "capabilitiesRefreshSuccess": "模型能力已更新（加载了 {{count}} 个条目）",
-  "capabilitiesRefreshError": "刷新模型能力失败。请检查网络连接。"
+  "capabilitiesRefreshError": "刷新模型能力失败。请检查网络连接。",
+  "modelCapabilitiesDatabaseStatus": "{{count}} 个条目 · 数据截至 {{date}} · {{source}}",
+  "capabilitiesSourceBundled": "应用内置",
+  "capabilitiesSourceModelsDev": "已从 models.dev 同步",
+  "capabilitiesSourceUnavailable": "未加载快照"
 }

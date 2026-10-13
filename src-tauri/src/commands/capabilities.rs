@@ -1,5 +1,5 @@
 use super::AppState;
-use crate::llm::capabilities::{MODELS_DEV_URL, ModelCapabilities};
+use crate::llm::capabilities::{CapabilitiesCacheInfo, MODELS_DEV_URL, ModelCapabilities};
 use tauri::Manager as _;
 use tauri::State;
 
@@ -13,6 +13,13 @@ pub async fn get_model_capabilities(
         .capabilities_cache
         .resolve(&provider_type, &model_id)
         .await)
+}
+
+#[tauri::command]
+pub async fn get_capabilities_cache_info(
+    state: State<'_, AppState>,
+) -> Result<CapabilitiesCacheInfo, String> {
+    Ok(state.capabilities_cache.info().await)
 }
 
 #[tauri::command]
