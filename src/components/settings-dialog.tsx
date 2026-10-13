@@ -92,6 +92,7 @@ import {
   SKILL_SOURCE_ORDER,
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
+import { ObscuraInstallHint } from '@/components/settings-dialog/obscura-install-hint'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { logger } from '@/lib/logger'
@@ -1280,6 +1281,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </DropdownMenu>
             </div>
           )}
+
+          {/* Obscura install guidance: shown in local mode while the binary is absent */}
+          {webFetchMode === 'local' && !obscuraAvailable && <ObscuraInstallHint />}
 
           {/* API Provider Selection */}
           {webFetchMode === 'api' && (
