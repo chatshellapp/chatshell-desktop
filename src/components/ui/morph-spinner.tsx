@@ -14,6 +14,8 @@ function MorphSpinner({ className, size = 24, ...props }: MorphSpinnerProps) {
   // Equilateral triangle (pointing up) with 4 control points for symmetric morphing
   // The bottom edge is split at center so it maps cleanly to diamond's 4 corners
   // Vertices: top (50,12), bottom-right (83,69), bottom-center (50,69), bottom-left (17,69)
+  // NOTE: index.html's #splash inlines a pre-JS SMIL copy of these exact
+  // path values, colors, and durations — update both when changing them.
   const triangle = [
     'M 50 12', // Top vertex
     'C 50 12, 83 69, 83 69', // Top to bottom-right

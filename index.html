@@ -4,11 +4,99 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <!-- Light-only: the app currently never applies the Tailwind `.dark`
+         class (light UI on every launch), so declaring dark support here
+         would flash a dark splash/canvas before the light app mounts. -->
+    <meta name="color-scheme" content="light" />
+    <title>ChatShell</title>
+    <style>
+      /*
+       * Critical inline styles: paint the app's background and a splash
+       * view the moment the WebView can draw, before any JS or CSS bundle
+       * arrives. The splash lives inside #root and is replaced by React on
+       * its first commit. Geometry, colors, and timing mirror
+       * src/components/ui/morph-spinner.tsx (SMIL — no JS required); the
+       * 16px size matches the in-chat streaming indicator.
+       */
+      html {
+        background-color: oklch(1 0 0);
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash svg {
+          display: none;
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash">
+        <svg
+          viewBox="0 0 100 100"
+          width="16"
+          height="16"
+          role="status"
+          aria-label="Loading"
+        >
+          <defs>
+            <filter id="splashGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <g>
+            <path
+              fill="none"
+              stroke="#00E5FF"
+              stroke-width="5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              filter="url(#splashGlow)"
+              d="M 50 12 C 50 12, 83 69, 83 69 C 83 69, 50 69, 50 69 C 50 69, 17 69, 17 69 C 17 69, 50 12, 50 12 Z"
+            >
+              <animate
+                attributeName="d"
+                values="M 50 12 C 50 12, 83 69, 83 69 C 83 69, 50 69, 50 69 C 50 69, 17 69, 17 69 C 17 69, 50 12, 50 12 Z;M 50 12 C 50 12, 88 50, 88 50 C 88 50, 50 88, 50 88 C 50 88, 12 50, 12 50 C 12 50, 50 12, 50 12 Z;M 50 12 C 70.976 12, 88 29.024, 88 50 C 88 70.976, 70.976 88, 50 88 C 29.024 88, 12 70.976, 12 50 C 12 29.024, 29.024 12, 50 12 Z;M 50 12 C 50 12, 83 69, 83 69 C 83 69, 50 69, 50 69 C 50 69, 17 69, 17 69 C 17 69, 50 12, 50 12 Z"
+                dur="2.4s"
+                repeatCount="indefinite"
+                calcMode="spline"
+                keySplines="0.45 0.05 0.55 0.95; 0.45 0.05 0.55 0.95; 0.45 0.05 0.55 0.95"
+                keyTimes="0; 0.33; 0.66; 1"
+              />
+              <animate
+                attributeName="stroke"
+                values="#00E5FF;#FF4081;#E040FB;#00E5FF"
+                dur="3.6s"
+                repeatCount="indefinite"
+                calcMode="spline"
+                keySplines="0.45 0.05 0.55 0.95; 0.45 0.05 0.55 0.95; 0.45 0.05 0.55 0.95"
+                keyTimes="0; 0.33; 0.66; 1"
+              />
+            </path>
+            <animateTransform
+              attributeName="transform"
+              attributeType="XML"
+              type="rotate"
+              from="0 50 50"
+              to="360 50 50"
+              dur="4.8s"
+              repeatCount="indefinite"
+            />
+          </g>
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

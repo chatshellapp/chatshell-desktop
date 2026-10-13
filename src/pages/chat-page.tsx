@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
+import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
 import { SearchDialog } from '@/components/search/search-dialog'
@@ -69,10 +70,16 @@ export function ChatPage() {
   // Show loading screen while initializing
   if (!isInitialized) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="text-lg">{t('common:loading')}</p>
+      <div className="relative h-screen">
+        {/* Spinner pinned at the exact viewport center, matching the
+            index.html splash — the "loading" text appears below it without
+            shifting the spinner, so the splash handoff never jitters. */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <MorphSpinner size={16} />
         </div>
+        <p className="absolute inset-x-0 top-1/2 mt-5 text-center text-sm text-muted-foreground">
+          {t('common:loading')}
+        </p>
       </div>
     )
   }
