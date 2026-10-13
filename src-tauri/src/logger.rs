@@ -1,7 +1,9 @@
 use anyhow::Result;
-use std::path::PathBuf;
+use chrono::Local;
+use std::fs::{File, OpenOptions};
+use std::io::Write as IoWrite;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{
     EnvFilter, Registry,
     fmt::{self, format::FmtSpan},
@@ -15,11 +17,74 @@ type ReloadHandle = reload::Handle<EnvFilter, Registry>;
 
 static LOG_HANDLE: once_cell::sync::OnceCell<Arc<ReloadHandle>> = once_cell::sync::OnceCell::new();
 
+/// Daily file appender that rolls at LOCAL midnight.
+///
+/// tracing-appender's `Rotation::DAILY` names files by UTC date, so for
+/// non-UTC users the file rotates at (UTC midnight + offset) and the file
+/// name does not match the local day. This appender keeps the same
+/// `prefix.YYYY-MM-DD` naming but computes the date in the local zone.
+struct DailyLocalAppender {
+    dir: PathBuf,
+    prefix: &'static str,
+    current_date: String,
+    file: Option<File>,
+}
+
+impl DailyLocalAppender {
+    fn new(dir: PathBuf, prefix: &'static str) -> Self {
+        Self {
+            dir,
+            prefix,
+            current_date: String::new(),
+            file: None,
+        }
+    }
+
+    fn file_for_today(&mut self) -> std::io::Result<&mut File> {
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        if self.file.is_none() || self.current_date != today {
+            let path = self.dir.join(format!("{}.{}", self.prefix, today));
+            let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+            // Mark the rotation inside the file itself. Never emit tracing
+            // events from here: the writer runs on the subscriber's dispatch
+            // path while holding this appender's mutex, so a re-entrant
+            // event self-deadlocks.
+            let _ = writeln!(file, "=== log file rotated: {} ===", today);
+            self.current_date = today;
+            self.file = Some(file);
+        }
+        Ok(self.file.as_mut().expect("file was just set"))
+    }
+}
+
+impl IoWrite for DailyLocalAppender {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.file_for_today()?.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.file {
+            Some(file) => file.flush(),
+            None => Ok(()),
+        }
+    }
+
+    fn by_ref(&mut self) -> &mut Self {
+        self
+    }
+}
+
+/// Build the file-layer writer: a mutex-wrapped daily local appender.
+/// `tracing_subscriber` implements `MakeWriter` for `Mutex<W: io::Write>`.
+fn make_local_writer(log_dir: &Path) -> std::sync::Mutex<DailyLocalAppender> {
+    std::sync::Mutex::new(DailyLocalAppender::new(
+        log_dir.to_path_buf(),
+        "chatshell-backend",
+    ))
+}
+
 pub fn init_logger(log_dir: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&log_dir)?;
-
-    let file_appender =
-        RollingFileAppender::new(Rotation::DAILY, log_dir.clone(), "chatshell-backend");
 
     let console_layer = fmt::layer()
         .with_target(true)
@@ -33,7 +98,7 @@ pub fn init_logger(log_dir: PathBuf) -> Result<()> {
         .with_thread_ids(true)
         .with_ansi(false)
         .with_span_events(FmtSpan::CLOSE)
-        .with_writer(file_appender);
+        .with_writer(make_local_writer(&log_dir));
 
     // Create reloadable filter
     let env_filter = EnvFilter::try_from_default_env()

@@ -19,6 +19,7 @@ export const useConversationStore = create<ConversationStore>()(
     isFirstConversationSinceStartup: true,
     isLoading: false,
     error: null,
+    pendingInput: null,
 
     // Merge in selectors
     ...createSelectors(set, get),

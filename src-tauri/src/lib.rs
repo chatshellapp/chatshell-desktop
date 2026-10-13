@@ -155,6 +155,56 @@ pub fn run() {
                 }
             });
 
+            // Enforce the log size cap: delete oldest files over the total
+            // cap and trim any single runaway file.
+            rt.block_on(async {
+                let max_total_mb = db
+                    .get_setting(commands::LOG_MAX_TOTAL_MB_SETTING)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(commands::DEFAULT_LOG_MAX_TOTAL_MB);
+                let log_dir = app_data_dir.join("logs");
+                match commands::sweep_logs(&log_dir, max_total_mb * 1024 * 1024) {
+                    Ok(freed) if freed > 0 => {
+                        tracing::info!("Log retention freed {} bytes", freed)
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("Log retention sweep failed: {}", e),
+                }
+            });
+
+            // Re-run the sweep periodically so a runaway log (verbose level
+            // left on) is bounded within a minute, not at next launch.
+            {
+                let sweep_handle = app.handle().clone();
+                let sweep_db = db.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        let max_total_mb = sweep_db
+                            .get_setting(commands::LOG_MAX_TOTAL_MB_SETTING)
+                            .await
+                            .ok()
+                            .flatten()
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(commands::DEFAULT_LOG_MAX_TOTAL_MB);
+                        let log_dir = sweep_handle
+                            .path()
+                            .app_data_dir()
+                            .map(|dir| dir.join("logs"));
+                        if let Ok(log_dir) = log_dir {
+                            if let Err(e) =
+                                commands::sweep_logs(&log_dir, max_total_mb * 1024 * 1024)
+                            {
+                                tracing::warn!("Log retention sweep failed: {}", e);
+                            }
+                        }
+                    }
+                });
+            }
+
             // Load model capabilities: a snapshot persisted by an earlier
             // refresh takes precedence over the copy bundled with the app.
             let capabilities_cache = {
@@ -378,6 +428,10 @@ pub fn run() {
             commands::is_obscura_available,
             commands::is_chrome_available,
             commands::set_log_level,
+            commands::get_log_storage_info,
+            commands::open_logs_directory,
+            commands::get_today_log_paths,
+            commands::set_log_max_total_mb,
             // Crypto commands
             commands::generate_keypair,
             commands::export_keypair,

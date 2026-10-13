@@ -238,6 +238,12 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
     })
   },
 
+  setPendingInput: (input: string | null) => {
+    set((draft) => {
+      draft.pendingInput = input
+    })
+  },
+
   loadParticipants: async (conversationId: string) => {
     try {
       const participants = await invoke<ConversationParticipant[]>(

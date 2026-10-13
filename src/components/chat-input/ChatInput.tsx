@@ -158,6 +158,23 @@ export function ChatInput(/* _props: ChatInputProps */) {
     return allSettings[currentConversation.id] || null
   }, [currentConversation, allSettings])
 
+  // Consume a pending input prefilled by another surface (e.g. the log
+  // diagnosis action in settings). Subscribing to pendingInput makes
+  // consumption order-independent: it fires whether the value is set
+  // before or after this conversation becomes active.
+  const setPendingInput = useConversationStore((state) => state.setPendingInput)
+  const pendingInput = useConversationStore((state) => state.pendingInput)
+  const currentConversationId = currentConversation?.id
+  useEffect(() => {
+    if (pendingInput === null) return
+    setPendingInput(null)
+    setInput(pendingInput)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(pendingInput.length, pendingInput.length)
+    })
+  }, [pendingInput, currentConversationId, setPendingInput])
+
   // Load parameter presets on mount
   useEffect(() => {
     const loadPresets = async () => {

@@ -18,6 +18,7 @@ import {
   Search,
   Sparkles,
   Settings,
+  Stethoscope,
   Trash2,
   Wrench,
   Zap,
@@ -57,6 +58,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar'
+import { useConversationStore } from '@/stores/conversation'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -135,6 +137,11 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface LogStorageInfo {
+  total_bytes: number
+  file_count: number
+}
+
 // Dropdown list of confirmed vision-capable models. Capabilities resolve
 // asynchronously against the backend cache; models that are not confirmed
 // vision-capable (false or unknown) are filtered out. The default entry
@@ -209,9 +216,66 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Logging state
   const [logLevelRust, setLogLevelRustState] = React.useState<LogLevel>('info')
   const [logLevelTypeScript, setLogLevelTypeScriptState] = React.useState<LogLevel>('info')
-
+  const [logStorageInfo, setLogStorageInfo] = React.useState<LogStorageInfo | null>(null)
+  const [logMaxTotalMb, setLogMaxTotalMbState] = React.useState<number>(50)
+  const [logDiagnosing, setLogDiagnosing] = React.useState(false)
   // Skill search state
   const [skillSearchQuery, setSkillSearchQuery] = React.useState('')
+
+  const loadLogStorageInfo = React.useCallback(async () => {
+    try {
+      setLogStorageInfo(await invoke<LogStorageInfo>('get_log_storage_info'))
+    } catch (error) {
+      logger.error('Failed to load log storage info:', error)
+    }
+  }, [])
+
+  const formatLogSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${bytes} B`
+  }
+
+  const handleSaveLogMaxTotalMb = async (mb: number) => {
+    setLogMaxTotalMbState(mb)
+    try {
+      setLogStorageInfo(await invoke<LogStorageInfo>('set_log_max_total_mb', { maxTotalMb: mb }))
+    } catch (error) {
+      logger.error('Failed to save log size limit:', error)
+      toast.error(t('logSizeLimitSaveFailed'))
+    }
+  }
+
+  const handleOpenLogsDirectory = async () => {
+    try {
+      await invoke('open_logs_directory')
+    } catch (error) {
+      logger.error('Failed to open logs directory:', error)
+      toast.error(String(error))
+    }
+  }
+
+  const handleDiagnoseLogs = async () => {
+    setLogDiagnosing(true)
+    try {
+      const paths = await invoke<string[]>('get_today_log_paths')
+      if (paths.length === 0) {
+        toast.info(t('logDiagnosisEmpty'))
+        return
+      }
+      const conversationStore = useConversationStore.getState()
+      const conversation = await conversationStore.createConversation('')
+      conversationStore.setPendingInput(t('logDiagnosisPrompt', { paths: paths.join('\n') }))
+      await conversationStore.selectConversation(conversation.id)
+      onOpenChange(false)
+    } catch (error) {
+      logger.error('Failed to start log diagnosis:', error)
+      toast.error(t('logDiagnosisFailed'))
+    } finally {
+      setLogDiagnosing(false)
+    }
+  }
 
   // MCP state
   const [mcpConfigModalOpen, setMcpConfigModalOpen] = React.useState(false)
@@ -322,6 +386,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
         const tsLogLevel = await getLogLevelTypeScript()
         setLogLevelTypeScriptState(tsLogLevel)
+
+        // Log storage management
+        const logMaxMb = await getSetting('log_max_total_mb')
+        setLogMaxTotalMbState(logMaxMb ? Number(logMaxMb) : 50)
+        await loadLogStorageInfo()
       }
       loadSettings()
     }
@@ -338,6 +407,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     getJinaApiKey,
     getLogLevelRust,
     getLogLevelTypeScript,
+    loadLogStorageInfo,
   ])
 
   const handleSaveAuxTinyModel = async (modelId: string) => {
@@ -1437,8 +1507,57 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </p>
           </div>
 
+          {/* Log Storage */}
           <div className="grid gap-2">
-            <p className="text-sm text-muted-foreground max-w-md">{t('logFilesLocation')}</p>
+            <Label>{t('logStorage')}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {logStorageInfo
+                  ? t('logStorageSize', {
+                      size: formatLogSize(logStorageInfo.total_bytes),
+                      count: logStorageInfo.file_count,
+                    })
+                  : t('logStorageUnknown')}
+              </span>
+              <Button variant="outline" size="sm" onClick={handleOpenLogsDirectory}>
+                <FolderOpen className="mr-2 h-4 w-4" />
+                {t('openLogsDirectory')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={logDiagnosing}
+                onClick={handleDiagnoseLogs}
+              >
+                <Stethoscope className={`mr-2 h-4 w-4 ${logDiagnosing ? 'animate-pulse' : ''}`} />
+                {t('diagnoseLogs')}
+              </Button>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full max-w-md justify-between">
+                  <span>
+                    {logMaxTotalMb === 0
+                      ? t('logSizeUnlimited')
+                      : t('logSizeLimitValue', { mb: logMaxTotalMb })}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[400px]">
+                {[10, 50, 100, 200, 500, 0].map((mb) => (
+                  <DropdownMenuItem key={mb} onClick={() => handleSaveLogMaxTotalMb(mb)}>
+                    <div className="flex items-center gap-2">
+                      {mb === logMaxTotalMb && <Check className="h-4 w-4 text-primary" />}
+                      <span className={mb === logMaxTotalMb ? 'font-medium' : ''}>
+                        {mb === 0 ? t('logSizeUnlimited') : t('logSizeLimitValue', { mb })}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground max-w-md">{t('logStorageDescription')}</p>
           </div>
         </div>
       )

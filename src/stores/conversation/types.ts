@@ -18,6 +18,10 @@ export interface ConversationStoreState {
 
   isLoading: boolean
   error: string | null
+
+  // Text to prefill the chat input with (e.g. an AI log-diagnosis request),
+  // consumed by ChatInput when the conversation becomes active
+  pendingInput: string | null
 }
 
 // Selector actions
@@ -35,6 +39,7 @@ export interface ConversationStoreActions {
   deleteConversation: (id: string) => Promise<void>
   selectConversation: (id: string) => Promise<void>
   setCurrentConversation: (conversation: Conversation | null) => void
+  setPendingInput: (input: string | null) => void
 
   // Participant actions
   loadParticipants: (conversationId: string) => Promise<void>
