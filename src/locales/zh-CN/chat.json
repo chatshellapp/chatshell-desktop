@@ -80,6 +80,8 @@
   "preset": "预设",
   "systemPromptDisabledTooltip": "对话有消息后无法修改系统提示词",
   "noMessagesStart": "暂无消息，开始对话吧！",
+  "loadingEarlierMessages": "正在加载更早的消息…",
+  "loadingMessages": "正在加载消息…",
   "dragToResize": "拖动以调整大小",
   "selectModelOrAssistant": "选择模型或助手",
   "noModelsAvailable": "暂无模型",

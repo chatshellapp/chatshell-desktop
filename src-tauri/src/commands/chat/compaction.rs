@@ -197,7 +197,7 @@ async fn run_post_turn_compaction_inner(state: &AppState, conversation_id: &str)
 async fn load_history_items(state: &AppState, conversation_id: &str) -> Result<Vec<HistoryItem>> {
     let messages = state
         .db
-        .list_messages_by_conversation(conversation_id)
+        .list_messages_by_conversation(conversation_id, None, None)
         .await?;
     let mut items = Vec::with_capacity(messages.len());
     for message in &messages {

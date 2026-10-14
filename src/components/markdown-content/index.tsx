@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -9,7 +10,11 @@ import { useMarkdownComponents } from './markdown-components'
 import type { MarkdownContentProps } from './types'
 import type { Components } from 'react-markdown'
 
-export function MarkdownContent({
+// Memoized on content + render options (all primitives; the components map
+// from useMarkdownComponents is referentially stable for the same inputs):
+// historical messages have immutable content, so parent re-renders no longer
+// re-parse their markdown.
+export const MarkdownContent = memo(function MarkdownContent({
   content,
   className = '',
   compact = false,
@@ -28,7 +33,7 @@ export function MarkdownContent({
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 // Re-export components and types
 export { CodeBlock } from './code-block'

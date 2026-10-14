@@ -18,6 +18,9 @@ export function useMessageResources({
   // Contains { attachments, contexts, steps } for each message
   const [messageResources, setMessageResources] = useState<Record<string, MessageResources>>({})
   const lastRefreshKeyRef = useRef<number | null>(null)
+  // Message ids already fetched that turned out to have no resources; avoids
+  // re-querying them on every effect run (R4.2).
+  const checkedEmptyRef = useRef<Set<string>>(new Set())
 
   // Fetch resources (attachments, contexts, steps) for messages
   // Re-run when attachmentStatus changes to 'complete' or attachmentRefreshKey changes
@@ -29,49 +32,49 @@ export function useMessageResources({
     const refreshAll =
       lastRefreshKeyRef.current !== null && lastRefreshKeyRef.current !== attachmentRefreshKey
     lastRefreshKeyRef.current = attachmentRefreshKey
+    if (refreshAll) {
+      checkedEmptyRef.current.clear()
+    }
 
     const fetchResources = async () => {
-      // Fetch resources for all messages (both user and assistant)
-      const resourceMap: Record<string, MessageResources> = {}
-
+      const lastMessage = messages[messages.length - 1]
+      const idsToFetch: string[] = []
       for (const msg of messages) {
-        // When processing just completed or refresh key changed, always re-fetch for the latest message
-        // Otherwise, skip if we already have resources for this message
-        const isLatestMessage = messages.indexOf(msg) === messages.length - 1
-        const shouldRefetch =
-          refreshAll ||
-          ((attachmentStatus === 'complete' || attachmentRefreshKey > 0) && isLatestMessage)
-
-        if (messageResources[msg.id] && !shouldRefetch) {
-          resourceMap[msg.id] = messageResources[msg.id]
+        // When processing just completed or refresh key changed, always
+        // re-fetch for the latest message; otherwise skip anything already
+        // resolved (cached resources or a known-empty result).
+        const shouldRefetchLatest =
+          (attachmentStatus === 'complete' || attachmentRefreshKey > 0) && msg === lastMessage
+        if (shouldRefetchLatest || refreshAll) {
+          idsToFetch.push(msg.id)
           continue
         }
-
-        try {
-          const resources = await invoke<MessageResources>('get_message_resources', {
-            messageId: msg.id,
-          })
-          // Only store if there are any resources
-          if (
-            resources.attachments.length > 0 ||
-            resources.contexts.length > 0 ||
-            resources.steps.length > 0
-          ) {
-            resourceMap[msg.id] = resources
-          }
-        } catch (e) {
-          logger.error(`Failed to fetch resources for message: ${msg.id}`, e)
-        }
+        if (messageResources[msg.id] || checkedEmptyRef.current.has(msg.id)) continue
+        idsToFetch.push(msg.id)
       }
 
-      // Only update if there are changes
-      if (Object.keys(resourceMap).length > 0) {
-        setMessageResources((prev) => ({ ...prev, ...resourceMap }))
+      if (idsToFetch.length === 0) return
+
+      try {
+        // Single bulk IPC for the whole window (R4.2); the command returns
+        // only messages that actually have resources.
+        const fetched = await invoke<Record<string, MessageResources>>(
+          'get_message_resources_batch',
+          { messageIds: idsToFetch }
+        )
+        for (const id of idsToFetch) {
+          if (!fetched[id]) checkedEmptyRef.current.add(id)
+        }
+        if (Object.keys(fetched).length > 0) {
+          setMessageResources((prev) => ({ ...prev, ...fetched }))
+        }
+      } catch (e) {
+        logger.error('Failed to fetch message resources (batch)', e)
       }
     }
 
     if (messages.length > 0) {
-      fetchResources()
+      void fetchResources()
     }
   }, [messages, attachmentStatus, attachmentRefreshKey])
 

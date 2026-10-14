@@ -88,20 +88,57 @@ impl Database {
         }
     }
 
+    /// List messages of a conversation, oldest first.
+    ///
+    /// `limit` caps the result to the newest `limit` messages (used by the
+    /// chat view's tail window). `before` = `(created_at, id)` cursor returns
+    /// only messages strictly older than that tuple (upward pagination);
+    /// it requires `limit`. `None, None` keeps the full-history behavior.
     pub async fn list_messages_by_conversation(
         &self,
         conversation_id: &str,
+        limit: Option<i64>,
+        before: Option<(&str, &str)>,
     ) -> Result<Vec<Message>> {
-        let rows = sqlx::query(
-            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
-             FROM messages WHERE conversation_id = ? AND deleted_at IS NULL
-             ORDER BY created_at ASC",
-        )
-        .bind(conversation_id)
-        .fetch_all(self.pool.as_ref())
-        .await?;
+        if before.is_some() && limit.is_none() {
+            anyhow::bail!("list_messages_by_conversation: `before` requires `limit`");
+        }
 
-        let messages = rows
+        const SELECT: &str =
+            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
+             FROM messages WHERE conversation_id = ? AND deleted_at IS NULL";
+
+        let rows = match (limit, before) {
+            (Some(limit), Some((before_created_at, before_id))) => {
+                sqlx::query(&format!(
+                    "{SELECT} AND (created_at, id) < (?, ?)
+                     ORDER BY created_at DESC, id DESC LIMIT ?"
+                ))
+                .bind(conversation_id)
+                .bind(before_created_at)
+                .bind(before_id)
+                .bind(limit)
+                .fetch_all(self.pool.as_ref())
+                .await?
+            }
+            (Some(limit), None) => {
+                sqlx::query(&format!(
+                    "{SELECT} ORDER BY created_at DESC, id DESC LIMIT ?"
+                ))
+                .bind(conversation_id)
+                .bind(limit)
+                .fetch_all(self.pool.as_ref())
+                .await?
+            }
+            (None, _) => {
+                sqlx::query(&format!("{SELECT} ORDER BY created_at ASC, id ASC"))
+                    .bind(conversation_id)
+                    .fetch_all(self.pool.as_ref())
+                    .await?
+            }
+        };
+
+        let mut messages = rows
             .iter()
             .map(|row| Message {
                 id: row.get("id"),
@@ -112,7 +149,13 @@ impl Database {
                 tokens: row.get("tokens"),
                 created_at: row.get("created_at"),
             })
-            .collect();
+            .collect::<Vec<_>>();
+
+        // Windowed queries fetch newest-first; return oldest-first like the
+        // full-history path.
+        if limit.is_some() {
+            messages.reverse();
+        }
 
         Ok(messages)
     }
@@ -553,5 +596,79 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1, "exactly one entry per live message");
+    }
+
+    #[tokio::test]
+    async fn window_pagination_covers_full_history_exactly_once() {
+        let (db, _dir) = test_db().await;
+        let conv = db
+            .create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
+            .await
+            .unwrap();
+        let conv_id = conv.id.as_str();
+        // Five messages in one conversation; m3 shares m2's timestamp to
+        // force the (created_at, id) tiebreak.
+        for (id, ts) in [
+            ("m1", "2026-01-01T00:00:01Z"),
+            ("m2", "2026-01-01T00:00:02Z"),
+            ("m3", "2026-01-01T00:00:02Z"),
+            ("m4", "2026-01-01T00:00:03Z"),
+            ("m5", "2026-01-01T00:00:04Z"),
+        ] {
+            sqlx::query(
+                "INSERT INTO messages (id, conversation_id, sender_type, content, created_at, updated_at) \
+                 VALUES (?, ?, 'user', ?, ?, ?)",
+            )
+            .bind(id)
+            .bind(conv_id)
+            .bind(id)
+            .bind(ts)
+            .bind(ts)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        }
+
+        fn ids(msgs: &[Message]) -> Vec<&str> {
+            msgs.iter().map(|m| m.id.as_str()).collect()
+        }
+
+        // Full history (legacy path) with deterministic tie order.
+        let all = db
+            .list_messages_by_conversation(conv_id, None, None)
+            .await
+            .unwrap();
+        assert_eq!(ids(&all), ["m1", "m2", "m3", "m4", "m5"]);
+
+        // Tail window of 3 = newest three, oldest-first.
+        let tail = db
+            .list_messages_by_conversation(conv_id, Some(3), None)
+            .await
+            .unwrap();
+        assert_eq!(ids(&tail), ["m3", "m4", "m5"]);
+
+        // Upward page before the oldest loaded message covers the remainder.
+        let older = db
+            .list_messages_by_conversation(conv_id, Some(3), Some(("2026-01-01T00:00:02Z", "m3")))
+            .await
+            .unwrap();
+        assert_eq!(ids(&older), ["m1", "m2"]);
+
+        // Walking pages reconstruct the full history exactly once.
+        assert_eq!(
+            [older, tail]
+                .concat()
+                .iter()
+                .map(|m| m.id.clone())
+                .collect::<Vec<_>>(),
+            all.iter().map(|m| m.id.clone()).collect::<Vec<_>>()
+        );
+
+        // `before` requires `limit`.
+        assert!(
+            db.list_messages_by_conversation(conv_id, None, Some(("2026-01-01T00:00:02Z", "m3")))
+                .await
+                .is_err()
+        );
     }
 }

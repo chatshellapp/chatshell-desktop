@@ -551,4 +551,28 @@ impl Database {
             steps: self.get_message_steps(message_id).await?,
         })
     }
+
+    /// Batch variant of `get_message_resources`: fetches resources for many
+    /// messages concurrently over the connection pool and returns only the
+    /// messages that have any (attachments, contexts, or steps).
+    pub async fn get_message_resources_batch(
+        &self,
+        message_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, crate::models::MessageResources>> {
+        let results = futures::future::try_join_all(
+            message_ids.iter().map(|id| self.get_message_resources(id)),
+        )
+        .await?;
+
+        let mut map = std::collections::HashMap::with_capacity(results.len());
+        for (id, resources) in message_ids.iter().zip(results) {
+            if !resources.attachments.is_empty()
+                || !resources.contexts.is_empty()
+                || !resources.steps.is_empty()
+            {
+                map.insert(id.clone(), resources);
+            }
+        }
+        Ok(map)
+    }
 }

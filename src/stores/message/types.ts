@@ -21,7 +21,13 @@ export interface StreamingToolCall {
 
 // Per-conversation state
 export interface ConversationState {
+  // Tail window of loaded messages (see MESSAGES_PAGE_SIZE); grows upward
+  // via loadOlderMessages and resets on loadMessages.
   messages: Message[]
+  // Whether older messages exist beyond the loaded window.
+  hasOlderMessages: boolean
+  // Whether an upward page load is in flight.
+  isLoadingOlder: boolean
   isLoading: boolean
   isStreaming: boolean
   streamingContent: string
@@ -50,6 +56,8 @@ export interface ConversationState {
 // Default state for a new conversation
 export const createDefaultConversationState = (): ConversationState => ({
   messages: [],
+  hasOlderMessages: false,
+  isLoadingOlder: false,
   isLoading: false,
   isStreaming: false,
   streamingContent: '',
@@ -142,6 +150,8 @@ export interface SendMessageParameterOverrides {
 // CRUD actions (message create, read, update, delete, lifecycle)
 export interface MessageStoreCrudActions {
   loadMessages: (conversationId: string) => Promise<void>
+  loadOlderMessages: (conversationId: string) => Promise<boolean>
+  ensureMessageLoaded: (conversationId: string, messageId: string) => Promise<void>
   sendMessage: (
     content: string,
     conversationId: string | null,
@@ -209,8 +219,11 @@ export interface MessageStore
     MessageStoreStreamingActions,
     MessageStoreActions {}
 
-// Maximum messages to keep in memory to prevent memory leaks
-export const MAX_MESSAGES_IN_MEMORY = 100
+// Chat window page size: the initial tail window and each upward page loaded
+// by loadOlderMessages. The backend query enforces it (limit + cursor); the
+// store holds only what the initial window plus user-driven upward pages
+// have loaded, and loadMessages resets back to the tail window.
+export const MESSAGES_PAGE_SIZE = 100
 
 // Helper types for action creators
 export type ImmerSet = (

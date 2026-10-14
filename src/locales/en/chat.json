@@ -80,6 +80,8 @@
   "preset": "Preset",
   "systemPromptDisabledTooltip": "System prompt can only be changed when the conversation is empty",
   "noMessagesStart": "No messages yet. Start a conversation!",
+  "loadingEarlierMessages": "Loading earlier messages…",
+  "loadingMessages": "Loading messages…",
   "dragToResize": "Drag to resize",
   "selectModelOrAssistant": "Select model or assistant",
   "noModelsAvailable": "No models available",

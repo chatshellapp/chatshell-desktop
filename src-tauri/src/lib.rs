@@ -420,6 +420,7 @@ pub fn run() {
             commands::get_search_decision,
             // Combined resources
             commands::get_message_resources,
+            commands::get_message_resources_batch,
             // Content reading
             commands::read_fetch_content,
             commands::read_file_content,

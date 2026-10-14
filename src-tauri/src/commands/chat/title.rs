@@ -105,7 +105,7 @@ pub async fn generate_conversation_title_manually(
     // Get conversation messages
     let messages = state
         .db
-        .list_messages_by_conversation(&conversation_id)
+        .list_messages_by_conversation(&conversation_id, None, None)
         .await
         .map_err(|e| e.to_string())?;
 

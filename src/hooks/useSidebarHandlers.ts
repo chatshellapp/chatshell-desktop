@@ -46,6 +46,7 @@ export function useSidebarHandlers() {
           const latestConversation = conversations[0]
           const messages = await invoke<Message[]>('list_messages_by_conversation', {
             conversationId: latestConversation.id,
+            limit: 1,
           })
 
           if (messages.length === 0) {
@@ -94,6 +95,7 @@ export function useSidebarHandlers() {
           const latestConversation = conversations[0]
           const messages = await invoke<Message[]>('list_messages_by_conversation', {
             conversationId: latestConversation.id,
+            limit: 1,
           })
 
           if (messages.length === 0) {
@@ -252,6 +254,7 @@ export function useSidebarHandlers() {
         const latestConversation = conversations[0]
         const messages = await invoke<Message[]>('list_messages_by_conversation', {
           conversationId: latestConversation.id,
+          limit: 1,
         })
 
         if (messages.length === 0) {

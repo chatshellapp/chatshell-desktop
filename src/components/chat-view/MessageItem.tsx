@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { memo, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeTextFile } from '@tauri-apps/plugin-fs'
@@ -20,10 +20,20 @@ import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
 import { GeneratedImageGallery } from './GeneratedImageGallery'
 
+/**
+ * Rough height placeholder for a row that has never rendered (CJK/latin
+ * mixed ≈ 24px per 40 chars, plus row chrome). Only read before first paint;
+ * the `auto` keyword then keeps the last-rendered real height.
+ */
+function rowExtentEstimate(content: string): number {
+  return Math.round(Math.min(6000, 96 + (Math.min(content.length, 8000) / 40) * 24))
+}
+
 interface MessageItemProps {
   message: Message
-  messages: Message[]
-  index: number
+  /** Previous message in the window; assistant items read the prior user
+   * message's resources from it. Null at the window head. */
+  prevUserMessage: Message | null
   messageResources: Record<string, MessageResources>
   urlStatuses: Record<string, Record<string, UrlStatus>>
   getMessageDisplayInfo: (message: Message) => DisplayInfo
@@ -35,10 +45,52 @@ interface MessageItemProps {
   onExportMessage: (messageId: string) => void
 }
 
-export function MessageItem({
+/**
+ * Re-render only when the data this row actually reads changes: its own
+ * message identity, the previous user message it pulls resources from, the
+ * per-message slices of the shared resource/status maps (the map objects
+ * themselves get new identities whenever ANY message updates), or one of the
+ * stable callbacks (R1.1/R1.2).
+ */
+function messageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
+  if (prev.message !== next.message) return false
+  if (prev.prevUserMessage !== next.prevUserMessage) return false
+  if (prev.getMessageDisplayInfo !== next.getMessageDisplayInfo) return false
+  if (
+    prev.onCopy !== next.onCopy ||
+    prev.onRevert !== next.onRevert ||
+    prev.onFork !== next.onFork ||
+    prev.onExportAll !== next.onExportAll ||
+    prev.onExportConversation !== next.onExportConversation ||
+    prev.onExportMessage !== next.onExportMessage
+  ) {
+    return false
+  }
+  if (prev.messageResources[prev.message.id] !== next.messageResources[next.message.id]) {
+    return false
+  }
+  const prevResourceId = prev.prevUserMessage?.id
+  const nextResourceId = next.prevUserMessage?.id
+  if (prevResourceId !== nextResourceId) return false
+  if (
+    prevResourceId !== undefined &&
+    prev.messageResources[prevResourceId] !== next.messageResources[prevResourceId]
+  ) {
+    return false
+  }
+  if (prev.urlStatuses[prev.message.id] !== next.urlStatuses[next.message.id]) return false
+  if (
+    prevResourceId !== undefined &&
+    prev.urlStatuses[prevResourceId] !== next.urlStatuses[prevResourceId]
+  ) {
+    return false
+  }
+  return true
+}
+
+export const MessageItem = memo(function MessageItem({
   message,
-  messages,
-  index,
+  prevUserMessage,
   messageResources,
   urlStatuses,
   getMessageDisplayInfo,
@@ -86,20 +138,17 @@ export function MessageItem({
   let contextsToShow: ContextEnrichment[] = []
   let searchDecisionSteps: ProcessStep[] = []
   let prevUserMessageId: string | null = null
-  if (isAssistantMessage && index > 0) {
-    const prevMessage = messages[index - 1]
-    if (prevMessage.sender_type === 'user') {
-      prevUserMessageId = prevMessage.id
-      const prevResources = messageResources[prevMessage.id] || {
-        attachments: [],
-        contexts: [],
-        steps: [],
-      }
-      // Only show search_result - fetch_results from search are shown inside SearchResultPreview
-      contextsToShow = prevResources.contexts.filter((c) => c.type === 'search_result')
-      // Show search decisions from previous user message
-      searchDecisionSteps = prevResources.steps.filter((s) => s.type === 'search_decision')
+  if (isAssistantMessage && prevUserMessage) {
+    prevUserMessageId = prevUserMessage.id
+    const prevResources = messageResources[prevUserMessage.id] || {
+      attachments: [],
+      contexts: [],
+      steps: [],
     }
+    // Only show search_result - fetch_results from search are shown inside SearchResultPreview
+    contextsToShow = prevResources.contexts.filter((c) => c.type === 'search_result')
+    // Show search decisions from previous user message
+    searchDecisionSteps = prevResources.steps.filter((s) => s.type === 'search_decision')
   }
 
   // Check if we have content blocks for interleaved display
@@ -121,6 +170,20 @@ export function MessageItem({
   const groupedSteps = groupOrderedSteps(orderedSteps)
   const hasGroupedSteps = groupedSteps.length > 0
   const hasAssistantResources = contextsToShow.length > 0 || searchDecisionSteps.length > 0
+
+  // Stable per-row callbacks so memo(ChatMessage) can bail out when this
+  // item re-renders for a reason that does not change its own content.
+  const messageId = message.id
+  const handleRevertClick = useCallback(() => onRevert(messageId), [onRevert, messageId])
+  const handleForkClick = useCallback(() => onFork(messageId), [onFork, messageId])
+  const handleExportConversationClick = useCallback(
+    () => onExportConversation(messageId),
+    [onExportConversation, messageId]
+  )
+  const handleExportMessageClick = useCallback(
+    () => onExportMessage(messageId),
+    [onExportMessage, messageId]
+  )
 
   // Unified header content for assistant messages
   const headerContent =
@@ -231,6 +294,11 @@ export function MessageItem({
     })
   }, [assistantImageAttachments])
 
+  const handleCopyContentBlocks = useCallback(
+    async () => navigator.clipboard.writeText(message.content),
+    [message.content]
+  )
+
   const handleDownloadMarkdown = useCallback(async () => {
     try {
       const now = new Date()
@@ -255,7 +323,20 @@ export function MessageItem({
   }, [message.content])
 
   return (
-    <div key={message.id} id={`message-${message.id}`} data-message-id={message.id}>
+    <div
+      key={message.id}
+      id={`message-${message.id}`}
+      data-message-id={message.id}
+      style={{
+        // Viewport culling: off-screen rows skip layout/paint (they stay
+        // mounted, so state and search-jump survive). Without it, scrolling a
+        // long history outpaces the webview's tile rasterization and unpainted
+        // regions flash white. The estimate only applies before the row's
+        // first render; `auto` then pins the last-rendered height.
+        contentVisibility: 'auto',
+        containIntrinsicSize: `auto ${rowExtentEstimate(message.content)}px`,
+      }}
+    >
       <ChatMessage
         role={role}
         content={hasContentBlocks ? '' : message.content}
@@ -280,19 +361,17 @@ export function MessageItem({
           assistantImageAttachments.length > 0
             ? handleCopyImage
             : hasContentBlocks
-              ? async () => {
-                  navigator.clipboard.writeText(message.content)
-                }
+              ? handleCopyContentBlocks
               : undefined
         }
         onCopy={onCopy}
-        onRevert={() => onRevert(message.id)}
-        onFork={() => onFork(message.id)}
+        onRevert={handleRevertClick}
+        onFork={handleForkClick}
         onDownloadMarkdown={handleDownloadMarkdown}
         onExportAll={onExportAll}
-        onExportConversation={() => onExportConversation(message.id)}
-        onExportMessage={() => onExportMessage(message.id)}
+        onExportConversation={handleExportConversationClick}
+        onExportMessage={handleExportMessageClick}
       />
     </div>
   )
-}
+}, messageItemPropsEqual)

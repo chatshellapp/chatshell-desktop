@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useStreamingState } from './hooks/useStreamingState'
 import { ChatMessage } from '@/components/chat-message'
 import {
   AttachmentPreview,
@@ -21,17 +22,11 @@ import type { DisplayInfo } from './hooks'
 import { useTranslation } from 'react-i18next'
 
 interface StreamingMessageProps {
-  messages: Message[]
+  conversationId: string
+  /** Last user message of the loaded window; assistant resources hang off it. */
+  lastUserMessage: Message | null
   messageResources: Record<string, MessageResources>
   urlStatuses: Record<string, Record<string, UrlStatus>>
-  pendingSearchDecisions: Record<string, boolean>
-  streamingToolCalls: Record<string, StreamingToolCall>
-  streamingImages: string[]
-  isWaitingForAI: boolean
-  isStreaming: boolean
-  streamingContent: string
-  streamingReasoningContent: string
-  isReasoningActive: boolean
   getDisplayInfo: () => DisplayInfo
   onCopy: () => void
   onExportAll: () => void
@@ -40,17 +35,10 @@ interface StreamingMessageProps {
 }
 
 export function StreamingMessage({
-  messages,
+  conversationId,
+  lastUserMessage,
   messageResources,
   urlStatuses,
-  pendingSearchDecisions,
-  streamingToolCalls,
-  streamingImages,
-  isWaitingForAI,
-  isStreaming,
-  streamingContent,
-  streamingReasoningContent,
-  isReasoningActive,
   getDisplayInfo,
   onCopy,
   onExportAll,
@@ -58,6 +46,16 @@ export function StreamingMessage({
   onExportMessage,
 }: StreamingMessageProps) {
   const { t } = useTranslation('chat')
+  const {
+    streamingContent,
+    streamingReasoningContent,
+    isReasoningActive,
+    isWaitingForAI,
+    isStreaming,
+    streamingToolCalls,
+    streamingImages,
+    pendingSearchDecisions,
+  } = useStreamingState(conversationId)
   const info = getDisplayInfo()
 
   // Parse thinking content from streaming output (XML tags like <think>)
@@ -71,8 +69,8 @@ export function StreamingMessage({
   const isThinkingInProgress =
     isStreaming && (streamingReasoningContent ? true : parsedStreaming.isThinkingInProgress)
 
-  // Get the last user message to show its resources
-  const lastUserMessage = messages.filter((m) => m.sender_type === 'user').slice(-1)[0]
+  // Get resources for the last user message (passed in by the parent; the
+  // parent already searched the low-frequency messages window)
 
   // Build headerContent with contexts, steps, and thinking preview
   let streamingHeaderContent: React.ReactNode = undefined

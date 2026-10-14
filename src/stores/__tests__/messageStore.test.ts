@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { useMessageStore, createDefaultConversationState } from '../message'
 import type { Message } from '@/types'
@@ -403,6 +404,90 @@ describe('useMessageStore', () => {
 
       const state = useMessageStore.getState().getConversationState('conv-1')
       expect(state.streamingToolCalls['tool-call-1'].contentBefore).toBe('Previous content')
+    })
+  })
+
+  describe('message window pagination', () => {
+    const invokeMock = vi.mocked(invoke)
+
+    const page = (count: number, prefix: string, startTs = 0) =>
+      Array.from({ length: count }, (_, i) => ({
+        ...createMockMessage(`${prefix}${i}`, `content ${prefix}${i}`),
+        created_at: new Date(2026, 0, 1, 0, 0, startTs + i).toISOString(),
+      }))
+
+    it('loadMessages fetches a bounded tail window and flags older history', async () => {
+      invokeMock.mockResolvedValueOnce(page(101, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+
+      const cs = useMessageStore.getState().getConversationState('conv-p')
+      expect(cs.messages.length).toBe(100)
+      expect(cs.messages[0].id).toBe('m1') // extra oldest row dropped
+      expect(cs.messages[99].id).toBe('m100')
+      expect(cs.hasOlderMessages).toBe(true)
+      expect(invokeMock).toHaveBeenCalledWith('list_messages_by_conversation', {
+        conversationId: 'conv-p',
+        limit: 101,
+      })
+    })
+
+    it('loadMessages marks history complete when the window covers everything', async () => {
+      invokeMock.mockResolvedValueOnce(page(7, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+
+      const cs = useMessageStore.getState().getConversationState('conv-p')
+      expect(cs.messages.length).toBe(7)
+      expect(cs.hasOlderMessages).toBe(false)
+    })
+
+    it('loadOlderMessages prepends the previous page using the oldest cursor', async () => {
+      invokeMock.mockResolvedValueOnce(page(101, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+      const oldestLoaded = useMessageStore.getState().getConversationState('conv-p').messages[0]
+
+      invokeMock.mockResolvedValueOnce(page(50, 'old'))
+      const loaded = await useMessageStore.getState().loadOlderMessages('conv-p')
+
+      const cs = useMessageStore.getState().getConversationState('conv-p')
+      expect(loaded).toBe(true)
+      expect(cs.messages.length).toBe(150)
+      expect(cs.messages[0].id).toBe('old0')
+      expect(cs.hasOlderMessages).toBe(false) // short page means exhausted
+      expect(cs.isLoadingOlder).toBe(false)
+      expect(invokeMock).toHaveBeenLastCalledWith('list_messages_by_conversation', {
+        conversationId: 'conv-p',
+        limit: 101,
+        beforeCreatedAt: oldestLoaded.created_at,
+        beforeId: oldestLoaded.id,
+      })
+    })
+
+    it('loadOlderMessages is a no-op while a page load is in flight or history is exhausted', async () => {
+      invokeMock.mockResolvedValueOnce(page(5, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+
+      const first = useMessageStore.getState().loadOlderMessages('conv-p')
+      const second = await useMessageStore.getState().loadOlderMessages('conv-p')
+      await first
+
+      expect(second).toBe(false)
+      expect(invokeMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('ensureMessageLoaded pages upward until the target message is present', async () => {
+      invokeMock.mockResolvedValueOnce(page(101, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+
+      invokeMock.mockImplementation(async (_cmd: string, args: unknown) => {
+        const { beforeId } = args as { beforeId: string }
+        // Second page contains the target 'old42'; third page would be empty.
+        if (beforeId === 'm1') return page(100, 'old')
+        return []
+      })
+      await useMessageStore.getState().ensureMessageLoaded('conv-p', 'old42')
+
+      const cs = useMessageStore.getState().getConversationState('conv-p')
+      expect(cs.messages.some((m) => m.id === 'old42')).toBe(true)
     })
   })
 })

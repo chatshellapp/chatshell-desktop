@@ -18,6 +18,20 @@ pub async fn get_message_resources(
         .map_err(|e| e.to_string())
 }
 
+/// Batch variant of `get_message_resources`: one IPC round-trip for a whole
+/// message window. Only messages that actually have resources are returned.
+#[tauri::command]
+pub async fn get_message_resources_batch(
+    state: State<'_, AppState>,
+    message_ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, MessageResources>, String> {
+    state
+        .db
+        .get_message_resources_batch(&message_ids)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn read_fetch_content(
     app: tauri::AppHandle,

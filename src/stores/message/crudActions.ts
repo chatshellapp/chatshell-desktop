@@ -7,7 +7,7 @@ import type {
   SendMessageParameterOverrides,
   PendingMessage,
 } from './types'
-import { MAX_MESSAGES_IN_MEMORY } from './types'
+import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'
 
@@ -25,16 +25,22 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     })
 
     try {
+      // One extra row detects older messages beyond the window.
       const messages = await invoke<Message[]>('list_messages_by_conversation', {
         conversationId,
+        limit: MESSAGES_PAGE_SIZE + 1,
       })
-      // Limit messages in memory to prevent memory leaks
-      const limitedMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY)
+      const hasOlderMessages = messages.length > MESSAGES_PAGE_SIZE
+      // ASC order: the extra detection row is the OLDEST, so keep the tail.
+      const window = hasOlderMessages
+        ? messages.slice(messages.length - MESSAGES_PAGE_SIZE)
+        : messages
 
       set((draft) => {
         const convState = draft.conversationStates[conversationId]
         if (convState) {
-          convState.messages = limitedMessages
+          convState.messages = window
+          convState.hasOlderMessages = hasOlderMessages
           convState.isLoading = false
         }
       })
@@ -47,6 +53,65 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.error = String(error)
       })
       logger.error('Failed to load messages:', error)
+    }
+  },
+
+  // Prepend the next older page into the window. Returns whether any
+  // message was loaded; false when exhausted or already in flight.
+  loadOlderMessages: async (conversationId: string) => {
+    const convState = get().getConversationState(conversationId)
+    if (!convState.hasOlderMessages || convState.isLoadingOlder) return false
+    const oldest = convState.messages[0]
+    if (!oldest) return false
+
+    set((draft) => {
+      const cs = draft.conversationStates[conversationId]
+      if (cs) {
+        cs.isLoadingOlder = true
+      }
+    })
+
+    try {
+      const page = await invoke<Message[]>('list_messages_by_conversation', {
+        conversationId,
+        limit: MESSAGES_PAGE_SIZE + 1,
+        beforeCreatedAt: oldest.created_at,
+        beforeId: oldest.id,
+      })
+      const hasOlderMessages = page.length > MESSAGES_PAGE_SIZE
+      // ASC order: drop the extra oldest detection row from the page head.
+      const window = hasOlderMessages ? page.slice(page.length - MESSAGES_PAGE_SIZE) : page
+
+      set((draft) => {
+        const cs = draft.conversationStates[conversationId]
+        if (cs) {
+          cs.messages = [...window, ...cs.messages]
+          cs.hasOlderMessages = hasOlderMessages
+          cs.isLoadingOlder = false
+        }
+      })
+      return window.length > 0
+    } catch (error) {
+      set((draft) => {
+        const cs = draft.conversationStates[conversationId]
+        if (cs) {
+          cs.isLoadingOlder = false
+        }
+      })
+      logger.error('Failed to load older messages:', error)
+      return false
+    }
+  },
+
+  // Load upward pages until messageId is inside the window (used by the
+  // in-conversation search jump when the target is older than the window).
+  ensureMessageLoaded: async (conversationId: string, messageId: string) => {
+    for (;;) {
+      const convState = get().getConversationState(conversationId)
+      if (convState.messages.some((m) => m.id === messageId)) return
+      if (!convState.hasOlderMessages) return
+      const loaded = await get().loadOlderMessages(conversationId)
+      if (!loaded) return
     }
   },
 

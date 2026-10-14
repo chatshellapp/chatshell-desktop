@@ -346,7 +346,7 @@ impl Database {
             .await?;
 
         let all_messages = self
-            .list_messages_by_conversation(source_conversation_id)
+            .list_messages_by_conversation(source_conversation_id, None, None)
             .await?;
 
         for msg in &all_messages {

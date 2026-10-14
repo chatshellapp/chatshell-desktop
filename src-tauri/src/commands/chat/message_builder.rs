@@ -77,7 +77,7 @@ pub async fn build_chat_messages(
     if include_history
         && let Ok(messages) = state
             .db
-            .list_messages_by_conversation(conversation_id)
+            .list_messages_by_conversation(conversation_id, None, None)
             .await
     {
         let mut history_messages: Vec<_> = messages
