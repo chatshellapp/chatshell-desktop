@@ -4,6 +4,7 @@ mod headless;
 mod jina;
 mod obscura;
 mod processors;
+mod spa_detect;
 mod types;
 mod webview_fetch;
 
@@ -11,6 +12,7 @@ mod webview_fetch;
 pub use types::{FetchedWebResource, HTTP_CLIENT, STEALTH_JS, WebFetchMetadata};
 
 // Re-export public functions
+pub(crate) use fetcher::MAX_REMOTE_SOURCE_BYTES;
 pub use fetcher::{
     FetchConfig, FetchMode, LocalMethod, build_llm_content_with_attachments,
     fetch_urls_with_config, fetch_web_resource_with_config,

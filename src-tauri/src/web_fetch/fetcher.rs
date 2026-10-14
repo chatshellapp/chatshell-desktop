@@ -10,6 +10,7 @@ use super::processors::{
     process_browser_html, process_html_with_readability, process_json_content,
     process_text_content, process_xml_content,
 };
+use super::spa_detect::{has_low_quality_text, looks_like_js_shell};
 use super::types::{FetchedWebResource, HTTP_CLIENT};
 use super::webview_fetch;
 
@@ -49,10 +50,17 @@ pub struct FetchConfig {
     pub jina_api_key: Option<String>,
 }
 
+/// Hard cap for a single remote source handed to an agent tool. Bounded by
+/// the read tool's URL fetcher; web_fetch itself no longer downloads image
+/// bodies.
+pub(crate) const MAX_REMOTE_SOURCE_BYTES: usize = 20 * 1024 * 1024;
+
 /// Fetch and parse a web resource using Mozilla's Readability algorithm for HTML.
 /// max_chars: None = no truncation, Some(n) = truncate to n characters
-/// Falls back to the browser tier (Obscura when configured, then headless
-/// Chrome) if direct HTTP fetch fails with a non-200 status.
+/// Falls back to the browser tier (Obscura when configured, then the system
+/// WebView, then headless Chrome) when direct HTTP fails with a network error
+/// or non-2xx status, or when a 200 HTML response shows JS-shell signals
+/// (see `spa_detect`).
 pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
     tracing::info!("📡 [fetcher] Starting fetch for: {}", url);
 
@@ -110,6 +118,12 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         .trim()
         .to_string();
 
+    // Direct images are not downloaded; the read tool fetches image URLs
+    // through its own in-memory path. Drop the body without reading it.
+    if mime_type.starts_with("image/") {
+        return FetchedWebResource::image(url, mime_type);
+    }
+
     let raw = match response.bytes().await {
         Ok(c) => c,
         Err(e) => {
@@ -129,7 +143,9 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
         "text/html" | "application/xhtml+xml" => {
             // Extract favicon from HTML content
             let favicon_url = extract_favicon_url(url, Some(&body));
-            process_html_with_readability(url, &body, mime_type, max_chars, favicon_url)
+            let resource =
+                process_html_with_readability(url, &body, mime_type, max_chars, favicon_url);
+            escalate_if_js_shell(url, &body, max_chars, resource).await
         }
 
         // Markdown - return directly (no favicon for non-HTML)
@@ -174,19 +190,61 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                 || trimmed.starts_with("<HTML")
             {
                 let favicon_url = extract_favicon_url(url, Some(&body));
-                process_html_with_readability(
+                escalate_if_js_shell(
                     url,
                     &body,
-                    "text/html".to_string(),
                     max_chars,
-                    favicon_url,
+                    process_html_with_readability(
+                        url,
+                        &body,
+                        "text/html".to_string(),
+                        max_chars,
+                        favicon_url,
+                    ),
                 )
+                .await
             } else {
                 // Treat as plain text (no favicon for non-HTML)
                 process_text_content(url, &body, mime_type, max_chars, None)
             }
         }
     }
+}
+
+/// Third fallback trigger: a 200 HTML response whose structure says the real
+/// content is built client-side, or whose extracted text reads like a JS-gate
+/// page or navigation shell (output-content checks; see `spa_detect`).
+/// Re-fetches through the browser tier; keeps the HTTP result if every
+/// browser tier fails (partial content beats an error). Only called from the
+/// HTTP-success path, so there is no retry loop.
+async fn escalate_if_js_shell(
+    url: &str,
+    body: &str,
+    max_chars: Option<usize>,
+    http_result: FetchedWebResource,
+) -> FetchedWebResource {
+    let extracted_chars = http_result.metadata.original_length.unwrap_or(0);
+    if http_result.extraction_error.is_some()
+        || (!looks_like_js_shell(body, extracted_chars)
+            && !has_low_quality_text(&http_result.content))
+    {
+        return http_result;
+    }
+    tracing::info!(
+        "🔄 [fetcher] JS-shell signals (extracted {} chars), escalating to browser tier: {}",
+        extracted_chars,
+        url
+    );
+    let browser_result = fetch_with_browser_tier(url, max_chars).await;
+    if browser_result.extraction_error.is_none() {
+        return browser_result;
+    }
+    tracing::warn!(
+        "⚠️ [fetcher] Browser escalation failed ({}), keeping HTTP result for: {}",
+        browser_result.extraction_error.unwrap_or_default(),
+        url
+    );
+    http_result
 }
 
 /// Fetch web resource with configuration
@@ -260,6 +318,11 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
         .unwrap_or("")
         .trim()
         .to_string();
+
+    // Direct images are not downloaded; steer to the read tool instead.
+    if mime_type.starts_with("image/") {
+        return FetchedWebResource::image(url, mime_type);
+    }
 
     let raw = match response.bytes().await {
         Ok(c) => c,

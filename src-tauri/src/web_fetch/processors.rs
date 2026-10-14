@@ -2,7 +2,10 @@ use chrono::Utc;
 use readability::extractor::extract;
 use scraper::{Html, Selector};
 use std::io::Cursor;
+use std::sync::LazyLock;
 use url::Url;
+
+use regex::Regex;
 
 use super::extractors::{
     extract_headings, extract_meta_description, extract_meta_keywords, normalize_html_images,
@@ -79,7 +82,7 @@ pub fn process_html_with_readability(
     let normalized_html = normalize_html_images(&content_html);
 
     // Convert extracted HTML to markdown
-    let markdown = htmd::convert(&normalized_html).unwrap_or_default();
+    let markdown = strip_data_uri_images(&htmd::convert(&normalized_html).unwrap_or_default());
     let original_length = markdown.chars().count();
 
     let (extracted_content, truncated) = match max_chars {
@@ -219,5 +222,52 @@ pub fn process_xml_content(
             truncated,
             favicon_url: None,
         },
+    }
+}
+
+/// Markdown image whose destination is an inline `data:` URI (inline `<svg>`
+/// icons, base64 `<img>`): such payloads are unreadable to the model and
+/// routinely dwarf the article text; the alt text is kept when present.
+static DATA_URI_IMAGE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)!\[([^\]]*)\]\(\s*(?:<data:[^>]*>|data:[^)\s]*)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)"#,
+    )
+    .unwrap()
+});
+
+/// Drop inline `data:` image payloads from reader-mode markdown.
+pub(crate) fn strip_data_uri_images(markdown: &str) -> String {
+    DATA_URI_IMAGE_RE
+        .replace_all(markdown, |captures: &regex::Captures| {
+            let alt = captures.get(1).map(|m| m.as_str()).unwrap_or("").trim();
+            if alt.is_empty() {
+                String::new()
+            } else {
+                format!("![{}]", alt)
+            }
+        })
+        .into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_data_uri_images;
+
+    #[test]
+    fn strips_data_uri_image_keeping_alt_text() {
+        let md = "Before\n\n![logo](data:image/png;base64,iVBORw0KGgo=)\n\nAfter";
+        assert_eq!(strip_data_uri_images(md), "Before\n\n![logo]\n\nAfter");
+    }
+
+    #[test]
+    fn strips_data_uri_image_without_alt_entirely() {
+        let md = "Before\n\n![](data:image/svg+xml;base64,PHN2Zy8+)\n\nAfter";
+        assert_eq!(strip_data_uri_images(md), "Before\n\n\n\nAfter");
+    }
+
+    #[test]
+    fn keeps_remote_image_links() {
+        let md = "![chart](https://example.com/chart.png)";
+        assert_eq!(strip_data_uri_images(md), md);
     }
 }

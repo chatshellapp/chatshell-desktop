@@ -29,7 +29,7 @@
 
 pub use chatshell_agent_core::tools::{
     BashSessionManager, BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder,
-    KillShellTool, ReadTool, SharedBashSession, TempFileList, WriteTool,
+    KillShellTool, ReadTool, SharedBashSession, TempFileList, UrlByteFetcher, WriteTool,
 };
 pub use chatshell_agent_core::{bash_security, path_policy};
 mod image_question;
@@ -43,5 +43,5 @@ pub use image_question::VisionQuestionResponder;
 pub use mcp_schema::{McpSchemaTool, McpServerCatalog};
 pub use mcp_tool_use::McpToolUseTool;
 pub use skill::{SkillCatalogEntry, SkillTool};
-pub use web_fetch::WebFetchTool;
+pub use web_fetch::{HttpUrlByteFetcher, WebFetchTool};
 pub use web_search::WebSearchTool;

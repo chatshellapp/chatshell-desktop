@@ -23,8 +23,8 @@ use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tools::{
     BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder, KillShellTool, McpSchemaTool,
-    McpToolUseTool, ReadTool, SharedBashSession, SkillTool, TempFileList, WebFetchTool,
-    WebSearchTool, WriteTool,
+    McpToolUseTool, ReadTool, SharedBashSession, SkillTool, TempFileList, UrlByteFetcher,
+    WebFetchTool, WebSearchTool, WriteTool,
 };
 use crate::llm::{
     azure as azure_provider, cohere as cohere_provider, deepseek as deepseek_provider,
@@ -74,6 +74,8 @@ pub struct AgentConfig {
     /// Whether the conversation's main model accepts image input; drives
     /// the read tool's metadata-plus-guidance fallback. `None` = unset.
     pub read_main_model_vision: Option<bool>,
+    /// Host-provided raw-byte fetcher for remote read paths.
+    pub read_url_fetcher: Option<Arc<dyn UrlByteFetcher>>,
     /// Default working directory for grep tool
     pub grep_working_directory: Option<String>,
     /// Default working directory for glob tool
@@ -181,6 +183,12 @@ impl AgentConfig {
     /// Declare whether the conversation's main model accepts image input
     pub fn with_read_main_model_vision(mut self, supports: bool) -> Self {
         self.read_main_model_vision = Some(supports);
+        self
+    }
+
+    /// Enable remote URL paths for the read tool.
+    pub fn with_read_url_fetcher(mut self, fetcher: Arc<dyn UrlByteFetcher>) -> Self {
+        self.read_url_fetcher = Some(fetcher);
         self
     }
 
@@ -538,6 +546,9 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         if let Some(supports) = config.read_main_model_vision {
             tool = tool.with_main_model_vision(supports);
         }
+        if let Some(fetcher) = &config.read_url_fetcher {
+            tool = tool.with_url_fetcher(fetcher.clone());
+        }
         tool
     };
 
@@ -571,14 +582,16 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         }
     };
 
+    let create_web_fetch_tool = || -> WebFetchTool { WebFetchTool::new() };
+
     let create_glob_tool = || -> GlobTool {
-        let tool = if let Some(ref dir) = config.glob_working_directory {
+        let tool = if let Some(dir) = &config.glob_working_directory {
             tracing::info!("📂 Glob tool configured with working directory: {}", dir);
             GlobTool::with_working_directory(dir.clone())
         } else {
             GlobTool::new()
         };
-        if let Some(ref root) = config.project_root {
+        if let Some(root) = &config.project_root {
             tool.with_project_root(root.clone())
         } else {
             tool
@@ -600,11 +613,11 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
                 FirstTool::WebSearch => {
                     $builder.tool(WebSearchTool::with_provider(config.search_provider))
                 }
-                FirstTool::WebFetch => $builder.tool(WebFetchTool::new()),
+                FirstTool::WebFetch => $builder.tool(create_web_fetch_tool()),
                 FirstTool::Bash => $builder.tool(bash_tool_instance.as_ref().unwrap().clone()),
                 FirstTool::Read => $builder.tool(create_read_tool()),
-                FirstTool::Edit => $builder.tool(create_edit_tool()),
                 FirstTool::Write => $builder.tool(create_write_tool()),
+                FirstTool::Edit => $builder.tool(create_edit_tool()),
                 FirstTool::Grep => $builder.tool(create_grep_tool()),
                 FirstTool::Glob => $builder.tool(create_glob_tool()),
                 FirstTool::McpSchema => $builder.tool(config.mcp_schema_tool.clone().unwrap()),
@@ -619,7 +632,7 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
 
     if config.enable_web_fetch && first != FirstTool::WebFetch {
         tracing::info!("🌐 Adding web_fetch tool to agent");
-        sb = sb.tool(WebFetchTool::new());
+        sb = sb.tool(create_web_fetch_tool());
     }
     if let Some(ref bash) = bash_tool_instance {
         if first != FirstTool::Bash {

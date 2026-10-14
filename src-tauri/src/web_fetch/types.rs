@@ -49,6 +49,33 @@ impl FetchedWebResource {
             },
         }
     }
+
+    /// Create a direct-image response. Image bytes are not downloaded or
+    /// stored by the fetch pipeline anymore; the content carries guidance
+    /// steering the model to the `read` tool, which fetches image URLs
+    /// through its own in-memory URL path.
+    pub fn image(url: &str, mime_type: String) -> Self {
+        FetchedWebResource {
+            url: url.to_string(),
+            title: None,
+            description: None,
+            content_format: mime_type.clone(),
+            mime_type,
+            content: "This URL is a direct image. Use the read tool on the URL to \
+                      fetch and inspect it (inline pixels for vision-capable models, \
+                      or with a \"question\" for a vision-model answer)."
+                .to_string(),
+            extraction_error: None,
+            metadata: WebFetchMetadata {
+                keywords: None,
+                headings: vec![],
+                fetched_at: Utc::now().to_rfc3339(),
+                original_length: None,
+                truncated: false,
+                favicon_url: None,
+            },
+        }
+    }
 }
 
 lazy_static! {

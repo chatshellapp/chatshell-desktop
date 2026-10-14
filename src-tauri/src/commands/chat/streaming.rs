@@ -9,8 +9,8 @@ use crate::llm::agent_builder::{
 };
 use crate::llm::tools::{BashTool, TempFileList};
 use crate::llm::tools::{
-    McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry, SkillTool,
-    VisionQuestionResponder,
+    HttpUrlByteFetcher, McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry,
+    SkillTool, VisionQuestionResponder,
 };
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
@@ -389,6 +389,9 @@ pub(crate) async fn handle_agent_streaming(
             );
         }
         config = config.with_read_main_model_vision(capabilities.supports_vision != Some(false));
+        if web_fetch_enabled {
+            config = config.with_read_url_fetcher(Arc::new(HttpUrlByteFetcher));
+        }
     }
     if edit_enabled {
         tracing::info!("✏️ [agent_streaming] Enabling edit tool");
