@@ -5,6 +5,7 @@ import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { useInputHistoryStore } from '@/stores/inputHistoryStore'
 import type { Attachment } from './types'
 import type { Model } from '@/types'
 import { logger } from '@/lib/logger'
@@ -44,6 +45,7 @@ export function useSubmitHandler({
     currentConversation ? state.getConversationState(currentConversation.id) : null
   )
   const sendMessage = useMessageStore((state) => state.sendMessage)
+  const addHistoryEntry = useInputHistoryStore((state) => state.addEntry)
   const enqueueMessage = useMessageStore((state) => state.enqueueMessage)
   const stopGeneration = useMessageStore((state) => state.stopGeneration)
   const isSending = useMessageStore((state) => state.isSending)
@@ -263,6 +265,8 @@ export function useSubmitHandler({
         )
         logger.info('Message sent successfully')
       }
+
+      addHistoryEntry(content)
 
       clearAttachments()
     } catch (error) {

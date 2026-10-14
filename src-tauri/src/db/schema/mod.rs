@@ -8,6 +8,7 @@ mod conversation_settings;
 mod conversations;
 mod messages;
 mod model_parameter_presets;
+mod prompt_history;
 mod prompts;
 mod providers;
 mod search;
@@ -124,6 +125,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_tool_call_id_column(pool).await?;
     ensure_natural_key_unique_indexes(pool).await?;
     ensure_conversation_timestamps(pool).await?;
+    prompt_history::create_prompt_history_table(pool).await?;
 
     Ok(())
 }
@@ -560,13 +562,16 @@ mod tests {
             .collect()
     }
 
-    /// Table -> sorted column names for every non-internal table.
+    /// Table -> sorted column names for every mergeable table. Desktop-local
+    /// infra that never rides snapshots is excluded: FTS5 search index and
+    /// the device-local prompt input history.
     async fn table_column_map(
         pool: &SqlitePool,
     ) -> std::collections::BTreeMap<String, Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
             "SELECT name FROM sqlite_master \
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%'",
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%' \
+             AND name != 'prompt_history'",
         )
         .fetch_all(pool)
         .await

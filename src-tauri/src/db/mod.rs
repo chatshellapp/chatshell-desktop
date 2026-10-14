@@ -9,6 +9,7 @@ mod key_repair;
 mod messages;
 mod model_parameter_presets;
 mod models;
+mod prompt_history;
 mod prompts;
 mod providers;
 mod schema;
@@ -52,6 +53,8 @@ impl Database {
 
         // Ensure default parameter presets exist
         db.ensure_default_presets().await?;
+        // Backfill global input history from existing user messages once
+        db.ensure_prompt_history_seeded().await?;
 
         // Ensure builtin tools exist (web_search, web_fetch)
         db.ensure_builtin_tools().await?;

@@ -107,6 +107,7 @@ pub fn run() {
             // Export the master encryption key for the sync engine's
             // publish path to write into the cloud container.
             // Safety: single-threaded setup phase, no concurrent env access.
+            #[cfg(target_os = "macos")]
             let master_key_b64 = crate::crypto::get_master_key_b64().ok();
 
             // Seed database with default data (async operation)
@@ -372,6 +373,9 @@ pub fn run() {
             commands::update_prompt,
             commands::delete_prompt,
             commands::toggle_prompt_star,
+            // Prompt history commands
+            commands::add_prompt_history_entry,
+            commands::get_prompt_history,
             // User commands
             commands::create_user,
             commands::get_user,

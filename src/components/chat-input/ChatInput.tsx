@@ -29,6 +29,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useMessageStore } from '@/stores/message'
+import { useInputHistoryStore } from '@/stores/inputHistoryStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { useModelStore } from '@/stores/modelStore'
@@ -107,11 +108,19 @@ export function ChatInput(/* _props: ChatInputProps */) {
     webSearchEnabled: false,
   })
 
+  // Global sent-prompt history (newest first), recorded by useSubmitHandler
+  const inputHistory = useInputHistoryStore((state) => state.history)
+  const ensureHistoryLoaded = useInputHistoryStore((state) => state.ensureLoaded)
+  useEffect(() => {
+    ensureHistoryLoaded()
+  }, [ensureHistoryLoaded])
+
   // Keyboard handling hook
   const { handleKeyDown } = useKeyboardHandlers({
     input,
     setInput,
     onSubmit: handleSend,
+    inputHistory,
   })
 
   // Conversation settings - subscribe to the entire settings object for this conversation
@@ -146,9 +155,10 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const allSkills = useSkillStore((state) => state.skills)
   const scanSkills = useSkillStore((state) => state.scanSkills)
 
-  // Get message count from message store to determine if system prompt can be changed
+  // Messages of the current conversation (determines if system prompt can be changed)
+  const currentConversationId = currentConversation?.id
   const conversationState = useMessageStore((state) =>
-    currentConversation ? state.getConversationState(currentConversation.id) : null
+    currentConversationId ? state.getConversationState(currentConversationId) : null
   )
   const hasMessages = (conversationState?.messages?.length ?? 0) > 0
 
@@ -164,7 +174,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // before or after this conversation becomes active.
   const setPendingInput = useConversationStore((state) => state.setPendingInput)
   const pendingInput = useConversationStore((state) => state.pendingInput)
-  const currentConversationId = currentConversation?.id
   useEffect(() => {
     if (pendingInput === null) return
     setPendingInput(null)
