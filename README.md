@@ -153,7 +153,7 @@ Your AI can use these tools autonomously — no user intervention needed:
 - **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
 - **Web Fetch**: Intelligent content extraction from URLs (Readability + headless Chrome, or Jina Reader API)
 - **Bash**: Execute shell commands in a per-conversation working directory
-- **Read**: Read file contents from the local filesystem (text, images, PDFs)
+- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges)
 - **Edit**: Make precise text replacements in files
 - **Write**: Create or overwrite files with provided content
 - **Grep**: Search file contents with regex support

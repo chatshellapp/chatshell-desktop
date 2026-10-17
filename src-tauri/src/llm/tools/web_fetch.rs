@@ -324,6 +324,7 @@ mod tests {
                     path: url,
                     offset: None,
                     limit: None,
+                    pages: None,
                     question: None,
                 },
             )

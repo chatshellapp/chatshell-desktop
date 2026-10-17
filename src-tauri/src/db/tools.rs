@@ -238,7 +238,7 @@ impl Database {
             (
                 BUILTIN_READ_ID,
                 "Read",
-                "Read file contents from the filesystem. Supports text files with line numbers, image files (PNG, JPEG, GIF, WebP) with metadata, and PDF text extraction.",
+                "Read file contents from the filesystem. Supports text files with line numbers, image files (PNG, JPEG, GIF, WebP) with metadata, and PDF text extraction with optional page ranges.",
             ),
             (
                 BUILTIN_EDIT_ID,
