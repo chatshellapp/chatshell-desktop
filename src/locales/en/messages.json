@@ -55,7 +55,7 @@
   "couldNotFindMessage": "Could not find message element",
   "assistantConfigNotFound": "Error: Model configuration not found for assistant",
   "unsupportedFileFormat": "Unsupported file format: {{file}}",
-  "supportedFormats": "Supported: documents (.md, .txt, .json, .js, .ts, etc.) and images (.png, .jpg, .gif, .webp)",
+  "supportedFormats": "Supported: documents (.md, .txt, .json, .js, .ts, .pdf, etc.) and images (.png, .jpg, .gif, .webp)",
   "unsupportedFilesCount": "{{count}} unsupported files",
   "includingFiles": "Including: {{files}}{{more}}",
   "failedToReadFile": "Failed to read: {{file}}",

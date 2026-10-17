@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
+import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
 import { logger } from '@/lib/logger'
 
 export interface DragHandlers {
@@ -100,19 +101,24 @@ export function useDragDrop(
       // Process documents
       for (const file of documentsToProcess) {
         try {
-          const content = await file.text()
+          const mimeType = getMimeType(file.name)
+          const content = isPdfFile(file.name, mimeType)
+            ? await extractPdfTextFromFile(file)
+            : await file.text()
           const newAttachment: Attachment = {
             id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             type: 'file',
             name: file.name,
             content,
-            mimeType: getMimeType(file.name),
-            size: content.length,
+            mimeType,
+            size: file.size,
           }
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
           logger.error(`Failed to read file: ${file.name}`, error)
-          toast.error(t('failedToReadFile', { file: file.name }))
+          toast.error(t('failedToReadFile', { file: file.name }), {
+            description: error instanceof Error ? error.message : String(error),
+          })
         }
       }
 

@@ -5,8 +5,9 @@
 //! assistant(tool_calls) -> tool(result) -> ... -> assistant(final text).
 
 use super::AppState;
-use super::attachment_processing;
+use super::attachment_processing::{self, StoredFile};
 use crate::llm::{self, ChatMessage, ToolCallData};
+use crate::models::UserAttachment;
 use crate::prompts;
 use chatshell_agent_core::context_pruning::{self as pruning, PrunePolicy, ToolOutputRef};
 use chatshell_agent_core::history::{HistoryRole, HistoryRow, ToolCallRow, pair_history};
@@ -34,6 +35,172 @@ fn compaction_boundary_message(row: &crate::db::compactions::Compaction) -> Chat
     }
 }
 
+/// Per-attachment inline budget. Attachments above this are represented by a
+/// path manifest and fetched with the read tool when the model needs them.
+const INLINE_ATTACHMENT_TOKENS: usize = 8_000;
+/// Total per-message inline budget across all file attachments.
+const INLINE_ATTACHMENT_TOTAL_TOKENS: usize = 16_000;
+/// Characters of a lazily-projected attachment shown as a relevance preview.
+const ATTACHMENT_PREVIEW_CHARS: usize = 500;
+/// Newest historical user messages that keep an attachment manifest.
+const HISTORY_MANIFEST_MESSAGES: usize = 20;
+/// Attachments listed per historical message.
+const HISTORY_MANIFEST_ATTACHMENTS: usize = 8;
+
+/// One attachment listed in the on-disk manifest sent to the model.
+struct ManifestAttachment {
+    name: String,
+    mime_type: String,
+    size: usize,
+    path: String,
+    preview: Option<String>,
+}
+
+fn xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn render_attachment_manifest(entries: &[ManifestAttachment]) -> String {
+    if entries.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from(
+        "<attachments note=\"Attachments are stored on disk. Use the read tool with a path to inspect them (offset/limit for text; question for images).\">\n",
+    );
+    for entry in entries {
+        out.push_str(&format!(
+            "<attachment name=\"{}\" mime=\"{}\" size=\"{}\" path=\"{}\"",
+            xml_attr(&entry.name),
+            xml_attr(&entry.mime_type),
+            entry.size,
+            xml_attr(&entry.path),
+        ));
+        if let Some(preview) = &entry.preview {
+            out.push_str(&format!(" preview=\"{}\"", xml_attr(preview)));
+        }
+        out.push_str(" />\n");
+    }
+    out.push_str("</attachments>");
+    out
+}
+
+/// Budget estimate for attachment text. CJK characters are roughly one
+/// token each; other text is ~4 chars/token. The shared pruning estimator
+/// assumes 4 chars/token throughout, which under-counts CJK-heavy PDFs by
+/// roughly 4x.
+fn estimate_attachment_tokens(text: &str) -> usize {
+    let mut cjk = 0usize;
+    let mut other = 0usize;
+    for ch in text.chars() {
+        if matches!(
+            ch,
+            '\u{4E00}'..='\u{9FFF}'
+                | '\u{3400}'..='\u{4DBF}'
+                | '\u{F900}'..='\u{FAFF}'
+                | '\u{3040}'..='\u{30FF}'
+                | '\u{AC00}'..='\u{D7AF}'
+        ) {
+            cjk += 1;
+        } else {
+            other += 1;
+        }
+    }
+    cjk + other.div_ceil(4)
+}
+
+/// One flag per file: `true` = project as a lazy manifest, `false` = inline.
+fn attachment_manifest_plan(files: &[llm::FileData], read_available: bool) -> Vec<bool> {
+    if !read_available {
+        return vec![false; files.len()];
+    }
+
+    let mut plan = Vec::with_capacity(files.len());
+    let mut inline_tokens = 0usize;
+    for file in files {
+        let tokens = estimate_attachment_tokens(&file.content);
+        let over_budget = tokens > INLINE_ATTACHMENT_TOKENS
+            || inline_tokens.saturating_add(tokens) > INLINE_ATTACHMENT_TOTAL_TOKENS;
+        plan.push(over_budget);
+        if !over_budget {
+            inline_tokens = inline_tokens.saturating_add(tokens);
+        }
+    }
+    plan
+}
+
+/// Split the current turn's files into inline content and lazy manifests.
+/// Inlining falls back on the original behavior when the read tool is not
+/// available, or when a large file could not be persisted.
+fn project_file_attachments(
+    resolve_path: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+    files: &[llm::FileData],
+    stored_files: &[Option<StoredFile>],
+    read_available: bool,
+) -> (Vec<llm::FileData>, Vec<ManifestAttachment>) {
+    let plan = attachment_manifest_plan(files, read_available);
+    let mut inline = Vec::new();
+    let mut manifest = Vec::new();
+
+    for (index, file) in files.iter().enumerate() {
+        let stored_path = stored_files
+            .get(index)
+            .and_then(|stored| stored.as_ref())
+            .and_then(|stored| resolve_path(&stored.storage_path));
+
+        if plan[index]
+            && let Some(path) = stored_path
+        {
+            manifest.push(ManifestAttachment {
+                name: file.name.clone(),
+                mime_type: file.media_type.clone(),
+                size: file.content.len(),
+                path: path.to_string_lossy().into_owned(),
+                preview: Some(pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+            });
+            continue;
+        }
+
+        inline.push(file.clone());
+    }
+
+    (inline, manifest)
+}
+
+/// Historical turns never re-inline attachment content. List the persisted
+/// files instead so a follow-up question can fetch them with the read tool.
+fn history_attachment_manifest(
+    resolve_path: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+    attachments: &[UserAttachment],
+) -> Option<String> {
+    let entries: Vec<ManifestAttachment> = attachments
+        .iter()
+        .take(HISTORY_MANIFEST_ATTACHMENTS)
+        .filter_map(|attachment| match attachment {
+            UserAttachment::File(file) => {
+                let path = resolve_path(&file.storage_path)?;
+                Some(ManifestAttachment {
+                    name: file.file_name.clone(),
+                    mime_type: file.mime_type.clone(),
+                    size: file.file_size.max(0) as usize,
+                    path: path.to_string_lossy().into_owned(),
+                    preview: None,
+                })
+            }
+        })
+        .collect();
+
+    if entries.is_empty() {
+        None
+    } else {
+        Some(render_attachment_manifest(&entries))
+    }
+}
+
 /// Build chat messages for LLM request
 ///
 /// # Arguments
@@ -51,8 +218,14 @@ pub async fn build_chat_messages(
     include_history: bool,
     user_images: &[attachment_processing::ParsedImage],
     user_files: &[llm::FileData],
+    stored_files: &[Option<StoredFile>],
+    app: &tauri::AppHandle,
+    read_available: bool,
     context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
+    let resolve_attachment_path =
+        |storage_path: &str| crate::storage::get_full_path(app, storage_path).ok();
+
     let base_prompt = system_prompt
         .clone()
         .unwrap_or_else(|| prompts::DEFAULT_ASSISTANT_SYSTEM_PROMPT.to_string());
@@ -124,6 +297,31 @@ pub async fn build_chat_messages(
             _ => &history_messages[..],
         };
 
+        // Attachment manifests for historical turns. One query for the whole
+        // included window; the current turn is projected separately below.
+        let user_message_ids: Vec<String> = messages_to_include
+            .iter()
+            .filter(|msg| msg.sender_type == "user")
+            .map(|msg| msg.id.clone())
+            .collect();
+        let attachments_by_message = if read_available {
+            state
+                .db
+                .get_message_attachments_batch(&user_message_ids)
+                .await
+                .unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        // Keep manifests bounded in long conversations: newest first.
+        let manifest_message_ids: std::collections::HashSet<&str> = messages_to_include
+            .iter()
+            .rev()
+            .filter(|msg| msg.sender_type == "user" && attachments_by_message.contains_key(&msg.id))
+            .take(HISTORY_MANIFEST_MESSAGES)
+            .map(|msg| msg.id.as_str())
+            .collect();
+
         // Flatten DB rows and expand tool-call turns through the shared core
         // protocol (assistant+tool_calls -> tool results -> final text).
         let mut history_rows: Vec<HistoryRow> = Vec::with_capacity(messages_to_include.len());
@@ -131,14 +329,26 @@ pub async fn build_chat_messages(
         let mut tool_index: HashMap<String, (String, Option<String>)> = HashMap::new();
         for msg in messages_to_include.iter() {
             match msg.sender_type.as_str() {
-                "user" => history_rows.push(HistoryRow {
-                    role: HistoryRole::User,
-                    content: msg.content.clone(),
-                    pre_tool_content: String::new(),
-                    reasoning_content: None,
-                    tool_calls: Vec::new(),
-                    images: Vec::new(),
-                }),
+                "user" => {
+                    let mut content = msg.content.clone();
+                    if read_available
+                        && manifest_message_ids.contains(msg.id.as_str())
+                        && let Some(attachments) = attachments_by_message.get(&msg.id)
+                        && let Some(manifest) =
+                            history_attachment_manifest(&resolve_attachment_path, attachments)
+                    {
+                        content.push_str("\n\n");
+                        content.push_str(&manifest);
+                    }
+                    history_rows.push(HistoryRow {
+                        role: HistoryRole::User,
+                        content,
+                        pre_tool_content: String::new(),
+                        reasoning_content: None,
+                        tool_calls: Vec::new(),
+                        images: Vec::new(),
+                    });
+                }
                 "model" | "assistant" => {
                     let db_tool_calls = state
                         .db
@@ -283,11 +493,22 @@ pub async fn build_chat_messages(
     // Protected window and threshold rules live in chatshell-agent-core.
     apply_tool_output_pruning(&mut chat_messages, &tool_output_records);
 
-    let final_user_content = if let Some(prompt) = user_prompt {
+    let (llm_files, manifest_entries) = project_file_attachments(
+        &resolve_attachment_path,
+        user_files,
+        stored_files,
+        read_available,
+    );
+    let mut final_user_content = if let Some(prompt) = user_prompt {
         format!("{}\n\n{}", prompt, processed_content)
     } else {
         processed_content.to_string()
     };
+    let manifest = render_attachment_manifest(&manifest_entries);
+    if !manifest.is_empty() {
+        final_user_content.push_str("\n\n");
+        final_user_content.push_str(&manifest);
+    }
 
     let llm_images: Vec<llm::ImageData> = user_images.iter().map(|img| img.data.clone()).collect();
 
@@ -295,7 +516,7 @@ pub async fn build_chat_messages(
         role: "user".to_string(),
         content: final_user_content,
         images: llm_images,
-        files: user_files.to_vec(),
+        files: llm_files,
         tool_calls: vec![],
         tool_call_id: None,
         tool_result_call_id: None,
@@ -561,5 +782,147 @@ mod tests {
         ));
         assert!(malformed.images.is_empty());
         assert!(!malformed.content.contains("<archive-head>"));
+    }
+
+    fn file_data(name: &str, chars: usize) -> llm::FileData {
+        llm::FileData {
+            name: name.to_string(),
+            content: "x".repeat(chars),
+            media_type: "text/plain".to_string(),
+        }
+    }
+
+    #[test]
+    fn small_attachments_inline_and_large_ones_manifest() {
+        let files = vec![
+            file_data("small.txt", 400),
+            file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 4 + 4),
+        ];
+
+        let plan = attachment_manifest_plan(&files, true);
+        assert_eq!(plan, vec![false, true]);
+    }
+
+    #[test]
+    fn cjk_attachment_uses_conservative_token_estimate() {
+        let files = vec![llm::FileData {
+            name: "cjk.txt".to_string(),
+            content: format!(
+                "{}{}{}",
+                "汉".repeat(3_000),
+                "あ".repeat(3_000),
+                "한".repeat(3_000),
+            ),
+            media_type: "text/plain".to_string(),
+        }];
+
+        let plan = attachment_manifest_plan(&files, true);
+        assert_eq!(plan, vec![true]);
+    }
+
+    #[test]
+    fn read_unavailable_inlines_large_attachments() {
+        let files = vec![file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 8)];
+
+        let plan = attachment_manifest_plan(&files, false);
+        assert_eq!(plan, vec![false]);
+    }
+
+    #[test]
+    fn total_inline_budget_moves_later_attachments_to_manifest() {
+        // 4k tokens each: the first four fit the 16k total, the fifth does not.
+        let files: Vec<_> = (0..5)
+            .map(|i| file_data(&format!("part-{i}.txt"), 16_000))
+            .collect();
+
+        let plan = attachment_manifest_plan(&files, true);
+        assert_eq!(plan, vec![false, false, false, false, true]);
+    }
+
+    #[test]
+    fn manifest_escapes_xml_attributes() {
+        let entries = vec![ManifestAttachment {
+            name: "a&b\"<c>.pdf".to_string(),
+            mime_type: "application/pdf".to_string(),
+            size: 10,
+            path: "/tmp/a&b\".txt".to_string(),
+            preview: Some("x < y & z".to_string()),
+        }];
+
+        let manifest = render_attachment_manifest(&entries);
+        assert!(
+            manifest.contains("a&amp;b&quot;&lt;c&gt;.pdf"),
+            "{manifest}"
+        );
+        assert!(manifest.contains("/tmp/a&amp;b&quot;.txt"), "{manifest}");
+        assert!(manifest.contains("x &lt; y &amp; z"), "{manifest}");
+        assert!(manifest.contains("size=\"10\""), "{manifest}");
+    }
+
+    #[test]
+    fn empty_manifest_is_empty() {
+        assert!(render_attachment_manifest(&[]).is_empty());
+    }
+
+    #[test]
+    fn projection_inlines_small_and_manifests_large_with_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let resolver = |storage_path: &str| Some(dir.path().join(storage_path));
+        let files = vec![
+            file_data("small.txt", 400),
+            file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 4 + 4),
+        ];
+        let stored_files = vec![
+            Some(StoredFile {
+                storage_path: "small.txt".to_string(),
+            }),
+            Some(StoredFile {
+                storage_path: "large.txt".to_string(),
+            }),
+        ];
+
+        let (inline, manifest) = project_file_attachments(&resolver, &files, &stored_files, true);
+
+        assert_eq!(inline.len(), 1);
+        assert_eq!(inline[0].name, "small.txt");
+        assert_eq!(manifest.len(), 1);
+        assert_eq!(manifest[0].name, "large.txt");
+        assert!(
+            manifest[0].path.ends_with("large.txt"),
+            "{:?}",
+            manifest[0].path
+        );
+        assert!(
+            manifest[0]
+                .preview
+                .as_deref()
+                .is_some_and(|preview| !preview.is_empty())
+        );
+    }
+
+    #[test]
+    fn history_manifest_lists_paths_without_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let resolver = |storage_path: &str| Some(dir.path().join(storage_path));
+        let attachments = vec![UserAttachment::File(crate::models::FileAttachment {
+            id: "f1".to_string(),
+            file_name: "report.pdf".to_string(),
+            file_size: 123,
+            mime_type: "application/pdf".to_string(),
+            storage_path: "files/hash.txt".to_string(),
+            content_hash: "hash".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        })];
+        let expected_path = dir
+            .path()
+            .join("files/hash.txt")
+            .to_string_lossy()
+            .into_owned();
+
+        let manifest = history_attachment_manifest(&resolver, &attachments).expect("manifest");
+
+        assert!(manifest.contains("name=\"report.pdf\""), "{manifest}");
+        assert!(manifest.contains(&expected_path), "{manifest}");
+        assert!(!manifest.contains("preview="), "{manifest}");
     }
 }

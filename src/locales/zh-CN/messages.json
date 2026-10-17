@@ -55,7 +55,7 @@
   "couldNotFindMessage": "无法找到消息元素",
   "assistantConfigNotFound": "错误：未找到助手的模型配置",
   "unsupportedFileFormat": "不支持的文件格式：{{file}}",
-  "supportedFormats": "支持：文档（.md, .txt, .json, .js, .ts 等）和图片（.png, .jpg, .gif, .webp）",
+  "supportedFormats": "支持：文档（.md, .txt, .json, .js, .ts, .pdf 等）和图片（.png, .jpg, .gif, .webp）",
   "unsupportedFilesCount": "{{count}} 个不支持的文件",
   "includingFiles": "包括：{{files}}{{more}}",
   "failedToReadFile": "读取失败：{{file}}",

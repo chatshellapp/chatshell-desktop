@@ -21,6 +21,13 @@ pub(crate) struct StoredImage {
     pub storage_path: String,
 }
 
+/// A persisted file attachment. The vector returned by
+/// [`store_file_attachments`] is aligned with the input files; `None` marks
+/// a persistence failure (the file cannot be referenced by path).
+pub(crate) struct StoredFile {
+    pub storage_path: String,
+}
+
 /// Parse image attachments from frontend input
 pub(crate) fn parse_image_attachments(
     images: Option<Vec<ImageAttachmentInput>>,
@@ -106,7 +113,9 @@ pub(crate) async fn store_file_attachments(
     files: &[FileData],
     user_message_id: &str,
     conversation_id: &str,
-) {
+) -> Vec<Option<StoredFile>> {
+    let mut stored = Vec::with_capacity(files.len());
+
     for file in files {
         // Hash file content for deduplication
         let content_hash = crate::storage::hash_content(&file.content);
@@ -132,6 +141,9 @@ pub(crate) async fn store_file_attachments(
                 .await
             {
                 Ok(file_attachment) => {
+                    stored.push(Some(StoredFile {
+                        storage_path: existing.storage_path.clone(),
+                    }));
                     // Link file to message (user attachment)
                     if let Err(e) = state
                         .db
@@ -157,23 +169,32 @@ pub(crate) async fn store_file_attachments(
                     }
                 }
                 Err(e) => {
+                    stored.push(None);
                     tracing::error!("Failed to create file record for {}: {}", file.name, e);
                 }
             }
             continue;
         }
 
-        // Get extension from filename
+        // Get extension from filename. PDF attachments carry extracted text,
+        // so store them as `.txt`: the read tool must be able to open the
+        // persisted file directly when the model fetches it on demand.
         let ext = std::path::Path::new(&file.name)
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("txt");
+        let ext = if file.media_type.eq_ignore_ascii_case("application/pdf") {
+            "txt"
+        } else {
+            ext
+        };
 
         // Generate storage path using content hash for deduplication
         let storage_path = crate::storage::generate_file_storage_path(&content_hash, ext);
 
         // Write file content to filesystem
         if let Err(e) = crate::storage::write_content(app, &storage_path, &file.content) {
+            stored.push(None);
             tracing::error!("Failed to save file {}: {}", file.name, e);
             continue;
         }
@@ -191,6 +212,9 @@ pub(crate) async fn store_file_attachments(
             .await
         {
             Ok(file_attachment) => {
+                stored.push(Some(StoredFile {
+                    storage_path: storage_path.clone(),
+                }));
                 // Link file to message (user attachment)
                 if let Err(e) = state
                     .db
@@ -217,11 +241,14 @@ pub(crate) async fn store_file_attachments(
                 }
             }
             Err(e) => {
+                stored.push(None);
                 tracing::error!("Failed to create file record for {}: {}", file.name, e);
                 let _ = crate::storage::delete_file(app, &storage_path);
             }
         }
     }
+
+    stored
 }
 
 /// Store image attachments to filesystem and database (with deduplication).

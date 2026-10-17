@@ -139,6 +139,51 @@ impl Database {
         Ok(attachments)
     }
 
+    /// Attachments for several messages in one query. Used by the LLM
+    /// projection, which needs a manifest for every historical user turn.
+    pub async fn get_message_attachments_batch(
+        &self,
+        message_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<UserAttachment>>> {
+        let mut by_message: std::collections::HashMap<String, Vec<UserAttachment>> =
+            std::collections::HashMap::new();
+        // Keep the IN list below SQLite's bound-parameter limit.
+        for chunk in message_ids.chunks(800) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT ma.message_id, f.id, f.file_name, f.file_size, f.mime_type,
+                        f.storage_path, f.content_hash, f.created_at
+                 FROM message_attachments ma
+                 JOIN files f ON f.id = ma.attachment_id
+                 WHERE ma.deleted_at IS NULL AND f.deleted_at IS NULL
+                   AND ma.message_id IN ({placeholders})
+                 ORDER BY ma.message_id, ma.display_order, ma.created_at"
+            );
+            let mut query = sqlx::query(&sql);
+            for id in chunk {
+                query = query.bind(id);
+            }
+            let rows = query.fetch_all(self.pool.as_ref()).await?;
+            for row in rows {
+                let message_id: String = row.get("message_id");
+                let attachment = FileAttachment {
+                    id: row.get("id"),
+                    file_name: row.get("file_name"),
+                    file_size: row.get("file_size"),
+                    mime_type: row.get("mime_type"),
+                    storage_path: row.get("storage_path"),
+                    content_hash: row.get("content_hash"),
+                    created_at: row.get("created_at"),
+                };
+                by_message
+                    .entry(message_id)
+                    .or_default()
+                    .push(UserAttachment::File(attachment));
+            }
+        }
+        Ok(by_message)
+    }
+
     pub async fn unlink_message_attachment(
         &self,
         message_id: &str,
@@ -154,5 +199,71 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateMessageRequest;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn message(db: &Database, content: &str) -> String {
+        db.create_message(CreateMessageRequest {
+            conversation_id: None,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    async fn file(db: &Database, name: &str, hash: &str) -> String {
+        db.create_file_attachment(CreateFileAttachmentRequest {
+            file_name: name.to_string(),
+            file_size: 4,
+            mime_type: "text/plain".to_string(),
+            storage_path: format!("files/{hash}.txt"),
+            content_hash: hash.to_string(),
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn batch_attachments_group_by_message() {
+        let (db, _dir) = test_db().await;
+        let m1 = message(&db, "one").await;
+        let m2 = message(&db, "two").await;
+        let f1 = file(&db, "a.txt", "h1").await;
+        let f2 = file(&db, "b.txt", "h2").await;
+
+        db.link_message_attachment(&m1, &f1, Some(0)).await.unwrap();
+        db.link_message_attachment(&m2, &f2, Some(0)).await.unwrap();
+
+        let map = db
+            .get_message_attachments_batch(&[m1.clone(), m2.clone()])
+            .await
+            .unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map[&m1].len(), 1);
+        assert_eq!(map[&m2].len(), 1);
+        assert!(
+            db.get_message_attachments_batch(&[])
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

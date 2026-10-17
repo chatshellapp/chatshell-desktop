@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
 import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
+import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
 
 export interface UsePasteHandlerReturn {
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<void>
@@ -33,7 +34,7 @@ export function usePasteHandler(
           if (file.type.startsWith('image/')) {
             imagesToProcess.push(file)
           } else {
-            const fileType = getFileType(file.name)
+            const fileType = file.type === 'application/pdf' ? 'document' : getFileType(file.name)
             if (fileType === 'document') {
               documentsToProcess.push(file)
             } else if (fileType === 'image') {
@@ -70,20 +71,30 @@ export function usePasteHandler(
 
         // Process documents
         for (const file of documentsToProcess) {
+          const fileName =
+            file.name ||
+            (file.type === 'application/pdf'
+              ? `clipboard-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`
+              : 'file')
           try {
-            const content = await file.text()
+            const mimeType = getMimeType(fileName)
+            const content = isPdfFile(fileName, mimeType)
+              ? await extractPdfTextFromFile(file)
+              : await file.text()
             const newAttachment: Attachment = {
               id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
               type: 'file',
-              name: file.name,
+              name: fileName,
               content,
-              mimeType: getMimeType(file.name),
-              size: content.length,
+              mimeType,
+              size: file.size,
             }
             setAttachments((prev) => [...prev, newAttachment])
           } catch (error) {
-            logger.error(`Failed to read pasted file: ${file.name}`, error)
-            toast.error(t('failedToReadFile', { file: file.name }))
+            logger.error(`Failed to read pasted file: ${fileName}`, error)
+            toast.error(t('failedToReadFile', { file: fileName }), {
+              description: error instanceof Error ? error.message : String(error),
+            })
           }
         }
 

@@ -148,9 +148,20 @@ pub fn build_user_content(
             "<document>\n<filename>{}</filename>\n<content>\n{}\n</content>\n</document>",
             file.name, file.content
         );
+        // PDF attachments carry extracted text, not PDF bytes. Declaring a
+        // `String` source as `DocumentMediaType::PDF` makes rig's OpenAI Chat
+        // Completions adapter reject the whole request
+        // ("PDF documents must be base64-encoded, not raw strings"), and
+        // string-content-only providers would otherwise drop it. The payload
+        // is plain text, so present it as text for every provider.
+        let media_type = if file.media_type.eq_ignore_ascii_case("application/pdf") {
+            Some(DocumentMediaType::TXT)
+        } else {
+            mime_to_document_media_type(&file.media_type)
+        };
         let document = Document {
             data: DocumentSourceKind::String(file_content),
-            media_type: mime_to_document_media_type(&file.media_type),
+            media_type,
             additional_params: None,
         };
         contents.push(UserContent::Document(document));
@@ -270,6 +281,27 @@ mod tests {
             mime_to_document_media_type("unknown/type"),
             Some(DocumentMediaType::TXT)
         );
+    }
+
+    // Regression guard: PDF attachments carry extracted text, so they must
+    // convert for OpenAI chat completions instead of tripping rig's
+    // "PDF documents must be base64-encoded" conversion error.
+    #[test]
+    fn pdf_attachment_serializes_as_text_for_chat_completions() {
+        let files = vec![FileData {
+            name: "report.pdf".to_string(),
+            content: "Extracted PDF text".to_string(),
+            media_type: "application/pdf".to_string(),
+        }];
+
+        let content = build_user_content("Summarize", &[], &files);
+        let messages = rig::providers::openai::completion::user_content_to_messages(content)
+            .expect("PDF text content must convert for chat completions");
+        let wire = serde_json::to_string(&messages).unwrap();
+
+        assert!(wire.contains("Extracted PDF text"), "wire: {wire}");
+        assert!(wire.contains("report.pdf"), "wire: {wire}");
+        assert!(!wire.contains("\"type\":\"file\""), "wire: {wire}");
     }
 
     #[test]

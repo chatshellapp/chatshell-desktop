@@ -63,6 +63,37 @@ pub async fn read_file_as_base64(path: String) -> Result<String, String> {
     Ok(STANDARD.encode(&bytes))
 }
 
+/// Extract the text layer from a PDF selected via the native file dialog.
+#[tauri::command]
+pub async fn extract_pdf_text_from_path(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read PDF {}: {}", path, e))?;
+    extract_pdf_text_bytes(&bytes)
+}
+
+/// Extract the text layer from PDF bytes supplied by the webview
+/// (drag-and-drop / clipboard), as standard base64.
+#[tauri::command]
+pub async fn extract_pdf_text_from_base64(base64: String) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let bytes = STANDARD
+        .decode(&base64)
+        .map_err(|e| format!("Failed to decode PDF data: {}", e))?;
+    extract_pdf_text_bytes(&bytes)
+}
+
+fn extract_pdf_text_bytes(bytes: &[u8]) -> Result<String, String> {
+    let text = chatshell_agent_core::pdf_text::extract_pdf_text(bytes)
+        .map_err(|e| format!("Failed to extract PDF text: {}", e))?;
+    if text.trim().is_empty() {
+        return Err(
+            "No extractable text found in the PDF (it may contain only scanned images)."
+                .to_string(),
+        );
+    }
+    Ok(text)
+}
+
 #[tauri::command]
 pub async fn read_image_base64(
     app: tauri::AppHandle,

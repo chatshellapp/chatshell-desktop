@@ -17,6 +17,7 @@ mod url_processing;
 pub mod web_search;
 
 use super::AppState;
+use crate::db::tools::BUILTIN_READ_ID;
 use crate::models::{CreateMessageRequest, Message};
 use crate::web_fetch;
 use tauri::{Emitter, State};
@@ -291,6 +292,45 @@ fn spawn_background_task(
     });
 }
 
+/// Whether the read tool can serve this turn. Mirrors the builtin-tool
+/// resolution in `handle_agent_streaming` closely enough for projection
+/// decisions: assistant tools + conversation-level enabled tools, gated by
+/// tool-use support. Skill-required tools are omitted deliberately — if a
+/// skill would enable `read` later, inlining the attachment is the safe
+/// fallback.
+async fn read_tool_available(
+    state: &AppState,
+    provider: &str,
+    model: &str,
+    assistant_db_id: Option<&str>,
+    conversation_id: &str,
+    disable_tools: bool,
+) -> bool {
+    if disable_tools {
+        return false;
+    }
+    if state
+        .capabilities_cache
+        .resolve(provider, model)
+        .await
+        .supports_tool_use
+        == Some(false)
+    {
+        return false;
+    }
+
+    let mut tool_ids = Vec::new();
+    if let Some(assistant_id) = assistant_db_id
+        && let Ok(ids) = state.db.get_assistant_tool_ids(assistant_id).await
+    {
+        tool_ids.extend(ids);
+    }
+    if let Ok(settings) = state.db.get_conversation_settings(conversation_id).await {
+        tool_ids.extend(settings.enabled_mcp_server_ids);
+    }
+    tool_ids.iter().any(|id| id == BUILTIN_READ_ID)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn process_llm_request(
     state: AppState,
@@ -368,7 +408,7 @@ async fn process_llm_request(
     let user_files = attachment_processing::parse_file_attachments(files);
 
     // Step 5: Store attachments
-    attachment_processing::store_file_attachments(
+    let stored_files = attachment_processing::store_file_attachments(
         &state,
         &app,
         &user_files,
@@ -386,6 +426,18 @@ async fn process_llm_request(
     )
     .await;
 
+    // Large attachments are projected as a path manifest only when the
+    // conversation can actually fetch them back with the read tool.
+    let read_available = read_tool_available(
+        &state,
+        &provider,
+        &model,
+        assistant_db_id.as_deref(),
+        &conversation_id,
+        disable_tools,
+    )
+    .await;
+
     // Step 6: Build chat messages with context limit
     let chat_messages = message_builder::build_chat_messages(
         &state,
@@ -397,6 +449,9 @@ async fn process_llm_request(
         include_history.unwrap_or(true),
         &user_images,
         &user_files,
+        &stored_files,
+        &app,
+        read_available,
         context_message_count,
     )
     .await;

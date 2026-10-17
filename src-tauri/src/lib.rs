@@ -430,6 +430,8 @@ pub fn run() {
             // File reading commands (for files selected via dialog)
             commands::read_text_file_from_path,
             commands::read_file_as_base64,
+            commands::extract_pdf_text_from_path,
+            commands::extract_pdf_text_from_base64,
             // Settings commands
             commands::get_setting,
             commands::set_setting,

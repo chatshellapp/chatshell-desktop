@@ -43,6 +43,7 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = [
   'bash',
   'zsh',
   'sql',
+  'pdf',
 ]
 
 export const SUPPORTED_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
@@ -76,6 +77,7 @@ export function getMimeType(fileName: string): string {
     bash: 'text/x-shellscript',
     zsh: 'text/x-shellscript',
     sql: 'text/x-sql',
+    pdf: 'application/pdf',
   }
   return mimeTypes[ext || ''] || 'text/plain'
 }

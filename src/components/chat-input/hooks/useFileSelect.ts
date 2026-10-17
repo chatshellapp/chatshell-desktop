@@ -1,7 +1,10 @@
 import { useCallback } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { type Attachment, getMimeType, SUPPORTED_DOCUMENT_EXTENSIONS } from '../types'
+import { isPdfFile } from '../pdf-text'
 import { logger } from '@/lib/logger'
 
 export interface UseFileSelectReturn {
@@ -11,6 +14,7 @@ export interface UseFileSelectReturn {
 export function useFileSelect(
   setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
 ): UseFileSelectReturn {
+  const { t } = useTranslation('messages')
   const handleFileSelect = useCallback(async () => {
     try {
       logger.info('[handleFileSelect] Opening file dialog...')
@@ -35,35 +39,49 @@ export function useFileSelect(
       logger.info('[handleFileSelect] Files to process:', files)
 
       for (const filePath of files) {
-        logger.info('[handleFileSelect] Reading file:', filePath)
-        // Use Rust command to read file (avoids plugin-fs scope issues)
-        const content = await invoke<string>('read_text_file_from_path', { path: filePath })
-        logger.info('[handleFileSelect] File read, length:', content.length)
-
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
+        const mimeType = getMimeType(fileName)
+        try {
+          logger.info('[handleFileSelect] Reading file:', filePath)
+          // Use Rust commands to read files (avoids plugin-fs scope issues).
+          // PDFs are converted to their text layer: provider-native PDF
+          // input is not portable and string-content providers drop it.
+          const content = await invoke<string>(
+            isPdfFile(fileName, mimeType)
+              ? 'extract_pdf_text_from_path'
+              : 'read_text_file_from_path',
+            { path: filePath }
+          )
+          logger.info('[handleFileSelect] File read, length:', content.length)
 
-        const newAttachment: Attachment = {
-          id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          type: 'file',
-          name: fileName,
-          content,
-          mimeType: getMimeType(fileName),
-          size: content.length,
+          const newAttachment: Attachment = {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: 'file',
+            name: fileName,
+            content,
+            mimeType,
+            size: content.length,
+          }
+          logger.info('[handleFileSelect] Created attachment', {
+            name: newAttachment.name,
+            size: newAttachment.size,
+          })
+          setAttachments((prev) => {
+            logger.info('[handleFileSelect] Updating attachments, prev count:', prev.length)
+            return [...prev, newAttachment]
+          })
+        } catch (error) {
+          logger.error(`[handleFileSelect] Failed to read file: ${filePath}`, error)
+          toast.error(t('failedToReadFile', { file: fileName }), {
+            description: error instanceof Error ? error.message : String(error),
+          })
         }
-        logger.info('[handleFileSelect] Created attachment', {
-          name: newAttachment.name,
-          size: newAttachment.size,
-        })
-        setAttachments((prev) => {
-          logger.info('[handleFileSelect] Updating attachments, prev count:', prev.length)
-          return [...prev, newAttachment]
-        })
       }
       logger.info('[handleFileSelect] Done processing files')
     } catch (error) {
       logger.error('[handleFileSelect] Failed to select file:', error)
     }
-  }, [setAttachments])
+  }, [setAttachments, t])
 
   return { handleFileSelect }
 }
