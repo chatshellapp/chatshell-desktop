@@ -109,6 +109,48 @@ async function drawBrandFooter(
   ctx.fillText(urlText, x, centerY)
 }
 
+interface ContentVisibilityRestore {
+  element: HTMLElement
+  contentVisibility: string
+  containIntrinsicSize: string
+}
+
+/**
+ * Screenshot capture measures and clones the live DOM. Rows the chat list
+ * culls with `content-visibility: auto` have never been laid out when
+ * off-screen, so they measure as their intrinsic estimate and clone as blank
+ * placeholders. Force every message row in the capture subtree to render,
+ * then measure. Callers must restore the returned inline styles afterwards.
+ *
+ * Exported for tests.
+ */
+export function releaseContentVisibility(root: HTMLElement): ContentVisibilityRestore[] {
+  const rows = new Set<HTMLElement>()
+  if (root.hasAttribute('data-message-id')) rows.add(root)
+  root.querySelectorAll<HTMLElement>('[data-message-id]').forEach((row) => rows.add(row))
+
+  const restorations: ContentVisibilityRestore[] = []
+  for (const row of rows) {
+    if (row.style.contentVisibility !== 'auto') continue
+    restorations.push({
+      element: row,
+      contentVisibility: row.style.contentVisibility,
+      containIntrinsicSize: row.style.containIntrinsicSize,
+    })
+    row.style.contentVisibility = 'visible'
+    row.style.containIntrinsicSize = 'none'
+  }
+  return restorations
+}
+
+/** Exported for tests. */
+export function restoreContentVisibility(restorations: ContentVisibilityRestore[]): void {
+  for (const { element, contentVisibility, containIntrinsicSize } of restorations) {
+    element.style.contentVisibility = contentVisibility
+    element.style.containIntrinsicSize = containIntrinsicSize
+  }
+}
+
 async function inlineAssetImages(
   element: HTMLElement
 ): Promise<Array<{ img: HTMLImageElement; originalSrc: string }>> {
@@ -138,16 +180,25 @@ async function renderElementToImage(
   element: HTMLElement,
   paddingPx: number
 ): Promise<HTMLImageElement | null> {
-  const restorations = await inlineAssetImages(element)
+  const imageRestorations = await inlineAssetImages(element)
+  const visibilityRestorations = releaseContentVisibility(element)
 
-  const rect = element.getBoundingClientRect()
-  const contentWidth = rect.width + paddingPx * 2
-  const contentHeight = rect.height + paddingPx * 2
-  const bg = getBackgroundColor()
-
-  let dataUrl: string
   try {
-    dataUrl = await toPng(element, {
+    // Rows culled with content-visibility:auto have no real box until the
+    // forced style applies; wait one frame so the measurement below (and the
+    // clone html-to-image builds) sees their laid-out content.
+    if (visibilityRestorations.length > 0) {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      requestAnimationFrame(() => resolve())
+      await promise
+    }
+
+    const rect = element.getBoundingClientRect()
+    const contentWidth = rect.width + paddingPx * 2
+    const contentHeight = rect.height + paddingPx * 2
+    const bg = getBackgroundColor()
+
+    const dataUrl = await toPng(element, {
       pixelRatio: SCREENSHOT_SCALE,
       backgroundColor: bg,
       width: contentWidth,
@@ -162,16 +213,17 @@ async function renderElementToImage(
         return true
       },
     })
+
+    try {
+      return await loadImage(dataUrl)
+    } catch {
+      return null
+    }
   } finally {
-    for (const { img, originalSrc } of restorations) {
+    restoreContentVisibility(visibilityRestorations)
+    for (const { img, originalSrc } of imageRestorations) {
       img.src = originalSrc
     }
-  }
-
-  try {
-    return await loadImage(dataUrl)
-  } catch {
-    return null
   }
 }
 

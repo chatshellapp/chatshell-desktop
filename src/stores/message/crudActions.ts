@@ -103,6 +103,26 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     }
   },
 
+  // Load every older page into the window. UI consumers that need the whole
+  // conversation (screenshot export) use this; ordinary scrolling keeps the
+  // bounded tail window.
+  loadAllMessages: async (conversationId: string) => {
+    for (;;) {
+      const convState = get().getConversationState(conversationId)
+      if (!convState.hasOlderMessages) return
+      // A scroll-triggered page may already be in flight; wait for it instead
+      // of treating its NO-OP result as "history exhausted".
+      if (convState.isLoadingOlder) {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        setTimeout(resolve, 0)
+        await promise
+        continue
+      }
+      const loaded = await get().loadOlderMessages(conversationId)
+      if (!loaded) return
+    }
+  },
+
   // Load upward pages until messageId is inside the window (used by the
   // in-conversation search jump when the target is older than the window).
   ensureMessageLoaded: async (conversationId: string, messageId: string) => {

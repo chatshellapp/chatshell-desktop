@@ -489,5 +489,22 @@ describe('useMessageStore', () => {
       const cs = useMessageStore.getState().getConversationState('conv-p')
       expect(cs.messages.some((m) => m.id === 'old42')).toBe(true)
     })
+
+    it('loadAllMessages pages until the entire history is in the window', async () => {
+      invokeMock.mockResolvedValueOnce(page(101, 'm'))
+      await useMessageStore.getState().loadMessages('conv-p')
+
+      invokeMock.mockResolvedValueOnce(page(101, 'p1'))
+      invokeMock.mockResolvedValueOnce(page(101, 'p2'))
+      invokeMock.mockResolvedValueOnce(page(5, 'p3'))
+      await useMessageStore.getState().loadAllMessages('conv-p')
+
+      const cs = useMessageStore.getState().getConversationState('conv-p')
+      expect(cs.messages.length).toBe(305)
+      expect(cs.messages[0].id).toBe('p30')
+      expect(cs.messages.at(-1)?.id).toBe('m100')
+      expect(cs.hasOlderMessages).toBe(false)
+      expect(cs.isLoadingOlder).toBe(false)
+    })
   })
 })

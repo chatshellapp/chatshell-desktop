@@ -151,6 +151,7 @@ export interface SendMessageParameterOverrides {
 export interface MessageStoreCrudActions {
   loadMessages: (conversationId: string) => Promise<void>
   loadOlderMessages: (conversationId: string) => Promise<boolean>
+  loadAllMessages: (conversationId: string) => Promise<void>
   ensureMessageLoaded: (conversationId: string, messageId: string) => Promise<void>
   sendMessage: (
     content: string,

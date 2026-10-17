@@ -50,6 +50,7 @@
   "conversationForked": "Conversation forked",
   "failedToForkConversation": "Failed to fork conversation",
   "noMessagesToCapture": "No messages to capture",
+  "failedToExportAllMessages": "Failed to load all messages for export",
   "screenshotSaved": "Screenshot saved",
   "couldNotFindMessage": "Could not find message element",
   "assistantConfigNotFound": "Error: Model configuration not found for assistant",

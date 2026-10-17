@@ -39,6 +39,7 @@ export function useMessageHandlers({
   const deleteMessagesFrom = useMessageStore((state) => state.deleteMessagesFrom)
   const sendMessage = useMessageStore((state) => state.sendMessage)
   const getConversationState = useMessageStore((state) => state.getConversationState)
+  const loadAllMessages = useMessageStore((state) => state.loadAllMessages)
 
   const handleCopy = useCallback(() => {
     logger.info('Message copied')
@@ -206,16 +207,57 @@ export function useMessageHandlers({
     [currentConversation, loadConversations, selectConversation]
   )
 
-  const handleExportAll = useCallback(() => {
+  const handleExportAll = useCallback(async () => {
     const el = messagesContentRef.current
     if (!el) {
       toast.error(t('noMessagesToCapture'))
       return
     }
-    saveScreenshot(el).then((ok) => {
-      if (ok) toast.success(t('screenshotSaved'))
-    })
-  }, [messagesContentRef])
+
+    // Capture must not inherit the chat window's lazy rendering: expand the
+    // store to the full history, then wait for the progressive list to mount
+    // every row. Otherwise the screenshot contains only the loaded tail (or
+    // the first 16 rows if the list is still mounting).
+    const scrollContainer = el.parentElement
+    const previousHeight = scrollContainer?.scrollHeight ?? 0
+    const previousTop = scrollContainer?.scrollTop ?? 0
+
+    if (currentConversation) {
+      const conversationId = currentConversation.id
+      await loadAllMessages(conversationId)
+      const convState = getConversationState(conversationId)
+      if (convState.hasOlderMessages) {
+        toast.error(t('failedToExportAllMessages'))
+        return
+      }
+
+      const expectedRows = convState.messages.length
+      const deadline = performance.now() + 10_000
+      while (
+        el.querySelectorAll('[data-message-id]').length < expectedRows &&
+        performance.now() < deadline
+      ) {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        requestAnimationFrame(() => resolve())
+        await promise
+      }
+      if (el.querySelectorAll('[data-message-id]').length < expectedRows) {
+        toast.error(t('failedToExportAllMessages'))
+        return
+      }
+    }
+
+    // Paging history in and mounting the earlier rows grows the list above
+    // the viewport; shift scrollTop by the same delta so exporting does not
+    // teleport the reader.
+    if (scrollContainer) {
+      const growth = scrollContainer.scrollHeight - previousHeight
+      if (growth > 0) scrollContainer.scrollTop = previousTop + growth
+    }
+
+    const ok = await saveScreenshot(el)
+    if (ok) toast.success(t('screenshotSaved'))
+  }, [currentConversation, getConversationState, loadAllMessages, messagesContentRef, t])
 
   const handleExportConversation = useCallback(
     async (messageId: string | null) => {

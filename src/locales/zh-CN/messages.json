@@ -50,6 +50,7 @@
   "conversationForked": "对话已分叉",
   "failedToForkConversation": "分叉对话失败",
   "noMessagesToCapture": "没有可捕获的消息",
+  "failedToExportAllMessages": "加载完整对话失败，无法导出",
   "screenshotSaved": "截图已保存",
   "couldNotFindMessage": "无法找到消息元素",
   "assistantConfigNotFound": "错误：未找到助手的模型配置",
