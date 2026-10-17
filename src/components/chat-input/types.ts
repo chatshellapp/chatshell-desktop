@@ -44,7 +44,34 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = [
   'zsh',
   'sql',
   'pdf',
+  'docx',
+  'docm',
+  'xlsx',
+  'xlsm',
+  'pptx',
+  'pptm',
 ]
+
+// OOXML documents are ZIP containers: they must travel as base64 and are
+// read through the read tool, never decoded as UTF-8.
+export const BINARY_DOCUMENT_EXTENSIONS = ['docx', 'docm', 'xlsx', 'xlsm', 'pptx', 'pptm']
+
+export function isBinaryDocument(fileName: string): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  return BINARY_DOCUMENT_EXTENSIONS.includes(ext)
+}
+
+// Read a binary document as standard base64 (no data URL prefix). Chunked
+// to avoid blowing the argument limit of String.fromCharCode.
+export async function readFileAsBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+  }
+  return btoa(binary)
+}
 
 export const SUPPORTED_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
 
@@ -78,6 +105,12 @@ export function getMimeType(fileName: string): string {
     zsh: 'text/x-shellscript',
     sql: 'text/x-sql',
     pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    docm: 'application/vnd.ms-word.document.macroEnabled.12',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    pptm: 'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
   }
   return mimeTypes[ext || ''] || 'text/plain'
 }

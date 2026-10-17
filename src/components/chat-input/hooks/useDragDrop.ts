@@ -1,7 +1,14 @@
 import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
+import {
+  type Attachment,
+  getMimeType,
+  getImageMimeType,
+  getFileType,
+  isBinaryDocument,
+  readFileAsBase64,
+} from '../types'
 import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
 import { logger } from '@/lib/logger'
 
@@ -102,14 +109,19 @@ export function useDragDrop(
       for (const file of documentsToProcess) {
         try {
           const mimeType = getMimeType(file.name)
-          const content = isPdfFile(file.name, mimeType)
-            ? await extractPdfTextFromFile(file)
-            : await file.text()
+          const binary = isBinaryDocument(file.name)
+          const content = binary
+            ? ''
+            : isPdfFile(file.name, mimeType)
+              ? await extractPdfTextFromFile(file)
+              : await file.text()
+          const base64 = binary ? await readFileAsBase64(file) : undefined
           const newAttachment: Attachment = {
             id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             type: 'file',
             name: file.name,
             content,
+            base64,
             mimeType,
             size: file.size,
           }

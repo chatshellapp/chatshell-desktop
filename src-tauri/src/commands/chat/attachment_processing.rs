@@ -89,16 +89,44 @@ pub(crate) fn parse_file_attachments(files: Option<Vec<FileAttachmentInput>>) ->
             files.len()
         );
         for file in files.iter() {
+            // Binary documents arrive as base64: decoding here keeps the
+            // bytes intact all the way to the persisted attachment, where
+            // the read tool can parse the container.
+            let bytes = match file.base64.as_deref() {
+                Some(encoded) => {
+                    use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+                    match BASE64.decode(encoded) {
+                        Ok(bytes) => Some(bytes),
+                        Err(e) => {
+                            tracing::error!(
+                                "📄 [attachment] Invalid base64 for {}: {}",
+                                file.name,
+                                e
+                            );
+                            continue;
+                        }
+                    }
+                }
+                None => None,
+            };
+            let binary = bytes.is_some();
+            let stored_size = bytes.as_ref().map(Vec::len).unwrap_or(file.content.len());
             user_files.push(FileData {
                 name: file.name.clone(),
-                content: file.content.clone(),
+                content: if binary {
+                    String::new()
+                } else {
+                    file.content.clone()
+                },
                 media_type: file.mime_type.clone(),
+                bytes,
             });
             tracing::info!(
-                "   - File: {} ({} chars, {})",
+                "   - File: {} ({} bytes/chars, {}, binary={})",
                 file.name,
-                file.content.len(),
-                file.mime_type
+                stored_size,
+                file.mime_type,
+                binary
             );
         }
     }
@@ -117,8 +145,15 @@ pub(crate) async fn store_file_attachments(
     let mut stored = Vec::with_capacity(files.len());
 
     for file in files {
-        // Hash file content for deduplication
-        let content_hash = crate::storage::hash_content(&file.content);
+        // Hash the stored representation: raw bytes for binary documents,
+        // text for everything else.
+        let (content_hash, stored_len) = match &file.bytes {
+            Some(bytes) => (crate::storage::hash_bytes(bytes), bytes.len()),
+            None => (
+                crate::storage::hash_content(&file.content),
+                file.content.len(),
+            ),
+        };
 
         // Check if we already have this content (deduplication)
         if let Ok(Some(existing)) = state.db.find_file_by_hash(&content_hash).await {
@@ -133,7 +168,7 @@ pub(crate) async fn store_file_attachments(
                 .db
                 .create_file_attachment(CreateFileAttachmentRequest {
                     file_name: file.name.clone(),
-                    file_size: file.content.len() as i64,
+                    file_size: stored_len as i64,
                     mime_type: file.media_type.clone(),
                     storage_path: existing.storage_path.clone(),
                     content_hash: content_hash.clone(),
@@ -193,7 +228,11 @@ pub(crate) async fn store_file_attachments(
         let storage_path = crate::storage::generate_file_storage_path(&content_hash, ext);
 
         // Write file content to filesystem
-        if let Err(e) = crate::storage::write_content(app, &storage_path, &file.content) {
+        let write_result = match &file.bytes {
+            Some(bytes) => crate::storage::write_binary(app, &storage_path, bytes),
+            None => crate::storage::write_content(app, &storage_path, &file.content),
+        };
+        if let Err(e) = write_result {
             stored.push(None);
             tracing::error!("Failed to save file {}: {}", file.name, e);
             continue;
@@ -204,7 +243,7 @@ pub(crate) async fn store_file_attachments(
             .db
             .create_file_attachment(CreateFileAttachmentRequest {
                 file_name: file.name.clone(),
-                file_size: file.content.len() as i64,
+                file_size: stored_len as i64,
                 mime_type: file.media_type.clone(),
                 storage_path: storage_path.clone(),
                 content_hash: content_hash.clone(),
@@ -404,4 +443,38 @@ pub(crate) async fn store_image_attachments(
         }
     }
     stored
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(name: &str, content: &str, base64: Option<&str>) -> FileAttachmentInput {
+        FileAttachmentInput {
+            name: name.to_string(),
+            content: content.to_string(),
+            base64: base64.map(str::to_string),
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .to_string(),
+        }
+    }
+
+    #[test]
+    fn base64_documents_keep_raw_bytes_and_no_text() {
+        // "AAEC" = [0x00, 0x01, 0x02]
+        let files = parse_file_attachments(Some(vec![input("report.docx", "", Some("AAEC"))]));
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].content.is_empty());
+        assert_eq!(files[0].bytes.as_deref(), Some(&[0u8, 1, 2][..]));
+    }
+
+    #[test]
+    fn text_files_carry_no_raw_bytes() {
+        let files = parse_file_attachments(Some(vec![input("notes.md", "# hi", None)]));
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].content, "# hi");
+        assert!(files[0].bytes.is_none());
+    }
 }

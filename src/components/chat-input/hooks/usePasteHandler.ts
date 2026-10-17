@@ -2,7 +2,14 @@ import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
-import { type Attachment, getMimeType, getImageMimeType, getFileType } from '../types'
+import {
+  type Attachment,
+  getMimeType,
+  getImageMimeType,
+  getFileType,
+  isBinaryDocument,
+  readFileAsBase64,
+} from '../types'
 import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
 
 export interface UsePasteHandlerReturn {
@@ -78,14 +85,19 @@ export function usePasteHandler(
               : 'file')
           try {
             const mimeType = getMimeType(fileName)
-            const content = isPdfFile(fileName, mimeType)
-              ? await extractPdfTextFromFile(file)
-              : await file.text()
+            const binary = isBinaryDocument(fileName)
+            const content = binary
+              ? ''
+              : isPdfFile(fileName, mimeType)
+                ? await extractPdfTextFromFile(file)
+                : await file.text()
+            const base64 = binary ? await readFileAsBase64(file) : undefined
             const newAttachment: Attachment = {
               id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
               type: 'file',
               name: fileName,
               content,
+              base64,
               mimeType,
               size: file.size,
             }

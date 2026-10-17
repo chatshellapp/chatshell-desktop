@@ -153,10 +153,13 @@ export function useSubmitHandler({
       })
 
       // Extract file attachments as structured data (sent via rig's Document)
-      const fileAttachments = attachments.filter((att) => att.type === 'file' && att.content)
+      const fileAttachments = attachments.filter(
+        (att) => att.type === 'file' && (att.content || att.base64)
+      )
       const files = fileAttachments.map((file) => ({
         name: file.name,
-        content: file.content!,
+        content: file.content ?? '',
+        base64: file.base64,
         mimeType: file.mimeType || 'text/plain',
       }))
 

@@ -4,7 +4,13 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileAttachmentInput {
     pub name: String,
+    /// Text content for text-ish files. Empty when `base64` is supplied.
+    #[serde(default)]
     pub content: String,
+    /// Raw bytes as standard base64, for binary documents (Office). Mutually
+    /// exclusive with `content`; binary files never pass through UTF-8.
+    #[serde(default)]
+    pub base64: Option<String>,
     #[serde(rename = "mimeType")]
     pub mime_type: String,
 }

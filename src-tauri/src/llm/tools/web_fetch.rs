@@ -432,6 +432,9 @@ mod tests {
                     limit: None,
                     pages: None,
                     question: None,
+                    sheet: None,
+                    range: None,
+                    formulas: false,
                 },
             )
             .await

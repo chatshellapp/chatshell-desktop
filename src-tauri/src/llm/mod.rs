@@ -58,6 +58,11 @@ pub struct FileData {
     pub content: String,
     /// MIME type (e.g., "text/plain", "text/markdown")
     pub media_type: String,
+    /// Raw bytes for binary documents (Office). Never serialized into a
+    /// provider payload: `content` is the only wire representation, and the
+    /// read tool opens the persisted file by path.
+    #[serde(skip)]
+    pub bytes: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

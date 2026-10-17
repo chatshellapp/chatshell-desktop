@@ -122,6 +122,12 @@ fn attachment_manifest_plan(files: &[llm::FileData], read_available: bool) -> Ve
     let mut plan = Vec::with_capacity(files.len());
     let mut inline_tokens = 0usize;
     for file in files {
+        // Binary documents have no text representation to inline; the model
+        // must open the persisted file with the read tool.
+        if file.bytes.is_some() {
+            plan.push(true);
+            continue;
+        }
         let tokens = estimate_attachment_tokens(&file.content);
         let over_budget = tokens > INLINE_ATTACHMENT_TOKENS
             || inline_tokens.saturating_add(tokens) > INLINE_ATTACHMENT_TOTAL_TOKENS;
@@ -155,12 +161,32 @@ fn project_file_attachments(
         if plan[index]
             && let Some(path) = stored_path
         {
+            let binary = file.bytes.as_ref();
             manifest.push(ManifestAttachment {
                 name: file.name.clone(),
                 mime_type: file.media_type.clone(),
-                size: file.content.len(),
+                size: binary.map(Vec::len).unwrap_or_else(|| file.content.len()),
                 path: path.to_string_lossy().into_owned(),
-                preview: Some(pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+                preview: binary
+                    .is_none()
+                    .then(|| pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+            });
+            continue;
+        }
+
+        // A binary document the model cannot open would otherwise vanish
+        // from the prompt; say so instead of silently dropping it.
+        if file.bytes.is_some() {
+            inline.push(llm::FileData {
+                name: file.name.clone(),
+                content: format!(
+                    "[Binary document \"{}\" ({}) — the read tool is not \
+                     available in this conversation, so its contents cannot \
+                     be shown. Enable the read tool to inspect it.]",
+                    file.name, file.media_type
+                ),
+                media_type: "text/plain".to_string(),
+                bytes: None,
             });
             continue;
         }
@@ -789,6 +815,7 @@ mod tests {
             name: name.to_string(),
             content: "x".repeat(chars),
             media_type: "text/plain".to_string(),
+            bytes: None,
         }
     }
 
@@ -814,6 +841,7 @@ mod tests {
                 "한".repeat(3_000),
             ),
             media_type: "text/plain".to_string(),
+            bytes: None,
         }];
 
         let plan = attachment_manifest_plan(&files, true);
@@ -826,6 +854,52 @@ mod tests {
 
         let plan = attachment_manifest_plan(&files, false);
         assert_eq!(plan, vec![false]);
+    }
+
+    #[test]
+    fn binary_documents_always_manifest_without_a_text_preview() {
+        let files = vec![llm::FileData {
+            name: "report.docx".to_string(),
+            content: String::new(),
+            media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .to_string(),
+            bytes: Some(vec![1, 2, 3, 4]),
+        }];
+
+        assert_eq!(attachment_manifest_plan(&files, true), vec![true]);
+
+        let stored = vec![Some(StoredFile {
+            storage_path: "files/hash.docx".to_string(),
+        })];
+        let (inline, manifest) = project_file_attachments(
+            &|_| Some(std::path::PathBuf::from("/tmp/doc")),
+            &files,
+            &stored,
+            true,
+        );
+
+        assert!(inline.is_empty());
+        assert_eq!(manifest.len(), 1);
+        assert_eq!(manifest[0].size, 4);
+        assert!(manifest[0].preview.is_none(), "binary has no text preview");
+    }
+
+    #[test]
+    fn binary_documents_without_read_tool_leave_a_visible_note() {
+        let files = vec![llm::FileData {
+            name: "report.docx".to_string(),
+            content: String::new(),
+            media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .to_string(),
+            bytes: Some(vec![1, 2, 3]),
+        }];
+
+        let (inline, manifest) = project_file_attachments(&|_| None, &files, &[None], false);
+
+        assert!(manifest.is_empty());
+        assert_eq!(inline.len(), 1);
+        assert!(inline[0].content.contains("read tool is not available"));
+        assert!(inline[0].bytes.is_none());
     }
 
     #[test]

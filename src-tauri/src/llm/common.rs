@@ -292,6 +292,7 @@ mod tests {
             name: "report.pdf".to_string(),
             content: "Extracted PDF text".to_string(),
             media_type: "application/pdf".to_string(),
+            bytes: None,
         }];
 
         let content = build_user_content("Summarize", &[], &files);
