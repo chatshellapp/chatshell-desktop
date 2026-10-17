@@ -1,5 +1,5 @@
 use super::AppState;
-use crate::models::{ContextEnrichment, FetchResult, SearchResult};
+use crate::models::{ContextEnrichment, FetchResult, SearchResult, SearchResultItem};
 use tauri::State;
 
 // ==========================================================================
@@ -38,6 +38,18 @@ pub async fn get_fetch_result(
     state
         .db
         .get_fetch_result(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_search_result_items(
+    state: State<'_, AppState>,
+    search_result_id: String,
+) -> Result<Vec<SearchResultItem>, String> {
+    state
+        .db
+        .get_search_result_items(&search_result_id)
         .await
         .map_err(|e| e.to_string())
 }

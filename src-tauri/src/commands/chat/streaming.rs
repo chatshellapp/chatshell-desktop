@@ -325,7 +325,8 @@ pub(crate) async fn handle_agent_streaming(
     }
     if web_fetch_enabled {
         tracing::info!("🌐 [agent_streaming] Enabling web_fetch tool");
-        config = config.with_web_fetch();
+        let fetch_config = super::url_processing::load_fetch_config(&state_clone).await;
+        config = config.with_web_fetch().with_fetch_config(fetch_config);
     }
     // Temp file tracker for bash output truncation; the RAII guard ensures cleanup
     // on any exit path (success, error, cancel).

@@ -9,7 +9,8 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
-import type { SearchResult, FetchResult, SearchDecision } from '@/types'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import type { SearchResult, FetchResult, SearchDecision, SearchResultItem } from '@/types'
 import { SearchResultFetchItem, ProcessingUrlItem } from './fetch-result-preview'
 import { logger } from '@/lib/logger'
 
@@ -46,6 +47,7 @@ export function SearchResultPreview({
 
   const [isExpanded, setIsExpanded] = useState(false)
   const [fetchResults, setFetchResults] = useState<FetchResult[]>([])
+  const [serpItems, setSerpItems] = useState<SearchResultItem[]>([])
   const [loading, setLoading] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
 
@@ -125,8 +127,34 @@ export function SearchResultPreview({
     loadResults()
   }, [messageId, searchResult.total_results, retryCount, isProcessing, isSearching, fetchedCount])
 
+  // Load the persisted SERP entries. With lazy search the model reads pages
+  // on demand, so result-page entries may be the only list available.
+  useEffect(() => {
+    if (isSearching || !searchId) {
+      return
+    }
+    let cancelled = false
+    const loadItems = async () => {
+      try {
+        const items = await invoke<SearchResultItem[]>('get_search_result_items', {
+          searchResultId: searchId,
+        })
+        if (!cancelled) {
+          setSerpItems(items)
+        }
+      } catch (err) {
+        logger.error('Failed to load search result items:', err)
+      }
+    }
+    loadItems()
+    return () => {
+      cancelled = true
+    }
+  }, [isSearching, searchId, searchResult.total_results])
+
   const urlCount = urlStatuses ? Object.keys(urlStatuses).length : 0
-  const resultCount = urlCount || fetchResults.length || searchResult.total_results || 0
+  const resultCount =
+    urlCount || serpItems.length || fetchResults.length || searchResult.total_results || 0
 
   // Determine if expandable (has URL statuses or results)
   const canExpand = !isSearching && (resultCount > 0 || hasUrlStatuses)
@@ -203,14 +231,32 @@ export function SearchResultPreview({
             fetchResults.map((result) => (
               <SearchResultFetchItem key={result.id} fetchResult={result} />
             ))}
+          {/* SERP entries when no page bodies were fetched (lazy search) */}
+          {!hasUrlStatuses &&
+            fetchResults.length === 0 &&
+            serpItems.map((item) => (
+              <button
+                key={item.url}
+                onClick={() => openUrl(item.url)}
+                className="w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/30"
+              >
+                <p className="text-xs text-foreground truncate">{item.title}</p>
+                <p className="text-[11px] text-muted-foreground/70 truncate">{item.url}</p>
+                {item.snippet && (
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                    {item.snippet}
+                  </p>
+                )}
+              </button>
+            ))}
           {/* Loading state when no URL statuses and no results */}
-          {!hasUrlStatuses && fetchResults.length === 0 && loading && (
+          {!hasUrlStatuses && fetchResults.length === 0 && serpItems.length === 0 && loading && (
             <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">
               {t('loadingSearchResults')}
             </p>
           )}
           {/* Empty state */}
-          {!hasUrlStatuses && fetchResults.length === 0 && !loading && (
+          {!hasUrlStatuses && fetchResults.length === 0 && serpItems.length === 0 && !loading && (
             <p className="text-xs text-muted-foreground/70 px-2.5 py-1.5">{t('noResults')}</p>
           )}
         </div>

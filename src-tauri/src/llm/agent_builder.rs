@@ -52,6 +52,9 @@ pub struct AgentConfig {
     pub search_provider: SearchProvider,
     /// Enable built-in web fetch tool
     pub enable_web_fetch: bool,
+    /// User-configured strategy for the web fetch tool (HTTP/browser tiers,
+    /// Jina API). `None` = tool defaults.
+    pub fetch_config: Option<crate::web_fetch::FetchConfig>,
     /// Enable built-in bash tool
     pub enable_bash: bool,
     /// Default working directory for bash tool
@@ -153,6 +156,11 @@ impl AgentConfig {
     /// Enable the built-in web fetch tool
     pub fn with_web_fetch(mut self) -> Self {
         self.enable_web_fetch = true;
+        self
+    }
+
+    pub fn with_fetch_config(mut self, config: crate::web_fetch::FetchConfig) -> Self {
+        self.fetch_config = Some(config);
         self
     }
 
@@ -582,7 +590,12 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         }
     };
 
-    let create_web_fetch_tool = || -> WebFetchTool { WebFetchTool::new() };
+    let create_web_fetch_tool = || -> WebFetchTool {
+        match &config.fetch_config {
+            Some(fetch_config) => WebFetchTool::with_config(fetch_config.clone()),
+            None => WebFetchTool::new(),
+        }
+    };
 
     let create_glob_tool = || -> GlobTool {
         let tool = if let Some(dir) = &config.glob_working_directory {

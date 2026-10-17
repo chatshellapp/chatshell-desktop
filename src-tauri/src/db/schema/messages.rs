@@ -85,6 +85,7 @@ pub async fn create_contexts_table(pool: &SqlitePool) -> Result<()> {
             display_order INTEGER DEFAULT 0,
             searched_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            items_json TEXT,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
         )",
     )

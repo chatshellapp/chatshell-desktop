@@ -4,7 +4,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
-use crate::models::{CreateSearchResultRequest, SearchResult};
+use crate::models::{CreateSearchResultRequest, SearchResult, SearchResultItem};
 
 impl Database {
     pub async fn create_search_result(
@@ -109,5 +109,46 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
         Ok(())
+    }
+
+    /// Persist the search-engine result entries for a search. Written once
+    /// per search; the items are the snapshot the model saw.
+    pub async fn update_search_result_items(
+        &self,
+        id: &str,
+        items: &[SearchResultItem],
+    ) -> Result<()> {
+        let json = serde_json::to_string(items)?;
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE search_results SET items_json = ?, total_results = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(&json)
+        .bind(items.len() as i64)
+        .bind(&now)
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
+    /// SERP entries for a search, oldest-first order preserved. A missing or
+    /// unparseable column yields an empty list: the preview degrades to the
+    /// result count instead of failing.
+    pub async fn get_search_result_items(&self, id: &str) -> Result<Vec<SearchResultItem>> {
+        let row = sqlx::query(
+            "SELECT items_json FROM search_results WHERE search_results.deleted_at IS NULL AND id = ?",
+        )
+        .bind(id)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+
+        let Some(row) = row else {
+            return Ok(Vec::new());
+        };
+        let raw: Option<String> = row.get("items_json");
+        Ok(raw
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default())
     }
 }

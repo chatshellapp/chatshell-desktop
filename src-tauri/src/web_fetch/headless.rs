@@ -124,7 +124,7 @@ pub async fn fetch_with_headless_fallback(
         tokio::task::spawn_blocking(move || fetch_with_headless_browser(&url_owned)).await;
 
     match html_result {
-        Ok(Ok(html)) => process_browser_html(url, &html, max_chars),
+        Ok(Ok(html)) => process_browser_html(url, &html, max_chars).with_tier("chrome"),
         Ok(Err(e)) => {
             // Headless browser fetch failed
             FetchedWebResource::error(

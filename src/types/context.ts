@@ -3,6 +3,7 @@
 
 export type { SearchResult } from './generated/SearchResult'
 export type { CreateSearchResultRequest } from './generated/CreateSearchResultRequest'
+export type { SearchResultItem } from './generated/SearchResultItem'
 export type { FetchResult } from './generated/FetchResult'
 export type { CreateFetchResultRequest } from './generated/CreateFetchResultRequest'
 export type { ContextType } from './generated/ContextType'

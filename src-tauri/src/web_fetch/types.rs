@@ -14,6 +14,14 @@ pub struct WebFetchMetadata {
     pub original_length: Option<usize>,
     pub truncated: bool,
     pub favicon_url: Option<String>,
+    /// Which fetch tier produced the content: `http`, `obscura`, `webview`,
+    /// `chrome`, or `jina`. `None` for restored rows and errors.
+    pub tier: Option<String>,
+    /// The plain-HTTP result was escalated to a browser tier.
+    pub escalated: bool,
+    /// Escalation was attempted but every browser tier failed, so the
+    /// plain-HTTP content was kept. The model must treat it as incomplete.
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +37,25 @@ pub struct FetchedWebResource {
 }
 
 impl FetchedWebResource {
+    /// Tag which fetch tier produced this resource.
+    pub fn with_tier(mut self, tier: &str) -> Self {
+        self.metadata.tier = Some(tier.to_string());
+        self
+    }
+
+    /// Mark that a browser tier was used after plain HTTP.
+    pub fn mark_escalated(mut self) -> Self {
+        self.metadata.escalated = true;
+        self
+    }
+
+    /// Mark content as incomplete: escalation was attempted, every browser
+    /// tier failed, and the plain-HTTP result was kept.
+    pub fn mark_partial(mut self) -> Self {
+        self.metadata.partial = true;
+        self
+    }
+
     /// Create an error response with default metadata
     pub fn error(url: &str, mime_type: String, error: String, favicon_url: Option<String>) -> Self {
         FetchedWebResource {
@@ -46,6 +73,9 @@ impl FetchedWebResource {
                 original_length: None,
                 truncated: false,
                 favicon_url,
+                tier: None,
+                escalated: false,
+                partial: false,
             },
         }
     }
@@ -73,6 +103,9 @@ impl FetchedWebResource {
                 original_length: None,
                 truncated: false,
                 favicon_url: None,
+                tier: None,
+                escalated: false,
+                partial: false,
             },
         }
     }

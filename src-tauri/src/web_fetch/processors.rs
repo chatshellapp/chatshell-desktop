@@ -114,6 +114,9 @@ pub fn process_html_with_readability(
             original_length: Some(original_length),
             truncated,
             favicon_url,
+            tier: None,
+            escalated: false,
+            partial: false,
         },
     }
 }
@@ -147,6 +150,9 @@ pub fn process_text_content(
             original_length: Some(original_length),
             truncated,
             favicon_url,
+            tier: None,
+            escalated: false,
+            partial: false,
         },
     }
 }
@@ -187,6 +193,9 @@ pub fn process_json_content(
             original_length: Some(original_length),
             truncated,
             favicon_url,
+            tier: None,
+            escalated: false,
+            partial: false,
         },
     }
 }
@@ -221,6 +230,9 @@ pub fn process_xml_content(
             original_length: Some(original_length),
             truncated,
             favicon_url: None,
+            tier: None,
+            escalated: false,
+            partial: false,
         },
     }
 }

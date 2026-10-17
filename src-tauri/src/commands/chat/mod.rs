@@ -17,7 +17,7 @@ mod url_processing;
 pub mod web_search;
 
 use super::AppState;
-use crate::db::tools::BUILTIN_READ_ID;
+use crate::db::tools::{BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
 use crate::models::{CreateMessageRequest, Message};
 use crate::web_fetch;
 use tauri::{Emitter, State};
@@ -292,22 +292,22 @@ fn spawn_background_task(
     });
 }
 
-/// Whether the read tool can serve this turn. Mirrors the builtin-tool
-/// resolution in `handle_agent_streaming` closely enough for projection
-/// decisions: assistant tools + conversation-level enabled tools, gated by
-/// tool-use support. Skill-required tools are omitted deliberately — if a
-/// skill would enable `read` later, inlining the attachment is the safe
-/// fallback.
-async fn read_tool_available(
+/// Enabled builtin/MCP tool ids for this turn. Mirrors the resolution in
+/// `handle_agent_streaming` closely enough for prompt-projection decisions:
+/// assistant tools + conversation-level enabled tools, gated by tool-use
+/// support. Skill-required tools are omitted deliberately — if a skill would
+/// enable a tool later, the conservative projection (inline/lazy fallback)
+/// stays correct.
+async fn enabled_tool_ids(
     state: &AppState,
     provider: &str,
     model: &str,
     assistant_db_id: Option<&str>,
     conversation_id: &str,
     disable_tools: bool,
-) -> bool {
+) -> Vec<String> {
     if disable_tools {
-        return false;
+        return Vec::new();
     }
     if state
         .capabilities_cache
@@ -316,7 +316,7 @@ async fn read_tool_available(
         .supports_tool_use
         == Some(false)
     {
-        return false;
+        return Vec::new();
     }
 
     let mut tool_ids = Vec::new();
@@ -328,7 +328,7 @@ async fn read_tool_available(
     if let Ok(settings) = state.db.get_conversation_settings(conversation_id).await {
         tool_ids.extend(settings.enabled_mcp_server_ids);
     }
-    tool_ids.iter().any(|id| id == BUILTIN_READ_ID)
+    tool_ids
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -361,6 +361,22 @@ async fn process_llm_request(
 ) {
     tracing::info!("🎯 [background_task] Started processing LLM request");
 
+    let tool_ids = enabled_tool_ids(
+        &state,
+        &provider,
+        &model,
+        assistant_db_id.as_deref(),
+        &conversation_id,
+        disable_tools,
+    )
+    .await;
+    let read_available = tool_ids.iter().any(|id| id == BUILTIN_READ_ID);
+    // The model owns page retrieval when it can search or fetch; then the
+    // search path stops at the result page.
+    let model_can_fetch = tool_ids
+        .iter()
+        .any(|id| id == BUILTIN_WEB_SEARCH_ID || id == BUILTIN_WEB_FETCH_ID);
+
     // Step 1: Process search if enabled
     let search_result = if search_enabled {
         search_processing::process_search_decision(
@@ -374,15 +390,27 @@ async fn process_llm_request(
             api_style.as_deref(),
             &user_message_id,
             &conversation_id,
-            urls_to_fetch.unwrap_or_default(),
+            model_can_fetch,
         )
         .await
     } else {
         search_processing::SearchProcessingResult {
-            urls: urls_to_fetch.unwrap_or_default(),
+            urls: Vec::new(),
             search_result_id: None,
+            serp_context: None,
         }
     };
+
+    // User-provided URLs are always fetched: the user explicitly attached
+    // them. Result-page URLs are only fetched when the model cannot read
+    // them itself.
+    let mut urls_to_fetch = urls_to_fetch.unwrap_or_default();
+    let fetch_source_id = if search_result.urls.is_empty() {
+        None
+    } else {
+        search_result.search_result_id.clone()
+    };
+    urls_to_fetch.extend(search_result.urls);
 
     // Step 2: Reuse existing fetch_results (resend path) and/or fetch new URLs.
     // Reuse is processed first so reused ids win over any duplicate URL the
@@ -391,17 +419,21 @@ async fn process_llm_request(
     let url_result = url_processing::fetch_and_store_urls(
         &state,
         &app,
-        &search_result.urls,
+        &urls_to_fetch,
         &reuse_ids_owned,
         &user_message_id,
         &conversation_id,
-        search_result.search_result_id.as_deref(),
+        fetch_source_id.as_deref(),
     )
     .await;
 
-    // Step 3: Build LLM content with fetched resources
-    let processed_content =
+    // Step 3: Build LLM content with fetched resources and the SERP block
+    let mut processed_content =
         web_fetch::build_llm_content_with_attachments(&content, &url_result.fetched_resources);
+    if let Some(serp_context) = &search_result.serp_context {
+        processed_content.push_str("\n\n---\n");
+        processed_content.push_str(serp_context);
+    }
 
     // Step 4: Parse attachments
     let user_images = attachment_processing::parse_image_attachments(images);
@@ -428,15 +460,7 @@ async fn process_llm_request(
 
     // Large attachments are projected as a path manifest only when the
     // conversation can actually fetch them back with the read tool.
-    let read_available = read_tool_available(
-        &state,
-        &provider,
-        &model,
-        assistant_db_id.as_deref(),
-        &conversation_id,
-        disable_tools,
-    )
-    .await;
+    // (`read_available` is computed with the tool set above.)
 
     // Step 6: Build chat messages with context limit
     let chat_messages = message_builder::build_chat_messages(

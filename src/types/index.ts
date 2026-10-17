@@ -81,6 +81,7 @@ export type {
   CreateSearchResultRequest,
   FetchResult,
   CreateFetchResultRequest,
+  SearchResultItem,
   ContextType,
   ContextEnrichment,
 } from './context'

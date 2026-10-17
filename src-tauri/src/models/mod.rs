@@ -58,7 +58,7 @@ pub use attachment::{
 // Context enrichments (system-fetched content)
 pub use context::{
     ContextEnrichment, ContextType, CreateFetchResultRequest, CreateSearchResultRequest,
-    FetchResult, SearchResult,
+    FetchResult, SearchResult, SearchResultItem,
 };
 
 // Process steps (AI workflow artifacts)

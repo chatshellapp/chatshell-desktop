@@ -125,8 +125,30 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_tool_call_id_column(pool).await?;
     ensure_natural_key_unique_indexes(pool).await?;
     ensure_conversation_timestamps(pool).await?;
+    ensure_search_result_items_column(pool).await?;
     prompt_history::create_prompt_history_table(pool).await?;
 
+    Ok(())
+}
+
+/// Ensure `search_results.items_json` exists. The column stores the SERP
+/// entries (title/url/snippet) so a search's results survive reloads without
+/// materializing page bodies. Idempotent: repairs databases created before
+/// the column was added.
+async fn ensure_search_result_items_column(pool: &SqlitePool) -> Result<()> {
+    let columns = sqlx::query("PRAGMA table_info(search_results)")
+        .fetch_all(pool)
+        .await?;
+    let has_column = columns.iter().any(|row| {
+        row.try_get::<String, _>("name")
+            .is_ok_and(|name| name == "items_json")
+    });
+    if !has_column {
+        sqlx::query("ALTER TABLE search_results ADD COLUMN items_json TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added items_json column to search_results table");
+    }
     Ok(())
 }
 
@@ -679,5 +701,65 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(updated_at, "2026-08-21T00:00:09+00:00");
+    }
+
+    #[tokio::test]
+    async fn search_result_items_roundtrip_through_json_column() {
+        use crate::models::{CreateSearchResultRequest, SearchResultItem};
+
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.unwrap();
+
+        sqlx::query("INSERT INTO conversations(id, title, created_at, updated_at) VALUES('c1', 't', '2026-08-21T00:00:00+00:00', '2026-08-21T00:00:00+00:00')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO messages(id, conversation_id, sender_type, content, created_at, updated_at) VALUES('m1', 'c1', 'user', 'hi', '2026-08-21T00:00:01+00:00', '2026-08-21T00:00:01+00:00')")
+            .execute(&pool).await.unwrap();
+
+        let db = crate::db::Database {
+            pool: std::sync::Arc::new(pool),
+        };
+        let search = db
+            .create_search_result(CreateSearchResultRequest {
+                message_id: "m1".to_string(),
+                query: "q".to_string(),
+                engine: "duckduckgo".to_string(),
+                total_results: None,
+                display_order: Some(0),
+                searched_at: "2026-08-21T00:00:02+00:00".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let items = vec![
+            SearchResultItem {
+                title: "A".to_string(),
+                url: "https://a.example".to_string(),
+                snippet: "first".to_string(),
+            },
+            SearchResultItem {
+                title: "B".to_string(),
+                url: "https://b.example".to_string(),
+                snippet: "second".to_string(),
+            },
+        ];
+        db.update_search_result_items(&search.id, &items)
+            .await
+            .unwrap();
+
+        assert_eq!(db.get_search_result_items(&search.id).await.unwrap(), items);
+        assert_eq!(
+            db.get_search_result(&search.id)
+                .await
+                .unwrap()
+                .total_results,
+            Some(2)
+        );
+        assert!(
+            db.get_search_result_items("missing")
+                .await
+                .unwrap()
+                .is_empty(),
+            "unknown id degrades to an empty list"
+        );
     }
 }

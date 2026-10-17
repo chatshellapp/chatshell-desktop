@@ -411,6 +411,7 @@ pub fn run() {
             // Context Enrichments (search results, fetch results)
             commands::get_message_contexts,
             commands::get_search_result,
+            commands::get_search_result_items,
             commands::get_fetch_result,
             commands::get_fetch_results_by_source,
             commands::get_fetch_results_by_message,

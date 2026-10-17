@@ -7,7 +7,7 @@ use rig::agent::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::web_search::{SearchProvider, search};
+use crate::web_search::SearchProvider;
 
 /// Arguments for web search tool
 #[derive(Debug, Clone, Deserialize)]
@@ -64,11 +64,17 @@ impl Tool for WebSearchTool {
     fn description(&self) -> String {
         "Search the web for information using a search engine. \
                 Returns a list of relevant search results with titles, URLs, and snippets. \
-                Use this when you need to find current information, facts, or references from the web."
-                .to_string()
+                Engines fall back automatically when one is blocked or returns nothing; \
+                the response names the engine that served the results. \
+                Use web_fetch on a result URL to read the full page."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
+        // No engine parameter: the model has no basis for choosing between
+        // scraping targets, and the user's configured provider plus the
+        // automatic fallback already covers availability. Engine selection
+        // stays a settings concern.
         json!({
             "type": "object",
             "properties": {
@@ -79,14 +85,6 @@ impl Tool for WebSearchTool {
                 "max_results": {
                     "type": "number",
                     "description": "Maximum number of results to return (default: 5)"
-                },
-                "provider": {
-                    "type": "string",
-                    "enum": ["duckduckgo", "yahoo", "baidu"],
-                    "description": format!(
-                        "Search provider to use (default: {})",
-                        self.default_provider
-                    )
                 }
             },
             "required": ["query"]
@@ -104,17 +102,20 @@ impl Tool for WebSearchTool {
             args.max_results
         );
 
-        // Determine provider
-        let provider = args
+        // Determine provider. The `provider` argument is no longer
+        // advertised to the model; it remains accepted for explicit callers.
+        let preferred = args
             .provider
             .as_ref()
             .and_then(|p| SearchProvider::from_id(p))
             .unwrap_or(self.default_provider);
 
-        // Execute search
-        let response = search(provider, &args.query, args.max_results)
-            .await
-            .map_err(|e| WebSearchError(e.to_string()))?;
+        // Execute search, degrading across engines on failure or zero results.
+        let result =
+            crate::web_search::search_with_fallback(preferred, &args.query, args.max_results)
+                .await
+                .map_err(|e| WebSearchError(e.to_string()))?;
+        let response = &result.response;
 
         // Format results as markdown for the LLM
         let mut output = format!(
@@ -123,6 +124,19 @@ impl Tool for WebSearchTool {
             response.provider.display_name(),
             response.total_results
         );
+
+        if !result.failures.is_empty() {
+            let attempted: Vec<String> = result
+                .failures
+                .iter()
+                .map(|(provider, reason)| format!("{} ({reason})", provider.display_name()))
+                .collect();
+            output.push_str(&format!(
+                "**Note:** Earlier engines returned nothing: {}. These results came from {}.\n\n",
+                attempted.join(", "),
+                response.provider.display_name()
+            ));
+        }
 
         if response.results.is_empty() {
             output.push_str("No results found for this query.\n");
@@ -139,8 +153,9 @@ impl Tool for WebSearchTool {
         }
 
         tracing::info!(
-            "🔧 [tool-result] web_search: returned {} results",
-            response.results.len()
+            "🔧 [tool-result] web_search: returned {} results from {}",
+            response.results.len(),
+            response.provider.display_name()
         );
 
         Ok(output)
@@ -166,5 +181,21 @@ mod tests {
     #[test]
     fn test_default_max_results() {
         assert_eq!(default_max_results(), 5);
+    }
+
+    #[test]
+    fn parameters_do_not_expose_engine_selection() {
+        let tool = WebSearchTool::new();
+        let params = rig::agent::tool::Tool::parameters(&tool);
+        let properties = params
+            .get("properties")
+            .and_then(|value| value.as_object())
+            .expect("properties object");
+        assert!(properties.contains_key("query"));
+        assert!(properties.contains_key("max_results"));
+        assert!(
+            !properties.contains_key("provider"),
+            "engine choice stays a settings concern"
+        );
     }
 }

@@ -1,8 +1,9 @@
+use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 use url::Url;
 
-use super::extractors::extract_favicon_url;
+use super::extractors::{extract_favicon_url, truncate_by_chars};
 use super::headless::fetch_with_headless_fallback;
 use super::jina::fetch_with_jina;
 use super::obscura;
@@ -11,7 +12,7 @@ use super::processors::{
     process_text_content, process_xml_content,
 };
 use super::spa_detect::{has_low_quality_text, looks_like_js_shell};
-use super::types::{FetchedWebResource, HTTP_CLIENT};
+use super::types::{FetchedWebResource, HTTP_CLIENT, WebFetchMetadata};
 use super::webview_fetch;
 
 use chatshell_agent_core::web_fetch::decode_body_bytes;
@@ -144,23 +145,29 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
             // Extract favicon from HTML content
             let favicon_url = extract_favicon_url(url, Some(&body));
             let resource =
-                process_html_with_readability(url, &body, mime_type, max_chars, favicon_url);
+                process_html_with_readability(url, &body, mime_type, max_chars, favicon_url)
+                    .with_tier("http");
             escalate_if_js_shell(url, &body, max_chars, resource).await
         }
 
         // Markdown - return directly (no favicon for non-HTML)
         "text/markdown" | "text/x-markdown" => {
             process_text_content(url, &body, "text/markdown".to_string(), max_chars, None)
+                .with_tier("http")
         }
 
         // Plain text - return directly (no favicon for non-HTML)
-        "text/plain" => process_text_content(url, &body, mime_type, max_chars, None),
+        "text/plain" => {
+            process_text_content(url, &body, mime_type, max_chars, None).with_tier("http")
+        }
 
         // JSON - format as code block (no favicon for non-HTML)
-        "application/json" => process_json_content(url, &body, max_chars, None),
+        "application/json" => process_json_content(url, &body, max_chars, None).with_tier("http"),
 
         // XML - treat as text with code block (no favicon for non-HTML)
-        "application/xml" | "text/xml" => process_xml_content(url, &body, mime_type, max_chars),
+        "application/xml" | "text/xml" => {
+            process_xml_content(url, &body, mime_type, max_chars).with_tier("http")
+        }
 
         // Unsupported binary types (no favicon for binary content)
         mime if mime.starts_with("image/")
@@ -200,12 +207,13 @@ pub async fn fetch_web_resource(url: &str, max_chars: Option<usize>) -> FetchedW
                         "text/html".to_string(),
                         max_chars,
                         favicon_url,
-                    ),
+                    )
+                    .with_tier("http"),
                 )
                 .await
             } else {
                 // Treat as plain text (no favicon for non-HTML)
-                process_text_content(url, &body, mime_type, max_chars, None)
+                process_text_content(url, &body, mime_type, max_chars, None).with_tier("http")
             }
         }
     }
@@ -237,14 +245,14 @@ async fn escalate_if_js_shell(
     );
     let browser_result = fetch_with_browser_tier(url, max_chars).await;
     if browser_result.extraction_error.is_none() {
-        return browser_result;
+        return browser_result.mark_escalated();
     }
     tracing::warn!(
         "⚠️ [fetcher] Browser escalation failed ({}), keeping HTTP result for: {}",
         browser_result.extraction_error.unwrap_or_default(),
         url
     );
-    http_result
+    http_result.mark_partial()
 }
 
 /// Fetch web resource with configuration
@@ -338,7 +346,7 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
     let body = decode_body_bytes(&raw, &content_type);
 
     // Handle different content types (same as fetch_web_resource)
-    match mime_type.clone().as_str() {
+    let resource = match mime_type.clone().as_str() {
         "text/html" | "application/xhtml+xml" => {
             let favicon_url = extract_favicon_url(url, Some(&body));
             process_html_with_readability(url, &body, mime_type, max_chars, favicon_url)
@@ -384,6 +392,111 @@ async fn fetch_with_http_only(url: &str, max_chars: Option<usize>) -> FetchedWeb
                 process_text_content(url, &body, mime_type, max_chars, None)
             }
         }
+    };
+
+    resource.with_tier("http")
+}
+
+/// Plain HTTP with no extraction and no browser escalation. Returns the
+/// response body as decoded text, capped by `max_chars`.
+///
+/// The escape hatch for the `web_fetch` tool's `raw` mode: readability can
+/// pick the wrong container, and a browser-rendered page can differ from what
+/// the server sent. This path reports exactly what HTTP returned.
+pub async fn fetch_raw_http(url: &str, max_chars: Option<usize>) -> FetchedWebResource {
+    tracing::info!("📡 [fetcher] Starting raw HTTP fetch for: {}", url);
+
+    if Url::parse(url).is_err() {
+        return FetchedWebResource::error(
+            url,
+            String::new(),
+            format!("Invalid URL: {}", url),
+            None,
+        );
+    }
+
+    let response = match HTTP_CLIENT.get(url).header("Accept", "*/*").send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return FetchedWebResource::error(
+                url,
+                String::new(),
+                format!("HTTP request failed: {}", error),
+                None,
+            );
+        }
+    };
+
+    if !response.status().is_success() {
+        return FetchedWebResource::error(
+            url,
+            String::new(),
+            format!("HTTP error: {}", response.status()),
+            None,
+        );
+    }
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    // Direct images still belong to the read tool's in-memory path.
+    if mime_type.starts_with("image/") {
+        return FetchedWebResource::image(url, mime_type);
+    }
+
+    let raw = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return FetchedWebResource::error(
+                url,
+                mime_type,
+                format!("Failed to read response body: {}", error),
+                None,
+            );
+        }
+    };
+    let body = decode_body_bytes(&raw, &content_type);
+    let original_length = body.chars().count();
+    let (content, truncated) = match max_chars {
+        Some(limit) => truncate_by_chars(&body, limit),
+        None => (body, false),
+    };
+
+    let content_format = if mime_type.is_empty() {
+        "text/plain".to_string()
+    } else {
+        mime_type.clone()
+    };
+
+    FetchedWebResource {
+        url: url.to_string(),
+        title: None,
+        description: None,
+        mime_type,
+        content_format,
+        content,
+        extraction_error: None,
+        metadata: WebFetchMetadata {
+            keywords: None,
+            headings: vec![],
+            fetched_at: Utc::now().to_rfc3339(),
+            original_length: Some(original_length),
+            truncated,
+            favicon_url: None,
+            tier: Some("http".to_string()),
+            escalated: false,
+            partial: false,
+        },
     }
 }
 
@@ -394,7 +507,7 @@ async fn try_obscura(url: &str, max_chars: Option<usize>) -> Option<FetchedWebRe
     }
     tracing::info!("🔄 [fetcher] Trying obscura browser tier for: {}", url);
     match obscura::fetch_html(url).await {
-        Ok(html) => Some(process_browser_html(url, &html, max_chars)),
+        Ok(html) => Some(process_browser_html(url, &html, max_chars).with_tier("obscura")),
         Err(e) => {
             tracing::warn!("⚠️ [fetcher] Obscura fetch failed: {}", e);
             None
@@ -409,7 +522,7 @@ async fn try_webview(url: &str, max_chars: Option<usize>) -> Option<FetchedWebRe
     }
     tracing::info!("🔄 [fetcher] Trying system webview tier for: {}", url);
     match webview_fetch::fetch_html(url).await {
-        Ok(html) => Some(process_browser_html(url, &html, max_chars)),
+        Ok(html) => Some(process_browser_html(url, &html, max_chars).with_tier("webview")),
         Err(e) => {
             tracing::warn!("⚠️ [fetcher] System webview fetch failed: {}", e);
             None

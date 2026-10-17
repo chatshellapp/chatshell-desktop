@@ -8,7 +8,7 @@ use crate::web_fetch::{
 use tauri::Emitter;
 
 /// Load fetch configuration from settings
-async fn load_fetch_config(state: &AppState) -> FetchConfig {
+pub(crate) async fn load_fetch_config(state: &AppState) -> FetchConfig {
     let mode = match state.db.get_setting("web_fetch_mode").await {
         Ok(Some(m)) if m == "api" => FetchMode::Api,
         _ => FetchMode::Local,
@@ -118,6 +118,9 @@ async fn reuse_fetch_results(
                     .and_then(|s| usize::try_from(s).ok()),
                 truncated: false,
                 favicon_url: fetch_result.favicon_url.clone(),
+                tier: None,
+                escalated: false,
+                partial: false,
             },
         };
 

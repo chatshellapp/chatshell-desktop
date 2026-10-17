@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::web_fetch::{
-    FetchConfig, HTTP_CLIENT, MAX_REMOTE_SOURCE_BYTES, fetch_web_resource_with_config,
+    FetchConfig, FetchMode, HTTP_CLIENT, LocalMethod, MAX_REMOTE_SOURCE_BYTES, fetch_raw_http,
+    fetch_web_resource_with_config,
 };
 
 /// Desktop HTTP adapter for the core read tool's remote-URL seam.
@@ -97,6 +98,20 @@ impl UrlByteFetcher for HttpUrlByteFetcher {
     }
 }
 
+/// Retrieval mode for the tool call.
+///
+/// `auto` follows the user's configured strategy (HTTP → browser chain).
+/// `http_only` skips the browser chain for this call. `raw` returns the HTTP
+/// body untouched by readability extraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WebFetchMode {
+    #[default]
+    Auto,
+    HttpOnly,
+    Raw,
+}
+
 /// Arguments for web fetch tool
 #[derive(Debug, Clone, Deserialize)]
 pub struct WebFetchArgs {
@@ -105,6 +120,9 @@ pub struct WebFetchArgs {
     /// Maximum characters to return (default: 50000)
     #[serde(default)]
     pub max_chars: Option<usize>,
+    /// Retrieval mode; defaults to `auto`
+    #[serde(default)]
+    pub mode: Option<WebFetchMode>,
 }
 
 /// Error type for web fetch tool
@@ -159,6 +177,12 @@ impl WebFetchTool {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Build with the user's configured fetch strategy. The agent path uses
+    /// this so tool calls honor the same settings as attachment fetching.
+    pub fn with_config(config: FetchConfig) -> Self {
+        Self { config }
+    }
 }
 
 impl Tool for WebFetchTool {
@@ -169,10 +193,14 @@ impl Tool for WebFetchTool {
     type Output = String;
 
     fn description(&self) -> String {
-        "Fetch and extract the main content from a web page. \
-            Returns the page title and cleaned text content suitable for reading. \
-            Use this to read articles, documentation, blog posts, or any web page content. \
-            The content is extracted using readability algorithms to remove ads and navigation. \
+        "Fetch a web page and return its readable content. \
+            Returns the page title, a fetch report (which retrieval tier produced it, whether a \
+            browser escalation happened, whether the content is partial), and cleaned text. \
+            Use this to read articles, documentation, blog posts, or any web page. \
+            mode=\"auto\" (default) follows the configured strategy: plain HTTP, then a browser \
+            tier for JavaScript shells. Use mode=\"http_only\" to skip the browser chain, or \
+            mode=\"raw\" to get the HTTP body without readability extraction when extraction \
+            drops the part you need. \
             Direct image URLs are not extracted; call the read tool on the URL instead."
             .to_string()
     }
@@ -188,6 +216,11 @@ impl Tool for WebFetchTool {
                 "max_chars": {
                     "type": "number",
                     "description": "Maximum characters to return (default: 50000). Use smaller values for quick summaries."
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["auto", "http_only", "raw"],
+                    "description": "Retrieval mode. auto: configured strategy with browser fallback. http_only: plain HTTP, no browser. raw: HTTP body without extraction."
                 }
             },
             "required": ["url"]
@@ -200,16 +233,33 @@ impl Tool for WebFetchTool {
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         tracing::info!(
-            "🔧 [tool-call] web_fetch: url=\"{}\" max_chars={:?}",
+            "🔧 [tool-call] web_fetch: url=\"{}\" max_chars={:?} mode={:?}",
             args.url,
-            args.max_chars
+            args.max_chars,
+            args.mode
         );
 
         let max_chars = args.max_chars.unwrap_or(50000);
+        let mode = args.mode.unwrap_or_default();
 
         // Fetch the web resource
-        let resource =
-            fetch_web_resource_with_config(&args.url, Some(max_chars), &self.config).await;
+        let resource = match mode {
+            WebFetchMode::Auto => {
+                fetch_web_resource_with_config(&args.url, Some(max_chars), &self.config).await
+            }
+            WebFetchMode::HttpOnly => {
+                // One call without the browser chain; the configured mode
+                // (API vs local) is intentionally ignored: the model asked
+                // for plain HTTP specifically.
+                let http_config = FetchConfig {
+                    mode: FetchMode::Local,
+                    local_method: LocalMethod::FetchOnly,
+                    jina_api_key: None,
+                };
+                fetch_web_resource_with_config(&args.url, Some(max_chars), &http_config).await
+            }
+            WebFetchMode::Raw => fetch_raw_http(&args.url, Some(max_chars)).await,
+        };
 
         // Check for errors
         if let Some(error) = &resource.extraction_error {
@@ -228,9 +278,34 @@ impl Tool for WebFetchTool {
             output.push_str(&format!("# {}\n\n", title));
         }
 
-        // Add metadata
+        // Add metadata. The fetch report is what lets the model decide
+        // whether to retry with another mode instead of trusting a page
+        // that silently came back incomplete.
         output.push_str(&format!("**URL:** {}\n", resource.url));
         output.push_str(&format!("**Content Type:** {}\n", resource.mime_type));
+        output.push_str(&format!(
+            "**Content Format:** {}\n",
+            resource.content_format
+        ));
+        output.push_str(&format!(
+            "**Fetch:** mode={}, tier={}, escalated={}, partial={}\n",
+            match mode {
+                WebFetchMode::Auto => "auto",
+                WebFetchMode::HttpOnly => "http_only",
+                WebFetchMode::Raw => "raw",
+            },
+            resource.metadata.tier.as_deref().unwrap_or("unknown"),
+            resource.metadata.escalated,
+            resource.metadata.partial
+        ));
+
+        if resource.metadata.partial {
+            output.push_str(
+                "**Warning:** The browser fallback failed; this is the plain-HTTP result and \
+                 may be incomplete. Retry with mode=\"auto\" later, or use `read` on the URL \
+                 for the raw source.\n",
+            );
+        }
 
         if resource.metadata.truncated {
             output.push_str(&format!(
@@ -246,9 +321,11 @@ impl Tool for WebFetchTool {
 
         let content_len = resource.content.len();
         tracing::info!(
-            "🔧 [tool-result] web_fetch: fetched {} chars from \"{}\"",
+            "🔧 [tool-result] web_fetch: fetched {} chars from \"{}\" (tier={:?}, partial={})",
             content_len,
-            resource.title.as_deref().unwrap_or("(no title)")
+            resource.title.as_deref().unwrap_or("(no title)"),
+            resource.metadata.tier,
+            resource.metadata.partial
         );
 
         Ok(output)
@@ -292,6 +369,35 @@ mod tests {
         let args: WebFetchArgs = serde_json::from_str(r#"{"url": "https://example.com"}"#).unwrap();
         assert_eq!(args.url, "https://example.com");
         assert_eq!(args.max_chars, None);
+        assert_eq!(args.mode, None);
+    }
+
+    #[test]
+    fn test_web_fetch_mode_parses_from_snake_case() {
+        let args: WebFetchArgs =
+            serde_json::from_str(r#"{"url": "https://example.com", "mode": "http_only"}"#).unwrap();
+        assert_eq!(args.mode, Some(WebFetchMode::HttpOnly));
+
+        let args: WebFetchArgs =
+            serde_json::from_str(r#"{"url": "https://example.com", "mode": "raw"}"#).unwrap();
+        assert_eq!(args.mode, Some(WebFetchMode::Raw));
+
+        let args: WebFetchArgs =
+            serde_json::from_str(r#"{"url": "https://example.com", "mode": "auto"}"#).unwrap();
+        assert_eq!(args.mode, Some(WebFetchMode::Auto));
+    }
+
+    #[test]
+    fn test_web_fetch_tool_accepts_config() {
+        let tool = WebFetchTool::with_config(crate::web_fetch::FetchConfig {
+            mode: FetchMode::Local,
+            local_method: crate::web_fetch::LocalMethod::FetchOnly,
+            jina_api_key: None,
+        });
+        assert_eq!(
+            tool.config.local_method,
+            crate::web_fetch::LocalMethod::FetchOnly
+        );
     }
 
     #[tokio::test]
@@ -363,6 +469,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn web_fetch_raw_mode_returns_unextracted_body() {
+        let html = b"<html><body><p>raw &amp; unfiltered</p></body></html>".to_vec();
+        let url =
+            serve_one_response("text/html; charset=utf-8", html.clone(), html.len() as u64).await;
+        let tool = WebFetchTool::new();
+        let mut context = ToolContext::new();
+
+        let output = tool
+            .call(
+                &mut context,
+                WebFetchArgs {
+                    url,
+                    max_chars: None,
+                    mode: Some(WebFetchMode::Raw),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            output.contains("**Fetch:** mode=raw, tier=http"),
+            "{output}"
+        );
+        assert!(
+            output.contains("<p>raw &amp; unfiltered</p>"),
+            "raw body must survive without readability extraction: {output}"
+        );
+    }
+
+    #[tokio::test]
+    async fn web_fetch_http_only_reports_tier_without_escalation() {
+        let html = b"<html><body><article><p>extracted</p></article></body></html>".to_vec();
+        let url = serve_one_response("text/html", html.clone(), html.len() as u64).await;
+        let tool = WebFetchTool::new();
+        let mut context = ToolContext::new();
+
+        let output = tool
+            .call(
+                &mut context,
+                WebFetchArgs {
+                    url,
+                    max_chars: None,
+                    mode: Some(WebFetchMode::HttpOnly),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            output.contains("**Fetch:** mode=http_only, tier=http, escalated=false, partial=false"),
+            "{output}"
+        );
+        assert!(output.contains("extracted"), "{output}");
+    }
+
+    #[tokio::test]
     async fn web_fetch_on_direct_image_steers_to_read() {
         let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
         png.extend_from_slice(b"payload");
@@ -376,6 +538,7 @@ mod tests {
                 WebFetchArgs {
                     url,
                     max_chars: None,
+                    mode: None,
                 },
             )
             .await

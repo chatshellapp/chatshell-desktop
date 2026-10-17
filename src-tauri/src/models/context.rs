@@ -34,6 +34,18 @@ pub struct CreateSearchResultRequest {
     pub searched_at: String,
 }
 
+/// One entry of a search-engine result page. Persisted as JSON in
+/// `search_results.items_json` and injected into the model prompt as a
+/// compact block, so the model can pick a URL and fetch it on demand instead
+/// of receiving every page body up front.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SearchResultItem {
+    pub title: String,
+    pub url: String,
+    pub snippet: String,
+}
+
 /// Fetch result - stores metadata about a fetched web resource
 /// Content is stored in filesystem at storage_path
 /// source_type distinguishes between search-initiated and user-provided URL fetches

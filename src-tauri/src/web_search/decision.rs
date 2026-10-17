@@ -11,8 +11,9 @@ use crate::prompts::SEARCH_DECISION_SYSTEM_PROMPT;
 
 use super::types::SearchDecisionResult;
 
-/// Use AI to decide if web search is needed for the given user input
-/// Uses the same provider/model as the current conversation
+/// Use AI to decide if web search is needed for the given user input.
+/// Callers pass the auxiliary tiny model and fall back to the conversation
+/// model when no aux model is configured.
 pub async fn decide_search_needed(
     user_input: &str,
     provider: &str,

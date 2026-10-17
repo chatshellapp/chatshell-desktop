@@ -42,6 +42,9 @@ pub async fn fetch_with_jina(url: &str, api_key: Option<&str>) -> FetchedWebReso
             original_length: None,
             truncated: false,
             favicon_url,
+            tier: Some("jina".to_string()),
+            escalated: false,
+            partial: false,
         },
     }
 }

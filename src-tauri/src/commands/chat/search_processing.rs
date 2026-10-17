@@ -1,16 +1,38 @@
 //! Search decision and execution logic
+//!
+//! Two paths, chosen by capability:
+//!
+//! - The model can fetch pages itself (web_search/web_fetch enabled): one
+//!   search runs with the user's own query, only the result page is handed
+//!   over, and the model reads whichever URLs it needs. No decision
+//!   completion, no body prefetch.
+//! - The model cannot fetch pages: a lightweight model decides whether a
+//!   search is warranted, and page bodies are fetched and inlined because
+//!   the model has no way to retrieve them later.
 
 use super::super::AppState;
-use crate::models::{CreateSearchDecisionRequest, CreateSearchResultRequest};
+use super::aux_models::{ConversationModel, resolve_aux_tiny};
+use crate::models::{CreateSearchDecisionRequest, CreateSearchResultRequest, SearchResultItem};
+use crate::web_search::SearchProvider;
 use tauri::Emitter;
+
+/// Result entries handed to the model and persisted for the UI.
+const MAX_SERP_ITEMS: usize = 6;
+/// Snippet budget per entry; enough to rank relevance, not to read the page.
+const MAX_SNIPPET_CHARS: usize = 300;
 
 /// Result of search processing
 pub(crate) struct SearchProcessingResult {
+    /// Result-page URLs the caller should fetch and inline. Empty when the
+    /// model can fetch pages itself: the URLs already reach it as text.
     pub urls: Vec<String>,
     pub search_result_id: Option<String>,
+    /// Compact SERP block appended to the current user turn.
+    pub serp_context: Option<String>,
 }
 
 /// Process search decision and execute search if needed
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn process_search_decision(
     state: &AppState,
     app: &tauri::AppHandle,
@@ -22,32 +44,63 @@ pub(crate) async fn process_search_decision(
     api_style: Option<&str>,
     user_message_id: &str,
     conversation_id: &str,
-    fallback_urls: Vec<String>,
+    model_can_fetch: bool,
 ) -> SearchProcessingResult {
-    tracing::info!("🔍 [search] Web search enabled, checking if search is needed...");
-
-    // Emit event to show "deciding" state immediately
-    let _ = app.emit(
-        "search-decision-started",
-        serde_json::json!({
-            "message_id": user_message_id,
-            "conversation_id": conversation_id,
-        }),
+    tracing::info!(
+        "🔍 [search] Web search enabled (model_can_fetch={})",
+        model_can_fetch
     );
 
-    // Use AI to decide if search is truly needed
-    let decision = match crate::web_search::decide_search_needed(
-        content, provider, model, api_key, base_url, api_style,
-    )
-    .await
-    {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::warn!("⚠️ [search] Search decision failed, skipping search: {}", e);
-            crate::web_search::SearchDecisionResult {
-                reasoning: format!("Decision failed: {}", e),
-                search_needed: false,
-                search_query: None,
+    let decision = if model_can_fetch {
+        // The user asked for a search; the model owns relevance and reading.
+        // Run the search directly instead of paying for a decision
+        // completion whose conclusion the model can reach by calling the
+        // tool itself.
+        crate::web_search::SearchDecisionResult {
+            reasoning: "Web tools are available; searching with the user's query and \
+                        letting the model read only the pages it needs."
+                .to_string(),
+            search_needed: true,
+            search_query: Some(crate::web_search::extract_search_keywords(content)),
+        }
+    } else {
+        // Emit event to show "deciding" state immediately
+        let _ = app.emit(
+            "search-decision-started",
+            serde_json::json!({
+                "message_id": user_message_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+
+        let conversation = ConversationModel {
+            provider_type: provider.to_string(),
+            model_id: model.to_string(),
+            api_key: api_key.map(str::to_string),
+            base_url: base_url.map(str::to_string),
+            api_style: api_style.map(str::to_string),
+            supports_vision: None,
+        };
+        let aux = resolve_aux_tiny(state, &conversation).await;
+
+        match crate::web_search::decide_search_needed(
+            content,
+            &aux.provider_type,
+            &aux.model_id,
+            aux.api_key.as_deref(),
+            aux.base_url.as_deref(),
+            aux.api_style.as_deref(),
+        )
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("⚠️ [search] Search decision failed, skipping search: {}", e);
+                crate::web_search::SearchDecisionResult {
+                    reasoning: format!("Decision failed: {}", e),
+                    search_needed: false,
+                    search_query: None,
+                }
             }
         }
     };
@@ -92,8 +145,9 @@ pub(crate) async fn process_search_decision(
             decision.reasoning
         );
         return SearchProcessingResult {
-            urls: fallback_urls,
+            urls: Vec::new(),
             search_result_id: None,
+            serp_context: None,
         };
     }
 
@@ -107,11 +161,11 @@ pub(crate) async fn process_search_decision(
     );
 
     // Get the configured search provider
-    let provider = state.db.get_search_provider().await;
-    let engine_id = provider.id().to_string();
+    let preferred = state.db.get_search_provider().await;
+    let engine_id = preferred.id().to_string();
     tracing::info!(
         "🔍 [search] Using search provider: {}",
-        provider.display_name()
+        preferred.display_name()
     );
 
     // Create SearchResult IMMEDIATELY (before searching) so UI can show it
@@ -160,22 +214,31 @@ pub(crate) async fn process_search_decision(
         }
     };
 
-    // Now perform the actual search using the configured provider
-    match crate::web_search::search(provider, &keywords, 5).await {
-        Ok(search_response) => {
+    // Search, falling back across engines when one is blocked or empty.
+    match crate::web_search::search_with_fallback(preferred, &keywords, 5).await {
+        Ok(result) => {
+            let response = &result.response;
             tracing::info!(
-                "✅ [search] Search completed, found {} results",
-                search_response.results.len()
+                "✅ [search] Search completed via {}, found {} results",
+                response.provider.display_name(),
+                response.results.len()
             );
 
-            // Update SearchResult with actual results count
-            if let Some(ref sr_id) = search_result_id {
-                if let Err(e) = state
-                    .db
-                    .update_search_result_total(sr_id, search_response.total_results as i64)
-                    .await
-                {
-                    tracing::error!("Failed to update search result total: {}", e);
+            let items: Vec<SearchResultItem> = response
+                .results
+                .iter()
+                .map(|r| SearchResultItem {
+                    title: r.title.clone(),
+                    url: r.url.clone(),
+                    snippet: r.snippet.clone(),
+                })
+                .collect();
+
+            if let Some(sr_id) = &search_result_id {
+                // Items and count land in one write: the UI's retry loop
+                // keys off total_results, so both must be visible together.
+                if let Err(e) = state.db.update_search_result_items(sr_id, &items).await {
+                    tracing::error!("Failed to persist search result items: {}", e);
                 }
 
                 // Emit attachment-update so frontend shows result count immediately
@@ -187,42 +250,178 @@ pub(crate) async fn process_search_decision(
                         "attachment": {
                             "type": "search_result",
                             "id": sr_id,
-                            "query": search_response.query,
-                            "engine": search_response.provider.id(),
-                            "total_results": search_response.total_results,
+                            "query": response.query,
+                            "engine": response.provider.id(),
+                            "total_results": items.len(),
                         }
                     }),
                 );
             }
 
             // Emit search completed event
-            let search_urls: Vec<String> = search_response
-                .results
-                .iter()
-                .map(|r| r.url.clone())
-                .collect();
             let _ = app.emit(
                 "search-completed",
                 serde_json::json!({
                     "message_id": user_message_id,
                     "conversation_id": conversation_id,
                     "search_result_id": search_result_id,
-                    "query": search_response.query,
-                    "results_count": search_response.results.len(),
+                    "query": response.query,
+                    "results_count": items.len(),
+                }),
+            );
+
+            let serp_context = render_serp_context(
+                &response.query,
+                response.provider.display_name(),
+                &items,
+                &result.failures,
+            );
+
+            SearchProcessingResult {
+                // Only inline bodies when the model has no way to read URLs
+                // on demand. With web tools, the SERP block is the handoff;
+                // without them, the bodies already carry the same URLs, so
+                // the block would be duplicate context.
+                urls: if model_can_fetch {
+                    Vec::new()
+                } else {
+                    items.iter().map(|item| item.url.clone()).collect()
+                },
+                search_result_id,
+                serp_context: model_can_fetch.then_some(serp_context),
+            }
+        }
+        Err(e) => {
+            tracing::error!("❌ [search] Search failed on every provider: {}", e);
+
+            if let Some(sr_id) = &search_result_id {
+                let _ = state.db.update_search_result_total(sr_id, 0).await;
+            }
+            let _ = app.emit(
+                "search-completed",
+                serde_json::json!({
+                    "message_id": user_message_id,
+                    "conversation_id": conversation_id,
+                    "search_result_id": search_result_id,
+                    "query": keywords,
+                    "results_count": 0,
+                    "error": e.to_string(),
                 }),
             );
 
             SearchProcessingResult {
-                urls: search_urls,
+                urls: Vec::new(),
                 search_result_id,
+                serp_context: None,
             }
         }
-        Err(e) => {
-            tracing::error!("❌ [search] Search failed: {}", e);
-            SearchProcessingResult {
-                urls: fallback_urls,
-                search_result_id,
-            }
+    }
+}
+
+/// Render the compact block the model receives instead of page bodies.
+/// Kept deterministic and bounded so the prompt cost of a search stays flat
+/// regardless of snippet length or result count.
+pub(crate) fn render_serp_context(
+    query: &str,
+    engine: &str,
+    items: &[SearchResultItem],
+    failures: &[(SearchProvider, String)],
+) -> String {
+    let mut out = String::from("## Web search results\n\n");
+    out.push_str(&format!(
+        "Query: \"{}\" — {} ({} results)\n\n",
+        query,
+        engine,
+        items.len()
+    ));
+
+    if !failures.is_empty() {
+        let attempted: Vec<String> = failures
+            .iter()
+            .map(|(provider, reason)| format!("{} ({})", provider.display_name(), reason))
+            .collect();
+        out.push_str(&format!(
+            "Note: earlier attempts returned nothing: {}.\nResults below came from {}.\n\n",
+            attempted.join(", "),
+            engine
+        ));
+    }
+
+    for (index, item) in items.iter().take(MAX_SERP_ITEMS).enumerate() {
+        out.push_str(&format!(
+            "{}. {}\n   URL: {}\n   {}\n\n",
+            index + 1,
+            item.title.trim(),
+            item.url,
+            truncate_chars(item.snippet.trim(), MAX_SNIPPET_CHARS)
+        ));
+    }
+
+    out.push_str(
+        "Read only the pages you need. The full body is not included; \
+         use web_fetch on a URL above when its snippet is not enough.\n",
+    );
+    out
+}
+
+fn truncate_chars(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(limit).collect();
+    format!("{truncated}…")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(index: usize) -> SearchResultItem {
+        SearchResultItem {
+            title: format!("Result {index}"),
+            url: format!("https://example.com/{index}"),
+            snippet: "snippet text".to_string(),
         }
+    }
+
+    #[test]
+    fn serp_context_lists_results_and_points_at_web_fetch() {
+        let items = vec![item(0), item(1)];
+        let rendered = render_serp_context("rust async", "DuckDuckGo", &items, &[]);
+
+        assert!(rendered.contains("Query: \"rust async\" — DuckDuckGo (2 results)"));
+        assert!(rendered.contains("1. Result 0"));
+        assert!(rendered.contains("URL: https://example.com/1"));
+        assert!(rendered.contains("use web_fetch"));
+        assert!(!rendered.contains("earlier attempts"));
+    }
+
+    #[test]
+    fn serp_context_caps_items_and_snippets() {
+        let long = SearchResultItem {
+            title: "Long".to_string(),
+            url: "https://example.com/long".to_string(),
+            snippet: "x".repeat(MAX_SNIPPET_CHARS * 2),
+        };
+        let mut all = vec![long];
+        all.extend((0..MAX_SERP_ITEMS + 4).map(item));
+
+        let rendered = render_serp_context("q", "Yahoo", &all, &[]);
+        assert!(rendered.contains("1. Long"));
+        assert!(rendered.contains('…'));
+        assert!(rendered.contains(&format!("{MAX_SERP_ITEMS}. Result {}", MAX_SERP_ITEMS - 2)));
+        assert!(!rendered.contains(&format!("{}. ", MAX_SERP_ITEMS + 1)));
+    }
+
+    #[test]
+    fn serp_context_reports_fallback_attempts() {
+        let rendered = render_serp_context(
+            "q",
+            "Yahoo",
+            &[item(0)],
+            &[(SearchProvider::DuckDuckGo, "no results".to_string())],
+        );
+        assert!(rendered.contains("DuckDuckGo (no results)"));
+        assert!(rendered.contains("Results below came from Yahoo."));
     }
 }
