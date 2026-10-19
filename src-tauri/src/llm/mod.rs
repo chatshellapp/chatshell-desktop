@@ -20,6 +20,8 @@ pub mod openai;
 pub mod openai_compat;
 pub mod openrouter;
 pub mod perplexity;
+#[cfg(test)]
+mod provider_smoke_eval;
 pub mod together;
 pub mod tools;
 pub mod xai;
