@@ -42,4 +42,6 @@ export interface FilePreviewDialogProps {
   storagePath?: string
   mimeType?: string
   size?: number
+  /** Base64 bytes for in-memory binary documents (extracted via Tauri) */
+  base64?: string
 }

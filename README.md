@@ -153,7 +153,7 @@ Your AI can use these tools autonomously — no user intervention needed:
 - **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
 - **Web Fetch**: Intelligent content extraction from URLs (Readability + headless Chrome, or Jina Reader API)
 - **Bash**: Execute shell commands in a per-conversation working directory
-- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges)
+- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets)
 - **Edit**: Make precise text replacements in files
 - **Write**: Create or overwrite files with provided content
 - **Grep**: Search file contents with regex support
@@ -234,7 +234,8 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Drag & Drop**: Easily attach files to conversations
 - **Clipboard Paste**: Paste images directly from clipboard
 - **Smart File Detection**: Automatic type recognition with content deduplication (Blake3)
-- **Documents**: Markdown, code files (JS, TS, Python, Rust, Go, Java, C/C++, etc.), JSON, YAML, TOML, XML, SQL, shell scripts, and plain text
+- **Documents**: Markdown, code files (JS, TS, Python, Rust, Go, Java, C/C++, etc.), JSON, YAML, TOML, XML, SQL, shell scripts, plain text, and PDFs (text layer extracted automatically)
+- **Office Documents**: docx/xlsx/pptx (and macro-enabled variants) travel as binary attachments the AI reads with the Read tool; previews show the extracted text
 - **Images**: PNG, JPEG, GIF, WebP, BMP — with built-in lightbox viewer
 - **Web Pages**: Paste URLs to automatically fetch and attach page content
 

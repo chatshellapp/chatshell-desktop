@@ -59,5 +59,7 @@
   "decidingSearch": "Deciding if search needed...",
   "noContent": "No content available",
   "attachmentUnavailable": "Attachment unavailable",
-  "downloadingAttachment": "Downloading..."
+  "downloadingAttachment": "Downloading...",
+  "binaryDocumentNoPreview": "No text preview for this document",
+  "binaryDocumentHint": "Send it and ask the assistant to read it with the read tool"
 }

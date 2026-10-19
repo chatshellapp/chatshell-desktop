@@ -59,5 +59,7 @@
   "decidingSearch": "正在判断是否需要搜索...",
   "noContent": "无内容可用",
   "attachmentUnavailable": "附件不可用",
-  "downloadingAttachment": "正在下载..."
+  "downloadingAttachment": "正在下载...",
+  "binaryDocumentNoPreview": "此文档没有文本预览",
+  "binaryDocumentHint": "发送后可让助手用 read 工具读取全文"
 }

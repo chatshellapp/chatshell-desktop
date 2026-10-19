@@ -52,14 +52,7 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = [
   'pptm',
 ]
 
-// OOXML documents are ZIP containers: they must travel as base64 and are
-// read through the read tool, never decoded as UTF-8.
-export const BINARY_DOCUMENT_EXTENSIONS = ['docx', 'docm', 'xlsx', 'xlsm', 'pptx', 'pptm']
-
-export function isBinaryDocument(fileName: string): boolean {
-  const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  return BINARY_DOCUMENT_EXTENSIONS.includes(ext)
-}
+export { BINARY_DOCUMENT_EXTENSIONS, isBinaryDocument } from '@/lib/document-files'
 
 // Read a binary document as standard base64 (no data URL prefix). Chunked
 // to avoid blowing the argument limit of String.fromCharCode.

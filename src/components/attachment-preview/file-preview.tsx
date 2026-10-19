@@ -16,6 +16,7 @@ import type { FileAttachment } from '@/types'
 import type { FilePreviewDialogProps, ImageAttachmentData } from './types'
 import { formatFileSize, isMarkdownFile } from './utils'
 import { ImageLightbox } from './image-lightbox'
+import { isBinaryDocument } from '@/lib/document-files'
 import { logger } from '@/lib/logger'
 
 // File preview dialog component - supports both storage paths and in-memory content
@@ -25,6 +26,7 @@ export function FilePreviewDialog({
   onClose,
   fileName,
   content: inMemoryContent,
+  base64,
   storagePath,
   mimeType,
   size,
@@ -32,15 +34,46 @@ export function FilePreviewDialog({
   const { t } = useTranslation(['common', 'attachments'])
   const [loadedContent, setLoadedContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [noPreview, setNoPreview] = useState(false)
 
   const isMarkdown = isMarkdownFile(fileName, mimeType)
+  // OOXML attachments are ZIP containers: never decode them as UTF-8.
+  const isBinaryDoc = isBinaryDocument(fileName)
 
-  // Determine content source
-  const content = inMemoryContent ?? loadedContent
+  // Determine content source (binary documents carry an empty string until
+  // extraction succeeds)
+  const content = inMemoryContent || loadedContent
 
-  // Load content from storage path when dialog opens (only if no in-memory content)
+  // Load content when the dialog opens (only if no in-memory content)
   useEffect(() => {
-    if (isOpen && !inMemoryContent && storagePath && !loadedContent && !loading) {
+    if (!isOpen || inMemoryContent || loadedContent !== null || noPreview || loading) {
+      return
+    }
+
+    if (isBinaryDoc) {
+      const request = storagePath
+        ? invoke<string>('extract_office_text_from_storage', { storagePath })
+        : base64
+          ? invoke<string>('extract_office_text_from_base64', { base64, fileName })
+          : Promise.resolve('')
+      setLoading(true)
+      request
+        .then((text) => {
+          if (text.trim().length > 0) {
+            setLoadedContent(text)
+          } else {
+            setNoPreview(true)
+          }
+        })
+        .catch((err) => {
+          logger.error('Failed to extract document text:', err)
+          setNoPreview(true)
+        })
+        .finally(() => setLoading(false))
+      return
+    }
+
+    if (storagePath) {
       setLoading(true)
       invoke<string>('read_file_content', { storagePath })
         .then(setLoadedContent)
@@ -50,12 +83,23 @@ export function FilePreviewDialog({
         })
         .finally(() => setLoading(false))
     }
-  }, [isOpen, inMemoryContent, storagePath, loadedContent, loading])
+  }, [
+    isOpen,
+    inMemoryContent,
+    storagePath,
+    loadedContent,
+    noPreview,
+    loading,
+    isBinaryDoc,
+    base64,
+    fileName,
+  ])
 
   // Reset loaded content when dialog closes
   useEffect(() => {
     if (!isOpen) {
       setLoadedContent(null)
+      setNoPreview(false)
     }
   }, [isOpen])
 
@@ -78,6 +122,14 @@ export function FilePreviewDialog({
         <div className="flex-1 overflow-auto border rounded-md p-4 min-h-[200px]">
           {loading ? (
             <p className="text-sm text-muted-foreground">{t('loading')}</p>
+          ) : noPreview ? (
+            <div className="flex flex-col items-center justify-center gap-1.5 py-10 text-center">
+              <FileIconLucide className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {t('attachments:binaryDocumentNoPreview')}
+              </p>
+              <p className="text-xs text-muted-foreground">{t('attachments:binaryDocumentHint')}</p>
+            </div>
           ) : content ? (
             isMarkdown ? (
               <MarkdownContent content={content} className="text-sm" />

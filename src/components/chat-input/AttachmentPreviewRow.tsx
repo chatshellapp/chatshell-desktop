@@ -35,14 +35,14 @@ export function AttachmentPreviewRow({
         const handlePreviewClick = () => {
           if (attachment.type === 'image' && attachment.base64) {
             onImageClick(imageIndex)
-          } else if (attachment.type === 'file' && attachment.content) {
+          } else if (attachment.type === 'file' && (attachment.content || attachment.base64)) {
             onFileClick(attachment.id)
           }
         }
 
         const isPreviewable =
           (attachment.type === 'image' && attachment.base64) ||
-          (attachment.type === 'file' && attachment.content)
+          (attachment.type === 'file' && (attachment.content || attachment.base64))
 
         return (
           <Badge

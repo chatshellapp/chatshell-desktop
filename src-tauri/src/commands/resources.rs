@@ -94,6 +94,102 @@ fn extract_pdf_text_bytes(bytes: &[u8]) -> Result<String, String> {
     Ok(text)
 }
 
+/// Extract readable text from an OOXML document in attachment storage
+/// (docx/docm/xlsx/xlsm/pptx/pptm). Storage paths keep the original
+/// extension, which selects the extractor.
+#[tauri::command]
+pub async fn extract_office_text_from_storage(
+    app: tauri::AppHandle,
+    storage_path: String,
+) -> Result<String, String> {
+    let bytes = crate::storage::read_binary(&app, &storage_path).map_err(|e| e.to_string())?;
+    extract_office_text_bytes(&bytes, &storage_path)
+}
+
+/// Same extraction for bytes supplied by the webview (preview of an
+/// attachment that has not been persisted yet).
+#[tauri::command]
+pub async fn extract_office_text_from_base64(
+    base64: String,
+    file_name: String,
+) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let bytes = STANDARD
+        .decode(&base64)
+        .map_err(|e| format!("Failed to decode document data: {}", e))?;
+    extract_office_text_bytes(&bytes, &file_name)
+}
+
+/// Dispatch OOXML text extraction by file extension. Mirrors the read
+/// tool's `read_office` contract with preview defaults: first sheet of a
+/// spreadsheet, full (already bounded) text for documents and slides.
+fn extract_office_text_bytes(bytes: &[u8], file_name: &str) -> Result<String, String> {
+    use chatshell_agent_core::office;
+
+    let ext = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    if office::is_legacy_office_extension(&ext) {
+        return Err(office::legacy_message(&ext));
+    }
+    match ext.as_str() {
+        "docx" | "docm" => office::read_docx(bytes).map_err(|e| e.to_string()),
+        "pptx" | "pptm" => office::read_pptx(bytes).map_err(|e| e.to_string()),
+        "xlsx" | "xlsm" => office::read_xlsx(bytes, None, None, false).map_err(|e| e.to_string()),
+        _ => Err(format!(
+            "Unsupported office extension \".{ext}\" for text extraction."
+        )),
+    }
+}
+
+#[cfg(test)]
+mod office_preview_tests {
+    use super::*;
+
+    /// Minimal stored-mode docx: one paragraph reading "Hello office
+    /// preview". Built with python's zipfile (ZIP_STORED).
+    const MINIMAL_DOCX: &[u8] = &[
+        80, 75, 3, 4, 20, 0, 0, 0, 0, 0, 53, 87, 83, 93, 186, 153, //
+        26, 110, 221, 0, 0, 0, 221, 0, 0, 0, 17, 0, 0, 0, 119, 111, //
+        114, 100, 47, 100, 111, 99, 117, 109, 101, 110, 116, 46, 120, 109, 108, 60, //
+        63, 120, 109, 108, 32, 118, 101, 114, 115, 105, 111, 110, 61, 34, 49, 46, //
+        48, 34, 32, 101, 110, 99, 111, 100, 105, 110, 103, 61, 34, 85, 84, 70, //
+        45, 56, 34, 32, 115, 116, 97, 110, 100, 97, 108, 111, 110, 101, 61, 34, //
+        121, 101, 115, 34, 63, 62, 60, 119, 58, 100, 111, 99, 117, 109, 101, 110, //
+        116, 32, 120, 109, 108, 110, 115, 58, 119, 61, 34, 104, 116, 116, 112, 58, //
+        47, 47, 115, 99, 104, 101, 109, 97, 115, 46, 111, 112, 101, 110, 120, 109, //
+        108, 102, 111, 114, 109, 97, 116, 115, 46, 111, 114, 103, 47, 119, 111, 114, //
+        100, 112, 114, 111, 99, 101, 115, 115, 105, 110, 103, 109, 108, 47, 50, 48, //
+        48, 54, 47, 109, 97, 105, 110, 34, 62, 60, 119, 58, 98, 111, 100, 121, //
+        62, 60, 119, 58, 112, 62, 60, 119, 58, 114, 62, 60, 119, 58, 116, 62, //
+        72, 101, 108, 108, 111, 32, 111, 102, 102, 105, 99, 101, 32, 112, 114, 101, //
+        118, 105, 101, 119, 60, 47, 119, 58, 116, 62, 60, 47, 119, 58, 114, 62, //
+        60, 47, 119, 58, 112, 62, 60, 47, 119, 58, 98, 111, 100, 121, 62, 60, //
+        47, 119, 58, 100, 111, 99, 117, 109, 101, 110, 116, 62, 80, 75, 1, 2, //
+        20, 3, 20, 0, 0, 0, 0, 0, 53, 87, 83, 93, 186, 153, 26, 110, //
+        221, 0, 0, 0, 221, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, //
+        0, 0, 0, 0, 128, 1, 0, 0, 0, 0, 119, 111, 114, 100, 47, 100, //
+        111, 99, 117, 109, 101, 110, 116, 46, 120, 109, 108, 80, 75, 5, 6, 0, //
+        0, 0, 0, 1, 0, 1, 0, 63, 0, 0, 0, 12, 1, 0, 0, 0, //
+        0,
+    ];
+
+    #[test]
+    fn office_extraction_dispatches_by_extension() {
+        let text = extract_office_text_bytes(MINIMAL_DOCX, "report.docx").unwrap();
+        assert!(text.contains("Hello office preview"), "{text}");
+
+        let legacy = extract_office_text_bytes(MINIMAL_DOCX, "report.doc").unwrap_err();
+        assert!(legacy.contains("Legacy binary Office format"), "{legacy}");
+
+        let other = extract_office_text_bytes(MINIMAL_DOCX, "notes.txt").unwrap_err();
+        assert!(other.contains("Unsupported office extension"), "{other}");
+    }
+}
+
 #[tauri::command]
 pub async fn read_image_base64(
     app: tauri::AppHandle,

@@ -433,12 +433,13 @@ export function ChatInput(/* _props: ChatInputProps */) {
       )}
 
       {/* File preview dialog */}
-      {previewingFile && previewingFile.content && (
+      {previewingFile && (previewingFile.content || previewingFile.base64) && (
         <FilePreviewDialog
           isOpen={true}
           onClose={() => setPreviewingFileId(null)}
           fileName={previewingFile.name}
           content={previewingFile.content}
+          base64={previewingFile.base64}
           mimeType={previewingFile.mimeType}
           size={previewingFile.size}
         />
