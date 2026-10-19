@@ -20,15 +20,31 @@
 //! cargo test --lib provider_smoke -- --ignored --nocapture
 //! ```
 //!
-//! Anthropic wire against httpcan:
+//! Both OpenAI wires against httpcan — `custom_openai` + `API_STYLE` picks
+//! the wire (`chat_completions` hits `{base}/chat/completions`, anything
+//! else hits `{base}/responses`); zero-config defaults are the first row:
 //!
 //! ```sh
-//! CHATSHELL_SMOKE_PROVIDER=custom_anthropic \
-//! CHATSHELL_SMOKE_MODEL=claude-smoke \
-//! CHATSHELL_SMOKE_BASE_URL=http://127.0.0.1:18080/llm \
+//! # Chat Completions wire
+//! CHATSHELL_SMOKE_PROVIDER=custom_openai \
+//! CHATSHELL_SMOKE_BASE_URL=http://127.0.0.1:18080/llm/v1 \
 //! cargo test --lib provider_smoke -- --ignored --nocapture
 //!
-
+//! # Responses wire
+//! CHATSHELL_SMOKE_PROVIDER=custom_openai \
+//! CHATSHELL_SMOKE_BASE_URL=http://127.0.0.1:18080/llm/v1 \
+//! CHATSHELL_SMOKE_API_STYLE=responses \
+//! cargo test --lib provider_smoke -- --ignored --nocapture
+//! ```
+//!
+//! Gateways without a Responses implementation answer POST {base}/responses
+//! with 404/405; the responses-wire test skips on that signature. A decode
+//! error on a live stream stays a hard failure. Known finding (not worked
+//! around): rig 0.42 rejects some gateways' /v1/responses streams — their
+//! `response.created` carries `"tools": null`, which rig's non-Option
+//! `Vec` field cannot decode (OpenAI omits the field instead). Use the
+//! `chat_completions` style with such gateways; it is the default.
+//!
 //! Env contract:
 //! - `CHATSHELL_SMOKE_PROVIDER`   provider_type string (default `custom_openai`)
 //! - `CHATSHELL_SMOKE_MODEL`      model id (default `httpcan-smoke-model`)
@@ -75,12 +91,28 @@ impl SmokeConfig {
                 (provider, model, base_url)
             };
 
+        let api_key = match std::env::var("CHATSHELL_SMOKE_API_KEY") {
+            Ok(key) => key,
+            Err(_)
+                if base_url.starts_with("http://127.0.0.1")
+                    || base_url.starts_with("http://localhost") =>
+            {
+                "smoke-key".to_string()
+            }
+            // The placeholder once leaked to a real provider and cost a
+            // confusing 401; refuse instead of sending it off-box.
+            Err(_) => {
+                return Err(anyhow!(
+                    "CHATSHELL_SMOKE_API_KEY is required for non-local base URLs (refusing to send the placeholder 'smoke-key')"
+                ));
+            }
+        };
+
         Ok(Self {
             provider,
             model,
             base_url,
-            api_key: std::env::var("CHATSHELL_SMOKE_API_KEY")
-                .unwrap_or_else(|_| "smoke-key".to_string()),
+            api_key,
             api_style: std::env::var("CHATSHELL_SMOKE_API_STYLE")
                 .ok()
                 .or_else(|| Some("chat_completions".to_string())),
@@ -202,7 +234,7 @@ async fn provider_smoke_openai_responses_wire() {
 
     // api_style None steers custom_openai away from chat_completions onto the
     // rig-native OpenAI Responses client.
-    let response = call_provider(
+    let result = call_provider(
         &config.provider,
         config.model.clone(),
         vec![
@@ -213,8 +245,30 @@ async fn provider_smoke_openai_responses_wire() {
         Some(config.base_url.clone()),
         None,
     )
-    .await
-    .expect("responses-wire roundtrip must succeed");
+    .await;
+
+    let response = match result {
+        Ok(response) => response,
+        Err(error) => {
+            let message = error.to_string();
+            // A gateway without a Responses implementation answers
+            // POST {base}/responses with 404/405 — a capability report,
+            // not a wire defect; the hermetic httpcan run covers our wire.
+            // Decode errors stay hard failures: an endpoint streaming a
+            // nonconformant frame shape (e.g. `"tools": null` inside
+            // response.created) is a real compatibility finding.
+            let unsupported = message.contains("404")
+                || message.contains("405")
+                || message.to_lowercase().contains("not found");
+            if unsupported {
+                println!(
+                    "responses wire: endpoint does not implement the OpenAI Responses API ({message}); skipping — expected for chat-completions-only gateways"
+                );
+                return;
+            }
+            panic!("responses-wire roundtrip failed: {message}");
+        }
+    };
 
     println!("smoke reply: {}", response.content);
     assert!(
