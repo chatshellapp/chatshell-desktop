@@ -26,6 +26,8 @@ pub mod perplexity;
 mod provider_smoke_eval;
 pub mod together;
 pub mod tools;
+#[cfg(test)]
+mod web_e2e_eval;
 pub mod xai;
 
 pub use common::StreamChunkType;
