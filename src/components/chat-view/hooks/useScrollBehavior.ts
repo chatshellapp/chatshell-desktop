@@ -19,7 +19,7 @@ interface UseScrollBehaviorOptions {
   onNearTop?: () => void
 }
 
-interface UseScrollBehaviorReturn {
+export interface UseScrollBehaviorReturn {
   messagesEndRef: RefObject<HTMLDivElement | null>
   messagesContainerRef: RefObject<HTMLDivElement | null>
   messagesContentRef: RefObject<HTMLDivElement | null>

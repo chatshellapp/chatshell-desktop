@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, RefObject } from 'react'
 
-interface UseInputResizeReturn {
+export interface UseInputResizeReturn {
   rootRef: RefObject<HTMLDivElement | null>
   inputAreaRef: RefObject<HTMLDivElement | null>
   inputAreaHeight: number

@@ -16,17 +16,27 @@ import { useConversationSettingsStore } from '@/stores/conversationSettingsStore
 import { usePromptStore } from '@/stores/promptStore'
 import type { Conversation, MessageResources } from '@/types'
 
-interface UseMessageHandlersOptions {
+export interface UseMessageHandlersOptions {
   messagesEndRef: RefObject<HTMLDivElement | null>
   messagesContentRef: RefObject<HTMLDivElement | null>
   setIsAtBottom: (value: boolean) => void
+}
+
+export interface UseMessageHandlersReturn {
+  handleCopy: () => void
+  handleRevert: (messageId: string) => Promise<void>
+  handleFork: (messageId: string) => Promise<void>
+  handleExportAll: () => Promise<void>
+  handleExportConversation: (messageId: string | null) => Promise<void>
+  handleExportMessage: (messageId: string) => void
+  handleScrollToBottom: () => void
 }
 
 export function useMessageHandlers({
   messagesEndRef,
   messagesContentRef,
   setIsAtBottom,
-}: UseMessageHandlersOptions) {
+}: UseMessageHandlersOptions): UseMessageHandlersReturn {
   const { t } = useTranslation('messages')
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const selectedModel = useConversationStore((state) => state.selectedModel)
@@ -34,6 +44,7 @@ export function useMessageHandlers({
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const getSettings = useConversationSettingsStore((state) => state.getSettings)
+  const loadSettings = useConversationSettingsStore((state) => state.loadSettings)
   const getPromptById = usePromptStore((state) => state.getPromptById)
 
   const deleteMessagesFrom = useMessageStore((state) => state.deleteMessagesFrom)
@@ -113,7 +124,8 @@ export function useMessageHandlers({
 
         await deleteMessagesFrom(currentConversation.id, messageId)
 
-        const settings = getSettings(currentConversation.id)
+        const settings =
+          getSettings(currentConversation.id) ?? (await loadSettings(currentConversation.id))
 
         let systemPrompt: string | undefined
         if (settings?.systemPromptMode === 'existing' && settings.selectedSystemPromptId) {
@@ -169,6 +181,7 @@ export function useMessageHandlers({
       currentConversation,
       selectedModel,
       selectedAssistant,
+      loadSettings,
       getModelById,
       getProviderById,
       getSettings,

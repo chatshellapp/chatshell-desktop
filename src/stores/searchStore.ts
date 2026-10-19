@@ -18,7 +18,7 @@ interface SearchStoreActions {
   setQuery: (query: string) => void
   search: (query: string) => Promise<void>
   clearSearch: () => void
-  navigateToMessage: (messageId: string, conversationId: string) => void
+  navigateToMessage: (messageId: string, conversationId: string) => Promise<void>
   clearTarget: () => void
 }
 

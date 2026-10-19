@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Globe, ExternalLink, AlertTriangle } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { invoke } from '@tauri-apps/api/core'
+import { useFetchContent } from './useFetchContent'
 import {
   Dialog,
   DialogContent,
@@ -14,34 +14,18 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { FetchResult } from '@/types'
 import { getDomain, getFaviconUrl } from './utils'
-import { logger } from '@/lib/logger'
 
 // FetchResult preview component
 export function FetchResultPreview({ fetchResult }: { fetchResult: FetchResult }) {
   const { t } = useTranslation(['common', 'attachments'])
   const [faviconError, setFaviconError] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [content, setContent] = useState<string | null>(null)
-  const [loadingContent, setLoadingContent] = useState(false)
+  const { content, loadingContent } = useFetchContent(fetchResult, isDialogOpen)
 
   const faviconUrl = useMemo(() => getFaviconUrl(fetchResult), [fetchResult])
   const domain = getDomain(fetchResult.url)
   const title = fetchResult.title || domain
   const isFailed = fetchResult.status === 'failed'
-
-  // Load content from filesystem when dialog opens
-  useEffect(() => {
-    if (isDialogOpen && !content && !loadingContent && fetchResult.status === 'success') {
-      setLoadingContent(true)
-      invoke<string>('read_fetch_content', { storagePath: fetchResult.storage_path })
-        .then(setContent)
-        .catch((err) => {
-          logger.error('Failed to load fetch content:', err)
-          setContent(null)
-        })
-        .finally(() => setLoadingContent(false))
-    }
-  }, [isDialogOpen, content, loadingContent, fetchResult])
 
   const handleOpenLink = () => {
     openUrl(fetchResult.url)
@@ -186,27 +170,12 @@ export function SearchResultFetchItem({ fetchResult }: { fetchResult: FetchResul
   const { t } = useTranslation(['common', 'attachments'])
   const [faviconError, setFaviconError] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [content, setContent] = useState<string | null>(null)
-  const [loadingContent, setLoadingContent] = useState(false)
+  const { content, loadingContent } = useFetchContent(fetchResult, isDialogOpen)
 
   const faviconUrl = useMemo(() => getFaviconUrl(fetchResult), [fetchResult])
   const domain = getDomain(fetchResult.url)
   const title = fetchResult.title || domain
   const isFailed = fetchResult.status === 'failed'
-
-  // Load content from filesystem when dialog opens
-  useEffect(() => {
-    if (isDialogOpen && !content && !loadingContent && fetchResult.status === 'success') {
-      setLoadingContent(true)
-      invoke<string>('read_fetch_content', { storagePath: fetchResult.storage_path })
-        .then(setContent)
-        .catch((err) => {
-          logger.error('Failed to load fetch content:', err)
-          setContent(null)
-        })
-        .finally(() => setLoadingContent(false))
-    }
-  }, [isDialogOpen, content, loadingContent, fetchResult])
 
   const handleOpenLink = () => {
     openUrl(fetchResult.url)

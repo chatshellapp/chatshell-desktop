@@ -26,7 +26,7 @@ interface ConversationSettingsActions {
   // Load settings for a conversation from database
   loadSettings: (conversationId: string) => Promise<ConversationSettings>
 
-  // Get cached settings for a conversation (returns default if not loaded)
+  // Get cached settings for a conversation (returns undefined until loaded)
   getSettings: (conversationId: string) => ConversationSettings | undefined
 
   // Generic update method for atomic updates of multiple fields
