@@ -384,3 +384,181 @@ pub(crate) async fn fetch_and_store_urls(
         attachment_ids,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::llm::capabilities::CapabilitiesCache;
+    use crate::llm::tools::BashSessionManager;
+    use crate::mcp::McpConnectionManager;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    /// AppState backed by a throwaway on-disk SQLite database, mirroring the
+    /// setup used across the db test modules. Nothing here touches the
+    /// network or the OS keychain stores the app itself would use.
+    async fn test_state() -> (AppState, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+
+        let state = AppState {
+            db,
+            generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+            mcp_manager: Arc::new(McpConnectionManager::new()),
+            pending_oauth: Arc::new(RwLock::new(HashMap::new())),
+            bash_session_manager: Arc::new(BashSessionManager::new()),
+            capabilities_cache: Arc::new(CapabilitiesCache::new()),
+            sync_engine: Arc::new(std::sync::Mutex::new(None)),
+        };
+        (state, dir)
+    }
+
+    #[tokio::test]
+    async fn load_fetch_config_defaults_when_settings_absent() {
+        let (state, _dir) = test_state().await;
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.mode, FetchMode::Local);
+        assert_eq!(config.local_method, LocalMethod::Auto);
+        assert_eq!(config.jina_api_key, None);
+    }
+
+    #[tokio::test]
+    async fn load_fetch_config_mode_api_when_setting_is_api() {
+        let (state, _dir) = test_state().await;
+        state.db.set_setting("web_fetch_mode", "api").await.unwrap();
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.mode, FetchMode::Api);
+    }
+
+    /// Only the exact string "api" enables API mode; anything else —
+    /// including case or whitespace variants — must stay local.
+    #[tokio::test]
+    async fn load_fetch_config_mode_local_for_unrecognized_values() {
+        let (state, _dir) = test_state().await;
+        for value in ["local", "", "API", "api ", "cloudflare"] {
+            state.db.set_setting("web_fetch_mode", value).await.unwrap();
+
+            let config = load_fetch_config(&state).await;
+
+            assert_eq!(
+                config.mode,
+                FetchMode::Local,
+                "for web_fetch_mode {value:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_fetch_config_local_method_known_values() {
+        let (state, _dir) = test_state().await;
+        let cases = [
+            ("fetch", LocalMethod::FetchOnly),
+            ("headless", LocalMethod::ChromeOnly),
+            ("obscura", LocalMethod::ObscuraOnly),
+            ("webview", LocalMethod::WebViewOnly),
+        ];
+        for (value, expected) in cases {
+            state
+                .db
+                .set_setting("web_fetch_local_method", value)
+                .await
+                .unwrap();
+
+            let config = load_fetch_config(&state).await;
+
+            assert_eq!(config.local_method, expected, "for local method {value:?}");
+        }
+    }
+
+    /// Unknown, empty, or case-mangled methods fall back to Auto. "auto"
+    /// itself is not a match arm — it lands in the fallback like the rest.
+    #[tokio::test]
+    async fn load_fetch_config_local_method_falls_back_to_auto() {
+        let (state, _dir) = test_state().await;
+        for value in ["auto", "", "chrome", "FETCH"] {
+            state
+                .db
+                .set_setting("web_fetch_local_method", value)
+                .await
+                .unwrap();
+
+            let config = load_fetch_config(&state).await;
+
+            assert_eq!(
+                config.local_method,
+                LocalMethod::Auto,
+                "for web_fetch_local_method {value:?}"
+            );
+        }
+    }
+
+    /// An empty key is indistinguishable from no key: it must not leak into
+    /// the config as a blank credential.
+    #[tokio::test]
+    async fn load_fetch_config_empty_jina_key_is_dropped() {
+        let (state, _dir) = test_state().await;
+        state.db.set_setting("jina_api_key", "").await.unwrap();
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.jina_api_key, None);
+    }
+
+    #[tokio::test]
+    async fn load_fetch_config_keeps_non_empty_jina_key() {
+        let (state, _dir) = test_state().await;
+        state
+            .db
+            .set_setting("jina_api_key", "jina-secret-123")
+            .await
+            .unwrap();
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.jina_api_key.as_deref(), Some("jina-secret-123"));
+    }
+
+    #[tokio::test]
+    async fn load_fetch_config_applies_all_settings_together() {
+        let (state, _dir) = test_state().await;
+        state.db.set_setting("web_fetch_mode", "api").await.unwrap();
+        state
+            .db
+            .set_setting("web_fetch_local_method", "webview")
+            .await
+            .unwrap();
+        state
+            .db
+            .set_setting("jina_api_key", "jina-key")
+            .await
+            .unwrap();
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.mode, FetchMode::Api);
+        assert_eq!(config.local_method, LocalMethod::WebViewOnly);
+        assert_eq!(config.jina_api_key.as_deref(), Some("jina-key"));
+    }
+
+    /// A broken DB (pool closed) must degrade to safe defaults rather than
+    /// erroring out of the fetch pipeline.
+    #[tokio::test]
+    async fn load_fetch_config_db_error_falls_back_to_defaults() {
+        let (state, _dir) = test_state().await;
+        state.db.pool().close().await;
+
+        let config = load_fetch_config(&state).await;
+
+        assert_eq!(config.mode, FetchMode::Local);
+        assert_eq!(config.local_method, LocalMethod::Auto);
+        assert_eq!(config.jina_api_key, None);
+    }
+}

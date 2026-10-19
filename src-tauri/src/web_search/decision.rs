@@ -116,9 +116,180 @@ fn extract_json_from_response(response: &str) -> Result<String> {
     // Try to find raw JSON object
     if let Some(start) = trimmed.find('{')
         && let Some(end) = trimmed.rfind('}')
+        && end >= start
     {
         return Ok(trimmed[start..=end].to_string());
     }
 
     Err(anyhow::anyhow!("No JSON found in response"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- extract_json_from_response: ```json fences ----
+
+    #[test]
+    fn json_fenced_object_is_extracted() {
+        let response =
+            "```json\n{\"search_needed\": true, \"search_query\": \"rust release date\"}\n```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": true, \"search_query\": \"rust release date\"}"
+        );
+    }
+
+    #[test]
+    fn json_fenced_object_with_padded_content_is_trimmed() {
+        let response = "```json\n   {\"search_needed\": false}   \n```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": false}"
+        );
+    }
+
+    #[test]
+    fn json_fence_wins_over_earlier_plain_fence() {
+        let response = "```\nignore this block\n```\n```json\n{\"chosen\": 1}\n```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"chosen\": 1}"
+        );
+    }
+
+    #[test]
+    fn unterminated_json_fence_falls_back_to_raw_brace_span() {
+        let response = "```json\n{\"search_needed\": false}";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": false}"
+        );
+    }
+
+    // ---- extract_json_from_response: generic fences ----
+
+    #[test]
+    fn generic_fence_skips_language_line() {
+        let response = "```python\n{\"search_needed\": true}\n```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": true}"
+        );
+    }
+
+    #[test]
+    fn single_line_generic_fence_is_extracted() {
+        let response = "```{\"search_needed\": true}```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": true}"
+        );
+    }
+
+    #[test]
+    fn fenced_non_json_content_is_returned_verbatim() {
+        // Extraction is purely mechanical; JSON validation happens downstream.
+        let response = "```\nno braces here\n```";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "no braces here"
+        );
+    }
+
+    // ---- extract_json_from_response: raw brace span fallback ----
+
+    #[test]
+    fn raw_object_surrounded_by_prose_is_extracted() {
+        let response = "Decision: {\"search_needed\": true, \"search_query\": \"weather\"} thanks.";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_needed\": true, \"search_query\": \"weather\"}"
+        );
+    }
+
+    #[test]
+    fn raw_span_stretches_from_first_open_to_last_close_brace() {
+        let response = "first {\"a\": 1} then {\"b\": 2} end";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"a\": 1} then {\"b\": 2}"
+        );
+    }
+
+    #[test]
+    fn nested_braces_stay_inside_one_span() {
+        let response = "{\"outer\": {\"inner\": 1}}";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"outer\": {\"inner\": 1}}"
+        );
+    }
+
+    #[test]
+    fn multibyte_characters_inside_span_do_not_break_extraction() {
+        let response = "Answer: {\"search_query\": \"café opening hours\"} voilà";
+        assert_eq!(
+            extract_json_from_response(response).unwrap(),
+            "{\"search_query\": \"café opening hours\"}"
+        );
+    }
+
+    // ---- extract_json_from_response: rejections ----
+
+    #[test]
+    fn inputs_without_json_are_rejected() {
+        for input in [
+            "",
+            "   \n\t ",
+            "just a plain answer",
+            "{ no closing brace",
+            "}",
+            "```",
+            "```\nno closing fence",
+        ] {
+            let result = extract_json_from_response(input);
+            assert!(result.is_err(), "expected error for input {input:?}");
+        }
+    }
+
+    #[test]
+    fn error_message_names_the_problem() {
+        let err = extract_json_from_response("no json at all").unwrap_err();
+        assert_eq!(err.to_string(), "No JSON found in response");
+    }
+
+    #[test]
+    fn close_brace_before_open_brace_is_rejected_not_panicking() {
+        // Regression: a stray '}' before the first '{' previously made the
+        // raw-span branch slice with start > end and panic.
+        let result = extract_json_from_response("stray } before { any brace");
+        assert!(result.is_err());
+    }
+
+    // ---- decide_search_needed: offline error propagation ----
+
+    #[tokio::test]
+    async fn decide_search_needed_fails_fast_for_unknown_provider() {
+        let err = decide_search_needed(
+            "who won the last world series",
+            "definitely-not-a-provider",
+            "some-model",
+            Some("key"),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Unknown provider"));
+    }
+
+    #[tokio::test]
+    async fn decide_search_needed_requires_api_key_for_keyed_providers() {
+        let err =
+            decide_search_needed("what time is it", "openai", "gpt-4o-mini", None, None, None)
+                .await
+                .unwrap_err();
+        assert!(err.to_string().contains("API key required"));
+    }
 }

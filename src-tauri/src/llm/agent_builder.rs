@@ -1002,3 +1002,1248 @@ pub fn build_tool_result_message(
         }],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use rig::completion::{
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt, Usage,
+    };
+    use rig::message::{
+        DocumentMediaType, DocumentSourceKind, ImageMediaType, ToolResultContent, UserContent,
+    };
+    use rig::streaming::StreamingCompletionResponse;
+    use serde_json::json;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+    use crate::llm::tools::SkillCatalogEntry;
+    use crate::llm::{FileData, ImageData, ToolCallData};
+
+    // ------------------------------------------------------------------
+    // Recording completion model
+    // ------------------------------------------------------------------
+
+    /// Completion model that records every request it receives and answers
+    /// with a fixed text response. Observes exactly what `build_agent` put
+    /// on the model call (parameters and tool definitions) without any
+    /// provider or network.
+    #[derive(Clone)]
+    struct RecordingModel {
+        requests: Arc<Mutex<Vec<CompletionRequest>>>,
+    }
+
+    impl RecordingModel {
+        fn new() -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl CompletionModel for RecordingModel {
+        async fn completion(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<CompletionResponse, CompletionError> {
+            self.requests.lock().unwrap().push(request);
+            Ok(CompletionResponse::new(
+                vec![AssistantContent::Text("ok".to_string().into())],
+                Usage::new(),
+                "recording",
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "RecordingModel does not stream".to_string(),
+            ))
+        }
+    }
+
+    /// Build an agent over a recording model, run one prompt, and return the
+    /// completion request the model received.
+    async fn recorded_request(config: &AgentConfig) -> CompletionRequest {
+        let model = RecordingModel::new();
+        let agent = build_agent(AgentBuilder::new(model.clone()), config);
+        agent
+            .prompt("record")
+            .await
+            .expect("prompt against recording model should succeed");
+        let requests = model.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 1, "expected exactly one model call");
+        requests.into_iter().next().unwrap()
+    }
+
+    fn tool_names(request: &CompletionRequest) -> Vec<&str> {
+        request.tools.iter().map(|t| t.name.as_str()).collect()
+    }
+
+    fn empty_mcp_tool_use() -> McpToolUseTool {
+        McpToolUseTool::new(
+            Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            HashMap::new(),
+        )
+    }
+
+    fn empty_schema_tool() -> McpSchemaTool {
+        McpSchemaTool::new(Vec::new(), "unused-schema-dir".to_string())
+    }
+
+    fn empty_skill_tool() -> SkillTool {
+        SkillTool::new(Vec::new())
+    }
+
+    fn full_tool_config() -> AgentConfig {
+        AgentConfig::new()
+            .with_web_search()
+            .with_web_fetch()
+            .with_bash()
+            .with_kill_shell()
+            .with_read()
+            .with_edit()
+            .with_write()
+            .with_grep()
+            .with_glob()
+            .with_mcp_schema_tool(empty_schema_tool())
+            .with_mcp_tool_use(empty_mcp_tool_use())
+            .with_skill_tool(empty_skill_tool())
+    }
+
+    // ------------------------------------------------------------------
+    // AgentConfig construction
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn agent_config_default_is_blank() {
+        let config = AgentConfig::new();
+        assert!(config.system_prompt.is_none());
+        assert_eq!(config.model_params.temperature, None);
+        assert_eq!(config.model_params.max_tokens, None);
+        assert!(config.model_params.additional_params.is_none());
+        assert!(!config.enable_web_search);
+        assert!(!config.enable_web_fetch);
+        assert!(!config.enable_bash);
+        assert!(!config.enable_read);
+        assert!(!config.enable_edit);
+        assert!(!config.enable_write);
+        assert!(!config.enable_grep);
+        assert!(!config.enable_glob);
+        assert!(!config.enable_kill_shell);
+        assert!(config.mcp_schema_tool.is_none());
+        assert!(config.mcp_tool_use.is_none());
+        assert!(config.skill_tool.is_none());
+        assert!(config.project_root.is_none());
+        assert!(matches!(config.search_provider, SearchProvider::DuckDuckGo));
+    }
+
+    #[test]
+    fn agent_config_withers_set_their_fields() {
+        let config = AgentConfig::new()
+            .with_system_prompt("sys")
+            .with_temperature(0.4)
+            .with_max_tokens(512)
+            .with_additional_params(json!({"k": "v"}))
+            .with_search_provider(SearchProvider::Baidu)
+            .with_bash_working_directory("/bash-dir".to_string())
+            .with_grep_working_directory("/grep-dir".to_string())
+            .with_glob_working_directory("/glob-dir".to_string())
+            .with_read_main_model_vision(false)
+            .with_project_root(PathBuf::from("/project"));
+        assert_eq!(config.system_prompt.as_deref(), Some("sys"));
+        assert_eq!(config.model_params.temperature, Some(0.4));
+        assert_eq!(config.model_params.max_tokens, Some(512));
+        assert_eq!(
+            config.model_params.additional_params,
+            Some(json!({"k": "v"}))
+        );
+        assert!(matches!(config.search_provider, SearchProvider::Baidu));
+        assert_eq!(config.bash_working_directory.as_deref(), Some("/bash-dir"));
+        assert_eq!(config.grep_working_directory.as_deref(), Some("/grep-dir"));
+        assert_eq!(config.glob_working_directory.as_deref(), Some("/glob-dir"));
+        assert_eq!(config.read_main_model_vision, Some(false));
+        assert_eq!(config.project_root, Some(PathBuf::from("/project")));
+    }
+
+    #[test]
+    fn tool_enable_withers_flip_flags() {
+        let config = AgentConfig::new()
+            .with_web_search()
+            .with_web_fetch()
+            .with_bash()
+            .with_read()
+            .with_edit()
+            .with_write()
+            .with_grep()
+            .with_glob()
+            .with_kill_shell();
+        assert!(config.enable_web_search);
+        assert!(config.enable_web_fetch);
+        assert!(config.enable_bash);
+        assert!(config.enable_read);
+        assert!(config.enable_edit);
+        assert!(config.enable_write);
+        assert!(config.enable_grep);
+        assert!(config.enable_glob);
+        assert!(config.enable_kill_shell);
+    }
+
+    #[test]
+    fn with_builtin_tools_enables_core_tools_but_not_kill_shell() {
+        let config = AgentConfig::new().with_builtin_tools();
+        assert!(config.enable_web_search);
+        assert!(config.enable_web_fetch);
+        assert!(config.enable_bash);
+        assert!(config.enable_read);
+        assert!(config.enable_edit);
+        assert!(config.enable_write);
+        assert!(config.enable_grep);
+        assert!(config.enable_glob);
+        assert!(
+            !config.enable_kill_shell,
+            "kill_shell is a bash companion and must not be enabled by the bulk setter"
+        );
+    }
+
+    #[test]
+    fn mcp_and_skill_withers_attach_tools() {
+        let config = AgentConfig::new()
+            .with_mcp_schema_tool(empty_schema_tool())
+            .with_mcp_tool_use(empty_mcp_tool_use())
+            .with_skill_tool(SkillTool::new(vec![SkillCatalogEntry {
+                name: "probe".to_string(),
+                description: Some("probe skill".to_string()),
+                path: "/skills/probe/SKILL.md".to_string(),
+            }]));
+        assert!(config.mcp_schema_tool.is_some());
+        assert!(config.mcp_tool_use.is_some());
+        assert!(config.skill_tool.is_some());
+    }
+
+    #[test]
+    fn with_model_params_replaces_the_whole_set() {
+        let params = ModelParameters {
+            temperature: Some(0.9),
+            max_tokens: Some(77),
+            ..ModelParameters::default()
+        };
+        let config = AgentConfig::new()
+            .with_temperature(0.1)
+            .with_max_tokens(9)
+            .with_model_params(params);
+        assert_eq!(config.model_params.temperature, Some(0.9));
+        assert_eq!(config.model_params.max_tokens, Some(77));
+    }
+
+    // ------------------------------------------------------------------
+    // first_added priority
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn first_added_picks_the_highest_priority_tool() {
+        assert!(
+            first_added(&AgentConfig::new()) == FirstTool::Skill,
+            "empty config falls back to Skill"
+        );
+        let config = AgentConfig::new()
+            .with_web_fetch()
+            .with_bash()
+            .with_read()
+            .with_glob()
+            .with_skill_tool(empty_skill_tool());
+        assert!(first_added(&config) == FirstTool::WebFetch);
+
+        let config = AgentConfig::new().with_bash().with_read().with_glob();
+        assert!(first_added(&config) == FirstTool::Bash);
+
+        let config = AgentConfig::new().with_read().with_glob();
+        assert!(first_added(&config) == FirstTool::Read);
+
+        let config = AgentConfig::new().with_glob();
+        assert!(first_added(&config) == FirstTool::Glob);
+    }
+
+    #[test]
+    fn first_added_ranks_native_tools_above_mcp_and_skill() {
+        let config = AgentConfig::new()
+            .with_mcp_schema_tool(empty_schema_tool())
+            .with_mcp_tool_use(empty_mcp_tool_use())
+            .with_skill_tool(empty_skill_tool());
+        assert!(first_added(&config) == FirstTool::McpSchema);
+
+        let config = AgentConfig::new()
+            .with_mcp_tool_use(empty_mcp_tool_use())
+            .with_skill_tool(empty_skill_tool());
+        assert!(first_added(&config) == FirstTool::McpToolUse);
+
+        let config = AgentConfig::new().with_skill_tool(empty_skill_tool());
+        assert!(first_added(&config) == FirstTool::Skill);
+    }
+
+    // ------------------------------------------------------------------
+    // build_agent parameter application
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn build_agent_applies_all_configured_params() {
+        let config = AgentConfig::new()
+            .with_system_prompt("You are a probe.")
+            .with_temperature(0.25)
+            .with_max_tokens(4242)
+            .with_additional_params(json!({"foo": "bar"}));
+        let request = recorded_request(&config).await;
+        // rig 0.42 runners carry the preamble as a leading system message,
+        // not as the legacy CompletionRequest.preamble field.
+        match request.chat_history.first() {
+            Some(Message::System { content }) => {
+                assert_eq!(content, "You are a probe.")
+            }
+            other => panic!("preamble should lead the history, got {other:?}"),
+        }
+        assert_eq!(request.temperature, Some(0.25));
+        assert_eq!(request.max_tokens, Some(4242));
+        assert_eq!(request.additional_params, Some(json!({"foo": "bar"})));
+        assert!(request.tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn build_agent_leaves_unset_params_none() {
+        let request = recorded_request(&AgentConfig::new()).await;
+        assert!(!matches!(
+            request.chat_history.first(),
+            Some(Message::System { .. })
+        ));
+        assert_eq!(request.temperature, None);
+        assert_eq!(request.max_tokens, None);
+        assert_eq!(request.additional_params, None);
+        assert!(request.tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn build_agent_applies_params_partially() {
+        let config = AgentConfig::new().with_max_tokens(128);
+        let request = recorded_request(&config).await;
+        assert_eq!(request.max_tokens, Some(128));
+        assert!(!matches!(
+            request.chat_history.first(),
+            Some(Message::System { .. })
+        ));
+        assert_eq!(request.temperature, None);
+        assert_eq!(request.additional_params, None);
+    }
+
+    // ------------------------------------------------------------------
+    // Tool assembly
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn full_tool_stack_registers_in_priority_order() {
+        let request = recorded_request(&full_tool_config()).await;
+        assert_eq!(
+            tool_names(&request),
+            vec![
+                "web_search",
+                "web_fetch",
+                "bash",
+                "kill_shell",
+                "read",
+                "edit",
+                "write",
+                "grep",
+                "glob",
+                "mcp_schema",
+                "mcp_tool_use",
+                "skill",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn every_tool_is_registered_exactly_once() {
+        let request = recorded_request(&full_tool_config()).await;
+        for name in tool_names(&request) {
+            let count = tool_names(&request).iter().filter(|n| **n == name).count();
+            assert_eq!(count, 1, "tool {name} must not be registered twice");
+        }
+    }
+
+    #[tokio::test]
+    async fn subset_keeps_priority_order_without_gaps() {
+        let config = AgentConfig::new()
+            .with_read()
+            .with_glob()
+            .with_skill_tool(empty_skill_tool());
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["read", "glob", "skill"]);
+    }
+
+    #[tokio::test]
+    async fn web_tools_register_in_priority_order() {
+        let config = AgentConfig::new().with_web_fetch().with_web_search();
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["web_search", "web_fetch"]);
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_use_alone_is_a_valid_tool_set() {
+        let config = AgentConfig::new().with_mcp_tool_use(empty_mcp_tool_use());
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["mcp_tool_use"]);
+    }
+
+    #[tokio::test]
+    async fn mcp_schema_alone_is_a_valid_tool_set() {
+        let config = AgentConfig::new().with_mcp_schema_tool(empty_schema_tool());
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["mcp_schema"]);
+    }
+
+    #[tokio::test]
+    async fn skill_tool_alone_bootstraps_the_tool_state() {
+        let config = AgentConfig::new().with_skill_tool(empty_skill_tool());
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["skill"]);
+    }
+
+    #[tokio::test]
+    async fn kill_shell_without_bash_registers_no_tools() {
+        let config = AgentConfig::new().with_kill_shell();
+        let request = recorded_request(&config).await;
+        assert!(
+            request.tools.is_empty(),
+            "kill_shell is only added alongside bash"
+        );
+    }
+
+    #[tokio::test]
+    async fn kill_shell_with_bash_sits_right_after_bash() {
+        let config = AgentConfig::new().with_bash().with_kill_shell();
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["bash", "kill_shell"]);
+    }
+
+    #[tokio::test]
+    async fn kill_shell_is_dropped_when_bash_is_disabled() {
+        let config = AgentConfig::new().with_kill_shell().with_read();
+        let request = recorded_request(&config).await;
+        assert_eq!(tool_names(&request), vec!["read"]);
+    }
+
+    #[tokio::test]
+    async fn bash_working_directory_lands_in_the_tool_description() {
+        let config = AgentConfig::new()
+            .with_bash()
+            .with_bash_working_directory("/probe/root".to_string());
+        let request = recorded_request(&config).await;
+        let bash = request
+            .tools
+            .iter()
+            .find(|t| t.name == "bash")
+            .expect("bash tool should be registered");
+        assert!(
+            bash.description
+                .contains("The session starts in: /probe/root."),
+            "bash description should carry the working directory"
+        );
+    }
+
+    #[tokio::test]
+    async fn bash_description_has_no_cwd_note_by_default() {
+        let request = recorded_request(&full_tool_config()).await;
+        let bash = request
+            .tools
+            .iter()
+            .find(|t| t.name == "bash")
+            .expect("bash tool should be registered");
+        assert!(!bash.description.contains("The session starts in"));
+    }
+
+    #[tokio::test]
+    async fn grep_working_directory_lands_in_the_parameter_schema() {
+        let config = AgentConfig::new()
+            .with_grep()
+            .with_grep_working_directory("/probe/data".to_string());
+        let request = recorded_request(&config).await;
+        let grep = request
+            .tools
+            .iter()
+            .find(|t| t.name == "grep")
+            .expect("grep tool should be registered");
+        let description = grep.parameters["properties"]["path"]["description"]
+            .as_str()
+            .expect("grep path parameter should carry a description");
+        assert!(
+            description.contains("defaults to: /probe/data"),
+            "unexpected grep path description: {description}"
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_defaults_to_home_directory_without_config() {
+        let request = recorded_request(&full_tool_config()).await;
+        let grep = request
+            .tools
+            .iter()
+            .find(|t| t.name == "grep")
+            .expect("grep tool should be registered");
+        let description = grep.parameters["properties"]["path"]["description"]
+            .as_str()
+            .expect("grep path parameter should carry a description");
+        assert!(description.contains("defaults to home directory"));
+    }
+
+    #[tokio::test]
+    async fn glob_working_directory_lands_in_the_parameter_schema() {
+        let config = AgentConfig::new()
+            .with_glob()
+            .with_glob_working_directory("/probe/tree".to_string());
+        let request = recorded_request(&config).await;
+        let glob = request
+            .tools
+            .iter()
+            .find(|t| t.name == "glob")
+            .expect("glob tool should be registered");
+        let description = glob.parameters["properties"]["path"]["description"]
+            .as_str()
+            .expect("glob path parameter should carry a description");
+        assert!(
+            description.contains("defaults to: /probe/tree"),
+            "unexpected glob path description: {description}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Message builders
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn build_user_message_wraps_text_in_a_user_message() {
+        let Message::User { content } = build_user_message("hello", &[], &[]) else {
+            panic!("expected a user message");
+        };
+        assert_eq!(content.len(), 1);
+        let UserContent::Text(text) = &content[0] else {
+            panic!("expected plain text content");
+        };
+        assert_eq!(text.text, "hello");
+    }
+
+    #[test]
+    fn build_user_message_orders_text_document_then_image() {
+        let images = vec![ImageData {
+            base64: "cHJvYmU=".to_string(),
+            media_type: "image/png".to_string(),
+        }];
+        let files = vec![FileData {
+            name: "notes.md".to_string(),
+            content: "probe body".to_string(),
+            media_type: "text/markdown".to_string(),
+            bytes: None,
+        }];
+        let Message::User { content } = build_user_message("see attachment", &images, &files)
+        else {
+            panic!("expected a user message");
+        };
+        assert_eq!(content.len(), 3);
+        assert!(matches!(content[0], UserContent::Text(_)));
+
+        let UserContent::Document(document) = &content[1] else {
+            panic!("file content should come before images");
+        };
+        let DocumentSourceKind::String(text) = &document.data else {
+            panic!("file content should ride as a plain string");
+        };
+        assert!(text.contains("<filename>notes.md</filename>"));
+        assert!(text.contains("probe body"));
+        assert!(matches!(
+            document.media_type,
+            Some(DocumentMediaType::MARKDOWN)
+        ));
+
+        let UserContent::Image(image) = &content[2] else {
+            panic!("expected the image to come last");
+        };
+        let DocumentSourceKind::Base64(data) = &image.data else {
+            panic!("image should ride as base64");
+        };
+        assert_eq!(data, "cHJvYmU=");
+        assert!(matches!(image.media_type, Some(ImageMediaType::PNG)));
+    }
+
+    #[test]
+    fn build_assistant_message_without_reasoning_is_text_only() {
+        let Message::Assistant { id, content } = build_assistant_message("hi", None) else {
+            panic!("expected an assistant message");
+        };
+        assert!(id.is_none());
+        assert_eq!(content.len(), 1);
+        assert!(matches!(&content[0], AssistantContent::Text(t) if t.text == "hi"));
+    }
+
+    #[test]
+    fn build_assistant_message_prefixes_reasoning_before_text() {
+        let Message::Assistant { content, .. } = build_assistant_message("answer", Some("because"))
+        else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(content.len(), 2);
+        assert!(matches!(content[0], AssistantContent::Reasoning(_)));
+        assert!(matches!(&content[1], AssistantContent::Text(t) if t.text == "answer"));
+    }
+
+    #[test]
+    fn build_assistant_message_skips_empty_reasoning() {
+        let Message::Assistant { content, .. } = build_assistant_message("hi", Some("")) else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(content.len(), 1);
+        assert!(matches!(&content[0], AssistantContent::Text(t) if t.text == "hi"));
+    }
+
+    #[test]
+    fn tool_calls_parse_json_arguments_and_map_call_id() {
+        let tool_calls = vec![ToolCallData {
+            id: "tc_1".to_string(),
+            call_id: Some("call_9".to_string()),
+            tool_name: "web_search".to_string(),
+            tool_input: r#"{"query": "rust"}"#.to_string(),
+            tool_output: None,
+        }];
+        let Message::Assistant { content, .. } =
+            build_assistant_message_with_tool_calls("answer", &tool_calls, Some("thinking"))
+        else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(content.len(), 3);
+        assert!(matches!(content[0], AssistantContent::Reasoning(_)));
+        assert!(matches!(&content[1], AssistantContent::Text(t) if t.text == "answer"));
+
+        let AssistantContent::ToolCall(call) = &content[2] else {
+            panic!("expected a tool call content item");
+        };
+        assert_eq!(call.function.name, "web_search");
+        assert_eq!(call.function.arguments, json!({"query": "rust"}));
+        let provider = call
+            .provider
+            .as_ref()
+            .expect("call_id should become the provider handle");
+        assert_eq!(provider.call_id, "call_9");
+        assert_eq!(provider.item_id.as_deref(), Some("tc_1"));
+    }
+
+    #[test]
+    fn tool_call_without_call_id_uses_the_tool_call_id_as_handle() {
+        let tool_calls = vec![ToolCallData {
+            id: "tc_7".to_string(),
+            call_id: None,
+            tool_name: "bash".to_string(),
+            tool_input: "{}".to_string(),
+            tool_output: None,
+        }];
+        let Message::Assistant { content, .. } =
+            build_assistant_message_with_tool_calls("", &tool_calls, None)
+        else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(content.len(), 1, "empty text must not produce a text item");
+        let AssistantContent::ToolCall(call) = &content[0] else {
+            panic!("expected a tool call content item");
+        };
+        let provider = call
+            .provider
+            .as_ref()
+            .expect("from_wire should derive the handle from the id");
+        assert_eq!(provider.call_id, "tc_7");
+        assert_eq!(provider.item_id, None);
+    }
+
+    #[test]
+    fn invalid_tool_call_json_falls_back_to_a_string_argument() {
+        let tool_calls = vec![ToolCallData {
+            id: "tc_2".to_string(),
+            call_id: None,
+            tool_name: "bash".to_string(),
+            tool_input: "not json".to_string(),
+            tool_output: None,
+        }];
+        let Message::Assistant { content, .. } =
+            build_assistant_message_with_tool_calls("", &tool_calls, None)
+        else {
+            panic!("expected an assistant message");
+        };
+        let AssistantContent::ToolCall(call) = &content[0] else {
+            panic!("expected a tool call content item");
+        };
+        assert_eq!(call.function.arguments, json!("not json"));
+    }
+
+    #[test]
+    fn all_empty_tool_call_message_falls_back_to_blank_text() {
+        let Message::Assistant { content, .. } =
+            build_assistant_message_with_tool_calls("", &[], None)
+        else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(content.len(), 1);
+        assert!(matches!(&content[0], AssistantContent::Text(t) if t.text.is_empty()));
+    }
+
+    #[test]
+    fn tool_result_with_call_id_echoes_the_provider_handle() {
+        let Message::User { content } =
+            build_tool_result_message("tc_1", Some("call_9"), "result text")
+        else {
+            panic!("expected a user message");
+        };
+        assert_eq!(content.len(), 1);
+        let UserContent::ToolResult(result) = &content[0] else {
+            panic!("expected tool result content");
+        };
+        let provider = result
+            .provider
+            .as_ref()
+            .expect("call_id should become the provider handle");
+        assert_eq!(provider.call_id, "call_9");
+        assert_eq!(provider.item_id.as_deref(), Some("tc_1"));
+        assert_eq!(result.call.as_str(), "call_9");
+        assert_eq!(result.name, "");
+        assert_eq!(result.content.len(), 1);
+        assert!(
+            matches!(&result.content[0], ToolResultContent::Text(t) if t.text == "result text")
+        );
+    }
+
+    #[test]
+    fn tool_result_without_call_id_keys_on_the_tool_call_id() {
+        let Message::User { content } = build_tool_result_message("tc_3", None, "done") else {
+            panic!("expected a user message");
+        };
+        let UserContent::ToolResult(result) = &content[0] else {
+            panic!("expected tool result content");
+        };
+        assert_eq!(result.provider, None);
+        assert_eq!(result.call.as_str(), "tc_3");
+    }
+
+    #[test]
+    fn tool_result_with_empty_call_id_is_treated_as_absent() {
+        let Message::User { content } = build_tool_result_message("tc_4", Some(""), "done") else {
+            panic!("expected a user message");
+        };
+        let UserContent::ToolResult(result) = &content[0] else {
+            panic!("expected tool result content");
+        };
+        assert_eq!(
+            result.provider, None,
+            "an empty call_id must not become a provider handle"
+        );
+        assert!(!result.call.as_str().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Provider routing errors
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn create_provider_agent_rejects_unknown_providers() {
+        let error = create_provider_agent(
+            "does-not-exist",
+            "model",
+            Some("key"),
+            None,
+            None,
+            &AgentConfig::new(),
+        )
+        .err()
+        .expect("unknown provider should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Unknown provider: does-not-exist")
+        );
+    }
+
+    #[test]
+    fn create_provider_agent_requires_keys_with_display_names() {
+        let error =
+            create_provider_agent("openai", "gpt-4o", None, None, None, &AgentConfig::new())
+                .err()
+                .expect("openai without a key should fail");
+        assert!(error.to_string().contains("OpenAI API key required"));
+
+        let error = create_provider_agent("azure", "deploy", None, None, None, &AgentConfig::new())
+            .err()
+            .expect("azure without a key should fail");
+        assert!(error.to_string().contains("Azure OpenAI API key required"));
+    }
+
+    #[test]
+    fn catch_all_providers_fall_back_to_the_raw_type_in_key_errors() {
+        let error = create_provider_agent("zhipu", "glm-4", None, None, None, &AgentConfig::new())
+            .err()
+            .expect("catch-all provider without a key should fail");
+        assert!(error.to_string().contains("zhipu API key required"));
+    }
+
+    #[test]
+    fn custom_openai_requires_a_base_url() {
+        let error = create_provider_agent(
+            "custom_openai",
+            "model",
+            Some("key"),
+            None,
+            None,
+            &AgentConfig::new(),
+        )
+        .err()
+        .expect("custom_openai without a base URL should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Base URL is required for custom OpenAI-compatible providers")
+        );
+    }
+
+    #[test]
+    fn custom_anthropic_requires_a_base_url() {
+        let error = create_provider_agent(
+            "custom_anthropic",
+            "model",
+            Some("key"),
+            None,
+            None,
+            &AgentConfig::new(),
+        )
+        .err()
+        .expect("custom_anthropic without a base URL should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Base URL is required for custom Anthropic-compatible providers")
+        );
+    }
+
+    #[test]
+    fn azure_requires_an_endpoint_url() {
+        let error = create_provider_agent(
+            "azure",
+            "deployment",
+            Some("key"),
+            None,
+            None,
+            &AgentConfig::new(),
+        )
+        .err()
+        .expect("azure without an endpoint should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Azure OpenAI requires an endpoint URL")
+        );
+    }
+
+    #[test]
+    fn local_providers_build_without_a_key() {
+        assert!(
+            create_provider_agent("ollama", "llama3", None, None, None, &AgentConfig::new())
+                .is_ok()
+        );
+        assert!(
+            create_provider_agent(
+                "lmstudio",
+                "local-model",
+                None,
+                None,
+                None,
+                &AgentConfig::new()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn keyed_providers_build_offline_with_a_dummy_key() {
+        for provider in [
+            "openai",
+            "anthropic",
+            "openrouter",
+            "gemini",
+            "cohere",
+            "galadriel",
+            "minimax",
+            "zhipu",
+        ] {
+            let agent = create_provider_agent(
+                provider,
+                "probe-model",
+                Some("dummy-key"),
+                None,
+                None,
+                &AgentConfig::new(),
+            );
+            assert!(agent.is_ok(), "{provider} should build without network");
+        }
+    }
+
+    #[test]
+    fn create_rig_native_agent_rejects_unknown_providers() {
+        let error = create_rig_native_agent("nope", "key", None, "model", &AgentConfig::new())
+            .err()
+            .expect("unknown rig-native provider should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Unknown rig-native provider: nope")
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Provider presets (captured on a loopback HTTP server)
+    // ------------------------------------------------------------------
+
+    struct CapturedRequest {
+        #[allow(dead_code)]
+        method: String,
+        path: String,
+        body: String,
+    }
+
+    fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    /// Serve exactly one HTTP request on a loopback port, capture it and
+    /// reply with `response_body`. Nothing leaves the machine.
+    async fn serve_one_request(
+        response_body: &'static str,
+    ) -> (String, Arc<Mutex<Option<CapturedRequest>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let captured = Arc::new(Mutex::new(None));
+        let sink = captured.clone();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut raw = Vec::new();
+            let mut chunk = [0u8; 8192];
+            let header_end = loop {
+                let n = socket.read(&mut chunk).await.unwrap();
+                if n == 0 {
+                    break 0;
+                }
+                raw.extend_from_slice(&chunk[..n]);
+                if let Some(pos) = find_subsequence(&raw, b"\r\n\r\n") {
+                    break pos + 4;
+                }
+            };
+            let head = String::from_utf8_lossy(&raw[..header_end]).to_string();
+            let content_length: usize = head
+                .lines()
+                .filter_map(|l| l.split_once(':'))
+                .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
+                .and_then(|(_, v)| v.trim().parse().ok())
+                .unwrap_or(0);
+            while raw.len() < header_end + content_length {
+                match socket.read(&mut chunk).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => raw.extend_from_slice(&chunk[..n]),
+                }
+            }
+            let mut parts = head.lines().next().unwrap_or_default().split_whitespace();
+            let method = parts.next().unwrap_or_default().to_string();
+            let path = parts.next().unwrap_or_default().to_string();
+            *sink.lock().unwrap() = Some(CapturedRequest {
+                method,
+                path,
+                body: String::from_utf8_lossy(&raw[header_end..]).to_string(),
+            });
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+                 Connection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+        (format!("http://{address}"), captured)
+    }
+
+    fn captured_path(captured: &Arc<Mutex<Option<CapturedRequest>>>) -> String {
+        captured
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("loopback server should have captured a request")
+            .path
+            .clone()
+    }
+
+    fn captured_json(captured: &Arc<Mutex<Option<CapturedRequest>>>) -> serde_json::Value {
+        let body = captured
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("loopback server should have captured a request")
+            .body
+            .clone();
+        serde_json::from_str(&body).expect("captured request body should be JSON")
+    }
+
+    /// Fire one prompt at an agent and ignore the outcome. The assertions
+    /// target the wire request the loopback server captured, which is sent
+    /// before any response parsing happens.
+    async fn fire_prompt(agent: &Agent) {
+        let _ = tokio::time::timeout(Duration::from_secs(30), agent.prompt("probe")).await;
+    }
+
+    const OPENAI_RESPONSES_BODY: &str = r#"{
+        "id": "resp_probe", "object": "response", "created_at": 0,
+        "status": "completed", "model": "probe",
+        "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        "output": [{
+            "type": "message", "id": "msg_probe", "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "annotations": [], "text": "ok"}]
+        }],
+        "tools": []
+    }"#;
+
+    const CHAT_COMPLETIONS_BODY: &str = r#"{
+        "id": "cc_probe", "object": "chat.completion", "created": 0, "model": "probe",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "ok"},
+            "finish_reason": "stop"
+        }]
+    }"#;
+
+    const ANTHROPIC_MESSAGES_BODY: &str = r#"{
+        "id": "msg_probe", "type": "message", "role": "assistant", "model": "probe",
+        "content": [{"type": "text", "text": "ok"}],
+        "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1}
+    }"#;
+
+    #[tokio::test]
+    async fn openai_gpt5_models_get_default_reasoning_effort() {
+        let (base_url, captured) = serve_one_request(OPENAI_RESPONSES_BODY).await;
+        let agent = create_openai_agent(
+            "probe-key",
+            Some(&base_url),
+            "gpt-5-mini",
+            &AgentConfig::new(),
+        )
+        .expect("openai agent should build");
+        fire_prompt(&agent).await;
+        assert!(
+            captured_path(&captured).ends_with("/responses"),
+            "openai should use the Responses API"
+        );
+        let body = captured_json(&captured);
+        assert_eq!(body["model"], json!("gpt-5-mini"));
+        let reasoning = body
+            .get("reasoning")
+            .expect("gpt-5 models should get a default reasoning effort");
+        assert_eq!(reasoning["effort"], json!("medium"));
+    }
+
+    #[tokio::test]
+    async fn openai_non_gpt5_models_get_no_default_reasoning() {
+        let (base_url, captured) = serve_one_request(OPENAI_RESPONSES_BODY).await;
+        let agent = create_openai_agent(
+            "probe-key",
+            Some(&base_url),
+            "gpt-4o-mini",
+            &AgentConfig::new(),
+        )
+        .expect("openai agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert!(
+            body.get("reasoning").is_none(),
+            "the reasoning default is gpt-5 only"
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_user_params_are_not_replaced_on_gpt5() {
+        let (base_url, captured) = serve_one_request(OPENAI_RESPONSES_BODY).await;
+        let config =
+            AgentConfig::new().with_additional_params(json!({"reasoning": {"effort": "high"}}));
+        let agent = create_openai_agent("probe-key", Some(&base_url), "gpt-5", &config)
+            .expect("openai agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(
+            body["reasoning"]["effort"],
+            json!("high"),
+            "user-set reasoning must win over the medium default"
+        );
+    }
+
+    #[tokio::test]
+    async fn openrouter_tool_free_agent_gets_reasoning_default() {
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let agent = create_openrouter_agent(
+            "probe-key",
+            Some(&base_url),
+            "anthropic/claude-4-sonnet",
+            &AgentConfig::new(),
+        )
+        .expect("openrouter agent should build");
+        fire_prompt(&agent).await;
+        assert!(
+            captured_path(&captured).ends_with("/chat/completions"),
+            "openrouter should use the Chat Completions API"
+        );
+        let body = captured_json(&captured);
+        let reasoning = body
+            .get("reasoning")
+            .expect("tool-free openrouter agents get a default reasoning effort");
+        assert_eq!(reasoning["effort"], json!("medium"));
+    }
+
+    #[tokio::test]
+    async fn openrouter_agent_with_tools_skips_reasoning_default() {
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let config = AgentConfig::new().with_read();
+        let agent = create_openrouter_agent(
+            "probe-key",
+            Some(&base_url),
+            "anthropic/claude-4-sonnet",
+            &config,
+        )
+        .expect("openrouter agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert!(
+            body.get("reasoning").is_none(),
+            "tool-carrying agents skip the default reasoning effort"
+        );
+    }
+
+    #[tokio::test]
+    async fn openrouter_user_params_are_never_overridden() {
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let config = AgentConfig::new().with_additional_params(json!({"top_k": 8}));
+        let agent = create_openrouter_agent(
+            "probe-key",
+            Some(&base_url),
+            "anthropic/claude-4-sonnet",
+            &config,
+        )
+        .expect("openrouter agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["top_k"], json!(8));
+        assert!(body.get("reasoning").is_none());
+    }
+
+    #[tokio::test]
+    async fn openrouter_image_models_get_modalities_plus_reasoning() {
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let agent = create_openrouter_agent(
+            "probe-key",
+            Some(&base_url),
+            "google/gemini-2.5-flash-image-preview",
+            &AgentConfig::new(),
+        )
+        .expect("openrouter agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["modalities"], json!(["image", "text"]));
+        assert_eq!(body["reasoning"]["effort"], json!("medium"));
+    }
+
+    #[tokio::test]
+    async fn openrouter_image_models_merge_modalities_into_user_params() {
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let config = AgentConfig::new().with_additional_params(json!({"top_k": 8}));
+        let agent = create_openrouter_agent(
+            "probe-key",
+            Some(&base_url),
+            "acme/writer-image-generation",
+            &config,
+        )
+        .expect("openrouter agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["modalities"], json!(["image", "text"]));
+        assert_eq!(body["top_k"], json!(8));
+        assert!(
+            body.get("reasoning").is_none(),
+            "user-set params suppress the reasoning default"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_agent_fills_the_mandatory_max_tokens() {
+        let (base_url, captured) = serve_one_request(ANTHROPIC_MESSAGES_BODY).await;
+        let agent = create_anthropic_agent(
+            "probe-key",
+            Some(&base_url),
+            "claude-sonnet-4-5",
+            &AgentConfig::new(),
+        )
+        .expect("anthropic agent should build");
+        fire_prompt(&agent).await;
+        assert!(
+            captured_path(&captured).ends_with("/v1/messages"),
+            "anthropic should use the Messages API"
+        );
+        let body = captured_json(&captured);
+        assert_eq!(body["max_tokens"], json!(8192));
+    }
+
+    #[tokio::test]
+    async fn anthropic_agent_preserves_user_max_tokens() {
+        let (base_url, captured) = serve_one_request(ANTHROPIC_MESSAGES_BODY).await;
+        let config = AgentConfig::new().with_max_tokens(555);
+        let agent =
+            create_anthropic_agent("probe-key", Some(&base_url), "claude-sonnet-4-5", &config)
+                .expect("anthropic agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["max_tokens"], json!(555));
+    }
+
+    #[tokio::test]
+    async fn custom_openai_api_style_selects_the_wire() {
+        let (base_url, captured) = serve_one_request(OPENAI_RESPONSES_BODY).await;
+        let agent = create_provider_agent(
+            "custom_openai",
+            "probe-model",
+            Some("probe-key"),
+            Some(&base_url),
+            None,
+            &AgentConfig::new(),
+        )
+        .expect("custom openai agent should build");
+        fire_prompt(&agent).await;
+        assert!(
+            captured_path(&captured).ends_with("/responses"),
+            "unset api_style must default to the Responses API"
+        );
+
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let agent = create_provider_agent(
+            "custom_openai",
+            "probe-model",
+            Some("probe-key"),
+            Some(&base_url),
+            Some("chat_completions"),
+            &AgentConfig::new(),
+        )
+        .expect("custom openai agent should build");
+        fire_prompt(&agent).await;
+        assert!(
+            captured_path(&captured).ends_with("/chat/completions"),
+            "chat_completions api_style must switch the wire"
+        );
+    }
+}
