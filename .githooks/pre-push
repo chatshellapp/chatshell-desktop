@@ -30,4 +30,4 @@ cargo test
 
 echo "== [pre-push] rust: self-gating network/real-API evals =="
 echo "    (no env -> httpcan mock / skip; CHATSHELL_SMOKE_* / CHATSHELL_WEB_E2E_* set -> real endpoints)"
-cargo test --lib -- provider_smoke web_e2e --ignored
+cargo test --lib -- provider_smoke web_e2e --ignored --nocapture

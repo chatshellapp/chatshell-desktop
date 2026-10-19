@@ -86,6 +86,22 @@ use super::{ChatMessage, call_provider};
 use chatshell_agent_core::tools::ImageQuestionResponder as _;
 use chatshell_agent_core::tools::image_question::ImageInput;
 
+/// Turn a transport failure against the local mock into an actionable hint.
+fn explain_if_mock_unreachable(base_url: &str, message: &str) -> String {
+    let local =
+        base_url.starts_with("http://127.0.0.1") || base_url.starts_with("http://localhost");
+    let transport = message.contains("error sending request")
+        || message.to_lowercase().contains("connection refused");
+    if local && transport {
+        return format!(
+            "{message} — the local httpcan mock at {base_url} is unreachable; start the \
+             container (docker start httpcan / OrbStack) or export CHATSHELL_SMOKE_* to \
+             target a real provider"
+        );
+    }
+    message.to_string()
+}
+
 struct SmokeConfig {
     provider: String,
     model: String,
@@ -100,10 +116,17 @@ impl SmokeConfig {
         let model = std::env::var("CHATSHELL_SMOKE_MODEL").ok();
         let base_url = std::env::var("CHATSHELL_SMOKE_BASE_URL").ok();
 
-        // All-unset => local httpcan defaults. Any explicit override switches
-        // to strict mode so a real run can never silently hit localhost.
+        // All-unset => local httpcan defaults, announced so a keyless run is
+        // never mistaken for a real-provider one. Any explicit override
+        // switches to strict mode so a real run can never silently hit
+        // localhost.
         let (provider, model, base_url) =
             if provider.is_none() && model.is_none() && base_url.is_none() {
+                println!(
+                    "no CHATSHELL_SMOKE_* variables detected — targeting the local httpcan \
+                     mock; export CHATSHELL_SMOKE_PROVIDER/MODEL/BASE_URL/API_KEY to hit a \
+                     real provider"
+                );
                 (
                     "custom_openai".to_string(),
                     "httpcan-smoke-model".to_string(),
@@ -204,9 +227,14 @@ async fn provider_smoke_text_roundtrip() {
         config.api_style.clone(),
     )
     .await
-    .context("text roundtrip failed");
+    .unwrap_or_else(|error| {
+        panic!(
+            "text roundtrip failed: {}",
+            explain_if_mock_unreachable(&config.base_url, &error.to_string())
+        )
+    });
 
-    let content = response.expect("call_provider must succeed").content;
+    let content = response.content;
     println!("smoke reply: {content}");
     assert!(!content.trim().is_empty(), "reply must be non-empty");
 }
@@ -237,7 +265,12 @@ async fn provider_smoke_vision_question() {
             "What color is this image?".to_string(),
         )
         .await
-        .expect("vision question must succeed");
+        .unwrap_or_else(|error| {
+            panic!(
+                "vision question failed: {}",
+                explain_if_mock_unreachable(&config.base_url, &error)
+            )
+        });
 
     println!("smoke vision answer: {answer}");
     assert!(!answer.trim().is_empty(), "answer must be non-empty");
@@ -293,7 +326,10 @@ async fn provider_smoke_openai_responses_wire() {
                 );
                 return;
             }
-            panic!("responses-wire roundtrip failed: {message}");
+            panic!(
+                "responses-wire roundtrip failed: {}",
+                explain_if_mock_unreachable(&config.base_url, &message)
+            );
         }
     };
 
