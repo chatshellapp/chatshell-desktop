@@ -282,3 +282,269 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    /// A request for a non-builtin provider type: "custom" never triggers
+    /// the type-singleton update-in-place path.
+    fn custom_req(name: &str) -> CreateProviderRequest {
+        CreateProviderRequest {
+            name: name.to_string(),
+            provider_type: "custom".to_string(),
+            api_key: None,
+            base_url: None,
+            api_style: None,
+            description: None,
+            is_enabled: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_provider_round_trips_all_fields() {
+        let (db, _dir) = test_db().await;
+        let req = CreateProviderRequest {
+            name: "Acme LLM".to_string(),
+            provider_type: "custom".to_string(),
+            api_key: Some("sk-round-trip".to_string()),
+            base_url: Some("https://acme.example/v1".to_string()),
+            api_style: Some("chat_completions".to_string()),
+            description: Some("Acme endpoint".to_string()),
+            is_enabled: None,
+        };
+        let created = db.create_provider(req).await.unwrap();
+
+        assert_eq!(created.name, "Acme LLM");
+        assert_eq!(created.provider_type, "custom");
+        // The key comes back as plaintext whether it was encrypted into the
+        // api_key column (keychain available) or held in the in-memory cache.
+        assert_eq!(created.api_key.as_deref(), Some("sk-round-trip"));
+        assert_eq!(created.base_url.as_deref(), Some("https://acme.example/v1"));
+        assert_eq!(created.api_style.as_deref(), Some("chat_completions"));
+        assert_eq!(created.description.as_deref(), Some("Acme endpoint"));
+        assert!(created.is_enabled, "is_enabled defaults to true");
+        assert!(!created.created_at.is_empty());
+        assert!(!created.updated_at.is_empty());
+
+        let fetched = db.get_provider(&created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.provider_type, "custom");
+        assert_eq!(fetched.api_key.as_deref(), Some("sk-round-trip"));
+        assert_eq!(fetched.base_url.as_deref(), Some("https://acme.example/v1"));
+        assert_eq!(fetched.api_style.as_deref(), Some("chat_completions"));
+        assert_eq!(fetched.description.as_deref(), Some("Acme endpoint"));
+        assert!(fetched.is_enabled);
+    }
+
+    #[tokio::test]
+    async fn create_provider_honors_disabled_flag() {
+        let (db, _dir) = test_db().await;
+        let mut req = custom_req("Disabled Co");
+        req.is_enabled = Some(false);
+        let created = db.create_provider(req).await.unwrap();
+        assert!(!created.is_enabled);
+    }
+
+    #[tokio::test]
+    async fn get_provider_missing_returns_none() {
+        let (db, _dir) = test_db().await;
+        assert!(db.get_provider("no-such-id").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn list_providers_orders_by_creation_asc() {
+        let (db, _dir) = test_db().await;
+        for name in ["first", "second", "third"] {
+            db.create_provider(custom_req(name)).await.unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let names: Vec<String> = db
+            .list_providers()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(names, vec!["first", "second", "third"]);
+    }
+
+    #[tokio::test]
+    async fn update_provider_rotates_fields_and_api_key() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_provider(CreateProviderRequest {
+                api_key: Some("sk-original".to_string()),
+                ..custom_req("Old Name")
+            })
+            .await
+            .unwrap();
+
+        let updated = db
+            .update_provider(
+                &created.id,
+                CreateProviderRequest {
+                    name: "New Name".to_string(),
+                    provider_type: "custom".to_string(),
+                    api_key: Some("sk-rotated".to_string()),
+                    base_url: Some("https://new.example/v1".to_string()),
+                    api_style: Some("responses".to_string()),
+                    description: Some("Rewired".to_string()),
+                    is_enabled: Some(false),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.name, "New Name");
+        assert_eq!(updated.api_key.as_deref(), Some("sk-rotated"));
+        assert_eq!(updated.base_url.as_deref(), Some("https://new.example/v1"));
+        assert_eq!(updated.api_style.as_deref(), Some("responses"));
+        assert_eq!(updated.description.as_deref(), Some("Rewired"));
+        assert!(!updated.is_enabled);
+
+        let fetched = db.get_provider(&created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.api_key.as_deref(), Some("sk-rotated"));
+        assert_eq!(fetched.name, "New Name");
+        assert!(!fetched.is_enabled);
+    }
+
+    #[tokio::test]
+    async fn update_provider_keeps_api_key_when_request_has_none() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_provider(CreateProviderRequest {
+                api_key: Some("sk-keep".to_string()),
+                ..custom_req("Keeper")
+            })
+            .await
+            .unwrap();
+
+        let updated = db
+            .update_provider(&created.id, custom_req("Keeper Renamed"))
+            .await
+            .unwrap();
+
+        assert_eq!(updated.name, "Keeper Renamed");
+        assert_eq!(
+            updated.api_key.as_deref(),
+            Some("sk-keep"),
+            "absent api_key must not clobber the stored key"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_provider_clears_api_key_on_empty_string() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_provider(CreateProviderRequest {
+                api_key: Some("sk-to-clear".to_string()),
+                ..custom_req("Clearable")
+            })
+            .await
+            .unwrap();
+
+        let mut req = custom_req("Clearable");
+        req.api_key = Some(String::new());
+        let updated = db.update_provider(&created.id, req).await.unwrap();
+
+        assert_eq!(updated.api_key, None, "empty api_key clears the key");
+    }
+
+    #[tokio::test]
+    async fn update_provider_missing_id_is_error() {
+        let (db, _dir) = test_db().await;
+        assert!(
+            db.update_provider("no-such-id", custom_req("Ghost"))
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_provider_tombstones_row_and_wipes_payload() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_provider(CreateProviderRequest {
+                api_key: Some("sk-doomed".to_string()),
+                ..custom_req("Doomed")
+            })
+            .await
+            .unwrap();
+
+        db.delete_provider(&created.id).await.unwrap();
+
+        // Soft delete: the row stays (tombstoned) with its payload wiped.
+        let (deleted_at, api_key, provider_type, is_enabled): (
+            Option<String>,
+            Option<String>,
+            String,
+            Option<i32>,
+        ) = sqlx::query_as(
+            "SELECT deleted_at, api_key, provider_type, is_enabled FROM providers WHERE id = ?",
+        )
+        .bind(&created.id)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert!(deleted_at.is_some(), "row must be tombstoned, not removed");
+        assert_eq!(api_key, None);
+        assert_eq!(provider_type, "");
+        assert_eq!(is_enabled, None);
+
+        // Second delete is a no-op that still succeeds (guard: deleted_at IS NULL).
+        db.delete_provider(&created.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn builtin_provider_type_is_singleton_updated_in_place() {
+        let (db, _dir) = test_db().await;
+        let first = db
+            .create_provider(CreateProviderRequest {
+                name: "OpenAI One".to_string(),
+                provider_type: "openai".to_string(),
+                api_key: None,
+                base_url: None,
+                api_style: None,
+                description: None,
+                is_enabled: None,
+            })
+            .await
+            .unwrap();
+        let second = db
+            .create_provider(CreateProviderRequest {
+                name: "OpenAI Two".to_string(),
+                provider_type: "openai".to_string(),
+                api_key: None,
+                base_url: None,
+                api_style: None,
+                description: None,
+                is_enabled: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            second.id, first.id,
+            "builtin type re-create must update in place, not duplicate"
+        );
+        let openai_rows: Vec<Provider> = db
+            .list_providers()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|p| p.provider_type == "openai")
+            .collect();
+        assert_eq!(openai_rows.len(), 1);
+        assert_eq!(openai_rows[0].name, "OpenAI Two");
+    }
+}

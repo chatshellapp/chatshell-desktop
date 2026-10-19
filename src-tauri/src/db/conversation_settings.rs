@@ -19,7 +19,7 @@ impl Database {
              system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
              user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
              enabled_mcp_server_ids, enabled_skill_ids, working_directory
-             FROM conversation_settings WHERE conversation_id = ?",
+             FROM conversation_settings WHERE conversation_id = ? AND deleted_at IS NULL",
         )
         .bind(conversation_id)
         .fetch_optional(self.pool.as_ref())
@@ -133,6 +133,7 @@ impl Database {
                 enabled_mcp_server_ids, enabled_skill_ids, working_directory, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
+                deleted_at = NULL,
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
                 parameter_overrides = excluded.parameter_overrides,
@@ -252,5 +253,360 @@ impl Database {
             enabled_skill_ids,
             working_directory: row.get("working_directory"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{CreateConversationRequest, CreatePromptRequest};
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn new_conversation(db: &Database) -> String {
+        db.create_conversation(CreateConversationRequest {
+            title: "Test conversation".to_string(),
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    /// The tool ids the default path inherits: enabled MCP servers plus
+    /// enabled builtin tools, in the order the implementation collects them.
+    async fn global_tool_ids(db: &Database) -> Vec<String> {
+        let mut ids: Vec<String> = db
+            .list_enabled_tools_by_type("mcp")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        ids.extend(
+            db.list_enabled_tools_by_type("builtin")
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|t| t.id),
+        );
+        ids
+    }
+
+    #[tokio::test]
+    async fn get_returns_global_defaults_when_no_row_exists() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        let settings = db
+            .get_conversation_settings(&conversation_id)
+            .await
+            .unwrap();
+        assert_eq!(settings.conversation_id, conversation_id);
+        assert!(settings.use_provider_defaults);
+        assert!(!settings.use_custom_parameters);
+        assert_eq!(settings.parameter_overrides.temperature, None);
+        assert_eq!(settings.parameter_overrides.max_tokens, None);
+        assert_eq!(settings.parameter_overrides.top_p, None);
+        assert_eq!(settings.parameter_overrides.frequency_penalty, None);
+        assert_eq!(settings.parameter_overrides.presence_penalty, None);
+        assert_eq!(settings.context_message_count, None);
+        assert_eq!(settings.selected_preset_id, None);
+        assert_eq!(settings.system_prompt_mode, PromptMode::None);
+        assert_eq!(settings.selected_system_prompt_id, None);
+        assert_eq!(settings.custom_system_prompt, None);
+        assert_eq!(settings.user_prompt_mode, PromptMode::None);
+        assert_eq!(settings.selected_user_prompt_id, None);
+        assert_eq!(settings.custom_user_prompt, None);
+        assert_eq!(settings.working_directory, None);
+        // Inherits globally enabled tools (builtin tools are seeded enabled)
+        assert_eq!(settings.enabled_mcp_server_ids, global_tool_ids(&db).await);
+        assert!(!settings.enabled_mcp_server_ids.is_empty());
+        // No skills are seeded
+        assert!(settings.enabled_skill_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_creates_and_round_trips_all_fields() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+        let preset_id = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+        let prompt = db
+            .create_prompt(CreatePromptRequest {
+                name: "User Prompt".to_string(),
+                content: "Answer concisely".to_string(),
+                description: None,
+                category: None,
+                is_system: Some(false),
+            })
+            .await
+            .unwrap();
+
+        let saved = db
+            .update_conversation_settings(
+                &conversation_id,
+                UpdateConversationSettingsRequest {
+                    use_provider_defaults: Some(false),
+                    use_custom_parameters: Some(true),
+                    parameter_overrides: Some(ModelParameterOverrides {
+                        temperature: Some(0.2),
+                        max_tokens: Some(512),
+                        top_p: Some(0.9),
+                        frequency_penalty: Some(0.0),
+                        presence_penalty: Some(0.1),
+                    }),
+                    context_message_count: Some(Some(50)),
+                    selected_preset_id: Some(Some(preset_id.clone())),
+                    system_prompt_mode: Some(PromptMode::Custom),
+                    selected_system_prompt_id: None,
+                    custom_system_prompt: Some(Some("Custom system prompt".to_string())),
+                    user_prompt_mode: Some(PromptMode::Existing),
+                    selected_user_prompt_id: Some(Some(prompt.id.clone())),
+                    custom_user_prompt: None,
+                    enabled_mcp_server_ids: Some(vec!["tool-a".to_string(), "tool-b".to_string()]),
+                    enabled_skill_ids: Some(vec!["skill-1".to_string()]),
+                    working_directory: Some(Some("/tmp/chatshell".to_string())),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(saved.conversation_id, conversation_id);
+
+        // Read back through a fresh query: JSON columns are re-parsed
+        let settings = db
+            .get_conversation_settings(&conversation_id)
+            .await
+            .unwrap();
+        assert!(!settings.use_provider_defaults);
+        assert!(settings.use_custom_parameters);
+        assert_eq!(settings.parameter_overrides.temperature, Some(0.2));
+        assert_eq!(settings.parameter_overrides.max_tokens, Some(512));
+        assert_eq!(settings.parameter_overrides.top_p, Some(0.9));
+        assert_eq!(settings.parameter_overrides.frequency_penalty, Some(0.0));
+        assert_eq!(settings.parameter_overrides.presence_penalty, Some(0.1));
+        assert_eq!(settings.context_message_count, Some(50));
+        assert_eq!(
+            settings.selected_preset_id.as_deref(),
+            Some(preset_id.as_str())
+        );
+        assert_eq!(settings.system_prompt_mode, PromptMode::Custom);
+        assert_eq!(
+            settings.custom_system_prompt.as_deref(),
+            Some("Custom system prompt")
+        );
+        assert_eq!(settings.user_prompt_mode, PromptMode::Existing);
+        assert_eq!(
+            settings.selected_user_prompt_id.as_deref(),
+            Some(prompt.id.as_str())
+        );
+        assert_eq!(
+            settings.enabled_mcp_server_ids,
+            vec!["tool-a".to_string(), "tool-b".to_string()]
+        );
+        assert_eq!(settings.enabled_skill_ids, vec!["skill-1".to_string()]);
+        assert_eq!(
+            settings.working_directory.as_deref(),
+            Some("/tmp/chatshell")
+        );
+    }
+
+    #[tokio::test]
+    async fn partial_update_preserves_untouched_fields() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &conversation_id,
+            UpdateConversationSettingsRequest {
+                use_custom_parameters: Some(true),
+                context_message_count: Some(Some(20)),
+                custom_system_prompt: Some(Some("Keep me".to_string())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let settings = db
+            .update_conversation_settings(
+                &conversation_id,
+                UpdateConversationSettingsRequest {
+                    enabled_mcp_server_ids: Some(vec!["only-tool".to_string()]),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Only the tool list changed; the rest merged from the stored row
+        assert_eq!(
+            settings.enabled_mcp_server_ids,
+            vec!["only-tool".to_string()]
+        );
+        assert!(settings.use_custom_parameters);
+        assert_eq!(settings.context_message_count, Some(20));
+        assert_eq!(settings.custom_system_prompt.as_deref(), Some("Keep me"));
+    }
+
+    #[tokio::test]
+    async fn explicit_null_clears_stored_values() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &conversation_id,
+            UpdateConversationSettingsRequest {
+                context_message_count: Some(Some(20)),
+                working_directory: Some(Some("/tmp/old".to_string())),
+                custom_user_prompt: Some(Some("old".to_string())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let settings = db
+            .update_conversation_settings(
+                &conversation_id,
+                UpdateConversationSettingsRequest {
+                    context_message_count: Some(None),
+                    working_directory: Some(None),
+                    custom_user_prompt: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(settings.context_message_count, None);
+        assert_eq!(settings.working_directory, None);
+        assert_eq!(settings.custom_user_prompt, None);
+    }
+
+    #[tokio::test]
+    async fn reset_tools_and_skills_restores_global_and_keeps_other_settings() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &conversation_id,
+            UpdateConversationSettingsRequest {
+                use_custom_parameters: Some(true),
+                custom_system_prompt: Some(Some("Preserved prompt".to_string())),
+                enabled_mcp_server_ids: Some(vec!["custom-tool".to_string()]),
+                enabled_skill_ids: Some(vec!["custom-skill".to_string()]),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let settings = db
+            .reset_tools_and_skills_to_global(&conversation_id)
+            .await
+            .unwrap();
+
+        assert_eq!(settings.enabled_mcp_server_ids, global_tool_ids(&db).await);
+        assert!(settings.enabled_skill_ids.is_empty());
+        // Everything outside tools and skills is untouched by the reset
+        assert!(settings.use_custom_parameters);
+        assert_eq!(
+            settings.custom_system_prompt.as_deref(),
+            Some("Preserved prompt")
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_without_existing_row_starts_from_defaults() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        let settings = db
+            .reset_tools_and_skills_to_global(&conversation_id)
+            .await
+            .unwrap();
+        assert_eq!(settings.conversation_id, conversation_id);
+        assert_eq!(settings.enabled_mcp_server_ids, global_tool_ids(&db).await);
+        // Fields the reset does not touch fall back to the defaults path
+        assert!(settings.use_provider_defaults);
+    }
+
+    #[tokio::test]
+    async fn delete_tombstones_row_and_upsert_revives_it() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &conversation_id,
+            UpdateConversationSettingsRequest {
+                context_message_count: Some(Some(10)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        db.delete_conversation_settings(&conversation_id)
+            .await
+            .unwrap();
+
+        let deleted_at: Option<String> = sqlx::query_scalar(
+            "SELECT deleted_at FROM conversation_settings WHERE conversation_id = ?",
+        )
+        .bind(&conversation_id)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert!(
+            deleted_at.is_some(),
+            "row must be tombstoned, not hard-deleted"
+        );
+
+        // Reads filter tombstones, so a deleted settings row falls back to
+        // the computed defaults instead of the wiped payload.
+        let defaults = db
+            .get_conversation_settings(&conversation_id)
+            .await
+            .unwrap();
+        assert!(defaults.use_provider_defaults);
+        assert_eq!(defaults.context_message_count, None);
+        assert!(
+            !defaults.enabled_mcp_server_ids.is_empty(),
+            "defaults inherit the seeded builtin tools"
+        );
+        assert_eq!(defaults.enabled_skill_ids, Vec::<String>::new());
+
+        // The upsert overwrites the tombstone and the row reads normally again
+        let revived = db
+            .update_conversation_settings(
+                &conversation_id,
+                UpdateConversationSettingsRequest {
+                    context_message_count: Some(Some(30)),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(revived.context_message_count, Some(30));
+    }
+
+    #[tokio::test]
+    async fn delete_missing_settings_is_ok() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+        // No settings row was ever written for this conversation
+        db.delete_conversation_settings(&conversation_id)
+            .await
+            .unwrap();
     }
 }

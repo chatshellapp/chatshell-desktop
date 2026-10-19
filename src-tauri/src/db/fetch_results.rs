@@ -171,3 +171,285 @@ impl Database {
         Ok(())
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{ContextType, CreateMessageRequest};
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn message(db: &Database, content: &str) -> String {
+        db.create_message(CreateMessageRequest {
+            conversation_id: None,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn fetch_req(url: &str, hash: &str) -> CreateFetchResultRequest {
+        CreateFetchResultRequest {
+            source_type: Some("search".to_string()),
+            source_id: Some("sr-1".to_string()),
+            url: url.to_string(),
+            title: Some("A title".to_string()),
+            description: Some("A description".to_string()),
+            storage_path: format!("fetch/{hash}.md"),
+            content_type: "text/markdown".to_string(),
+            original_mime: Some("text/html".to_string()),
+            status: Some("success".to_string()),
+            error: None,
+            keywords: Some("rust, sqlx".to_string()),
+            headings: Some(r#"["Intro","Details"]"#.to_string()),
+            original_size: Some(1024),
+            processed_size: Some(512),
+            favicon_url: Some("https://example.com/favicon.ico".to_string()),
+            content_hash: Some(hash.to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_get_roundtrip() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_fetch_result(fetch_req("https://example.com/a", "hash-a"))
+            .await
+            .unwrap();
+
+        assert_eq!(created.source_type, "search");
+        assert_eq!(created.source_id.as_deref(), Some("sr-1"));
+        assert_eq!(created.url, "https://example.com/a");
+        assert_eq!(created.title.as_deref(), Some("A title"));
+        assert_eq!(created.description.as_deref(), Some("A description"));
+        assert_eq!(created.storage_path, "fetch/hash-a.md");
+        assert_eq!(created.content_type, "text/markdown");
+        assert_eq!(created.original_mime.as_deref(), Some("text/html"));
+        assert_eq!(created.status, "success");
+        assert_eq!(created.error, None);
+        assert_eq!(created.keywords.as_deref(), Some("rust, sqlx"));
+        assert_eq!(created.headings.as_deref(), Some(r#"["Intro","Details"]"#));
+        assert_eq!(created.original_size, Some(1024));
+        assert_eq!(created.processed_size, Some(512));
+        assert_eq!(
+            created.favicon_url.as_deref(),
+            Some("https://example.com/favicon.ico")
+        );
+        assert_eq!(created.content_hash.as_deref(), Some("hash-a"));
+        assert!(!created.created_at.is_empty());
+        assert_eq!(created.updated_at, created.created_at);
+
+        let fetched = db.get_fetch_result(&created.id).await.unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.url, created.url);
+        assert_eq!(fetched.content_hash, created.content_hash);
+        assert_eq!(fetched.status, created.status);
+    }
+
+    #[tokio::test]
+    async fn create_applies_defaults_for_source_type_and_status() {
+        let (db, _dir) = test_db().await;
+        let mut req = fetch_req("https://example.com/default", "hash-d");
+        req.source_type = None;
+        req.status = None;
+        req.source_id = None;
+
+        let created = db.create_fetch_result(req).await.unwrap();
+        assert_eq!(created.source_type, "search");
+        assert_eq!(created.status, "pending");
+        assert_eq!(created.source_id, None);
+    }
+
+    #[tokio::test]
+    async fn get_missing_returns_err() {
+        let (db, _dir) = test_db().await;
+        assert!(db.get_fetch_result("no-such-id").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn find_by_hash_hit_and_miss() {
+        let (db, _dir) = test_db().await;
+        let a = db
+            .create_fetch_result(fetch_req("https://example.com/a", "hash-a"))
+            .await
+            .unwrap();
+        let b = db
+            .create_fetch_result(fetch_req("https://example.com/b", "hash-b"))
+            .await
+            .unwrap();
+
+        let hit = db.find_fetch_by_hash("hash-b").await.unwrap().unwrap();
+        assert_eq!(hit.id, b.id);
+        let hit = db.find_fetch_by_hash("hash-a").await.unwrap().unwrap();
+        assert_eq!(hit.id, a.id);
+        assert!(
+            db.find_fetch_by_hash("unknown-hash")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn find_by_hash_with_duplicate_hashes_returns_one_row() {
+        let (db, _dir) = test_db().await;
+        let a = db
+            .create_fetch_result(fetch_req("https://example.com/a", "dup-hash"))
+            .await
+            .unwrap();
+        let b = db
+            .create_fetch_result(fetch_req("https://example.com/b", "dup-hash"))
+            .await
+            .unwrap();
+
+        let hit = db.find_fetch_by_hash("dup-hash").await.unwrap().unwrap();
+        assert!(hit.id == a.id || hit.id == b.id);
+        assert_eq!(hit.content_hash.as_deref(), Some("dup-hash"));
+    }
+
+    #[tokio::test]
+    async fn by_source_filters_on_type_and_id_and_orders_by_created_at() {
+        let (db, _dir) = test_db().await;
+        let first = db
+            .create_fetch_result(fetch_req("https://example.com/first", "h1"))
+            .await
+            .unwrap();
+        let second = db
+            .create_fetch_result(fetch_req("https://example.com/second", "h2"))
+            .await
+            .unwrap();
+        let mut link_req = fetch_req("https://example.com/link", "h3");
+        link_req.source_type = Some("user_link".to_string());
+        link_req.source_id = Some("s1".to_string());
+        let link = db.create_fetch_result(link_req).await.unwrap();
+
+        let results = db
+            .get_fetch_results_by_source("search", "sr-1")
+            .await
+            .unwrap();
+        assert_eq!(
+            results.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec![first.id.as_str(), second.id.as_str()],
+            "same (source_type, source_id), ordered by created_at"
+        );
+
+        let results = db
+            .get_fetch_results_by_source("user_link", "s1")
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, link.id);
+
+        assert!(
+            db.get_fetch_results_by_source("search", "other-source")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn by_message_joins_junction_in_display_order() {
+        let (db, _dir) = test_db().await;
+        let m1 = message(&db, "message one").await;
+        let m2 = message(&db, "message two").await;
+        let f1 = db
+            .create_fetch_result(fetch_req("https://example.com/1", "h1"))
+            .await
+            .unwrap();
+        let f2 = db
+            .create_fetch_result(fetch_req("https://example.com/2", "h2"))
+            .await
+            .unwrap();
+        let f3 = db
+            .create_fetch_result(fetch_req("https://example.com/3", "h3"))
+            .await
+            .unwrap();
+
+        db.link_message_context(&m1, ContextType::FetchResult, &f1.id, Some(1))
+            .await
+            .unwrap();
+        db.link_message_context(&m1, ContextType::FetchResult, &f2.id, Some(0))
+            .await
+            .unwrap();
+        db.link_message_context(&m2, ContextType::FetchResult, &f3.id, Some(0))
+            .await
+            .unwrap();
+
+        let results = db.get_fetch_results_by_message(&m1).await.unwrap();
+        assert_eq!(
+            results.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec![f2.id.as_str(), f1.id.as_str()],
+            "ordered by junction display_order"
+        );
+
+        let results = db.get_fetch_results_by_message(&m2).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, f3.id);
+
+        assert!(
+            db.get_fetch_results_by_message("no-such-message")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn update_status_transitions_and_missing_update_is_ok() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_fetch_result(fetch_req("https://example.com/a", "hash-a"))
+            .await
+            .unwrap();
+        assert_eq!(created.status, "success");
+
+        db.update_fetch_result_status(&created.id, "processing", None)
+            .await
+            .unwrap();
+        let updated = db.get_fetch_result(&created.id).await.unwrap();
+        assert_eq!(updated.status, "processing");
+        assert_eq!(updated.error, None);
+
+        db.update_fetch_result_status(&created.id, "failed", Some("boom"))
+            .await
+            .unwrap();
+        let updated = db.get_fetch_result(&created.id).await.unwrap();
+        assert_eq!(updated.status, "failed");
+        assert_eq!(updated.error.as_deref(), Some("boom"));
+
+        // Fire-and-forget update: a missing id affects zero rows without error.
+        db.update_fetch_result_status("no-such-id", "failed", None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_soft_deletes_row_from_all_reads() {
+        let (db, _dir) = test_db().await;
+        let created = db
+            .create_fetch_result(fetch_req("https://example.com/a", "hash-a"))
+            .await
+            .unwrap();
+
+        db.delete_fetch_result(&created.id).await.unwrap();
+
+        assert!(db.get_fetch_result(&created.id).await.is_err());
+        assert!(db.find_fetch_by_hash("hash-a").await.unwrap().is_none());
+        assert!(
+            db.get_fetch_results_by_source("search", "sr-1")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}

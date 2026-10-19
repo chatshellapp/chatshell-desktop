@@ -308,3 +308,79 @@ impl Database {
         Ok(())
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::system_ids::system_uuid;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    #[tokio::test]
+    async fn seed_default_data_is_idempotent() {
+        let (db, _dir) = test_db().await;
+
+        // Database::new seeds presets/tools/prompt history, none of which
+        // touch users, providers or prompts.
+        assert!(db.get_self_user().await.unwrap().is_none());
+        assert!(db.list_providers().await.unwrap().is_empty());
+        assert!(db.list_prompts().await.unwrap().is_empty());
+
+        db.seed_default_data().await.unwrap();
+
+        // Self user: seeded once with the deterministic system id.
+        let self_user = db.get_self_user().await.unwrap().unwrap();
+        assert_eq!(self_user.id, system_uuid("chatshell.user.self"));
+        assert_eq!(self_user.username, "self");
+        assert_eq!(self_user.display_name, "You");
+        assert!(self_user.is_self);
+        assert_eq!(db.list_users().await.unwrap().len(), 1);
+
+        // Default Ollama provider: seeded once with the deterministic id.
+        let providers = db.list_providers().await.unwrap();
+        let ollama: Vec<_> = providers
+            .iter()
+            .filter(|p| p.provider_type == "ollama")
+            .collect();
+        assert_eq!(ollama.len(), 1);
+        assert_eq!(ollama[0].id, system_uuid("chatshell.provider.ollama"));
+        assert_eq!(
+            ollama[0].base_url.as_deref(),
+            Some("http://localhost:11434")
+        );
+
+        // Default prompt set: all seeded in one pass.
+        let prompts_after_first = db.list_prompts().await.unwrap();
+        assert_eq!(prompts_after_first.len(), 17);
+        assert!(prompts_after_first.iter().all(|p| p.is_system));
+
+        // Second run must not duplicate anything (regardless of whether a
+        // local Ollama answered the model probe).
+        db.seed_default_data().await.unwrap();
+
+        assert_eq!(
+            db.list_users()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|u| u.is_self)
+                .count(),
+            1
+        );
+        assert_eq!(
+            db.list_providers()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|p| p.provider_type == "ollama")
+                .count(),
+            1
+        );
+        assert_eq!(db.list_prompts().await.unwrap().len(), 17);
+    }
+}

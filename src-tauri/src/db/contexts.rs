@@ -99,3 +99,176 @@ impl Database {
         Ok(())
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{
+        CreateFetchResultRequest, CreateMessageRequest, CreateSearchResultRequest,
+    };
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn message(db: &Database, content: &str) -> String {
+        db.create_message(CreateMessageRequest {
+            conversation_id: None,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    async fn fetch_result(db: &Database, url: &str, hash: &str) -> crate::models::FetchResult {
+        db.create_fetch_result(CreateFetchResultRequest {
+            source_type: None,
+            source_id: None,
+            url: url.to_string(),
+            title: Some("A title".to_string()),
+            description: None,
+            storage_path: format!("fetch/{hash}.md"),
+            content_type: "text/markdown".to_string(),
+            original_mime: None,
+            status: Some("success".to_string()),
+            error: None,
+            keywords: None,
+            headings: None,
+            original_size: None,
+            processed_size: None,
+            favicon_url: None,
+            content_hash: Some(hash.to_string()),
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn link_and_get_fetch_context_roundtrip() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let other = message(&db, "other message").await;
+        let fetch = fetch_result(&db, "https://example.com/a", "hash-a").await;
+
+        db.link_message_context(&m, ContextType::FetchResult, &fetch.id, Some(0))
+            .await
+            .unwrap();
+
+        let contexts = db.get_message_contexts(&m).await.unwrap();
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].id(), fetch.id);
+        assert_eq!(contexts[0].context_type(), ContextType::FetchResult);
+        assert!(
+            matches!(contexts[0], ContextEnrichment::FetchResult(_)),
+            "junction rows hydrate into FetchResult enrichments"
+        );
+
+        assert!(db.get_message_contexts(&other).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn unlink_removes_context_and_missing_unlink_is_noop() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let fetch = fetch_result(&db, "https://example.com/a", "hash-a").await;
+
+        db.link_message_context(&m, ContextType::FetchResult, &fetch.id, Some(0))
+            .await
+            .unwrap();
+        assert_eq!(db.get_message_contexts(&m).await.unwrap().len(), 1);
+
+        db.unlink_message_context(&m, ContextType::FetchResult, &fetch.id)
+            .await
+            .unwrap();
+        assert!(db.get_message_contexts(&m).await.unwrap().is_empty());
+
+        // Unlinking again (nothing left to tombstone) stays Ok: no-op.
+        db.unlink_message_context(&m, ContextType::FetchResult, &fetch.id)
+            .await
+            .unwrap();
+        assert!(db.get_message_contexts(&m).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_results_via_direct_fk_ordered_with_linked_fetch_results() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let fetch_low = fetch_result(&db, "https://example.com/low", "h-low").await;
+        let fetch_high = fetch_result(&db, "https://example.com/high", "h-high").await;
+
+        db.link_message_context(&m, ContextType::FetchResult, &fetch_low.id, Some(1))
+            .await
+            .unwrap();
+        db.link_message_context(&m, ContextType::FetchResult, &fetch_high.id, Some(9))
+            .await
+            .unwrap();
+        let search = db
+            .create_search_result(CreateSearchResultRequest {
+                message_id: m.clone(),
+                query: "rust sqlite".to_string(),
+                engine: "duckduckgo".to_string(),
+                total_results: Some(3),
+                display_order: Some(5),
+                searched_at: "2026-01-01T00:00:00Z".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let contexts = db.get_message_contexts(&m).await.unwrap();
+        assert_eq!(
+            contexts
+                .iter()
+                .map(|c| c.id().to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                fetch_low.id.clone(),
+                search.id.clone(),
+                fetch_high.id.clone()
+            ],
+            "merged contexts sort by display_order across both sources"
+        );
+        assert!(
+            contexts
+                .iter()
+                .any(|c| matches!(c, ContextEnrichment::SearchResult(_)))
+        );
+    }
+
+    #[tokio::test]
+    async fn linking_search_result_type_is_ignored_by_junction() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let search = db
+            .create_search_result(CreateSearchResultRequest {
+                message_id: m.clone(),
+                query: "junction".to_string(),
+                engine: "duckduckgo".to_string(),
+                total_results: None,
+                display_order: None,
+                searched_at: "2026-01-01T00:00:00Z".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // The junction CHECK only allows 'fetch_result'; INSERT OR IGNORE
+        // skips the row instead of erroring.
+        db.link_message_context(&m, ContextType::SearchResult, &search.id, Some(0))
+            .await
+            .unwrap();
+
+        let contexts = db.get_message_contexts(&m).await.unwrap();
+        assert_eq!(
+            contexts.len(),
+            1,
+            "search result appears once, via its direct FK, not twice"
+        );
+        assert_eq!(contexts[0].id(), search.id);
+    }
+}

@@ -152,3 +152,263 @@ impl Database {
             .unwrap_or_default())
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateMessageRequest;
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    async fn message(db: &Database, content: &str) -> String {
+        db.create_message(CreateMessageRequest {
+            conversation_id: None,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn search_req(
+        message_id: &str,
+        query: &str,
+        display_order: Option<i32>,
+    ) -> CreateSearchResultRequest {
+        CreateSearchResultRequest {
+            message_id: message_id.to_string(),
+            query: query.to_string(),
+            engine: "duckduckgo".to_string(),
+            total_results: Some(7),
+            display_order,
+            searched_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_get_roundtrip() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "rust sqlx", Some(2)))
+            .await
+            .unwrap();
+
+        assert_eq!(created.message_id, m);
+        assert_eq!(created.query, "rust sqlx");
+        assert_eq!(created.engine, "duckduckgo");
+        assert_eq!(created.total_results, Some(7));
+        assert_eq!(created.display_order, 2);
+        assert_eq!(created.searched_at, "2026-01-01T00:00:00Z");
+        assert!(!created.created_at.is_empty());
+
+        let fetched = db.get_search_result(&created.id).await.unwrap();
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.query, created.query);
+        assert_eq!(fetched.total_results, created.total_results);
+    }
+
+    #[tokio::test]
+    async fn create_applies_defaults_for_totals_and_order() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "defaults", None))
+            .await
+            .unwrap();
+        assert_eq!(created.total_results, Some(7));
+        assert_eq!(created.display_order, 0);
+    }
+
+    #[tokio::test]
+    async fn get_missing_returns_err() {
+        let (db, _dir) = test_db().await;
+        assert!(db.get_search_result("no-such-id").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn by_message_orders_by_display_order_and_filters() {
+        let (db, _dir) = test_db().await;
+        let m1 = message(&db, "message one").await;
+        let m2 = message(&db, "message two").await;
+        let first = db
+            .create_search_result(search_req(&m1, "first", Some(1)))
+            .await
+            .unwrap();
+        let second = db
+            .create_search_result(search_req(&m1, "second", Some(0)))
+            .await
+            .unwrap();
+        let other = db
+            .create_search_result(search_req(&m2, "other", Some(0)))
+            .await
+            .unwrap();
+
+        let results = db.get_search_results_by_message(&m1).await.unwrap();
+        assert_eq!(
+            results.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec![second.id.as_str(), first.id.as_str()],
+            "ordered by display_order"
+        );
+
+        let results = db.get_search_results_by_message(&m2).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, other.id);
+
+        assert!(
+            db.get_search_results_by_message("no-such-message")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn update_total_persists_and_returns_row() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "totals", None))
+            .await
+            .unwrap();
+
+        let updated = db
+            .update_search_result_total(&created.id, 42)
+            .await
+            .unwrap();
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.total_results, Some(42));
+
+        let fetched = db.get_search_result(&created.id).await.unwrap();
+        assert_eq!(fetched.total_results, Some(42));
+    }
+
+    #[tokio::test]
+    async fn items_json_roundtrip_preserves_order_and_updates_total() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "items", None))
+            .await
+            .unwrap();
+
+        // No items persisted yet: NULL column degrades to an empty list.
+        assert!(
+            db.get_search_result_items(&created.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        let items = vec![
+            SearchResultItem {
+                title: "First".to_string(),
+                url: "https://example.com/1".to_string(),
+                snippet: "snippet one".to_string(),
+            },
+            SearchResultItem {
+                title: "Second".to_string(),
+                url: "https://example.com/2".to_string(),
+                snippet: "snippet two".to_string(),
+            },
+            SearchResultItem {
+                title: "Third".to_string(),
+                url: "https://example.com/3".to_string(),
+                snippet: "snippet three".to_string(),
+            },
+        ];
+        db.update_search_result_items(&created.id, &items)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            db.get_search_result_items(&created.id).await.unwrap(),
+            items
+        );
+        let fetched = db.get_search_result(&created.id).await.unwrap();
+        assert_eq!(fetched.total_results, Some(3));
+
+        // Overwriting with an empty snapshot clears items and the total.
+        db.update_search_result_items(&created.id, &[])
+            .await
+            .unwrap();
+        assert!(
+            db.get_search_result_items(&created.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let fetched = db.get_search_result(&created.id).await.unwrap();
+        assert_eq!(fetched.total_results, Some(0));
+
+        // Missing id: no row to read, degrades to an empty list.
+        assert!(
+            db.get_search_result_items("no-such-id")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_soft_deletes_row_from_all_reads() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "doomed", None))
+            .await
+            .unwrap();
+
+        db.delete_search_result(&created.id).await.unwrap();
+
+        assert!(db.get_search_result(&created.id).await.is_err());
+        assert!(
+            db.get_search_results_by_message(&m)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            db.get_search_result_items(&created.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_message_row_cascades_to_search_results() {
+        let (db, _dir) = test_db().await;
+        let m = message(&db, "message").await;
+        let created = db
+            .create_search_result(search_req(&m, "cascade", None))
+            .await
+            .unwrap();
+
+        sqlx::query("DELETE FROM messages WHERE id = ?")
+            .bind(&m)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        assert!(
+            db.get_search_results_by_message(&m)
+                .await
+                .unwrap()
+                .is_empty(),
+            "ON DELETE CASCADE removes search results with their message"
+        );
+        assert!(
+            db.get_search_result(&created.id).await.is_err(),
+            "cascade is a hard delete, not a soft one"
+        );
+    }
+}

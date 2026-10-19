@@ -40,3 +40,6 @@ design-assets
 *.p8
 *.p12
 *.mobileprovision
+
+# Vitest coverage output
+coverage/

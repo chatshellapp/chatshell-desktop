@@ -277,13 +277,16 @@ impl Database {
         .execute(self.pool.as_ref())
         .await?;
 
-        // Insert new associations
+        // Insert new associations; a retained (assistant, tool) pair revives
+        // its tombstoned row instead of violating the UNIQUE key.
         let now = Utc::now().to_rfc3339();
         for tool_id in tool_ids {
             let id = Uuid::now_v7().to_string();
             sqlx::query(
                 "INSERT INTO assistant_tools (id, assistant_id, tool_id, created_at)
-                 VALUES (?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(assistant_id, tool_id)
+                 DO UPDATE SET deleted_at = NULL, created_at = excluded.created_at",
             )
             .bind(&id)
             .bind(assistant_id)
@@ -299,7 +302,7 @@ impl Database {
     /// Get tool IDs associated with an assistant
     pub async fn get_assistant_tool_ids(&self, assistant_id: &str) -> Result<Vec<String>> {
         let tool_ids = sqlx::query_scalar::<_, String>(
-            "SELECT tool_id FROM assistant_tools WHERE assistant_id = ? ORDER BY created_at ASC",
+            "SELECT tool_id FROM assistant_tools WHERE assistant_id = ? AND deleted_at IS NULL ORDER BY created_at ASC",
         )
         .bind(assistant_id)
         .fetch_all(self.pool.as_ref())
@@ -313,7 +316,7 @@ impl Database {
         &self,
     ) -> Result<std::collections::HashMap<String, Vec<String>>> {
         let rows = sqlx::query(
-            "SELECT assistant_id, tool_id FROM assistant_tools ORDER BY created_at ASC",
+            "SELECT assistant_id, tool_id FROM assistant_tools WHERE deleted_at IS NULL ORDER BY created_at ASC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -358,5 +361,361 @@ impl Database {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::tools::{
+        BUILTIN_BASH_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_WEB_FETCH_ID,
+    };
+    use crate::models::{CreateModelRequest, CreateProviderRequest};
+
+    async fn test_db() -> (Database, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        (db, dir)
+    }
+
+    /// Create a real provider + model row so assistant FKs resolve.
+    async fn make_model(db: &Database) -> String {
+        let provider = db
+            .create_provider(CreateProviderRequest {
+                name: "Custom Provider".to_string(),
+                provider_type: "custom".to_string(),
+                api_key: None,
+                base_url: None,
+                api_style: None,
+                description: None,
+                is_enabled: None,
+            })
+            .await
+            .unwrap();
+        let model = db
+            .create_model(CreateModelRequest {
+                name: "Test Model".to_string(),
+                provider_id: provider.id,
+                model_id: "test-model".to_string(),
+                description: None,
+                is_starred: None,
+            })
+            .await
+            .unwrap();
+        model.id
+    }
+
+    fn assistant_req(model_id: &str) -> CreateAssistantRequest {
+        CreateAssistantRequest {
+            name: "Assistant".to_string(),
+            role: None,
+            description: None,
+            system_prompt: "You help.".to_string(),
+            user_prompt: None,
+            model_id: model_id.to_string(),
+            model_parameter_preset_id: None,
+            tool_ids: None,
+            skill_ids: None,
+            avatar_type: None,
+            avatar_bg: None,
+            avatar_text: None,
+            avatar_image_path: None,
+            avatar_image_url: None,
+            group_name: None,
+            is_starred: None,
+        }
+    }
+
+    fn sorted(mut v: Vec<String>) -> Vec<String> {
+        v.sort();
+        v
+    }
+
+    #[tokio::test]
+    async fn create_assistant_round_trips_fields_and_tool_links() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                role: Some("Senior dev".to_string()),
+                description: Some("Writes code".to_string()),
+                user_prompt: Some("Code this".to_string()),
+                tool_ids: Some(vec![
+                    BUILTIN_WEB_FETCH_ID.to_string(),
+                    BUILTIN_BASH_ID.to_string(),
+                ]),
+                avatar_type: Some("image".to_string()),
+                avatar_bg: Some("#ff0000".to_string()),
+                avatar_text: Some("C".to_string()),
+                avatar_image_url: Some("https://example.com/a.png".to_string()),
+                group_name: Some("Team".to_string()),
+                is_starred: Some(true),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(created.name, "Assistant");
+        assert_eq!(created.role.as_deref(), Some("Senior dev"));
+        assert_eq!(created.description.as_deref(), Some("Writes code"));
+        assert_eq!(created.system_prompt, "You help.");
+        assert_eq!(created.user_prompt.as_deref(), Some("Code this"));
+        assert_eq!(created.model_id, model_id);
+        assert_eq!(created.avatar_type, "image");
+        assert_eq!(created.avatar_bg.as_deref(), Some("#ff0000"));
+        assert_eq!(created.avatar_text.as_deref(), Some("C"));
+        assert_eq!(
+            created.avatar_image_url.as_deref(),
+            Some("https://example.com/a.png")
+        );
+        assert_eq!(created.group_name.as_deref(), Some("Team"));
+        assert!(created.is_starred);
+        assert_eq!(
+            sorted(created.tool_ids.clone()),
+            vec![
+                BUILTIN_BASH_ID.to_string(),
+                BUILTIN_WEB_FETCH_ID.to_string()
+            ]
+        );
+        assert!(created.skill_ids.is_empty());
+
+        // No explicit preset in the request: the seeded default is attached.
+        let default_preset = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .expect("default preset is seeded");
+        assert_eq!(
+            created.model_parameter_preset_id.as_deref(),
+            Some(default_preset.id.as_str())
+        );
+        let preset = created.preset.expect("preset is joined in");
+        assert_eq!(preset.id, default_preset.id);
+        assert!(preset.is_default);
+
+        let fetched = db.get_assistant(&created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.name, "Assistant");
+        assert_eq!(
+            sorted(fetched.tool_ids),
+            vec![
+                BUILTIN_BASH_ID.to_string(),
+                BUILTIN_WEB_FETCH_ID.to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_assistant_applies_defaults_for_optional_fields() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db.create_assistant(assistant_req(&model_id)).await.unwrap();
+
+        assert_eq!(created.avatar_type, "text", "avatar defaults to text");
+        assert!(!created.is_starred, "starred defaults to false");
+        assert!(created.role.is_none());
+        assert!(created.tool_ids.is_empty());
+        assert!(created.skill_ids.is_empty());
+        assert!(
+            created.model_parameter_preset_id.is_some(),
+            "default preset is attached when none is requested"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_assistant_missing_returns_none() {
+        let (db, _dir) = test_db().await;
+        assert!(db.get_assistant("no-such-id").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn update_assistant_changes_fields_and_preserves_tool_links() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                tool_ids: Some(vec![BUILTIN_WEB_FETCH_ID.to_string()]),
+                is_starred: Some(true),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+
+        let updated = db
+            .update_assistant(
+                &created.id,
+                CreateAssistantRequest {
+                    name: "Assistant v2".to_string(),
+                    description: Some("New description".to_string()),
+                    system_prompt: "New prompt".to_string(),
+                    group_name: Some("Other Team".to_string()),
+                    is_starred: Some(false),
+                    // tool_ids absent -> junction rows are left untouched.
+                    tool_ids: None,
+                    ..assistant_req(&model_id)
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.name, "Assistant v2");
+        assert_eq!(updated.description.as_deref(), Some("New description"));
+        assert_eq!(updated.system_prompt, "New prompt");
+        assert_eq!(updated.group_name.as_deref(), Some("Other Team"));
+        assert!(!updated.is_starred);
+        assert_eq!(
+            updated.avatar_type, "text",
+            "avatar default applies on update"
+        );
+        assert_eq!(
+            updated.tool_ids,
+            vec![BUILTIN_WEB_FETCH_ID.to_string()],
+            "absent tool_ids must not unlink tools"
+        );
+        // Unlike create, update does not fall back to the default preset.
+        assert_eq!(updated.model_parameter_preset_id, None);
+        assert!(updated.preset.is_none());
+    }
+
+    #[tokio::test]
+    async fn update_assistant_resyncs_tool_links() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                tool_ids: Some(vec![BUILTIN_WEB_FETCH_ID.to_string()]),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+
+        let updated = db
+            .update_assistant(
+                &created.id,
+                CreateAssistantRequest {
+                    tool_ids: Some(vec![
+                        BUILTIN_GREP_ID.to_string(),
+                        BUILTIN_GLOB_ID.to_string(),
+                    ]),
+                    ..assistant_req(&model_id)
+                },
+            )
+            .await
+            .unwrap();
+        // The junction read filters tombstones, so the response reports
+        // exactly the freshly synced tools.
+        assert_eq!(
+            sorted(updated.tool_ids),
+            vec![BUILTIN_GLOB_ID.to_string(), BUILTIN_GREP_ID.to_string()]
+        );
+
+        // The live junction rows now point at the new tools only.
+        let live: Vec<String> = sqlx::query_scalar(
+            "SELECT tool_id FROM assistant_tools WHERE assistant_id = ? AND deleted_at IS NULL",
+        )
+        .bind(&created.id)
+        .fetch_all(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            sorted(live),
+            vec![BUILTIN_GLOB_ID.to_string(), BUILTIN_GREP_ID.to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_assistant_tool_ids_returns_linked_tools_only() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        assert!(
+            db.get_assistant_tool_ids("no-such-assistant")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                tool_ids: Some(vec![
+                    BUILTIN_WEB_FETCH_ID.to_string(),
+                    BUILTIN_GREP_ID.to_string(),
+                ]),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+        let tool_ids = db.get_assistant_tool_ids(&created.id).await.unwrap();
+        assert_eq!(
+            sorted(tool_ids),
+            vec![
+                BUILTIN_GREP_ID.to_string(),
+                BUILTIN_WEB_FETCH_ID.to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_assistant_hides_row_and_tombstones_tool_links() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                tool_ids: Some(vec![BUILTIN_WEB_FETCH_ID.to_string()]),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+        let other = db.create_assistant(assistant_req(&model_id)).await.unwrap();
+
+        db.delete_assistant(&created.id).await.unwrap();
+
+        assert!(db.get_assistant(&created.id).await.unwrap().is_none());
+        let listed: Vec<String> = db
+            .list_assistants()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+        assert!(!listed.contains(&created.id));
+        assert!(listed.contains(&other.id), "other assistants survive");
+
+        let assistant_tombstone: Option<String> =
+            sqlx::query_scalar("SELECT deleted_at FROM assistants WHERE id = ?")
+                .bind(&created.id)
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert!(assistant_tombstone.is_some());
+        let live_links: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM assistant_tools WHERE assistant_id = ? AND deleted_at IS NULL",
+        )
+        .bind(&created.id)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(live_links, 0, "junction rows are tombstoned too");
+    }
+
+    #[tokio::test]
+    async fn list_assistants_orders_newest_first() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        for name in ["oldest", "middle", "newest"] {
+            let mut req = assistant_req(&model_id);
+            req.name = name.to_string();
+            db.create_assistant(req).await.unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let names: Vec<String> = db
+            .list_assistants()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(names, vec!["newest", "middle", "oldest"]);
     }
 }
