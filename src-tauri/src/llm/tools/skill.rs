@@ -243,4 +243,162 @@ mod tests {
         assert!(!desc.contains("skill-45"), "beyond the entry cap");
         assert!(desc.contains("...and 10 more skills"));
     }
+
+    fn skill_dir(name: &str, markdown: &str) -> (tempfile::TempDir, SkillCatalogEntry) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("SKILL.md");
+        std::fs::write(&path, markdown).unwrap();
+        let entry = SkillCatalogEntry {
+            name: name.to_string(),
+            description: Some("d".to_string()),
+            path: path.to_string_lossy().to_string(),
+        };
+        (dir, entry)
+    }
+
+    async fn call_skill(tool: &SkillTool, name: &str) -> Result<String, SkillError> {
+        let mut context = rig::agent::tool::ToolContext::new();
+        rig::agent::tool::Tool::call(
+            tool,
+            &mut context,
+            SkillArgs {
+                name: name.to_string(),
+            },
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn call_returns_body_without_frontmatter_plus_resource_manifest() {
+        let (dir, entry) = skill_dir(
+            "pdf",
+            "---\nname: pdf\ndescription: d\n---\n\n## PDF steps\nUse the extractor.",
+        );
+        std::fs::write(dir.path().join("reference.md"), "r").unwrap();
+        std::fs::create_dir(dir.path().join("scripts")).unwrap();
+        std::fs::write(dir.path().join("scripts").join("run.sh"), "r").unwrap();
+        std::fs::write(dir.path().join(".hidden"), "r").unwrap();
+        let tool = SkillTool::new(vec![entry]);
+
+        let out = call_skill(&tool, "pdf").await.unwrap();
+
+        assert!(
+            out.starts_with("<skill_content name=\"pdf\">"),
+            "wrapped output: {out}"
+        );
+        assert!(out.contains("## PDF steps"), "body present: {out}");
+        assert!(
+            !out.contains("name: pdf"),
+            "frontmatter must be stripped: {out}"
+        );
+        assert!(
+            out.contains("<file>reference.md</file>"),
+            "resources: {out}"
+        );
+        let script = format!("scripts{}run.sh", std::path::MAIN_SEPARATOR);
+        assert!(out.contains(&format!("<file>{script}</file>")), "{out}");
+        assert!(!out.contains(".hidden"), "hidden files skipped: {out}");
+        assert!(!out.contains("<file>SKILL.md</file>"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn call_without_resources_lists_the_directory_only() {
+        let (dir, entry) = skill_dir("bare", "Just instructions.");
+        let tool = SkillTool::new(vec![entry]);
+
+        let out = call_skill(&tool, "bare").await.unwrap();
+
+        assert!(out.contains("Just instructions."), "{out}");
+        assert!(
+            out.contains(&format!(
+                "Skill directory: {}",
+                dir.path().to_string_lossy()
+            )),
+            "{out}"
+        );
+        assert!(!out.contains("<skill_resources>"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn resource_listing_caps_at_twenty_files() {
+        let (dir, entry) = skill_dir("big", "Body.");
+        for i in 0..25 {
+            std::fs::write(dir.path().join(format!("f{i:02}.txt")), "x").unwrap();
+        }
+        let tool = SkillTool::new(vec![entry]);
+
+        let out = call_skill(&tool, "big").await.unwrap();
+
+        assert_eq!(out.matches("<file>").count(), 20, "{out}");
+        assert!(out.contains("<file>f00.txt</file>"), "{out}");
+        assert!(
+            !out.contains("f24.txt"),
+            "cap keeps the first 20 sorted: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_skill_name_is_rejected() {
+        let tool = SkillTool::new(vec![]);
+
+        let error = call_skill(&tool, "nope").await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("Unknown skill: nope"),
+            "error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_skill_file_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = SkillCatalogEntry {
+            name: "gone".to_string(),
+            description: None,
+            path: dir
+                .path()
+                .join("nope")
+                .join("SKILL.md")
+                .to_string_lossy()
+                .to_string(),
+        };
+        let tool = SkillTool::new(vec![entry]);
+
+        let error = call_skill(&tool, "gone").await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("Skill file not found"),
+            "error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn directory_path_is_rejected_as_a_skill_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = SkillCatalogEntry {
+            name: "dir-skill".to_string(),
+            description: None,
+            path: dir.path().to_string_lossy().to_string(),
+        };
+        let tool = SkillTool::new(vec![entry]);
+
+        let error = call_skill(&tool, "dir-skill").await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("Skill path is not a file"),
+            "error: {error}"
+        );
+    }
+
+    #[test]
+    fn frontmatter_without_closing_fence_is_kept_verbatim() {
+        let content = "---\nname: broken\nstill body";
+        assert_eq!(strip_frontmatter(content), content);
+    }
+
+    #[test]
+    fn frontmatter_strip_skips_leading_whitespace() {
+        let content = "\n  ---\nname: x\n---\n  Body here.";
+        assert_eq!(strip_frontmatter(content), "Body here.");
+    }
 }

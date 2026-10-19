@@ -198,4 +198,41 @@ mod tests {
             "engine choice stays a settings concern"
         );
     }
+
+    #[test]
+    fn args_default_to_five_results_and_no_provider() {
+        let args: WebSearchArgs = serde_json::from_str(r#"{"query": "rust async"}"#).unwrap();
+        assert_eq!(args.query, "rust async");
+        assert_eq!(args.max_results, 5);
+        assert_eq!(args.provider, None);
+    }
+
+    #[test]
+    fn args_accept_provider_and_max_results() {
+        let args: WebSearchArgs =
+            serde_json::from_str(r#"{"query": "rust", "max_results": 3, "provider": "BAIDU"}"#)
+                .unwrap();
+        assert_eq!(args.max_results, 3);
+        // Provider ids resolve case-insensitively via SearchProvider::from_id.
+        assert_eq!(
+            SearchProvider::from_id(args.provider.as_deref().unwrap()),
+            Some(SearchProvider::Baidu)
+        );
+    }
+
+    #[test]
+    fn unknown_provider_id_falls_back_to_the_configured_default() {
+        // call() resolves the provider argument through from_id; unknown ids
+        // yield None so the user's configured default_provider wins.
+        assert_eq!(SearchProvider::from_id("google"), None);
+        assert_eq!(SearchProvider::from_id(""), None);
+    }
+
+    #[test]
+    fn description_documents_fallback_and_web_fetch_steering() {
+        let tool = WebSearchTool::new();
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(desc.contains("fall back automatically"), "desc: {desc}");
+        assert!(desc.contains("web_fetch"), "desc: {desc}");
+    }
 }
