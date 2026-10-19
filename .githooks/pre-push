@@ -1,0 +1,33 @@
+#!/bin/sh
+# Quality gate for pushes.
+#
+# Offline deterministic checks (frontend type-check/lint/format/vitest,
+# generated-bindings drift, Rust fmt/clippy/tests) plus the self-gating
+# network evals: with no environment set the provider smoke targets the
+# local httpcan mock and the web/agent-loop evals skip; with
+# CHATSHELL_SMOKE_* / CHATSHELL_WEB_E2E_* exported the same tests hit
+# real endpoints. The snapcompact evals stay manual (they require
+# CHATSHELL_EVAL_* and are not self-gating).
+#
+# Bypass for WIP pushes: git push --no-verify
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo "== [pre-push] frontend: pnpm check (types + lint + format) =="
+pnpm check
+
+echo "== [pre-push] frontend: pnpm test (vitest) =="
+pnpm test
+
+echo "== [pre-push] frontend: pnpm types:check (generated TS bindings) =="
+pnpm types:check
+
+echo "== [pre-push] rust: fmt + clippy + cargo test (src-tauri) =="
+cd src-tauri
+cargo fmt --all -- --check
+cargo clippy --all-targets --quiet
+cargo test
+
+echo "== [pre-push] rust: self-gating network/real-API evals =="
+echo "    (no env -> httpcan mock / skip; CHATSHELL_SMOKE_* / CHATSHELL_WEB_E2E_* set -> real endpoints)"
+cargo test --lib -- provider_smoke web_e2e --ignored
