@@ -39,11 +39,38 @@
 //!
 //! Gateways without a Responses implementation answer POST {base}/responses
 //! with 404/405; the responses-wire test skips on that signature. A decode
-//! error on a live stream stays a hard failure. Known finding (not worked
-//! around): rig 0.42 rejects some gateways' /v1/responses streams — their
-//! `response.created` carries `"tools": null`, which rig's non-Option
-//! `Vec` field cannot decode (OpenAI omits the field instead). Use the
-//! `chat_completions` style with such gateways; it is the default.
+//! error on a live stream stays a hard failure. Known rig 0.42 limitation
+//! (not worked around): on tool-free Responses requests some gateways reply
+//! `"tools": null` in response.created, which rig's non-Option `Vec` cannot
+//! decode (OpenAI omits the field). With tools attached the response carries
+//! a tools array and the stream decodes — verified end to end by the agent
+//! tool loop below.
+//!
+//! Full agent tool loop (the model must issue a bash tool call that really
+//! executes, then read the result back). The wire follows the provider
+//! routing above, so all three wires are covered by three runs:
+//!
+//! ```sh
+//! # Anthropic wire
+//! CHATSHELL_SMOKE_PROVIDER=custom_anthropic \
+//! CHATSHELL_SMOKE_BASE_URL=https://<gateway>/anthropic \
+//! CHATSHELL_SMOKE_API_KEY=... cargo test --lib provider_smoke_agent_tool_loop -- --ignored --nocapture
+//!
+//! # OpenAI Chat Completions wire
+//! CHATSHELL_SMOKE_PROVIDER=custom_openai \
+//! CHATSHELL_SMOKE_API_STYLE=chat_completions \
+//! CHATSHELL_SMOKE_BASE_URL=https://<gateway>/v1 \
+//! CHATSHELL_SMOKE_API_KEY=... cargo test --lib provider_smoke_agent_tool_loop -- --ignored --nocapture
+//!
+//! # OpenAI Responses wire
+//! CHATSHELL_SMOKE_PROVIDER=custom_openai \
+//! CHATSHELL_SMOKE_API_STYLE=responses \
+//! CHATSHELL_SMOKE_BASE_URL=https://<gateway>/v1 \
+//! CHATSHELL_SMOKE_API_KEY=... cargo test --lib provider_smoke_agent_tool_loop -- --ignored --nocapture
+//! ```
+//!
+//! The loop needs a model that actually issues tool calls, so the zero-config
+//! httpcan default skips it; run it against a real provider.
 //!
 //! Env contract:
 //! - `CHATSHELL_SMOKE_PROVIDER`   provider_type string (default `custom_openai`)
@@ -274,5 +301,97 @@ async fn provider_smoke_openai_responses_wire() {
     assert!(
         !response.content.trim().is_empty(),
         "reply must be non-empty"
+    );
+}
+
+#[tokio::test]
+#[ignore = "network smoke: the full agent tool loop needs a real tool-calling model; the local mock cannot drive it"]
+async fn provider_smoke_agent_tool_loop() {
+    use futures::StreamExt;
+    use rig::agent::MultiTurnStreamItem;
+    use rig::message::UserContent;
+    use rig::prelude::StreamingChat;
+    use rig::streaming::StreamedAssistantContent;
+
+    use super::agent_builder::{AgentConfig, create_provider_agent};
+
+    let config = SmokeConfig::from_env().expect("smoke config");
+    if config.base_url.starts_with("http://127.0.0.1")
+        || config.base_url.starts_with("http://localhost")
+    {
+        println!(
+            "skipping agent-loop smoke: the local mock cannot issue tool calls; \
+             point CHATSHELL_SMOKE_* at a real provider to exercise the loop"
+        );
+        return;
+    }
+    let wire = match (config.provider.as_str(), config.api_style.as_deref()) {
+        ("custom_anthropic", _) => "anthropic",
+        ("openai" | "custom_openai", Some("chat_completions")) => "openai-chat-completions",
+        ("openai" | "custom_openai", _) => "openai-responses",
+        (provider, _) => provider,
+    };
+    println!(
+        "smoke target: provider={} model={} base_url={} wire={wire} (agent tool loop)",
+        config.provider, config.model, config.base_url
+    );
+
+    // The model must drive bash to drop a marker file whose content it has
+    // never seen, then read the value back from the tool result — proving
+    // the whole loop: model -> tool call -> real execution -> result -> model.
+    let workdir = tempfile::tempdir().unwrap();
+    let token = format!("chatshell-e2e-{:016x}", rand::random::<u64>());
+    let marker = workdir.path().join("marker.txt");
+
+    let agent_config = AgentConfig::new()
+        .with_bash()
+        .with_bash_working_directory(workdir.path().to_string_lossy().to_string());
+    let agent = create_provider_agent(
+        &config.provider,
+        &config.model,
+        Some(config.api_key.as_str()),
+        Some(config.base_url.as_str()),
+        config.api_style.as_deref(),
+        &agent_config,
+    )
+    .expect("agent construction must succeed");
+
+    let prompt = rig::completion::Message::User {
+        content: vec![UserContent::text(format!(
+            "Use the bash tool to run exactly this command: echo {token} > marker.txt. \
+             After it succeeds, reply with just the token and nothing else."
+        ))],
+    };
+
+    let mut text = String::new();
+    let mut stream = agent
+        .stream_chat(prompt, Vec::<rig::completion::Message>::new())
+        .max_turns(20)
+        .await;
+    tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    delta,
+                ))) => text.push_str(&delta.text),
+                Ok(_) => {}
+                Err(error) => panic!("agent loop stream error: {error}"),
+            }
+        }
+    })
+    .await
+    .expect("agent loop must finish within the timeout");
+
+    println!("agent final text: {text}");
+    let marker_content = std::fs::read_to_string(&marker).unwrap_or_default();
+    println!("marker.txt content: {marker_content}");
+    assert_eq!(
+        marker_content.trim(),
+        token,
+        "the bash tool must have really executed"
+    );
+    assert!(
+        text.contains(&token),
+        "the model must have read the tool result back: {text}"
     );
 }
