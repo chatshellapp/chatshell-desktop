@@ -8,7 +8,8 @@ import { MessageItem } from './MessageItem'
 import { StreamingMessage } from './StreamingMessage'
 import type { DisplayInfo } from './hooks'
 
-/** Rows mounted in the first (cheap) commit: roughly a screenful at the tail. */
+/** Rows in the first mounted chunk (app start, or the frame after a
+ * conversation switch): roughly a screenful at the tail. */
 const PROGRESSIVE_INITIAL = 16
 /** Rows added per animation frame afterwards. */
 const PROGRESSIVE_STEP = 16
@@ -47,13 +48,16 @@ interface MessageListProps {
  * Split from ChatView so the streaming-isolation render-count test can
  * exercise the list without the input area and IPC surface.
  *
- * Rows mount progressively from the tail: switching into a conversation with
- * a cached window must not mount ~100 heavy markdown rows in one synchronous
- * commit — that blocks the paint and leaves the previous conversation's frame
- * on screen until the commit finishes. The first commit mounts only the
- * visible tail; one chunk joins per animation frame afterwards. Off-screen
- * rows cost little once mounted (content-visibility culling), and the pin
- * below keeps the viewport at the bottom while content grows above it.
+ * Rows mount progressively from the tail. Re-entering a conversation with a
+ * cached window resolves synchronously from the store, so the switch commit
+ * must not mount heavy markdown rows: that blocks the paint and leaves the
+ * PREVIOUS conversation's frame frozen on screen (measured 2026-10-19: the
+ * 16-row first commit dominates the switch; unmounting the outgoing window
+ * is cheap). The switch commit therefore mounts nothing and shows the
+ * loading line; the growth effect below mounts the visible tail on the next
+ * frame, one chunk per animation frame afterwards. Off-screen rows cost
+ * little once mounted (content-visibility culling), and the pin in
+ * useScrollBehavior keeps the viewport at the bottom while content grows.
  */
 export function MessageList({
   conversationId,
@@ -82,11 +86,14 @@ export function MessageList({
 
   // Rows mounted for THIS conversation. Reset is derived during render (the
   // adjust-state-on-props pattern), so the first commit after a switch can
-  // never reuse the previous conversation's larger count.
+  // never reuse the previous conversation's larger count. The switch commit
+  // mounts ZERO rows (cheap unmount of the outgoing view, fast paint of the
+  // loading line); the growth effect below mounts the tail next frame.
   const [mount, setMount] = useState({ conversationId, count: PROGRESSIVE_INITIAL })
-  const mountedCount = mount.conversationId === conversationId ? mount.count : PROGRESSIVE_INITIAL
+  const switched = mount.conversationId !== conversationId
+  const mountedCount = switched ? 0 : mount.count
   const growing = !revealAll && mountedCount < messages.length
-  const mounted = growing ? messages.slice(-mountedCount) : messages
+  const mounted = growing ? messages.slice(Math.max(0, messages.length - mountedCount)) : messages
 
   useEffect(() => {
     if (!growing) return
@@ -98,6 +105,11 @@ export function MessageList({
 
   return (
     <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
+      {mounted.length === 0 && messages.length > 0 && (
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
+          <p className="text-sm animate-pulse">{t('loadingMessages')}</p>
+        </div>
+      )}
       {isLoadingOlder && (
         <div className="py-2 text-center text-xs text-muted-foreground/60">
           {t('loadingEarlierMessages')}
