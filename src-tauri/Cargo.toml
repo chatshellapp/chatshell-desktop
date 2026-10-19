@@ -95,10 +95,16 @@ async-stream = "0.3.6"
 http = "1"
 ts-rs = { version = "12", features = ["serde-json-impl"] }
 
- [target.'cfg(target_os = "macos")'.dependencies]
- security-framework = "3.7.0"
- security-framework-sys = "2.17.0"
- core-foundation = "0.10"
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+security-framework-sys = "2.17.0"
+core-foundation = "0.10"
+# WebView fetch delivery: WKScriptMessageHandler registration (same
+# version tree as wry 0.53.5; no added compile units).
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKScriptMessage", "WKScriptMessageHandler", "WKUserContentController", "WKWebView", "WKWebViewConfiguration"] }
 
 [dev-dependencies]
 tempfile = "3"

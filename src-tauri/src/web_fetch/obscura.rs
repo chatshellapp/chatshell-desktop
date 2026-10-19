@@ -153,6 +153,36 @@ pub(crate) fn build_fetch_args(url: &str, timeout_secs: u64) -> Vec<String> {
     ]
 }
 
+/// RFC 2544 benchmark range (198.18.0.0/15): unroutable on the public
+/// internet, so real targets never live here. Fake-IP proxies (Surge/Clash
+/// TUN mode, both defaulting to this range) resolve *every* hostname into
+/// it, which obscura's SSRF guard then rejects as a private address —
+/// every fetch fails with "error sending request" in ~40 ms.
+pub(crate) fn is_fake_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => (u32::from(v4) & 0xfffe_0000) == 0xc612_0000,
+        std::net::IpAddr::V6(_) => false,
+    }
+}
+
+/// Whether the URL's host currently resolves into the fake-IP range. DNS
+/// failures report `false`: obscura then fails on its own with its own
+/// error. IP-literal hosts resolve to themselves, so a directly addressed
+/// benchmark-range target is covered too.
+async fn host_resolves_into_fake_ip_range(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    tokio::net::lookup_host((host, port))
+        .await
+        .map(|mut addrs| addrs.any(|addr| is_fake_ip(addr.ip())))
+        .unwrap_or(false)
+}
+
 /// Fetch a page's rendered HTML through obscura.
 pub async fn fetch_html(url: &str) -> Result<String> {
     let binary = resolve_binary().context("obscura binary is not configured")?;
@@ -164,8 +194,21 @@ pub async fn fetch_html(url: &str) -> Result<String> {
 async fn run_fetch(binary: &Path, url: &str, timeout: Duration) -> Result<String> {
     let args = build_fetch_args(url, timeout.as_secs());
     tracing::info!("[obscura] Fetching {} (timeout {:?})", url, timeout);
+    // Fake-IP proxied machines: lift obscura's SSRF guard just enough to
+    // let the (proxied) resolution through. The guard stays intact for
+    // genuinely internal targets (loopback, RFC 1918).
+    let allow_private = host_resolves_into_fake_ip_range(url).await;
+    if allow_private {
+        tracing::info!(
+            "[obscura] Host resolves into 198.18.0.0/15 (fake-IP proxy); allowing private-network access"
+        );
+    }
 
-    let child = Command::new(binary)
+    let mut command = Command::new(binary);
+    if allow_private {
+        command.env("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
+    }
+    let child = command
         .args(&args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -282,6 +325,24 @@ mod tests {
         assert_eq!(resolved.as_deref(), Some(existing.as_path()));
     }
 
+    #[test]
+    fn test_fake_ip_range_boundaries() {
+        use std::net::IpAddr;
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        // Just below / outside the range.
+        assert!(!is_fake_ip(ip("198.17.255.255")));
+        assert!(!is_fake_ip(ip("198.20.0.0")));
+        assert!(!is_fake_ip(ip("197.18.0.0")));
+        assert!(!is_fake_ip(ip("127.0.0.1")));
+        assert!(!is_fake_ip(ip("10.0.0.1")));
+        // The whole 198.18.0.0/15 block (0xc612_0000 ..= 0xc613_ffff).
+        assert!(is_fake_ip(ip("198.18.0.0")));
+        assert!(is_fake_ip(ip("198.18.19.25")));
+        assert!(is_fake_ip(ip("198.19.128.7")));
+        assert!(is_fake_ip(ip("198.19.255.255")));
+        // IPv6 never carries the IPv4 fake-IP mapping.
+        assert!(!is_fake_ip(ip("::1")));
+    }
     use std::iter;
 
     #[tokio::test]

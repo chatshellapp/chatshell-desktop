@@ -7,6 +7,8 @@ mod processors;
 mod spa_detect;
 mod types;
 mod webview_fetch;
+#[cfg(target_os = "macos")]
+mod wkwebview_delivery;
 
 // Re-export public types
 pub use types::{FetchedWebResource, HTTP_CLIENT, STEALTH_JS, WebFetchMetadata};
