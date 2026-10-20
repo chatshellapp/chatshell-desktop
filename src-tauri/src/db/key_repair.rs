@@ -89,6 +89,10 @@ impl crate::db::Database {
 
 #[cfg(test)]
 mod tests {
+    // Test bodies hold keys_test_guard() across awaits; safe because
+    // #[tokio::test] defaults to a single-threaded current-thread runtime.
+    #![allow(clippy::await_holding_lock)]
+
     use super::*;
     use crate::db::Database;
 
@@ -121,6 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn reencrypts_rows_under_previous_key_and_clears_slot() {
+        let _keys = crate::crypto::keys_test_guard();
         let db = fresh_db().await;
         let old_key = chatshell_agent_core::crypto::generate_master_key();
         let new_key = chatshell_agent_core::crypto::generate_master_key();
@@ -152,6 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_previous_key_is_a_fast_noop() {
+        let _keys = crate::crypto::keys_test_guard();
         let db = fresh_db().await;
         let foreign = chatshell_agent_core::crypto::generate_master_key();
         let sealed_foreign =
@@ -171,6 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn decrypt_falls_back_to_previous_key() {
+        let _keys = crate::crypto::keys_test_guard();
         let old_key = chatshell_agent_core::crypto::generate_master_key();
         let new_key = chatshell_agent_core::crypto::generate_master_key();
         let sealed_old = chatshell_agent_core::crypto::encrypt(&old_key, "sk-fallback").unwrap();

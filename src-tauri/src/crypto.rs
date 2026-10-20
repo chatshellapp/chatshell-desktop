@@ -285,9 +285,22 @@ pub fn decrypt(encrypted: &str) -> Result<String> {
     }
 }
 
+/// Serializes tests that read or write the process-global key caches:
+/// libtest runs tests on parallel threads, and a key swap between one
+/// test's `encrypt` and its decrypt assertion silently corrupts it
+/// (observed as a load-sensitive `aead::Error` flake in `db::key_repair`).
+/// Hold the returned guard for the whole test body.
+#[cfg(test)]
+pub(crate) fn keys_test_guard() -> parking_lot::MutexGuard<'static, ()> {
+    static KEYS_TEST_MUTEX: LazyLock<parking_lot::Mutex<()>> =
+        LazyLock::new(|| parking_lot::Mutex::new(()));
+    KEYS_TEST_MUTEX.lock()
+}
+
 /// Test seam: install explicit key material (current + optional previous)
 /// and reset availability state. Production code always goes through
-/// [`init_encryption_key`].
+/// [`init_encryption_key`]. The caller MUST hold [`keys_test_guard`] for
+/// the entire test.
 #[cfg(test)]
 pub(crate) fn set_keys_for_tests(current: [u8; 32], previous: Option<[u8; 32]>) {
     *ENCRYPTION_KEY_CACHE.write() = Some(current);

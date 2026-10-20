@@ -285,6 +285,10 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    // Test bodies hold keys_test_guard() across awaits; safe because
+    // #[tokio::test] defaults to a single-threaded current-thread runtime.
+    #![allow(clippy::await_holding_lock)]
+
     use super::*;
 
     async fn test_db() -> (Database, tempfile::TempDir) {
@@ -311,6 +315,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_provider_round_trips_all_fields() {
+        let _keys = crate::crypto::keys_test_guard();
         let (db, _dir) = test_db().await;
         let req = CreateProviderRequest {
             name: "Acme LLM".to_string(),
@@ -379,6 +384,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_provider_rotates_fields_and_api_key() {
+        let _keys = crate::crypto::keys_test_guard();
         let (db, _dir) = test_db().await;
         let created = db
             .create_provider(CreateProviderRequest {
@@ -420,6 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_provider_keeps_api_key_when_request_has_none() {
+        let _keys = crate::crypto::keys_test_guard();
         let (db, _dir) = test_db().await;
         let created = db
             .create_provider(CreateProviderRequest {
@@ -444,6 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_provider_clears_api_key_on_empty_string() {
+        let _keys = crate::crypto::keys_test_guard();
         let (db, _dir) = test_db().await;
         let created = db
             .create_provider(CreateProviderRequest {
@@ -472,6 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_provider_tombstones_row_and_wipes_payload() {
+        let _keys = crate::crypto::keys_test_guard();
         let (db, _dir) = test_db().await;
         let created = db
             .create_provider(CreateProviderRequest {

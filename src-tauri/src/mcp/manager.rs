@@ -572,8 +572,10 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
-    fn install_test_keys() {
+    fn install_test_keys() -> parking_lot::MutexGuard<'static, ()> {
+        let guard = crate::crypto::keys_test_guard();
         crate::crypto::set_keys_for_tests([0x5a; 32], None);
+        guard
     }
 
     // ---- sanitize_name ----
@@ -712,7 +714,7 @@ mod tests {
 
     #[test]
     fn get_http_auth_header_decrypts_bearer_token() {
-        install_test_keys();
+        let _keys = install_test_keys();
         let encrypted = crate::crypto::encrypt("tok-secret-123").unwrap();
         let tool = make_tool(
             "t1",
@@ -729,7 +731,7 @@ mod tests {
 
     #[test]
     fn get_http_auth_header_extracts_access_token_from_oauth_json() {
-        install_test_keys();
+        let _keys = install_test_keys();
         let encrypted =
             crate::crypto::encrypt(r#"{"access_token":"at-xyz","refresh_token":"rt"}"#).unwrap();
         let tool = make_tool(
@@ -760,7 +762,7 @@ mod tests {
 
     #[test]
     fn get_http_auth_header_errors_when_oauth_json_lacks_access_token() {
-        install_test_keys();
+        let _keys = install_test_keys();
         let encrypted = crate::crypto::encrypt(r#"{"refresh_token":"rt"}"#).unwrap();
         let tool = make_tool(
             "t1",
@@ -778,7 +780,7 @@ mod tests {
 
     #[test]
     fn get_http_auth_header_errors_on_undecryptable_bearer_token() {
-        install_test_keys();
+        let _keys = install_test_keys();
         let tool = make_tool(
             "t1",
             "Bearer Bad",
