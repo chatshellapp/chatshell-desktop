@@ -104,3 +104,79 @@ fn read_etc_paths() -> Option<String> {
         Some(paths.join(":"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn resolve_shell_path_is_cached_and_contains_system_bin() {
+        let first = resolve_shell_path();
+        let second = resolve_shell_path();
+        assert_eq!(
+            first, second,
+            "result should be cached after the first call"
+        );
+        let path = first.expect("macOS always resolves at least /etc/paths");
+        assert!(
+            path.contains("/usr/bin"),
+            "resolved PATH should include /usr/bin, got: {path}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn run_shell_for_path_extracts_path_from_plain_and_login_shells() {
+        for flags in [&["-c"][..], &["-lc"][..]] {
+            let path = run_shell_for_path("/bin/zsh", flags)
+                .unwrap_or_else(|| panic!("shell with flags {flags:?} should resolve PATH"));
+            assert!(
+                path.contains("/usr/bin"),
+                "PATH from flags {flags:?} should include /usr/bin, got: {path}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn run_shell_for_path_rejects_missing_binary() {
+        assert_eq!(
+            run_shell_for_path("/nonexistent-shell-for-tests", &["-c"]),
+            None
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn run_shell_for_path_rejects_failing_shell() {
+        assert_eq!(run_shell_for_path("/usr/bin/false", &["-c"]), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn run_shell_for_path_rejects_output_without_usr_bin() {
+        // /usr/bin/true exits 0 but prints nothing, failing the sanity check.
+        assert_eq!(run_shell_for_path("/usr/bin/true", &["-c"]), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn read_etc_paths_returns_deduplicated_nonempty_entries() {
+        let path = read_etc_paths().expect("/etc/paths exists on macOS");
+        let entries: Vec<&str> = path.split(':').collect();
+        assert!(
+            entries.contains(&"/usr/bin"),
+            "system paths should include /usr/bin, got: {path}"
+        );
+        assert!(
+            entries.iter().all(|e| !e.is_empty()),
+            "no empty entries, got: {path}"
+        );
+        assert_eq!(
+            entries.iter().filter(|&&e| e == "/usr/bin").count(),
+            1,
+            "entries should be deduplicated, got: {path}"
+        );
+    }
+}

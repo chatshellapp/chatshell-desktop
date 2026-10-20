@@ -688,3 +688,610 @@ pub fn build_llm_content_with_attachments(
 
     content
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // ---- one-shot loopback HTTP helpers ----
+    //
+    // Same convention as the `web_fetch` tool tests: bind an ephemeral
+    // 127.0.0.1 port, accept exactly one request, answer with a raw
+    // HTTP/1.1 response, close.
+
+    async fn serve_raw_response(
+        status_line: &str,
+        content_type: Option<&str>,
+        body: Vec<u8>,
+        declared_len: u64,
+    ) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let status_line = status_line.to_string();
+        let content_type = content_type.map(str::to_string);
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 2048];
+            let _ = socket.read(&mut request).await;
+            let mut headers = format!(
+                "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+                status_line, declared_len
+            );
+            if let Some(content_type) = content_type {
+                headers.push_str(&format!("Content-Type: {}\r\n", content_type));
+            }
+            headers.push_str("\r\n");
+            socket.write_all(headers.as_bytes()).await.unwrap();
+            socket.write_all(&body).await.unwrap();
+        });
+        format!("http://{}/resource", address)
+    }
+
+    async fn serve_one_response(content_type: &str, body: Vec<u8>, declared_len: u64) -> String {
+        serve_raw_response("200 OK", Some(content_type), body, declared_len).await
+    }
+
+    /// Accept one connection, then close the socket without answering.
+    async fn serve_immediate_close() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            drop(socket);
+        });
+        format!("http://{}/resource", address)
+    }
+
+    /// Loopback URL with nothing listening: connects are refused outright.
+    fn dead_loopback_url() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        format!("http://{}/resource", address)
+    }
+
+    fn fetch_only_config() -> FetchConfig {
+        FetchConfig {
+            mode: FetchMode::Local,
+            local_method: LocalMethod::FetchOnly,
+            jina_api_key: None,
+        }
+    }
+
+    /// Static, shell-free article page shared by the HTML-path tests.
+    fn article_html() -> String {
+        let paragraphs: String = (0..6)
+            .map(|i| {
+                format!(
+                    "<p>Paragraph {i} of the brewing journal covers kettle souring and \
+                     hop scheduling with repeatable, substantial detail for readability \
+                     scoring.</p>\n"
+                )
+            })
+            .collect();
+        format!(
+            "<!DOCTYPE html>\n<html>\n<head>\n<title>Modern Brewing Guide</title>\n\
+             <meta name=\"description\" content=\"A test page description\">\n\
+             <link rel=\"icon\" href=\"/favicon.ico\">\n</head>\n<body>\n\
+             <article>\n<h1>Modern Brewing Guide</h1>\n{paragraphs}</article>\n\
+             </body>\n</html>\n"
+        )
+    }
+
+    // ---- fetch_raw_http ----
+
+    #[tokio::test]
+    async fn raw_http_returns_body_as_is_with_http_tier() {
+        let body = b"hello raw body".to_vec();
+        let url = serve_one_response("text/plain", body.clone(), body.len() as u64).await;
+
+        let result = fetch_raw_http(&url, None).await;
+
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.content, "hello raw body");
+        assert_eq!(result.mime_type, "text/plain");
+        assert_eq!(result.content_format, "text/plain");
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+        assert_eq!(result.metadata.original_length, Some(14));
+        assert!(!result.metadata.truncated);
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+    }
+
+    #[tokio::test]
+    async fn raw_http_truncates_by_chars_with_marker() {
+        let body = b"hello world".to_vec();
+        let url = serve_one_response("text/plain", body.clone(), body.len() as u64).await;
+
+        let result = fetch_raw_http(&url, Some(5)).await;
+
+        assert_eq!(
+            result.content,
+            "hello\n\n[Content truncated - original length: 11 characters]"
+        );
+        assert!(result.metadata.truncated);
+        assert_eq!(result.metadata.original_length, Some(11));
+    }
+
+    #[tokio::test]
+    async fn raw_http_defaults_missing_content_type_to_text_plain() {
+        let body = b"no content type header".to_vec();
+        let url = serve_raw_response("200 OK", None, body.clone(), body.len() as u64).await;
+
+        let result = fetch_raw_http(&url, None).await;
+
+        assert_eq!(result.mime_type, "");
+        assert_eq!(result.content_format, "text/plain");
+        assert_eq!(result.content, "no content type header");
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn raw_http_maps_non_2xx_to_error_resource() {
+        let body = b"missing".to_vec();
+        let url = serve_raw_response(
+            "404 Not Found",
+            Some("text/plain"),
+            body.clone(),
+            body.len() as u64,
+        )
+        .await;
+
+        let result = fetch_raw_http(&url, None).await;
+
+        assert_eq!(
+            result.extraction_error.as_deref(),
+            Some("HTTP error: 404 Not Found")
+        );
+        assert_eq!(result.content, "");
+        assert_eq!(result.metadata.tier, None);
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+    }
+
+    #[tokio::test]
+    async fn raw_http_connection_refused_is_an_http_request_error() {
+        let result = fetch_raw_http(&dead_loopback_url(), None).await;
+
+        assert!(
+            result
+                .extraction_error
+                .as_deref()
+                .unwrap()
+                .starts_with("HTTP request failed:")
+        );
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    #[tokio::test]
+    async fn raw_http_immediate_close_is_an_http_request_error() {
+        let url = serve_immediate_close().await;
+
+        let result = fetch_raw_http(&url, None).await;
+
+        assert!(
+            result
+                .extraction_error
+                .as_deref()
+                .unwrap()
+                .starts_with("HTTP request failed:")
+        );
+    }
+
+    #[tokio::test]
+    async fn raw_http_invalid_url_errors_before_any_request() {
+        let result = fetch_raw_http("not a url", None).await;
+
+        assert_eq!(
+            result.extraction_error.as_deref(),
+            Some("Invalid URL: not a url")
+        );
+    }
+
+    // ---- fetch_web_resource_with_config (Local + FetchOnly) ----
+
+    #[tokio::test]
+    async fn fetch_only_extracts_html_with_readability_and_favicon() {
+        let body = article_html().into_bytes();
+        let url = serve_one_response("text/html", body.clone(), body.len() as u64).await;
+        let expected_favicon = Url::parse(&url)
+            .unwrap()
+            .join("/favicon.ico")
+            .unwrap()
+            .to_string();
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.title.as_deref(), Some("Modern Brewing Guide"));
+        assert_eq!(
+            result.description.as_deref(),
+            Some("A test page description")
+        );
+        assert_eq!(
+            result.metadata.favicon_url.as_deref(),
+            Some(expected_favicon.as_str())
+        );
+        assert_eq!(result.mime_type, "text/html");
+        assert_eq!(result.content_format, "text/markdown");
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+        assert!(result.content.contains("kettle souring"));
+        assert!(
+            result
+                .metadata
+                .headings
+                .iter()
+                .any(|h| h.contains("Modern Brewing Guide"))
+        );
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+    }
+
+    #[tokio::test]
+    async fn fetch_only_passes_markdown_and_text_through() {
+        let markdown = b"# Heading\n\nParagraph text.".to_vec();
+        let url =
+            serve_one_response("text/markdown", markdown.clone(), markdown.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.content, "# Heading\n\nParagraph text.");
+        assert_eq!(result.mime_type, "text/markdown");
+        assert_eq!(result.content_format, "text/markdown");
+        assert_eq!(result.title, None);
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+
+        let text = b"plain text body".to_vec();
+        let url = serve_one_response("text/plain", text.clone(), text.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(result.content, "plain text body");
+        assert_eq!(result.mime_type, "text/plain");
+        assert_eq!(result.content_format, "text/plain");
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn fetch_only_formats_json_as_code_block() {
+        let body = br#"{"a": 1}"#.to_vec();
+        let url = serve_one_response("application/json", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        let expected = "```json\n{\n  \"a\": 1\n}\n```";
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.content, expected);
+        assert_eq!(result.mime_type, "application/json");
+        assert_eq!(result.content_format, "text/markdown");
+        assert_eq!(result.description.as_deref(), Some("JSON data"));
+        assert_eq!(
+            result.metadata.original_length,
+            Some(expected.chars().count())
+        );
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn fetch_only_formats_xml_as_code_block() {
+        let body = b"<root><item>value</item></root>".to_vec();
+        let url = serve_one_response("text/xml", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(
+            result.content,
+            "```xml\n<root><item>value</item></root>\n```"
+        );
+        assert_eq!(result.mime_type, "text/xml");
+        assert_eq!(result.content_format, "text/markdown");
+        assert_eq!(result.description.as_deref(), Some("XML data"));
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn fetch_only_short_circuits_images_to_image_resource() {
+        let body = b"\x89PNG-not-a-real-image".to_vec();
+        let url = serve_one_response("image/png", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.mime_type, "image/png");
+        assert_eq!(result.content_format, "image/png");
+        assert!(result.content.starts_with("This URL is a direct image"));
+        assert_eq!(result.metadata.original_length, None);
+        // The image path returns before the HTTP tier is tagged.
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_only_rejects_octet_stream_as_binary() {
+        let body = vec![0u8, 1, 2, 3];
+        let url =
+            serve_one_response("application/octet-stream", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(
+            result.extraction_error.as_deref(),
+            Some(
+                "Unsupported content type: application/octet-stream. Binary content cannot be processed."
+            )
+        );
+        assert_eq!(result.mime_type, "application/octet-stream");
+        // The error is produced by the HTTP path itself, so it keeps the tier.
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn fetch_only_routes_html_body_with_unknown_mime_through_readability() {
+        let body = article_html().into_bytes();
+        let url =
+            serve_one_response("application/x-unknown", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(result.extraction_error, None);
+        // The sniffed HTML path normalizes the mime type.
+        assert_eq!(result.mime_type, "text/html");
+        assert_eq!(result.content_format, "text/markdown");
+        assert_eq!(result.title.as_deref(), Some("Modern Brewing Guide"));
+        assert!(result.content.contains("kettle souring"));
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+    }
+
+    #[tokio::test]
+    async fn fetch_only_invalid_url_errors_without_a_request() {
+        let result = fetch_web_resource_with_config("not a url", None, &fetch_only_config()).await;
+
+        assert_eq!(
+            result.extraction_error.as_deref(),
+            Some("Invalid URL: not a url")
+        );
+        assert_eq!(result.mime_type, "");
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_only_maps_non_2xx_to_error_resource() {
+        let body = b"missing".to_vec();
+        let url = serve_raw_response(
+            "500 Internal Server Error",
+            Some("text/plain"),
+            body.clone(),
+            body.len() as u64,
+        )
+        .await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        assert_eq!(
+            result.extraction_error.as_deref(),
+            Some("HTTP error: 500 Internal Server Error")
+        );
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_only_connection_refused_stays_a_plain_http_error() {
+        let result =
+            fetch_web_resource_with_config(&dead_loopback_url(), None, &fetch_only_config()).await;
+
+        assert!(
+            result
+                .extraction_error
+                .as_deref()
+                .unwrap()
+                .starts_with("HTTP request failed:")
+        );
+        // FetchOnly never escalates to a browser tier, unlike Auto.
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    // ---- JS-shell escalation (offline-deterministic surface only) ----
+    //
+    // escalate_if_js_shell's escalation branch re-fetches through the
+    // browser tier (obscura -> WebView -> headless Chrome). Developer
+    // machines routinely have obscura on PATH and Chrome installed (this
+    // one does), so the escalated outcome and even whether a tier engages
+    // are machine-dependent. What is deterministic offline:
+    // - both early-return predicates below, called directly;
+    // - FetchOnly returning a JS-shell page unmarked (test further down);
+    // - Auto keeping the HTTP result for healthy pages (dispatch test).
+
+    #[test]
+    fn webview_tier_cannot_engage_in_the_test_binary() {
+        // set_app_handle runs only from the Tauri app setup in lib.rs.
+        assert!(!webview_fetch::is_available());
+    }
+
+    #[tokio::test]
+    async fn escalate_keeps_error_resources_without_escalating() {
+        let url = "http://127.0.0.1:1/shell";
+        let shell_html =
+            r#"<html><body><div id="root"></div><script src="/app.js"></script></body></html>"#;
+        // Shell signals are present ...
+        assert!(looks_like_js_shell(shell_html, 40));
+
+        let http_result =
+            FetchedWebResource::error(url, "text/html".to_string(), "boom".to_string(), None);
+        let result = escalate_if_js_shell(url, shell_html, None, http_result).await;
+
+        // ... but the extraction error short-circuits before any browser tier.
+        assert_eq!(result.extraction_error.as_deref(), Some("boom"));
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+        assert_eq!(result.metadata.tier, None);
+    }
+
+    #[tokio::test]
+    async fn escalate_keeps_healthy_http_results_without_escalating() {
+        let url = "http://127.0.0.1:1/article";
+        let html = article_html();
+        let prose = "Substantive article prose that runs far past the gate threshold. ".repeat(20);
+        let http_result = process_text_content(&url, &prose, "text/plain".to_string(), None, None)
+            .with_tier("http");
+
+        // Neither escalation signal fires ...
+        assert!(!looks_like_js_shell(
+            &html,
+            http_result.metadata.original_length.unwrap()
+        ));
+        assert!(!has_low_quality_text(&http_result.content));
+
+        let result = escalate_if_js_shell(&url, &html, None, http_result).await;
+
+        // ... so the HTTP result comes back untouched.
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+    }
+
+    #[tokio::test]
+    async fn fetch_only_returns_a_js_shell_page_unmarked() {
+        let body = br#"<!DOCTYPE html><html><head><title>Shell App</title></head><body><div id="root"></div><noscript>Please enable JavaScript</noscript><p>Loading...</p><script src="/app.js"></script></body></html>"#
+            .to_vec();
+        let url = serve_one_response("text/html", body.clone(), body.len() as u64).await;
+
+        let result = fetch_web_resource_with_config(&url, None, &fetch_only_config()).await;
+
+        // The empty root mount would make Auto escalate; FetchOnly returns
+        // the plain HTTP result with no marks either way.
+        assert_eq!(result.extraction_error, None);
+        assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+        assert!(!result.metadata.escalated);
+        assert!(!result.metadata.partial);
+        assert_eq!(result.title.as_deref(), Some("Shell App"));
+        assert!(result.content.contains("Loading"));
+    }
+
+    // ---- config dispatch ----
+
+    #[tokio::test]
+    async fn local_dispatch_auto_and_fetch_only_share_the_http_path() {
+        let body = b"dispatch probe body".to_vec();
+        let auto_url = serve_one_response("text/plain", body.clone(), body.len() as u64).await;
+        let only_url = serve_one_response("text/plain", body.clone(), body.len() as u64).await;
+        let auto_config = FetchConfig {
+            mode: FetchMode::Local,
+            local_method: LocalMethod::Auto,
+            jina_api_key: None,
+        };
+
+        let auto = fetch_web_resource_with_config(&auto_url, None, &auto_config).await;
+        let only = fetch_web_resource_with_config(&only_url, None, &fetch_only_config()).await;
+
+        for result in [&auto, &only] {
+            assert_eq!(result.extraction_error, None);
+            assert_eq!(result.content, "dispatch probe body");
+            assert_eq!(result.mime_type, "text/plain");
+            assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+        }
+
+        // ObscuraOnly / WebViewOnly / ChromeOnly and the Auto fallback
+        // branch are intentionally not pinned: each resolves to spawning
+        // an external browser (obscura binary, headless Chrome) whose
+        // availability and output depend on the developer machine, so no
+        // offline-deterministic assertion exists for them. FetchMode::Api
+        // likewise requires the real r.jina.ai endpoint.
+    }
+
+    // ---- fetch_urls_with_config ----
+
+    #[tokio::test]
+    async fn fetch_urls_empty_list_completes_immediately() {
+        let (mut rx, handle) = fetch_urls_with_config(&[], None, fetch_only_config()).await;
+
+        assert!(rx.recv().await.is_none());
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fetch_urls_streams_every_result_then_ends() {
+        let body_a = b"alpha body".to_vec();
+        let body_b = b"beta body".to_vec();
+        let url_a = serve_one_response("text/plain", body_a.clone(), body_a.len() as u64).await;
+        let url_b = serve_one_response("text/plain", body_b.clone(), body_b.len() as u64).await;
+
+        let (mut rx, handle) =
+            fetch_urls_with_config(&[url_a, url_b], None, fetch_only_config()).await;
+
+        let mut contents = Vec::new();
+        while let Some(result) = rx.recv().await {
+            assert_eq!(result.extraction_error, None);
+            assert_eq!(result.metadata.tier.as_deref(), Some("http"));
+            contents.push(result.content);
+        }
+        handle.await.unwrap();
+
+        assert_eq!(contents.len(), 2);
+        assert!(contents.contains(&"alpha body".to_string()));
+        assert!(contents.contains(&"beta body".to_string()));
+    }
+
+    #[tokio::test]
+    async fn fetch_urls_stops_cleanly_when_receiver_drops() {
+        let urls = vec![dead_loopback_url(), dead_loopback_url()];
+
+        let (rx, handle) = fetch_urls_with_config(&urls, None, fetch_only_config()).await;
+        drop(rx); // first send fails; the sender task must break, not panic
+
+        handle.await.unwrap();
+    }
+
+    // ---- build_llm_content_with_attachments ----
+
+    fn text_resource(url: &str, content: &str) -> FetchedWebResource {
+        process_text_content(url, content, "text/plain".to_string(), None, None)
+    }
+
+    #[test]
+    fn attachments_builder_returns_original_content_when_empty() {
+        assert_eq!(
+            build_llm_content_with_attachments("original", &[]),
+            "original"
+        );
+    }
+
+    #[test]
+    fn attachments_builder_formats_error_notes() {
+        let failed =
+            FetchedWebResource::error("http://x.test/a", String::new(), "boom".to_string(), None);
+
+        assert_eq!(
+            build_llm_content_with_attachments("original", &[failed]),
+            "original\n\n---\n**Note:** Could not fetch content from http://x.test/a: boom"
+        );
+    }
+
+    #[test]
+    fn attachments_builder_formats_content_blocks_with_trimmed_content() {
+        let ok = text_resource("http://x.test/b", "  padded body  \n");
+
+        assert_eq!(
+            build_llm_content_with_attachments("original", &[ok]),
+            "original\n\n---\n**Content from http://x.test/b:**\n\npadded body"
+        );
+    }
+
+    #[test]
+    fn attachments_builder_appends_each_resource_in_order() {
+        let first = text_resource("http://x.test/1", "one");
+        let failed =
+            FetchedWebResource::error("http://x.test/2", String::new(), "nope".to_string(), None);
+        let third = text_resource("http://x.test/3", "three");
+
+        assert_eq!(
+            build_llm_content_with_attachments("base", &[first, failed, third]),
+            "base\n\n---\n**Content from http://x.test/1:**\n\none\
+             \n\n---\n**Note:** Could not fetch content from http://x.test/2: nope\
+             \n\n---\n**Content from http://x.test/3:**\n\nthree"
+        );
+    }
+}

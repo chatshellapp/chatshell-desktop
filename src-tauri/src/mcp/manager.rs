@@ -532,3 +532,335 @@ pub fn sync_tool_definitions(
 
     Ok(server_dir)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_tool(
+        id: &str,
+        name: &str,
+        endpoint: Option<&str>,
+        config: Option<&str>,
+        auth_token: Option<String>,
+    ) -> Tool {
+        Tool {
+            id: id.to_string(),
+            name: name.to_string(),
+            r#type: "mcp".to_string(),
+            endpoint: endpoint.map(str::to_string),
+            config: config.map(str::to_string),
+            description: None,
+            is_enabled: true,
+            auth_token,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn mcp_tool(name: &str, description: Option<&str>) -> McpTool {
+        let value = json!({
+            "name": name,
+            "description": description,
+            "inputSchema": {
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "required": ["query"],
+            },
+        });
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn install_test_keys() {
+        crate::crypto::set_keys_for_tests([0x5a; 32], None);
+    }
+
+    // ---- sanitize_name ----
+
+    #[test]
+    fn sanitize_name_maps_forbidden_characters_to_underscores() {
+        assert_eq!(
+            sanitize_name(r#"a/b\c:d*e?f"g<h>i|j"#),
+            "a_b_c_d_e_f_g_h_i_j"
+        );
+    }
+
+    #[test]
+    fn sanitize_name_maps_ascii_control_characters() {
+        assert_eq!(sanitize_name("a\tb\nc\0d\u{7f}"), "a_b_c_d_");
+    }
+
+    #[test]
+    fn sanitize_name_keeps_safe_characters() {
+        assert_eq!(sanitize_name("My Server 01"), "My Server 01");
+        assert_eq!(sanitize_name("服务器"), "服务器");
+        assert_eq!(sanitize_name(""), "");
+    }
+
+    // ---- sync_tool_definitions ----
+
+    #[test]
+    fn sync_tool_definitions_writes_one_pretty_json_per_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools = vec![
+            mcp_tool("web_search", Some("Search the web")),
+            mcp_tool("read/file", None),
+        ];
+
+        let out = sync_tool_definitions(dir.path(), "search_server", &tools).unwrap();
+        assert_eq!(out, dir.path().join("search_server"));
+        assert_eq!(std::fs::read_dir(&out).unwrap().count(), 2);
+
+        let search = std::fs::read_to_string(out.join("web_search.json")).unwrap();
+        assert!(search.contains('\n'), "definition should be pretty-printed");
+        let value: serde_json::Value = serde_json::from_str(&search).unwrap();
+        assert_eq!(value["name"], "web_search");
+        assert_eq!(value["description"], "Search the web");
+        assert_eq!(value["inputSchema"]["type"], "object");
+        assert_eq!(
+            value["inputSchema"]["properties"]["query"]["type"],
+            "string"
+        );
+        assert_eq!(value["inputSchema"]["required"], json!(["query"]));
+
+        // Tool names are sanitized into file names; missing description is null.
+        let fetch = std::fs::read_to_string(out.join("read_file.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&fetch).unwrap();
+        assert_eq!(value["name"], "read/file");
+        assert_eq!(value["description"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn sync_tool_definitions_removes_stale_files_and_sanitizes_server_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let server_dir = dir.path().join("a_b_c");
+        std::fs::create_dir_all(&server_dir).unwrap();
+        std::fs::write(server_dir.join("stale.json"), "stale").unwrap();
+
+        let out = sync_tool_definitions(
+            dir.path(),
+            "a:b/c",
+            &[mcp_tool("only_one", Some("The only tool"))],
+        )
+        .unwrap();
+        assert_eq!(out, server_dir);
+        assert!(!server_dir.join("stale.json").exists());
+        let names: Vec<String> = std::fs::read_dir(&out)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["only_one.json".to_string()]);
+    }
+
+    #[test]
+    fn sync_tool_definitions_with_no_tools_creates_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = sync_tool_definitions(dir.path(), "empty", &[]).unwrap();
+        assert_eq!(std::fs::read_dir(&out).unwrap().count(), 0);
+    }
+
+    // ---- create_client_info ----
+
+    #[test]
+    fn create_client_info_uses_chatshell_identity_and_crate_version() {
+        let info = McpConnectionManager::create_client_info();
+        assert_eq!(info.client_info.name, "chatshell");
+        assert_eq!(info.client_info.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    // ---- get_http_auth_header ----
+
+    #[test]
+    fn get_http_auth_header_returns_none_without_config() {
+        let tool = make_tool("t1", "No Config", None, None, None);
+        assert_eq!(
+            McpConnectionManager::get_http_auth_header(&tool).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_returns_none_for_auth_type_none() {
+        let tool = make_tool(
+            "t1",
+            "No Auth",
+            None,
+            Some(r#"{"transport":"http","auth_type":"none"}"#),
+            None,
+        );
+        assert_eq!(
+            McpConnectionManager::get_http_auth_header(&tool).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_returns_none_for_bearer_without_stored_token() {
+        let tool = make_tool(
+            "t1",
+            "Bearer No Token",
+            None,
+            Some(r#"{"transport":"http","auth_type":"bearer"}"#),
+            None,
+        );
+        assert_eq!(
+            McpConnectionManager::get_http_auth_header(&tool).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_decrypts_bearer_token() {
+        install_test_keys();
+        let encrypted = crate::crypto::encrypt("tok-secret-123").unwrap();
+        let tool = make_tool(
+            "t1",
+            "Bearer",
+            None,
+            Some(r#"{"transport":"http","auth_type":"bearer"}"#),
+            Some(encrypted),
+        );
+        assert_eq!(
+            McpConnectionManager::get_http_auth_header(&tool).unwrap(),
+            Some("tok-secret-123".to_string())
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_extracts_access_token_from_oauth_json() {
+        install_test_keys();
+        let encrypted =
+            crate::crypto::encrypt(r#"{"access_token":"at-xyz","refresh_token":"rt"}"#).unwrap();
+        let tool = make_tool(
+            "t1",
+            "Oauth",
+            None,
+            Some(r#"{"transport":"http","auth_type":"oauth"}"#),
+            Some(encrypted),
+        );
+        assert_eq!(
+            McpConnectionManager::get_http_auth_header(&tool).unwrap(),
+            Some("at-xyz".to_string())
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_bails_when_oauth_token_missing() {
+        let tool = make_tool(
+            "t1",
+            "Oauth No Token",
+            None,
+            Some(r#"{"transport":"http","auth_type":"oauth"}"#),
+            None,
+        );
+        let err = McpConnectionManager::get_http_auth_header(&tool).unwrap_err();
+        assert!(err.to_string().contains("re-authorize"), "got: {err}");
+    }
+
+    #[test]
+    fn get_http_auth_header_errors_when_oauth_json_lacks_access_token() {
+        install_test_keys();
+        let encrypted = crate::crypto::encrypt(r#"{"refresh_token":"rt"}"#).unwrap();
+        let tool = make_tool(
+            "t1",
+            "Oauth Bad",
+            None,
+            Some(r#"{"transport":"http","auth_type":"oauth"}"#),
+            Some(encrypted),
+        );
+        let err = McpConnectionManager::get_http_auth_header(&tool).unwrap_err();
+        assert!(
+            err.to_string().contains("Missing access_token"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn get_http_auth_header_errors_on_undecryptable_bearer_token() {
+        install_test_keys();
+        let tool = make_tool(
+            "t1",
+            "Bearer Bad",
+            None,
+            Some(r#"{"transport":"http","auth_type":"bearer"}"#),
+            Some("definitely-not-valid-ciphertext".to_string()),
+        );
+        let err = McpConnectionManager::get_http_auth_header(&tool).unwrap_err();
+        assert!(err.to_string().contains("decrypt"), "got: {err}");
+    }
+
+    // ---- connection map operations ----
+
+    #[tokio::test]
+    async fn map_operations_on_empty_manager_are_noops() {
+        let manager = McpConnectionManager::new();
+        assert!(manager.get_active_connections().await.is_empty());
+        manager.disconnect("any-id").await;
+        manager.disconnect_all().await;
+        assert!(manager.get_active_connections().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_multiple_with_no_tools_returns_empty_result() {
+        let manager = McpConnectionManager::new();
+        let result = manager.connect_multiple(&[]).await.unwrap();
+        assert!(result.connections.is_empty());
+        assert!(result.failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_multiple_collects_failures_without_connections() {
+        let manager = McpConnectionManager::new();
+        let tools = vec![
+            // Port 1 is never listening: connection refused is immediate on loopback.
+            make_tool(
+                "t-refused",
+                "Refused",
+                Some("http://127.0.0.1:1/mcp"),
+                Some(r#"{"transport":"http"}"#),
+                None,
+            ),
+            make_tool(
+                "t-no-endpoint",
+                "No Endpoint",
+                None,
+                Some(r#"{"transport":"http"}"#),
+                None,
+            ),
+            make_tool(
+                "t-no-command",
+                "No Command",
+                None,
+                Some(r#"{"transport":"stdio"}"#),
+                None,
+            ),
+        ];
+
+        let result = manager.connect_multiple(&tools).await.unwrap();
+        assert!(result.connections.is_empty());
+        assert_eq!(result.failures.len(), 3);
+
+        let ids: Vec<&str> = result.failures.iter().map(|f| f.tool_id.as_str()).collect();
+        assert_eq!(ids, vec!["t-refused", "t-no-endpoint", "t-no-command"]);
+
+        assert!(
+            !result.failures[0].error.is_empty(),
+            "connection-refused failure should carry an error message"
+        );
+        assert!(
+            result.failures[1]
+                .error
+                .contains("HTTP transport requires an endpoint URL"),
+            "got: {}",
+            result.failures[1].error
+        );
+        assert!(
+            result.failures[2]
+                .error
+                .contains("STDIO transport requires a command"),
+            "got: {}",
+            result.failures[2].error
+        );
+    }
+}

@@ -245,26 +245,15 @@ pub(crate) async fn handle_agent_streaming(
             use chrono::Local;
 
             let today = Local::now().format("%a %b %d %Y").to_string();
-            let platform = match std::env::consts::OS {
-                "macos" => "darwin",
-                other => other,
-            };
-
-            let mut env_block = format!(
-                "\n\nYou are running on model {provider_type}/{model_id}\n\n## Environment\n\n- Platform: {platform}\n- Today's date: {today}",
+            let env_block = build_env_block(
+                &provider_type,
+                &model_id,
+                &today,
+                os_platform_label(std::env::consts::OS),
+                conv_settings
+                    .as_ref()
+                    .and_then(|s| s.working_directory.as_deref()),
             );
-
-            // Only include working directory info when explicitly set in conversation settings
-            if let Some(working_dir) = conv_settings
-                .as_ref()
-                .and_then(|s| s.working_directory.as_deref())
-            {
-                let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
-                env_block.push_str(&format!(
-                    "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
-                    if is_git_repo { "yes" } else { "no" },
-                ));
-            }
 
             effective_system_prompt.push_str(&env_block);
         }
@@ -444,22 +433,7 @@ pub(crate) async fn handle_agent_streaming(
     }
 
     // Collect MCP server IDs (non-builtin tools)
-    let mcp_server_ids: Vec<String> = all_enabled_tool_ids
-        .iter()
-        .filter(|id| {
-            *id != &BUILTIN_WEB_SEARCH_ID.to_string()
-                && *id != &BUILTIN_WEB_FETCH_ID.to_string()
-                && *id != &BUILTIN_BASH_ID.to_string()
-                && *id != &BUILTIN_KILL_SHELL_ID.to_string()
-                && *id != &BUILTIN_READ_ID.to_string()
-                && *id != &BUILTIN_EDIT_ID.to_string()
-                && *id != &BUILTIN_WRITE_ID.to_string()
-                && *id != &BUILTIN_GREP_ID.to_string()
-                && *id != &BUILTIN_GLOB_ID.to_string()
-        })
-        .cloned()
-        .collect();
-
+    let mcp_server_ids: Vec<String> = collect_mcp_server_ids(&all_enabled_tool_ids);
     // Load MCP tools from enabled servers and build McpSchemaTool + McpToolUseTool
     let (mcp_tool_name_to_server_id, mcp_tool_name_to_server_name): (
         Arc<HashMap<String, String>>,
@@ -885,51 +859,11 @@ pub(crate) async fn handle_agent_streaming(
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                     // For mcp meta-tool, extract server, real MCP tool name, and inner arguments
-                    let (actual_tool_name, display_name, display_input) =
-                        if tool_info.tool_name == "mcp_tool_use" {
-                            if let Ok(parsed) =
-                                serde_json::from_str::<serde_json::Value>(&tool_info.tool_input)
-                            {
-                                let server_name = parsed["server"]
-                                    .as_str()
-                                    .unwrap_or("unknown")
-                                    .to_string();
-                                let real_name = parsed["tool"]
-                                    .as_str()
-                                    .unwrap_or("mcp_tool_use")
-                                    .to_string();
-                                let inner_args = parsed
-                                    .get("arguments")
-                                    .map(|a| a.to_string())
-                                    .unwrap_or_else(|| "{}".to_string());
-                                // Store composite key for auth lookup; build display name directly
-                                let composite_key = format!("{}/{}", server_name, real_name);
-                                let display = format!(
-                                    "mcp__{}__{}",
-                                    sanitize_server_name(&server_name),
-                                    real_name
-                                );
-                                (composite_key, display, inner_args)
-                            } else {
-                                let fallback_name = tool_info.tool_name.clone();
-                                let display = mcp_display_name(
-                                    &fallback_name,
-                                    &mcp_server_name_map_for_callback,
-                                );
-                                (
-                                    fallback_name,
-                                    display,
-                                    tool_info.tool_input.clone(),
-                                )
-                            }
-                        } else {
-                            let name = tool_info.tool_name.clone();
-                            let display = mcp_display_name(
-                                &name,
-                                &mcp_server_name_map_for_callback,
-                            );
-                            (name, display, tool_info.tool_input.clone())
-                        };
+                    let (actual_tool_name, display_name, display_input) = resolve_tool_display(
+                        &tool_info.tool_name,
+                        &tool_info.tool_input,
+                        &mcp_server_name_map_for_callback,
+                    );
 
                     // Store tool call in tracking map (actual MCP tool name for auth lookup)
                     if let Ok(mut tool_calls) = tool_calls_for_callback.try_write() {
@@ -1002,24 +936,10 @@ pub(crate) async fn handle_agent_streaming(
                     let is_duplicate = if let Ok(mut images) =
                         accumulated_images_for_callback.try_write()
                     {
-                        let new_len = data_url.len();
-                        // The API may re-send the same image with slightly
-                        // different encoding (e.g. OpenRouter Gemini streams
-                        // the image once, then echoes a re-encoded copy with
-                        // the finish chunk).  Exact string match catches
-                        // identical re-sends; size-based comparison catches
-                        // re-encoded duplicates (typically <1% size diff).
-                        if images.iter().any(|existing: &String| {
-                            if *existing == data_url {
-                                return true;
-                            }
-                            let existing_len = existing.len();
-                            let diff = new_len.abs_diff(existing_len);
-                            diff * 100 < existing_len.max(1) * 2
-                        }) {
+                        if is_duplicate_image(&images, &data_url) {
                             tracing::info!(
                                 "🖼️ [streaming] Skipping duplicate image ({} bytes, similar to existing)",
-                                new_len
+                                data_url.len()
                             );
                             true
                         } else {
@@ -1109,14 +1029,16 @@ pub(crate) async fn handle_agent_streaming(
         .as_ref()
         .is_some_and(|t| !t.is_empty());
     let has_images = !accumulated_images.read().await.is_empty();
-    let has_any_data = !final_content.trim().is_empty()
-        || has_tool_calls
-        || has_reasoning_blocks
-        || has_content_blocks
-        || has_thinking
-        || has_images;
+    let has_any = has_any_data(
+        &final_content,
+        has_tool_calls,
+        has_reasoning_blocks,
+        has_content_blocks,
+        has_thinking,
+        has_images,
+    );
 
-    if !has_any_data {
+    if !has_any {
         if was_cancelled {
             tracing::info!("⚠️ [agent_streaming] Cancelled with no data to save");
             let payload = serde_json::json!({
@@ -1200,29 +1122,17 @@ pub(crate) async fn handle_agent_streaming(
     if !images_snapshot.is_empty() {
         for (i, data_url) in images_snapshot.iter().enumerate() {
             // Parse data URL: "data:image/png;base64,<base64data>"
-            let (mime_type, base64_data) = match data_url.strip_prefix("data:") {
-                Some(rest) => match rest.split_once(",") {
-                    Some((header, data)) => {
-                        let mime = header.split(';').next().unwrap_or("image/png").to_string();
-                        (mime, data)
-                    }
-                    None => {
-                        tracing::error!("Invalid data URL format for generated image {}", i + 1);
-                        continue;
-                    }
-                },
-                None => {
+            let (mime_type, bytes) = match parse_image_data_url(data_url) {
+                Ok(parsed) => parsed,
+                Err(ImageDataUrlError::MissingPrefix) => {
                     tracing::error!("Generated image {} is not a data URL, skipping", i + 1);
                     continue;
                 }
-            };
-
-            let bytes = match base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                base64_data,
-            ) {
-                Ok(b) => b,
-                Err(e) => {
+                Err(ImageDataUrlError::MissingComma) => {
+                    tracing::error!("Invalid data URL format for generated image {}", i + 1);
+                    continue;
+                }
+                Err(ImageDataUrlError::Decode(e)) => {
                     tracing::error!("Failed to decode generated image {}: {}", i + 1, e);
                     continue;
                 }
@@ -1355,13 +1265,7 @@ pub(crate) async fn handle_agent_streaming(
         for (tool_call_id, (display_order, tool_name, tool_input, tool_output, call_id)) in
             tool_calls_data.iter()
         {
-            let status = if tool_output.is_some() {
-                "success"
-            } else if was_cancelled {
-                "cancelled"
-            } else {
-                "pending"
-            };
+            let status = tool_call_status(tool_output.as_ref(), was_cancelled);
 
             let display_name =
                 mcp_display_name_from_stored(tool_name, &mcp_tool_name_to_server_name);
@@ -1678,6 +1582,164 @@ fn is_auth_error(output: &str) -> bool {
         || lower.contains("authentication required")
 }
 
+/// Map the compile-time OS constant onto the label used in the environment
+/// info block (matches `uname -s` style naming for macOS).
+fn os_platform_label(os: &str) -> &str {
+    match os {
+        "macos" => "darwin",
+        other => other,
+    }
+}
+
+/// Build the environment info block appended to the system prompt.
+/// `today` is the pre-formatted date string; `working_dir` is only included
+/// when explicitly set in conversation settings, along with whether the
+/// directory is a git repository.
+fn build_env_block(
+    provider_type: &str,
+    model_id: &str,
+    today: &str,
+    platform: &str,
+    working_dir: Option<&str>,
+) -> String {
+    let mut env_block = format!(
+        "\n\nYou are running on model {provider_type}/{model_id}\n\n## Environment\n\n- Platform: {platform}\n- Today's date: {today}",
+    );
+
+    if let Some(working_dir) = working_dir {
+        let is_git_repo = std::path::Path::new(working_dir).join(".git").exists();
+        env_block.push_str(&format!(
+            "\n- Working directory: {working_dir}\n- Is directory a git repo: {}",
+            if is_git_repo { "yes" } else { "no" },
+        ));
+    }
+
+    env_block
+}
+
+/// Collect MCP server IDs: enabled tool IDs that are not built-in tools.
+fn collect_mcp_server_ids(all_enabled_tool_ids: &[String]) -> Vec<String> {
+    all_enabled_tool_ids
+        .iter()
+        .filter(|id| {
+            *id != &BUILTIN_WEB_SEARCH_ID.to_string()
+                && *id != &BUILTIN_WEB_FETCH_ID.to_string()
+                && *id != &BUILTIN_BASH_ID.to_string()
+                && *id != &BUILTIN_KILL_SHELL_ID.to_string()
+                && *id != &BUILTIN_READ_ID.to_string()
+                && *id != &BUILTIN_EDIT_ID.to_string()
+                && *id != &BUILTIN_WRITE_ID.to_string()
+                && *id != &BUILTIN_GREP_ID.to_string()
+                && *id != &BUILTIN_GLOB_ID.to_string()
+        })
+        .cloned()
+        .collect()
+}
+
+/// Resolve an incoming tool call into its (actual tool name, display name,
+/// display input), unpacking the `mcp_tool_use` meta-tool envelope.
+/// The actual name is the composite `server/tool` key used for auth lookup.
+fn resolve_tool_display(
+    tool_name: &str,
+    tool_input: &str,
+    server_name_map: &HashMap<String, String>,
+) -> (String, String, String) {
+    if tool_name == "mcp_tool_use" {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(tool_input) {
+            let server_name = parsed["server"].as_str().unwrap_or("unknown").to_string();
+            let real_name = parsed["tool"]
+                .as_str()
+                .unwrap_or("mcp_tool_use")
+                .to_string();
+            let inner_args = parsed
+                .get("arguments")
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| "{}".to_string());
+            // Store composite key for auth lookup; build display name directly
+            let composite_key = format!("{}/{}", server_name, real_name);
+            let display = format!("mcp__{}__{}", sanitize_server_name(&server_name), real_name);
+            (composite_key, display, inner_args)
+        } else {
+            let fallback_name = tool_name.to_string();
+            let display = mcp_display_name(&fallback_name, server_name_map);
+            (fallback_name, display, tool_input.to_string())
+        }
+    } else {
+        let name = tool_name.to_string();
+        let display = mcp_display_name(&name, server_name_map);
+        (name, display, tool_input.to_string())
+    }
+}
+
+/// Heuristic duplicate detection for streamed images. The API may re-send
+/// the same image with slightly different encoding (e.g. OpenRouter Gemini
+/// streams the image once, then echoes a re-encoded copy with the finish
+/// chunk). Exact string match catches identical re-sends; size-based
+/// comparison catches re-encoded duplicates (typically <1% size diff).
+fn is_duplicate_image(images: &[String], data_url: &str) -> bool {
+    let new_len = data_url.len();
+    images.iter().any(|existing| {
+        if existing == data_url {
+            return true;
+        }
+        let existing_len = existing.len();
+        let diff = new_len.abs_diff(existing_len);
+        diff * 100 < existing_len.max(1) * 2
+    })
+}
+
+/// Why parsing a generated-image data URL failed.
+#[derive(Debug)]
+enum ImageDataUrlError {
+    MissingPrefix,
+    MissingComma,
+    Decode(base64::DecodeError),
+}
+
+/// Parse a `data:<mime>;base64,<payload>` URL into its MIME type and decoded
+/// bytes. The MIME type defaults to `image/png` when the header is empty.
+fn parse_image_data_url(data_url: &str) -> Result<(String, Vec<u8>), ImageDataUrlError> {
+    let rest = data_url
+        .strip_prefix("data:")
+        .ok_or(ImageDataUrlError::MissingPrefix)?;
+    let (header, base64_data) = rest
+        .split_once(",")
+        .ok_or(ImageDataUrlError::MissingComma)?;
+    let mime_type = header.split(';').next().unwrap_or("image/png").to_string();
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data)
+        .map_err(ImageDataUrlError::Decode)?;
+    Ok((mime_type, bytes))
+}
+
+/// Whether the streamed turn produced any data worth persisting.
+fn has_any_data(
+    final_content: &str,
+    has_tool_calls: bool,
+    has_reasoning_blocks: bool,
+    has_content_blocks: bool,
+    has_thinking: bool,
+    has_images: bool,
+) -> bool {
+    !final_content.trim().is_empty()
+        || has_tool_calls
+        || has_reasoning_blocks
+        || has_content_blocks
+        || has_thinking
+        || has_images
+}
+
+/// Derive the persisted status for a tool call from its output and the
+/// stream's cancellation state.
+fn tool_call_status(tool_output: Option<&String>, was_cancelled: bool) -> &'static str {
+    if tool_output.is_some() {
+        "success"
+    } else if was_cancelled {
+        "cancelled"
+    } else {
+        "pending"
+    }
+}
+
 /// Format the `<image_attachments>` block appended to the final user
 /// message when a text-only model's images are stripped from direct input.
 ///
@@ -1706,7 +1768,318 @@ pub(crate) fn format_image_annotations(
 
 #[cfg(test)]
 mod tests {
-    use super::format_image_annotations;
+    use super::*;
+
+    // ---- Tier 0: already-pure helpers ----
+
+    #[test]
+    fn sanitize_server_name_keeps_alnum_and_hyphens() {
+        assert_eq!(sanitize_server_name("My Server"), "My-Server");
+        assert_eq!(sanitize_server_name("already-clean"), "already-clean");
+        assert_eq!(sanitize_server_name("a b_c!d"), "a-b-c-d");
+        // Leading/trailing hyphens (from replaced edge chars) are trimmed
+        assert_eq!(sanitize_server_name("-edges-"), "edges");
+        assert_eq!(sanitize_server_name("  spaced  "), "spaced");
+        // Non-ASCII chars are replaced, not passed through
+        assert_eq!(sanitize_server_name("café"), "caf");
+        assert_eq!(sanitize_server_name("!!!"), "");
+        assert_eq!(sanitize_server_name(""), "");
+    }
+
+    #[test]
+    fn mcp_display_name_prefixes_mapped_tools() {
+        let mut map = HashMap::new();
+        map.insert("search".to_string(), "My Server!".to_string());
+        assert_eq!(mcp_display_name("search", &map), "mcp__My-Server__search");
+        // Unmapped (built-in) tools pass through unchanged
+        assert_eq!(mcp_display_name("read", &map), "read");
+    }
+
+    #[test]
+    fn mcp_display_name_from_stored_handles_composite_and_plain_keys() {
+        let mut map = HashMap::new();
+        map.insert("search".to_string(), "My Server".to_string());
+
+        // Composite "server/tool" keys bypass the map entirely
+        assert_eq!(
+            mcp_display_name_from_stored("fs/read_file", &map),
+            "mcp__fs__read_file"
+        );
+        // Server part of a composite key is sanitized too
+        assert_eq!(
+            mcp_display_name_from_stored("My Server/tool", &map),
+            "mcp__My-Server__tool"
+        );
+        // Only the first '/' splits: the rest stays in the tool name
+        assert_eq!(mcp_display_name_from_stored("a/b/c", &map), "mcp__a__b/c");
+
+        // Plain keys fall back to the map lookup
+        assert_eq!(
+            mcp_display_name_from_stored("search", &map),
+            "mcp__My-Server__search"
+        );
+        assert_eq!(mcp_display_name_from_stored("read", &map), "read");
+    }
+
+    #[test]
+    fn is_auth_error_matches_each_disjunct() {
+        // 401 + unauthorized/http
+        assert!(is_auth_error("HTTP 401 Unauthorized"));
+        assert!(is_auth_error("request failed with 401 over http"));
+        // 401 alone is not enough
+        assert!(!is_auth_error("401"));
+        // http alone (e.g. 500) is not enough
+        assert!(!is_auth_error("http 500 internal server error"));
+
+        // unauthorized + error
+        assert!(is_auth_error("Unauthorized error"));
+        // permission-style errors are not auth errors
+        assert!(!is_auth_error("permission error"));
+
+        // token variants (case-insensitive)
+        assert!(is_auth_error("Token Expired"));
+        assert!(is_auth_error("the token has expired, please log in"));
+        assert!(is_auth_error("invalid_token"));
+        assert!(is_auth_error("Authentication required"));
+
+        assert!(!is_auth_error("everything went fine"));
+        assert!(!is_auth_error(""));
+    }
+
+    #[test]
+    fn bash_temp_file_guard_drop_removes_tracked_files() {
+        let files: TempFileList = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut paths = Vec::new();
+        for i in 0..2 {
+            let path = std::env::temp_dir().join(format!(
+                "chatshell-guard-test-{}-{}.tmp",
+                std::process::id(),
+                i
+            ));
+            std::fs::write(&path, b"scratch").unwrap();
+            assert!(path.exists());
+            paths.push(path.clone());
+            files.lock().unwrap().push(path);
+        }
+
+        {
+            let guard = BashTempFileGuard {
+                files: files.clone(),
+            };
+            // Files must still exist while the guard is alive
+            assert!(paths.iter().all(|p| p.exists()));
+            drop(guard);
+        }
+
+        assert!(paths.iter().all(|p| !p.exists()));
+        assert!(files.lock().unwrap().is_empty());
+    }
+
+    // ---- Tier 1: extracted pure logic ----
+
+    #[test]
+    fn os_platform_label_maps_macos_to_darwin() {
+        assert_eq!(os_platform_label("macos"), "darwin");
+        assert_eq!(os_platform_label("linux"), "linux");
+        assert_eq!(os_platform_label("windows"), "windows");
+    }
+
+    #[test]
+    fn build_env_block_formats_model_platform_and_date() {
+        let block = build_env_block("anthropic", "claude-4", "Mon Oct 20 2026", "darwin", None);
+        assert_eq!(
+            block,
+            "\n\nYou are running on model anthropic/claude-4\n\n## Environment\n\n- Platform: darwin\n- Today's date: Mon Oct 20 2026"
+        );
+        assert!(!block.contains("Working directory"));
+    }
+
+    #[test]
+    fn build_env_block_reports_git_repo_status_of_working_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let plain = dir.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let with_repo = build_env_block("p", "m", "today", "linux", repo.to_str());
+        assert!(with_repo.contains(&format!("\n- Working directory: {}", repo.display())));
+        assert!(with_repo.contains("- Is directory a git repo: yes"));
+
+        let without_repo = build_env_block("p", "m", "today", "linux", plain.to_str());
+        assert!(without_repo.contains(&format!("\n- Working directory: {}", plain.display())));
+        assert!(without_repo.contains("- Is directory a git repo: no"));
+    }
+
+    #[test]
+    fn collect_mcp_server_ids_filters_builtin_tools() {
+        let ids = vec![
+            BUILTIN_READ_ID.to_string(),
+            "mcp-filesystem".to_string(),
+            BUILTIN_BASH_ID.to_string(),
+            BUILTIN_WEB_SEARCH_ID.to_string(),
+            BUILTIN_WEB_FETCH_ID.to_string(),
+            BUILTIN_KILL_SHELL_ID.to_string(),
+            BUILTIN_EDIT_ID.to_string(),
+            BUILTIN_WRITE_ID.to_string(),
+            BUILTIN_GREP_ID.to_string(),
+            BUILTIN_GLOB_ID.to_string(),
+            "mcp-github".to_string(),
+        ];
+        assert_eq!(
+            collect_mcp_server_ids(&ids),
+            vec!["mcp-filesystem".to_string(), "mcp-github".to_string()]
+        );
+        assert!(collect_mcp_server_ids(&[]).is_empty());
+    }
+
+    #[test]
+    fn resolve_tool_display_unwraps_mcp_meta_tool_envelope() {
+        let map = HashMap::new();
+        let input = r#"{"server":"My Server!","tool":"search","arguments":{"q":"hi"}}"#;
+        let (actual, display, args) = resolve_tool_display("mcp_tool_use", input, &map);
+        assert_eq!(actual, "My Server!/search");
+        assert_eq!(display, "mcp__My-Server__search");
+        assert_eq!(args, r#"{"q":"hi"}"#);
+    }
+
+    #[test]
+    fn resolve_tool_display_defaults_missing_envelope_fields() {
+        let map = HashMap::new();
+        // Missing server/tool fall back to placeholders; missing arguments -> "{}"
+        let (actual, display, args) = resolve_tool_display("mcp_tool_use", r#"{}"#, &map);
+        assert_eq!(actual, "unknown/mcp_tool_use");
+        assert_eq!(display, "mcp__unknown__mcp_tool_use");
+        assert_eq!(args, "{}");
+
+        // Non-string server field also falls back to the placeholder
+        let (actual, _, args) =
+            resolve_tool_display("mcp_tool_use", r#"{"server":42,"tool":"t"}"#, &map);
+        assert_eq!(actual, "unknown/t");
+        assert_eq!(args, "{}");
+    }
+
+    #[test]
+    fn resolve_tool_display_falls_back_on_malformed_envelope_json() {
+        let mut map = HashMap::new();
+        map.insert("mcp_tool_use".to_string(), "Fallback Server".to_string());
+
+        let (actual, display, input) = resolve_tool_display("mcp_tool_use", "{not json", &map);
+        assert_eq!(actual, "mcp_tool_use");
+        assert_eq!(display, "mcp__Fallback-Server__mcp_tool_use");
+        assert_eq!(input, "{not json");
+    }
+
+    #[test]
+    fn resolve_tool_display_passes_non_mcp_tools_through() {
+        let mut map = HashMap::new();
+        map.insert("read".to_string(), "File Server".to_string());
+
+        // Mapped MCP-routed tool gets the mcp__ prefix
+        let (actual, display, input) = resolve_tool_display("read", "{\"path\":\"/x\"}", &map);
+        assert_eq!(actual, "read");
+        assert_eq!(display, "mcp__File-Server__read");
+        assert_eq!(input, "{\"path\":\"/x\"}");
+
+        // Unmapped built-in tool is unchanged
+        let (actual, display, input) = resolve_tool_display("bash", "ls", &map);
+        assert_eq!(actual, "bash");
+        assert_eq!(display, "bash");
+        assert_eq!(input, "ls");
+    }
+
+    #[test]
+    fn is_duplicate_image_matches_exact_and_near_size_copies() {
+        let existing = vec!["data:image/png;base64,AAAA".to_string()];
+        // Exact re-send
+        assert!(is_duplicate_image(&existing, "data:image/png;base64,AAAA"));
+
+        // No history at all
+        assert!(!is_duplicate_image(&[], "data:image/png;base64,AAAA"));
+
+        // Re-encoded copy within 2% of the existing length (995 vs 1000 bytes)
+        let a: String = "x".repeat(1000);
+        let b: String = "x".repeat(995);
+        assert!(is_duplicate_image(&[a.clone()], &b));
+
+        // Strictly past the 2% threshold (979 vs 1000 bytes) is NOT a duplicate
+        let c: String = "x".repeat(979);
+        assert!(!is_duplicate_image(&[a.clone()], &c));
+
+        // Exactly 2% (diff*100 == len*2) fails the strict < and is not a duplicate
+        let d: String = "x".repeat(980);
+        assert!(!is_duplicate_image(&[a], &d));
+
+        // Distinct images of clearly different sizes pass
+        let big: String = "y".repeat(5000);
+        assert!(!is_duplicate_image(&[big], &"z".repeat(100)));
+
+        // An empty stored entry never swallows non-empty images
+        assert!(!is_duplicate_image(&[String::new()], "img"));
+    }
+
+    #[test]
+    fn parse_image_data_url_decodes_valid_urls() {
+        let (mime, bytes) = parse_image_data_url("data:image/png;base64,aGVsbG8=").unwrap();
+        assert_eq!(mime, "image/png");
+        assert_eq!(bytes, b"hello");
+
+        // The part before the first ';' is the MIME type
+        let (mime, bytes) = parse_image_data_url("data:image/jpeg;base64,eA==").unwrap();
+        assert_eq!(mime, "image/jpeg");
+        assert_eq!(bytes, b"x");
+
+        // A header without parameters still parses
+        let (mime, _) = parse_image_data_url("data:image/gif,R0lGODlh").unwrap();
+        assert_eq!(mime, "image/gif");
+    }
+
+    #[test]
+    fn parse_image_data_url_rejects_malformed_urls() {
+        // Not a data URL at all
+        assert!(matches!(
+            parse_image_data_url("https://example.com/img.png"),
+            Err(ImageDataUrlError::MissingPrefix)
+        ));
+        // Missing comma separating header from payload
+        assert!(matches!(
+            parse_image_data_url("data:image/png;base64"),
+            Err(ImageDataUrlError::MissingComma)
+        ));
+        // Invalid base64 payload
+        assert!(matches!(
+            parse_image_data_url("data:image/png;base64,!!!not-base64!!!"),
+            Err(ImageDataUrlError::Decode(_))
+        ));
+    }
+
+    #[test]
+    fn has_any_data_requires_non_whitespace_content_or_any_stream_artifact() {
+        let nothing = |content: &str| has_any_data(content, false, false, false, false, false);
+        // Empty and whitespace-only content with no artifacts
+        assert!(!nothing(""));
+        assert!(!nothing("   \n\t  "));
+
+        // Non-whitespace content alone is enough
+        assert!(nothing("hello"));
+        assert!(nothing(" x "));
+
+        // Whitespace content plus any single artifact
+        assert!(has_any_data("  ", true, false, false, false, false));
+        assert!(has_any_data("  ", false, true, false, false, false));
+        assert!(has_any_data("  ", false, false, true, false, false));
+        assert!(has_any_data("  ", false, false, false, true, false));
+        assert!(has_any_data("  ", false, false, false, false, true));
+    }
+
+    #[test]
+    fn tool_call_status_prefers_output_then_cancellation() {
+        let output = Some("done".to_string());
+        assert_eq!(tool_call_status(output.as_ref(), true), "success");
+        assert_eq!(tool_call_status(output.as_ref(), false), "success");
+        assert_eq!(tool_call_status(None, true), "cancelled");
+        assert_eq!(tool_call_status(None, false), "pending");
+    }
 
     #[test]
     fn empty_input_renders_nothing() {
