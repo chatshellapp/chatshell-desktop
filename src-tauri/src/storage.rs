@@ -16,7 +16,7 @@ pub fn hash_content(content: &str) -> String {
 }
 
 /// Get the attachments directory path
-pub fn get_attachments_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+pub fn get_attachments_dir<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) -> Result<PathBuf> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -27,19 +27,19 @@ pub fn get_attachments_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
 }
 
 /// Get the fetch results directory path
-pub fn get_fetch_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+pub fn get_fetch_dir<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) -> Result<PathBuf> {
     let attachments_dir = get_attachments_dir(app_handle)?;
     Ok(attachments_dir.join("fetch"))
 }
 
 /// Get the files directory path
-pub fn get_files_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+pub fn get_files_dir<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) -> Result<PathBuf> {
     let attachments_dir = get_attachments_dir(app_handle)?;
     Ok(attachments_dir.join("files"))
 }
 
 /// Initialize attachment storage directories
-pub fn init_storage_dirs(app_handle: &tauri::AppHandle) -> Result<()> {
+pub fn init_storage_dirs<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) -> Result<()> {
     let fetch_dir = get_fetch_dir(app_handle)?;
     let files_dir = get_files_dir(app_handle)?;
 
@@ -88,14 +88,17 @@ pub fn generate_file_storage_path(content_hash: &str, original_ext: &str) -> Str
 }
 
 /// Get full path for a storage path
-pub fn get_full_path(app_handle: &tauri::AppHandle, storage_path: &str) -> Result<PathBuf> {
+pub fn get_full_path<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    storage_path: &str,
+) -> Result<PathBuf> {
     let attachments_dir = get_attachments_dir(app_handle)?;
     Ok(attachments_dir.join(storage_path))
 }
 
 /// Write content to a storage path
-pub fn write_content(
-    app_handle: &tauri::AppHandle,
+pub fn write_content<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
     storage_path: &str,
     content: &str,
 ) -> Result<()> {
@@ -117,8 +120,8 @@ pub fn write_content(
 }
 
 /// Write binary content to a storage path
-pub fn write_binary(
-    app_handle: &tauri::AppHandle,
+pub fn write_binary<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
     storage_path: &str,
     content: &[u8],
 ) -> Result<()> {

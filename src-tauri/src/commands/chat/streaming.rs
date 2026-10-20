@@ -19,6 +19,7 @@ use crate::models::{
     CreateThinkingStepRequest, CreateToolCallRequest, McpTransportType, ModelParameters,
 };
 use crate::prompts;
+use rig::agent::Agent;
 use rig::completion::Message as RigMessage;
 use rmcp::RoleClient;
 use rmcp::model::Tool as RmcpTool;
@@ -49,6 +50,30 @@ impl Drop for BashTempFileGuard {
             &self.files,
         );
     }
+}
+
+/// Everything the streaming phase needs from the config/wiring phase.
+/// Built by `handle_agent_streaming` after the agent is created; consumed
+/// by `run_agent_stream`, which is generic over the runtime so tests can
+/// drive it with a mock app handle and a scripted agent.
+struct AgentStreamContext {
+    conversation_id: String,
+    /// Raw user text for this turn (prompt fallback and title generation).
+    content: String,
+    /// Whether an explicit system prompt was provided (history system
+    /// messages are folded into it and skipped).
+    system_prompt_provided: bool,
+    model_id: String,
+    provider_type: String,
+    model_db_id: Option<String>,
+    assistant_db_id: Option<String>,
+    disable_tools: bool,
+    stored_images: Vec<StoredImage>,
+    supports_vision: Option<bool>,
+    /// MCP tool name -> server DB id (auth-error re-probing).
+    mcp_tool_name_to_server_id: Arc<HashMap<String, String>>,
+    /// MCP tool name -> user-visible server name (display names).
+    mcp_tool_name_to_server_name: Arc<HashMap<String, String>>,
 }
 
 /// Handle streaming using the agent-based approach
@@ -566,12 +591,94 @@ pub(crate) async fn handle_agent_streaming(
         }
     };
 
+    // Auto-generate title for new conversations early (only needs user message).
+    // Fire-and-forget: runs concurrently with the LLM streaming below.
+    {
+        let state_for_title = state_clone.clone();
+        let app_for_title = app.clone();
+        let conversation_id_for_title = conversation_id_clone.clone();
+        let content_for_title = content.clone();
+        let provider_for_title = provider_type.clone();
+        let model_for_title = model_id.clone();
+        let api_key_for_title = api_key.clone();
+        let base_url_for_title = base_url.clone();
+        let api_style_for_title = api_style.clone();
+
+        tokio::spawn(async move {
+            auto_generate_title_if_needed(
+                &state_for_title,
+                &app_for_title,
+                &conversation_id_for_title,
+                &content_for_title,
+                &provider_for_title,
+                &model_for_title,
+                api_key_for_title,
+                base_url_for_title,
+                api_style_for_title,
+            )
+            .await;
+        });
+    }
+
+    run_agent_stream(
+        &app,
+        &state_clone,
+        agent,
+        chat_messages,
+        cancel_token,
+        AgentStreamContext {
+            conversation_id: conversation_id_clone,
+            content,
+            system_prompt_provided: system_prompt.is_some(),
+            model_id,
+            provider_type,
+            model_db_id,
+            assistant_db_id,
+            disable_tools,
+            stored_images,
+            supports_vision: capabilities.supports_vision,
+            mcp_tool_name_to_server_id,
+            mcp_tool_name_to_server_name,
+        },
+    )
+    .await;
+}
+
+/// Drive an already-created agent through the streaming pipeline: vision
+/// strip, history conversion, the chunk callback (event emission and
+/// accumulation), response/error/cancel handling, and the persistence
+/// tail. Split out of `handle_agent_streaming` (which keeps config
+/// loading, MCP wiring, and agent creation) so the pipeline can be
+/// exercised offline with a scripted agent and a mock-runtime app handle.
+async fn run_agent_stream<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state_clone: &AppState,
+    agent: Agent,
+    chat_messages: Vec<ChatMessage>,
+    cancel_token: CancellationToken,
+    ctx: AgentStreamContext,
+) {
+    let AgentStreamContext {
+        conversation_id: conversation_id_clone,
+        content,
+        system_prompt_provided,
+        model_id,
+        provider_type,
+        model_db_id,
+        assistant_db_id,
+        disable_tools,
+        stored_images,
+        supports_vision,
+        mcp_tool_name_to_server_id,
+        mcp_tool_name_to_server_name,
+    } = ctx;
+
     // Strip images if model does not support vision. The current turn's
     // images are persisted as file attachments, so instead of silently
     // losing them, annotate the final user message with their storage
     // paths — the model can inspect them with `read` (optionally with the
     // `question` argument, answered by the aux vision model).
-    let chat_messages = if capabilities.supports_vision == Some(false) {
+    let chat_messages = if supports_vision == Some(false) {
         let image_count: usize = chat_messages.iter().map(|m| m.images.len()).sum();
         if image_count > 0 {
             tracing::warn!(
@@ -592,7 +699,7 @@ pub(crate) async fn handle_agent_streaming(
         let resolved_images: Vec<(String, String)> = stored_images
             .iter()
             .filter_map(
-                |img| match crate::storage::get_full_path(&app, &img.storage_path) {
+                |img| match crate::storage::get_full_path(app, &img.storage_path) {
                     Ok(full) => Some((img.name.clone(), full.to_string_lossy().into_owned())),
                     Err(e) => {
                         tracing::warn!(
@@ -650,7 +757,7 @@ pub(crate) async fn handle_agent_streaming(
                 build_tool_result_message(tc_id, msg.tool_result_call_id.as_deref(), &msg.content)
             }
             "system" => {
-                if system_prompt.is_some() {
+                if system_prompt_provided {
                     continue;
                 }
                 build_user_message(&format!("[System]: {}", msg.content), &[], &[])
@@ -718,35 +825,6 @@ pub(crate) async fn handle_agent_streaming(
     let mcp_tool_map_for_callback = mcp_tool_name_to_server_id.clone();
     let mcp_server_name_map_for_callback = mcp_tool_name_to_server_name.clone();
     let mcp_manager_for_callback = state_clone.mcp_manager.clone();
-
-    // Auto-generate title for new conversations early (only needs user message).
-    // Fire-and-forget: runs concurrently with the LLM streaming below.
-    {
-        let state_for_title = state_clone.clone();
-        let app_for_title = app.clone();
-        let conversation_id_for_title = conversation_id_clone.clone();
-        let content_for_title = content.clone();
-        let provider_for_title = provider_type.clone();
-        let model_for_title = model_id.clone();
-        let api_key_for_title = api_key.clone();
-        let base_url_for_title = base_url.clone();
-        let api_style_for_title = api_style.clone();
-
-        tokio::spawn(async move {
-            auto_generate_title_if_needed(
-                &state_for_title,
-                &app_for_title,
-                &conversation_id_for_title,
-                &content_for_title,
-                &provider_for_title,
-                &model_for_title,
-                api_key_for_title,
-                base_url_for_title,
-                api_style_for_title,
-            )
-            .await;
-        });
-    }
 
     // Stream using the agent
     let response = stream_chat_with_agent(
@@ -1148,7 +1226,7 @@ pub(crate) async fn handle_agent_streaming(
                     existing.storage_path.clone()
                 } else {
                     let path = crate::storage::generate_file_storage_path(&content_hash, ext);
-                    if let Err(e) = crate::storage::write_binary(&app, &path, &bytes) {
+                    if let Err(e) = crate::storage::write_binary(app, &path, &bytes) {
                         tracing::error!("Failed to save generated image {}: {}", i + 1, e);
                         continue;
                     }
@@ -2108,5 +2186,767 @@ mod tests {
         assert!(with_tools.contains("use the read tool"));
         assert!(!without_tools.contains("use the read tool"));
         assert!(without_tools.contains("cannot be inspected"));
+    }
+
+    // ---- run_agent_stream: full-pipeline integration over a mock runtime ----
+
+    use crate::db::Database;
+    use crate::llm::ImageData;
+    use crate::llm::capabilities::CapabilitiesCache;
+    use crate::llm::tools::BashSessionManager;
+    use crate::mcp::McpConnectionManager;
+    use crate::models::CreateConversationRequest;
+    use std::collections::VecDeque;
+    use std::convert::Infallible;
+    use tauri::Listener;
+    use tokio_util::sync::CancellationToken as TestCancellationToken;
+
+    use rig::agent::AgentBuilder;
+    use rig::completion::{
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage,
+    };
+    use rig::message::{ReasoningContent, UserContent};
+    use rig::streaming::{
+        RawStreamingChoice, RawStreamingToolCall, StreamFinal, StreamPartId,
+        StreamingCompletionResponse, WireId,
+    };
+    use rig::tool::{Tool, ToolContext};
+    use serde::Deserialize;
+    use serde_json::json;
+
+    /// Every event `run_agent_stream` can emit (the streaming half of the
+    /// frontend wire contract; the other events come from sibling modules).
+    const STREAM_EVENTS: [&str; 10] = [
+        "chat-stream",
+        "reasoning-started",
+        "chat-stream-reasoning",
+        "tool-call-started",
+        "tool-call-completed",
+        "chat-stream-image",
+        "mcp-auth-required",
+        "chat-error",
+        "chat-warning",
+        "chat-complete",
+    ];
+
+    type MockEvent = Result<RawStreamingChoice, CompletionError>;
+
+    fn text_event(text: &str) -> MockEvent {
+        Ok(RawStreamingChoice::Message(text.to_string()))
+    }
+
+    fn reasoning_delta_event(id: &str, text: &str) -> MockEvent {
+        Ok(RawStreamingChoice::ReasoningDelta {
+            id: StreamPartId::wire(id),
+            provider_id: None,
+            reasoning: text.to_string(),
+        })
+    }
+
+    fn tool_call_event(call_id: &str, name: &str, arguments: serde_json::Value) -> MockEvent {
+        Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
+            id: StreamPartId::wire(call_id),
+            tool_id: WireId::new(call_id),
+            internal_call_id: format!("internal-{call_id}"),
+            call_id: Some(call_id.to_string()),
+            name: name.to_string(),
+            arguments,
+            signature: None,
+            additional_params: None,
+        }))
+    }
+
+    fn final_event() -> MockEvent {
+        Ok(RawStreamingChoice::FinalResponse(StreamFinal::new(
+            "mock",
+            Usage::new(),
+        )))
+    }
+
+    fn error_event(message: &str) -> MockEvent {
+        Err(CompletionError::ProviderError(message.to_string()))
+    }
+
+    /// Deterministic offline completion model: each call pops the next
+    /// scripted turn of raw provider events and records the request so
+    /// tests can inspect what the pipeline sent.
+    struct ScriptedModel {
+        turns: std::sync::Arc<std::sync::Mutex<VecDeque<Vec<MockEvent>>>>,
+        requests: std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>,
+    }
+
+    impl CompletionModel for ScriptedModel {
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse, CompletionError> {
+            Err(CompletionError::ResponseError(
+                "non-streaming completion is not scripted".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse, CompletionError> {
+            self.requests.lock().unwrap().push(request);
+            let events = self
+                .turns
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("scripted model was called more times than scripted");
+            Ok(StreamingCompletionResponse::stream(
+                "mock",
+                Box::pin(futures::stream::iter(events)),
+            ))
+        }
+    }
+
+    fn scripted_agent(
+        turns: Vec<Vec<MockEvent>>,
+    ) -> (
+        Agent,
+        std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>,
+    ) {
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let model = ScriptedModel {
+            turns: std::sync::Arc::new(std::sync::Mutex::new(turns.into())),
+            requests: requests.clone(),
+        };
+        (AgentBuilder::new(model).build(), requests)
+    }
+
+    fn scripted_agent_with_tool<T: Tool + 'static>(
+        turns: Vec<Vec<MockEvent>>,
+        tool: T,
+    ) -> (
+        Agent,
+        std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>,
+    ) {
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let model = ScriptedModel {
+            turns: std::sync::Arc::new(std::sync::Mutex::new(turns.into())),
+            requests: requests.clone(),
+        };
+        (AgentBuilder::new(model).tool(tool).build(), requests)
+    }
+
+    #[derive(Deserialize)]
+    struct EchoArgs {
+        text: String,
+    }
+
+    struct EchoTool;
+
+    impl Tool for EchoTool {
+        const NAME: &'static str = "echo";
+        type Args = EchoArgs;
+        type Output = String;
+        type Error = Infallible;
+
+        fn description(&self) -> String {
+            "Echo the text argument back".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"]
+            })
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: EchoArgs,
+        ) -> Result<String, Infallible> {
+            Ok(format!("echo: {}", args.text))
+        }
+    }
+
+    /// Cancels the generation token when invoked, then echoes — simulates a
+    /// user stop arriving mid-tool-execution.
+    struct CancellingEchoTool {
+        cancel: TestCancellationToken,
+    }
+
+    impl Tool for CancellingEchoTool {
+        const NAME: &'static str = "cancel_echo";
+        type Args = EchoArgs;
+        type Output = String;
+        type Error = Infallible;
+
+        fn description(&self) -> String {
+            "Echo and cancel".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"]
+            })
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            args: EchoArgs,
+        ) -> Result<String, Infallible> {
+            self.cancel.cancel();
+            Ok(format!("echo: {}", args.text))
+        }
+    }
+
+    /// AppState backed by a throwaway SQLite database plus a conversation
+    /// row (messages carry a conversation FK).
+    async fn pipeline_state() -> (AppState, String, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let conv = db
+            .create_conversation(CreateConversationRequest { title: "t".into() })
+            .await
+            .unwrap();
+
+        let state = AppState {
+            db,
+            generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+            mcp_manager: Arc::new(McpConnectionManager::new()),
+            pending_oauth: Arc::new(RwLock::new(HashMap::new())),
+            bash_session_manager: Arc::new(BashSessionManager::new()),
+            capabilities_cache: Arc::new(CapabilitiesCache::new()),
+            sync_engine: Arc::new(std::sync::Mutex::new(None)),
+        };
+        (state, conv.id.to_string(), dir)
+    }
+
+    #[derive(Debug, Clone)]
+    struct RecordedEvent {
+        name: String,
+        payload: serde_json::Value,
+    }
+
+    fn record_events(
+        app: &tauri::App<tauri::test::MockRuntime>,
+    ) -> std::sync::Arc<std::sync::Mutex<Vec<RecordedEvent>>> {
+        let log: std::sync::Arc<std::sync::Mutex<Vec<RecordedEvent>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        for name in STREAM_EVENTS {
+            let log = log.clone();
+            let recorded_name = name.to_string();
+            app.listen_any(name, move |event| {
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    log.lock().unwrap().push(RecordedEvent {
+                        name: recorded_name.clone(),
+                        payload,
+                    });
+                }
+            });
+        }
+        log
+    }
+
+    fn user_message(content: &str) -> ChatMessage {
+        ChatMessage {
+            role: "user".into(),
+            content: content.into(),
+            images: vec![],
+            files: vec![],
+            tool_calls: vec![],
+            tool_call_id: None,
+            tool_result_call_id: None,
+            reasoning_content: None,
+        }
+    }
+
+    fn base_ctx(conversation_id: &str) -> AgentStreamContext {
+        AgentStreamContext {
+            conversation_id: conversation_id.to_string(),
+            content: "hi".into(),
+            system_prompt_provided: false,
+            model_id: "test-model".into(),
+            provider_type: "test".into(),
+            model_db_id: None,
+            assistant_db_id: None,
+            disable_tools: false,
+            stored_images: vec![],
+            supports_vision: None,
+            mcp_tool_name_to_server_id: Arc::new(HashMap::new()),
+            mcp_tool_name_to_server_name: Arc::new(HashMap::new()),
+        }
+    }
+
+    async fn run_pipeline(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        state: &AppState,
+        agent: Agent,
+        chat_messages: Vec<ChatMessage>,
+        cancel_token: TestCancellationToken,
+        ctx: AgentStreamContext,
+    ) {
+        state
+            .generation_tasks
+            .write()
+            .await
+            .insert(ctx.conversation_id.clone(), cancel_token.clone());
+        run_agent_stream(app.handle(), state, agent, chat_messages, cancel_token, ctx).await;
+    }
+
+    fn names(log: &[RecordedEvent]) -> Vec<String> {
+        log.iter().map(|e| e.name.clone()).collect()
+    }
+
+    #[tokio::test]
+    async fn text_turn_streams_saves_message_and_completes() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) =
+            scripted_agent(vec![vec![text_event("Hello world"), final_event()]]);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        assert_eq!(
+            names(&log),
+            vec!["chat-stream", "chat-complete"],
+            "exact event sequence for a text-only turn"
+        );
+        assert_eq!(log[0].payload["content"], "Hello world");
+        assert_eq!(log[0].payload["conversation_id"], conv_id);
+
+        let complete = &log[1].payload;
+        assert_eq!(complete["message"]["content"], "Hello world");
+        assert_eq!(complete["message"]["sender_type"], "assistant");
+        let message_id = complete["message"]["id"].as_str().unwrap().to_string();
+        assert!(
+            state
+                .db
+                .get_thinking_steps_by_message(&message_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            state
+                .db
+                .get_tool_calls_by_message(&message_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        // Content blocks are only persisted when tool calls exist.
+        assert!(
+            state
+                .db
+                .get_content_blocks_by_message(&message_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(state.generation_tasks.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reasoning_turn_saves_thinking_step_before_answer() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent(vec![vec![
+            reasoning_delta_event("r1", "pondering deeply"),
+            text_event("the answer"),
+            final_event(),
+        ]]);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        assert_eq!(
+            names(&log),
+            vec![
+                "reasoning-started",
+                "chat-stream-reasoning",
+                "chat-stream",
+                "chat-complete"
+            ]
+        );
+        assert_eq!(log[1].payload["content"], "pondering deeply");
+
+        let message_id = log[3].payload["message"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let thinking = state
+            .db
+            .get_thinking_steps_by_message(&message_id)
+            .await
+            .unwrap();
+        assert_eq!(thinking.len(), 1);
+        assert_eq!(thinking[0].content, "pondering deeply");
+        assert_eq!(thinking[0].source, "llm");
+        assert_eq!(thinking[0].display_order, 0);
+    }
+
+    #[tokio::test]
+    async fn tool_turn_saves_tool_call_and_content_block_in_order() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent_with_tool(
+            vec![
+                vec![
+                    tool_call_event("c1", "echo", json!({ "text": "hi" })),
+                    final_event(),
+                ],
+                vec![text_event("done"), final_event()],
+            ],
+            EchoTool,
+        );
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        let sequence = names(&log);
+        assert_eq!(sequence[0], "tool-call-started");
+        assert_eq!(sequence[1], "tool-call-completed");
+        assert_eq!(sequence[2], "chat-stream");
+        assert_eq!(sequence[3], "chat-complete");
+        assert_eq!(log[0].payload["tool_name"], "echo");
+        assert!(
+            log[0].payload["tool_input"]
+                .as_str()
+                .unwrap()
+                .contains("hi")
+        );
+        assert_eq!(log[1].payload["tool_output"], "echo: hi");
+        // Wire contract: exact snake_case payload keys.
+        // JSON object key order is not a wire contract; compare as a set.
+        let mut started_keys: Vec<&str> = log[0]
+            .payload
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        started_keys.sort_unstable();
+        assert_eq!(
+            started_keys,
+            ["conversation_id", "tool_call_id", "tool_input", "tool_name"]
+        );
+
+        let message_id = log[3].payload["message"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let tool_calls = state
+            .db
+            .get_tool_calls_by_message(&message_id)
+            .await
+            .unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].tool_name, "echo");
+        assert_eq!(tool_calls[0].status, "success");
+        assert_eq!(tool_calls[0].tool_output.as_deref(), Some("echo: hi"));
+        assert_eq!(tool_calls[0].display_order, 0);
+
+        // Content blocks exist only because the turn had tool calls.
+        let blocks = state
+            .db
+            .get_content_blocks_by_message(&message_id)
+            .await
+            .unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "done");
+        assert!(blocks[0].display_order >= 1);
+    }
+
+    #[tokio::test]
+    async fn think_tags_in_content_blocks_split_into_thinking_steps() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent_with_tool(
+            vec![
+                vec![
+                    tool_call_event("c1", "echo", json!({ "text": "x" })),
+                    final_event(),
+                ],
+                vec![
+                    text_event("<think>secret reasoning</think>visible answer"),
+                    final_event(),
+                ],
+            ],
+            EchoTool,
+        );
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        let message_id = log.last().unwrap().payload["message"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let blocks = state
+            .db
+            .get_content_blocks_by_message(&message_id)
+            .await
+            .unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content.trim(), "visible answer");
+
+        // The <think> payload becomes its own thinking step.
+        let thinking = state
+            .db
+            .get_thinking_steps_by_message(&message_id)
+            .await
+            .unwrap();
+        assert!(
+            thinking
+                .iter()
+                .any(|t| t.content.contains("secret reasoning"))
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_response_emits_chat_error_and_clears_task() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent(vec![vec![final_event()]]);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        assert_eq!(names(&log), vec!["chat-error"]);
+        assert_eq!(log[0].payload["error"], "Model returned empty response");
+        assert!(state.generation_tasks.read().await.is_empty());
+        assert!(
+            state
+                .db
+                .list_messages_by_conversation(&conv_id, None, None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_error_emits_chat_error_and_clears_task() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent(vec![vec![error_event("provider exploded")]]);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        assert_eq!(names(&log), vec!["chat-error"]);
+        assert!(
+            log[0].payload["error"]
+                .as_str()
+                .unwrap()
+                .contains("provider exploded")
+        );
+        assert!(state.generation_tasks.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pre_cancelled_token_completes_with_null_message() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) =
+            scripted_agent(vec![vec![text_event("never seen"), final_event()]]);
+        let cancel = TestCancellationToken::new();
+        cancel.cancel();
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            cancel,
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        assert_eq!(names(&log), vec!["chat-complete"]);
+        assert_eq!(log[0].payload["message"], serde_json::Value::Null);
+        assert_eq!(log[0].payload["cancelled"], true);
+        assert!(
+            state
+                .db
+                .list_messages_by_conversation(&conv_id, None, None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn mid_stream_cancel_saves_partial_content_and_cancels_tool() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let cancel = TestCancellationToken::new();
+        let (agent, _requests) = scripted_agent_with_tool(
+            vec![
+                vec![
+                    text_event("before "),
+                    tool_call_event("c1", "cancel_echo", json!({ "text": "x" })),
+                    final_event(),
+                ],
+                // Scripted but never consumed: cancellation breaks the loop
+                // before the follow-up model call.
+                vec![text_event("after"), final_event()],
+            ],
+            CancellingEchoTool {
+                cancel: cancel.clone(),
+            },
+        );
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            cancel,
+            base_ctx(&conv_id),
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        let sequence = names(&log);
+        assert!(sequence.contains(&"chat-stream".to_string()));
+        assert!(sequence.contains(&"tool-call-started".to_string()));
+        // Cancellation suppresses the completion event for the tool.
+        assert!(!sequence.contains(&"tool-call-completed".to_string()));
+        assert_eq!(*sequence.last().unwrap(), "chat-complete");
+
+        let message_id = log.last().unwrap().payload["message"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let messages = state
+            .db
+            .list_messages_by_conversation(&conv_id, None, None)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+        // The thinking parser trims trailing whitespace off streamed content.
+        assert_eq!(messages[0].content, "before");
+
+        let tool_calls = state
+            .db
+            .get_tool_calls_by_message(&message_id)
+            .await
+            .unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].status, "cancelled");
+        assert!(tool_calls[0].tool_output.is_none());
+    }
+
+    #[tokio::test]
+    async fn vision_off_warns_and_strips_images_from_the_prompt() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, requests) = scripted_agent(vec![vec![text_event("described"), final_event()]]);
+
+        let mut message = user_message("describe this");
+        message.images.push(ImageData {
+            base64: "aGk=".into(),
+            media_type: "image/png".into(),
+        });
+        let mut ctx = base_ctx(&conv_id);
+        ctx.supports_vision = Some(false);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![message],
+            TestCancellationToken::new(),
+            ctx,
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        let warning = log
+            .iter()
+            .find(|e| e.name == "chat-warning")
+            .expect("chat-warning emitted");
+        assert_eq!(warning.payload["warning"], "model_no_vision");
+        assert_eq!(warning.payload["images"], 1);
+        assert_eq!(warning.payload["annotated"], false);
+
+        // The request sent to the (scripted) model carries no image content.
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        let image_count = requests[0]
+            .chat_history
+            .iter()
+            .map(|m| match m {
+                RigMessage::User { content } => content
+                    .iter()
+                    .filter(|item| matches!(item, UserContent::Image(_)))
+                    .count(),
+                _ => 0,
+            })
+            .sum::<usize>();
+        assert_eq!(image_count, 0);
     }
 }

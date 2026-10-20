@@ -110,3 +110,4 @@ objc2-web-kit = { version = "0.3", default-features = false, features = ["std", 
 tempfile = "3"
 zstd = "0.13"
 rusqlite = { version = "0.32", features = ["bundled"] }
+tauri = { version = "2", features = ["test"] }
