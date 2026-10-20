@@ -187,6 +187,7 @@ function makeMessage(id: string, sender_type: string, content: string): Message 
 }
 
 const sendMessage = vi.fn()
+const resendMessage = vi.fn()
 const deleteMessagesFrom = vi.fn()
 const loadAllMessages = vi.fn()
 const loadConversations = vi.fn()
@@ -274,8 +275,8 @@ describe('useMessageHandlers', () => {
     })
 
     sendMessage.mockReset().mockResolvedValue(undefined)
+    resendMessage.mockReset().mockResolvedValue(undefined)
     deleteMessagesFrom.mockReset().mockResolvedValue(undefined)
-    loadAllMessages.mockReset().mockResolvedValue(undefined)
     loadConversations.mockReset().mockResolvedValue(undefined)
     selectConversation.mockReset().mockResolvedValue(undefined)
 
@@ -285,6 +286,7 @@ describe('useMessageHandlers', () => {
       error: null,
       onNewConversationCreated: undefined,
       sendMessage,
+      resendMessage,
       deleteMessagesFrom,
       loadAllMessages,
     })
@@ -343,29 +345,31 @@ describe('useMessageHandlers', () => {
   })
 
   describe('handleRevert', () => {
-    it('re-sends the user message with its attachments and reusable contexts', async () => {
+    it('re-sends the user message as a sibling variant with its attachments and reusable contexts', async () => {
       render(<Host />)
 
       click('revert')
-      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
       expect(invoke).toHaveBeenCalledWith('get_message_resources', { messageId: 'msg-user-1' })
       expect(invoke).toHaveBeenCalledWith('read_image_base64', { storagePath: '/store/pic.png' })
       expect(invoke).toHaveBeenCalledWith('read_file_content', { storagePath: '/store/notes.txt' })
-      expect(deleteMessagesFrom).toHaveBeenCalledWith(CONV, 'msg-user-1')
+      // Non-destructive: the original branch stays; no tail deletion.
+      expect(deleteMessagesFrom).not.toHaveBeenCalled()
 
-      const args = sendMessage.mock.calls[0]
+      const args = resendMessage.mock.calls[0]
       expect(args[0]).toBe('hello there')
       expect(args[1]).toBe(CONV)
-      expect(args[2]).toBe('openai')
-      expect(args[3]).toBe('gpt-4o')
-      expect(args[4]).toBe('sk-test')
-      expect(args[5]).toBe('https://api.example.com')
-      expect(args[6]).toBe('responses')
-      expect(args[13]).toEqual([{ name: 'pic.png', base64: 'IMG64', mimeType: 'image/png' }])
-      expect(args[14]).toEqual([{ name: 'notes.txt', content: 'TXT', mimeType: 'text/plain' }])
+      expect(args[2]).toBe('msg-user-1') // sibling of the original message
+      expect(args[3]).toBe('openai')
+      expect(args[4]).toBe('gpt-4o')
+      expect(args[5]).toBe('sk-test')
+      expect(args[6]).toBe('https://api.example.com')
+      expect(args[7]).toBe('responses')
+      expect(args[14]).toEqual([{ name: 'pic.png', base64: 'IMG64', mimeType: 'image/png' }])
+      expect(args[15]).toEqual([{ name: 'notes.txt', content: 'TXT', mimeType: 'text/plain' }])
       // Only user-provided link contexts are reused, not search results
-      expect(args[19]).toEqual(['ctx-user-link'])
+      expect(args[20]).toEqual(['ctx-user-link'])
       expect(toast.error).not.toHaveBeenCalled()
     })
 
@@ -379,13 +383,13 @@ describe('useMessageHandlers', () => {
       render(<Host />)
 
       click('revert')
-      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
-      const args = sendMessage.mock.calls[0]
-      expect(args[8]).toBe('assistant system prompt')
-      expect(args[9]).toBe('assistant user prompt')
-      expect(args[10]).toBeUndefined() // model db id dropped for assistants
-      expect(args[11]).toBe('assistant-1')
+      const args = resendMessage.mock.calls[0]
+      expect(args[9]).toBe('assistant system prompt')
+      expect(args[10]).toBe('assistant user prompt')
+      expect(args[11]).toBeUndefined() // model db id dropped for assistants
+      expect(args[12]).toBe('assistant-1')
     })
 
     it('loads settings from the backend when the cache is cold so assistant prompts survive revert', async () => {
@@ -393,13 +397,13 @@ describe('useMessageHandlers', () => {
       render(<Host />)
 
       click('revert')
-      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
       expect(invoke).toHaveBeenCalledWith('get_conversation_settings', { conversationId: CONV })
-      const args = sendMessage.mock.calls[0]
-      expect(args[8]).toBe('assistant system prompt')
-      expect(args[9]).toBe('assistant user prompt')
-      expect(args[11]).toBe('assistant-1')
+      const args = resendMessage.mock.calls[0]
+      expect(args[9]).toBe('assistant system prompt')
+      expect(args[10]).toBe('assistant user prompt')
+      expect(args[12]).toBe('assistant-1')
     })
 
     it('prefers conversation settings over the assistant defaults', async () => {
@@ -419,13 +423,13 @@ describe('useMessageHandlers', () => {
       render(<Host />)
 
       click('revert')
-      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
-      const args = sendMessage.mock.calls[0]
-      expect(args[8]).toBe('existing prompt content')
-      expect(args[16]).toEqual({ temperature: 0.5 })
-      expect(args[17]).toBe(10)
-      expect(args[18]).toBe(true)
+      const args = resendMessage.mock.calls[0]
+      expect(args[9]).toBe('existing prompt content')
+      expect(args[17]).toEqual({ temperature: 0.5 })
+      expect(args[18]).toBe(10)
+      expect(args[19]).toBe(true)
     })
 
     it('uses the custom system prompt when the settings ask for one', async () => {
@@ -441,9 +445,9 @@ describe('useMessageHandlers', () => {
       render(<Host />)
 
       click('revert')
-      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
-      expect(sendMessage.mock.calls[0][8]).toBe('be terse')
+      expect(resendMessage.mock.calls[0][9]).toBe('be terse')
     })
 
     it('rejects the revert with a toast when no conversation is active', async () => {

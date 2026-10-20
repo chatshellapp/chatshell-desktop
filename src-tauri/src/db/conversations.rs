@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::Database;
 use crate::models::{
     Conversation, ConversationParticipant, CreateConversationParticipantRequest,
-    CreateConversationRequest, ParticipantSummary,
+    CreateConversationRequest, Message, ParticipantSummary,
 };
 
 impl Database {
@@ -41,6 +41,7 @@ impl Database {
                 c.title, 
                 c.created_at, 
                 c.updated_at,
+                c.active_message_id,
                 (SELECT m.content 
                  FROM messages m 
                  WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
@@ -59,6 +60,7 @@ impl Database {
                 title: row.get("title"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
+                active_message_id: row.get("active_message_id"),
                 last_message: row.get("last_message"),
             })),
             None => Ok(None),
@@ -72,6 +74,7 @@ impl Database {
                 c.title, 
                 c.created_at, 
                 c.updated_at,
+                c.active_message_id,
                 (SELECT m.content 
                  FROM messages m 
                  WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
@@ -91,6 +94,7 @@ impl Database {
                 title: row.get("title"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
+                active_message_id: row.get("active_message_id"),
                 last_message: row.get("last_message"),
             })
             .collect();
@@ -322,8 +326,11 @@ impl Database {
         Ok(())
     }
 
-    /// Fork a conversation: create a new conversation and copy all messages
-    /// up to and including the specified message.
+    /// Fork a conversation: create a new conversation holding the ANCESTOR
+    /// PATH of `up_to_message_id` (root -> target), with the full per-message
+    /// record set (steps, tool calls, search/fetch context, attachments) so
+    /// the fork remains a complete, continuable conversation. The copied
+    /// target becomes the new conversation's active leaf.
     pub async fn fork_conversation(
         &self,
         source_conversation_id: &str,
@@ -338,6 +345,25 @@ impl Database {
             .get_message(up_to_message_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Target message not found"))?;
+        if target_message.conversation_id.as_deref() != Some(source_conversation_id) {
+            anyhow::bail!(
+                "Message {up_to_message_id} does not belong to conversation {source_conversation_id}"
+            );
+        }
+
+        // Ancestor chain root -> target (tree prefix; off-branch siblings
+        // and later turns stay behind).
+        let mut chain: Vec<Message> = vec![target_message.clone()];
+        let mut cursor = target_message.parent_id.clone();
+        while let Some(parent_id) = cursor {
+            let parent = self
+                .get_message(&parent_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Broken parent chain at {parent_id}"))?;
+            cursor = parent.parent_id.clone();
+            chain.push(parent);
+        }
+        chain.reverse();
 
         let new_conv = self
             .create_conversation(CreateConversationRequest {
@@ -345,60 +371,46 @@ impl Database {
             })
             .await?;
 
-        let all_messages = self
-            .list_messages_by_conversation(source_conversation_id, None, None)
-            .await?;
+        let now = Utc::now().to_rfc3339();
+        let mut id_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut new_tail: Option<String> = None;
 
-        for msg in &all_messages {
-            if msg.created_at > target_message.created_at {
-                break;
-            }
+        for msg in &chain {
             let new_msg_id = Uuid::now_v7().to_string();
-            let now = Utc::now().to_rfc3339();
+            let new_parent_id = msg.parent_id.as_ref().and_then(|p| id_map.get(p));
             sqlx::query(
-                "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO messages (id, conversation_id, parent_id, sender_type, sender_id, content, tokens, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&new_msg_id)
             .bind(&new_conv.id)
+            .bind(&new_parent_id)
             .bind(&msg.sender_type)
             .bind(&msg.sender_id)
             .bind(&msg.content)
             .bind(msg.tokens)
-            .bind(&now)
+            .bind(&msg.created_at)
             .bind(&now)
             .execute(self.pool.as_ref())
             .await?;
 
-            // Re-link file attachments so user-provided images/files survive the fork.
-            // Files live in their own table and are not conversation-scoped, so the
-            // original file rows are reused and only the junction row is duplicated.
-            let attachment_rows = sqlx::query(
-                "SELECT attachment_id, display_order
-                 FROM message_attachments
-                 WHERE message_attachments.deleted_at IS NULL AND message_id = ?
-                 ORDER BY display_order, created_at",
-            )
-            .bind(&msg.id)
-            .fetch_all(self.pool.as_ref())
-            .await?;
+            id_map.insert(msg.id.clone(), new_msg_id.clone());
+            new_tail = Some(new_msg_id.clone());
 
-            for row in attachment_rows {
-                let attachment_id: String = row.get("attachment_id");
-                let display_order: i32 = row.try_get("display_order").unwrap_or(0);
-                sqlx::query(
-                    "INSERT INTO message_attachments
-                        (id, message_id, attachment_type, attachment_id, display_order, created_at)
-                     VALUES (?, ?, 'file', ?, ?, ?)",
-                )
-                .bind(Uuid::now_v7().to_string())
-                .bind(&new_msg_id)
-                .bind(&attachment_id)
-                .bind(display_order)
-                .bind(&now)
-                .execute(self.pool.as_ref())
+            self.copy_message_children(&msg.id, &new_msg_id, &now)
                 .await?;
-            }
+        }
+
+        if let Some(tail) = new_tail {
+            sqlx::query(
+                "UPDATE conversations SET active_message_id = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(&tail)
+            .bind(&now)
+            .bind(&new_conv.id)
+            .execute(self.pool.as_ref())
+            .await?;
         }
 
         let participants = self
@@ -468,6 +480,236 @@ impl Database {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve forked conversation"))
     }
+
+    /// Copy every live per-message child row (thinking steps, tool calls,
+    /// code executions, content blocks, search results + decisions, fetch
+    /// contexts, file attachments) from `old_message_id` to `new_message_id`.
+    /// Shared parents (files, fetch_results) are reused; only message-keyed
+    /// rows and junctions are duplicated. Returns the search_results id
+    /// remap (old -> new) so dependent rows can be re-linked.
+    async fn copy_message_children(
+        &self,
+        old_message_id: &str,
+        new_message_id: &str,
+        now: &str,
+    ) -> Result<()> {
+        let mut search_result_remap: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        // search_results first: search_decisions reference them by id.
+        let search_rows = sqlx::query(
+            "SELECT id, query, engine, total_results, display_order, searched_at, items_json
+             FROM search_results WHERE message_id = ? AND deleted_at IS NULL",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &search_rows {
+            let old_id: String = row.get("id");
+            let new_id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO search_results
+                    (id, message_id, query, engine, total_results, display_order, searched_at, items_json, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&new_id)
+            .bind(new_message_id)
+            .bind::<String>(row.get("query"))
+            .bind::<String>(row.get("engine"))
+            .bind(row.try_get("total_results").unwrap_or(None::<i64>))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind::<String>(row.get("searched_at"))
+            .bind(row.try_get("items_json").unwrap_or(None::<String>))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+            search_result_remap.insert(old_id, new_id);
+        }
+
+        let decision_rows = sqlx::query(
+            "SELECT reasoning, search_needed, search_query, search_result_id, display_order
+             FROM search_decisions WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &decision_rows {
+            let old_search_id: Option<String> = row.get("search_result_id");
+            sqlx::query(
+                "INSERT INTO search_decisions
+                    (id, message_id, reasoning, search_needed, search_query, search_result_id, display_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("reasoning"))
+            .bind(row.try_get::<i64, _>("search_needed").unwrap_or(0))
+            .bind(row.try_get::<Option<String>, _>("search_query").unwrap_or(None))
+            .bind(old_search_id.as_ref().and_then(|id| search_result_remap.get(id)))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let thinking_rows = sqlx::query(
+            "SELECT content, source, display_order
+             FROM thinking_steps WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &thinking_rows {
+            sqlx::query(
+                "INSERT INTO thinking_steps (id, message_id, content, source, display_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("content"))
+            .bind(row.try_get::<Option<String>, _>("source").unwrap_or(None))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let tool_rows = sqlx::query(
+            "SELECT call_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, completed_at
+             FROM tool_calls WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &tool_rows {
+            sqlx::query(
+                "INSERT INTO tool_calls
+                    (id, call_id, message_id, tool_name, tool_input, tool_output, status, error, duration_ms, display_order, created_at, completed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(row.try_get::<Option<String>, _>("call_id").unwrap_or(None))
+            .bind(new_message_id)
+            .bind::<String>(row.get("tool_name"))
+            .bind(row.try_get::<Option<String>, _>("tool_input").unwrap_or(None))
+            .bind(row.try_get::<Option<String>, _>("tool_output").unwrap_or(None))
+            .bind(row.try_get::<Option<String>, _>("status").unwrap_or(None))
+            .bind(row.try_get::<Option<String>, _>("error").unwrap_or(None))
+            .bind(row.try_get::<Option<i64>, _>("duration_ms").unwrap_or(None))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .bind(row.try_get::<Option<String>, _>("completed_at").unwrap_or(None))
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let exec_rows = sqlx::query(
+            "SELECT language, code, output, exit_code, status, error, duration_ms, display_order, completed_at
+             FROM code_executions WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &exec_rows {
+            sqlx::query(
+                "INSERT INTO code_executions
+                    (id, message_id, language, code, output, exit_code, status, error, duration_ms, display_order, created_at, completed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("language"))
+            .bind::<String>(row.get("code"))
+            .bind(row.try_get::<Option<String>, _>("output").unwrap_or(None))
+            .bind(row.try_get::<Option<i64>, _>("exit_code").unwrap_or(None))
+            .bind(row.try_get::<Option<String>, _>("status").unwrap_or(None))
+            .bind(row.try_get::<Option<String>, _>("error").unwrap_or(None))
+            .bind(row.try_get::<Option<i64>, _>("duration_ms").unwrap_or(None))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .bind(row.try_get::<Option<String>, _>("completed_at").unwrap_or(None))
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let block_rows = sqlx::query(
+            "SELECT content, display_order
+             FROM content_blocks WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &block_rows {
+            sqlx::query(
+                "INSERT INTO content_blocks (id, message_id, content, display_order, created_at)
+                 VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("content"))
+            .bind(row.try_get::<i64, _>("display_order").unwrap_or(0))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        // Junction rows: shared targets (files, fetch_results) are reused,
+        // only the link is duplicated.
+        let context_rows = sqlx::query(
+            "SELECT context_type, context_id, display_order
+             FROM message_contexts WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &context_rows {
+            sqlx::query(
+                "INSERT INTO message_contexts
+                    (id, message_id, context_type, context_id, display_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("context_type"))
+            .bind::<String>(row.get("context_id"))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        let attachment_rows = sqlx::query(
+            "SELECT attachment_type, attachment_id, display_order
+             FROM message_attachments WHERE message_id = ? AND deleted_at IS NULL
+             ORDER BY display_order, created_at",
+        )
+        .bind(old_message_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for row in &attachment_rows {
+            sqlx::query(
+                "INSERT INTO message_attachments
+                    (id, message_id, attachment_type, attachment_id, display_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Uuid::now_v7().to_string())
+            .bind(new_message_id)
+            .bind::<String>(row.get("attachment_type"))
+            .bind::<String>(row.get("attachment_id"))
+            .bind(row.try_get("display_order").unwrap_or(0))
+            .bind(now)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -498,6 +740,7 @@ mod tests {
     async fn add_message(db: &Database, conversation_id: &str, content: &str) -> Message {
         db.create_message(CreateMessageRequest {
             conversation_id: Some(conversation_id.to_string()),
+            parent_id: None,
             sender_type: "user".to_string(),
             sender_id: None,
             content: content.to_string(),
@@ -508,7 +751,9 @@ mod tests {
     }
 
     /// Insert a message with a fixed timestamp, bypassing `create_message`,
-    /// so fork boundary ordering is deterministic.
+    /// so fork boundary ordering is deterministic. Tree placement mirrors
+    /// `create_message`: appends under the current active leaf, then moves
+    /// the leaf onto the new row.
     async fn insert_message_at(
         db: &Database,
         conversation_id: &str,
@@ -517,12 +762,20 @@ mod tests {
         tokens: i64,
         created_at: &str,
     ) {
+        let (parent_id,): (Option<String>,) = sqlx::query_as(
+            "SELECT active_message_id FROM conversations WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(conversation_id)
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
         sqlx::query(
-            "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at, updated_at) \
-             VALUES (?, ?, 'user', NULL, ?, ?, ?, ?)",
+            "INSERT INTO messages (id, conversation_id, parent_id, sender_type, sender_id, content, tokens, created_at, updated_at) \
+             VALUES (?, ?, ?, 'user', NULL, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(conversation_id)
+        .bind(&parent_id)
         .bind(content)
         .bind(tokens)
         .bind(created_at)
@@ -530,6 +783,12 @@ mod tests {
         .execute(db.pool())
         .await
         .unwrap();
+        sqlx::query("UPDATE conversations SET active_message_id = ? WHERE id = ?")
+            .bind(id)
+            .bind(conversation_id)
+            .execute(db.pool())
+            .await
+            .unwrap();
     }
 
     async fn add_user_participant(

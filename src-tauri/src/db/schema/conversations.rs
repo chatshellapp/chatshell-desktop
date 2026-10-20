@@ -2,11 +2,11 @@ use anyhow::Result;
 use sqlx::SqlitePool;
 
 pub async fn create_conversations_table(pool: &SqlitePool) -> Result<()> {
-    // Conversations table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS conversations (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
+            active_message_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )",

@@ -9,6 +9,12 @@ pub struct Conversation {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Active leaf of the message tree. The chat view and the LLM context
+    /// projection walk the ancestor chain of this message. NULL = empty
+    /// conversation (or no live message on any branch).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub active_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub last_message: Option<String>,

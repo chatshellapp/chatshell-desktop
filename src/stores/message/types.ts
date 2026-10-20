@@ -24,6 +24,9 @@ export interface ConversationState {
   // Tail window of loaded messages (see MESSAGES_PAGE_SIZE); grows upward
   // via loadOlderMessages and resets on loadMessages.
   messages: Message[]
+  // Sibling variant groups (resend/regenerate alternates): parent id (or ''
+  // for first-turn messages with no parent) -> ordered sibling message ids.
+  siblingGroups: Record<string, string[]>
   // Whether older messages exist beyond the loaded window.
   hasOlderMessages: boolean
   // Whether an upward page load is in flight.
@@ -31,7 +34,7 @@ export interface ConversationState {
   isLoading: boolean
   isStreaming: boolean
   streamingContent: string
-  // Streaming reasoning/thinking content from models like GPT-5, Gemini with thinking
+  // Streaming reasoning/thinking content from models with GPT-5, Gemini thinking
   streamingReasoningContent: string
   // Whether reasoning has actually started (received first reasoning chunk)
   isReasoningActive: boolean
@@ -56,6 +59,7 @@ export interface ConversationState {
 // Default state for a new conversation
 export const createDefaultConversationState = (): ConversationState => ({
   messages: [],
+  siblingGroups: {},
   hasOlderMessages: false,
   isLoadingOlder: false,
   isLoading: false,
@@ -173,8 +177,57 @@ export interface MessageStoreCrudActions {
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
+    reuseFetchResultIds?: string[],
+    siblingOfMessageId?: string
+  ) => Promise<void>
+  // Non-destructive resend: same as sendMessage but the new user message
+  // becomes a sibling variant of `siblingOfMessageId`.
+  resendMessage: (
+    content: string,
+    conversationId: string,
+    siblingOfMessageId: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    apiStyle?: string,
+    includeHistory?: boolean,
+    systemPrompt?: string,
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string,
+    urlsToFetch?: string[],
+    images?: { name: string; base64: string; mimeType: string }[],
+    files?: { name: string; content: string; mimeType: string }[],
+    searchEnabled?: boolean,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[]
   ) => Promise<void>
+  // Regenerate an assistant reply as a sibling variant of the same user
+  // message (backend rewinds the active leaf and re-runs generation).
+  regenerateMessage: (
+    conversationId: string,
+    messageId: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    apiStyle?: string,
+    systemPrompt?: string,
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean,
+    disableTools?: boolean
+  ) => Promise<void>
+  // Switch the active branch to the one containing the message.
+  setActiveBranch: (conversationId: string, messageId: string) => Promise<void>
+  // Re-fetch sibling variant groups without reloading the message window.
+  refreshSiblingGroups: (conversationId: string) => Promise<void>
   stopGeneration: (conversationId: string) => Promise<void>
   clearMessages: (conversationId: string) => Promise<void>
   deleteMessagesFrom: (conversationId: string, messageId: string) => Promise<void>

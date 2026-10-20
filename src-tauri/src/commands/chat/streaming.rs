@@ -60,6 +60,9 @@ struct AgentStreamContext {
     conversation_id: String,
     /// Raw user text for this turn (prompt fallback and title generation).
     content: String,
+    /// The user message row this turn answers — the tree parent of the
+    /// assistant message persisted at the end of the stream.
+    user_message_id: String,
     /// Whether an explicit system prompt was provided (history system
     /// messages are folded into it and skipped).
     system_prompt_provided: bool,
@@ -92,6 +95,7 @@ pub(crate) async fn handle_agent_streaming(
     app: tauri::AppHandle,
     conversation_id_clone: String,
     content: String,
+    user_message_id: String,
     model_db_id: Option<String>,
     assistant_db_id: Option<String>,
     disable_tools: bool,
@@ -629,6 +633,7 @@ pub(crate) async fn handle_agent_streaming(
         AgentStreamContext {
             conversation_id: conversation_id_clone,
             content,
+            user_message_id,
             system_prompt_provided: system_prompt.is_some(),
             model_id,
             provider_type,
@@ -661,6 +666,7 @@ async fn run_agent_stream<R: tauri::Runtime>(
     let AgentStreamContext {
         conversation_id: conversation_id_clone,
         content,
+        user_message_id,
         system_prompt_provided,
         model_id,
         provider_type,
@@ -1159,6 +1165,7 @@ async fn run_agent_stream<R: tauri::Runtime>(
         .db
         .create_message(CreateMessageRequest {
             conversation_id: Some(conversation_id_clone.clone()),
+            parent_id: Some(user_message_id.clone()),
             sender_type,
             sender_id,
             content: save_content,
@@ -2463,10 +2470,25 @@ mod tests {
         }
     }
 
-    fn base_ctx(conversation_id: &str) -> AgentStreamContext {
+    async fn base_ctx(state: &AppState, conversation_id: &str) -> AgentStreamContext {
+        // The persisted assistant message parents onto a real user message
+        // row (tree invariant enforced by create_message).
+        let user = state
+            .db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conversation_id.to_string()),
+                parent_id: None,
+                sender_type: "user".to_string(),
+                sender_id: None,
+                content: "hi".to_string(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
         AgentStreamContext {
             conversation_id: conversation_id.to_string(),
             content: "hi".into(),
+            user_message_id: user.id,
             system_prompt_provided: false,
             model_id: "test-model".into(),
             provider_type: "test".into(),
@@ -2514,7 +2536,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2576,7 +2598,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2629,7 +2651,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2713,7 +2735,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2756,7 +2778,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2770,7 +2792,9 @@ mod tests {
                 .list_messages_by_conversation(&conv_id, None, None)
                 .await
                 .unwrap()
-                .is_empty()
+                .iter()
+                .all(|m| m.sender_type == "user"),
+            "failed turn must not persist an assistant message"
         );
     }
 
@@ -2787,7 +2811,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             TestCancellationToken::new(),
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2818,7 +2842,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             cancel,
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2832,7 +2856,9 @@ mod tests {
                 .list_messages_by_conversation(&conv_id, None, None)
                 .await
                 .unwrap()
-                .is_empty()
+                .iter()
+                .all(|m| m.sender_type == "user"),
+            "cancelled-before-start turn must not persist an assistant message"
         );
     }
 
@@ -2864,7 +2890,7 @@ mod tests {
             agent,
             vec![user_message("hi")],
             cancel,
-            base_ctx(&conv_id),
+            base_ctx(&state, &conv_id).await,
         )
         .await;
 
@@ -2885,9 +2911,13 @@ mod tests {
             .list_messages_by_conversation(&conv_id, None, None)
             .await
             .unwrap();
-        assert_eq!(messages.len(), 1);
+        assert_eq!(messages.len(), 2);
         // The thinking parser trims trailing whitespace off streamed content.
-        assert_eq!(messages[0].content, "before");
+        assert_eq!(messages[1].content, "before");
+        assert_eq!(
+            messages[1].parent_id.as_deref(),
+            Some(messages[0].id.as_str())
+        );
 
         let tool_calls = state
             .db
@@ -2911,7 +2941,7 @@ mod tests {
             base64: "aGk=".into(),
             media_type: "image/png".into(),
         });
-        let mut ctx = base_ctx(&conv_id);
+        let mut ctx = base_ctx(&state, &conv_id).await;
         ctx.supports_vision = Some(false);
 
         run_pipeline(

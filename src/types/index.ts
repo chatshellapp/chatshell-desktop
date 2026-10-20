@@ -64,7 +64,7 @@ export type {
 } from './conversation'
 
 // Message types
-export type { Message, CreateMessageRequest } from './message'
+export type { Message, CreateMessageRequest, SiblingGroup } from './message'
 
 // Attachment types (user attachments - files only)
 export type {

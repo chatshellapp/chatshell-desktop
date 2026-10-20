@@ -3,3 +3,4 @@
 
 export type { Message } from './generated/Message'
 export type { CreateMessageRequest } from './generated/CreateMessageRequest'
+export type { SiblingGroup } from './generated/SiblingGroup'

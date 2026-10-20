@@ -1,4 +1,5 @@
 import { memo, useCallback } from 'react'
+import { SiblingNavigator } from '@/components/chat-view/SiblingNavigator'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeTextFile } from '@tauri-apps/plugin-fs'
@@ -39,6 +40,7 @@ interface MessageItemProps {
   getMessageDisplayInfo: (message: Message) => DisplayInfo
   onCopy: () => void
   onRevert: (messageId: string) => void
+  onRegenerate: (messageId: string) => void
   onFork: (messageId: string) => void
   onExportAll: () => void
   onExportConversation: (messageId: string) => void
@@ -59,6 +61,7 @@ function messageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): 
   if (
     prev.onCopy !== next.onCopy ||
     prev.onRevert !== next.onRevert ||
+    prev.onRegenerate !== next.onRegenerate ||
     prev.onFork !== next.onFork ||
     prev.onExportAll !== next.onExportAll ||
     prev.onExportConversation !== next.onExportConversation ||
@@ -96,6 +99,7 @@ export const MessageItem = memo(function MessageItem({
   getMessageDisplayInfo,
   onCopy,
   onRevert,
+  onRegenerate,
   onFork,
   onExportAll,
   onExportConversation,
@@ -184,6 +188,10 @@ export const MessageItem = memo(function MessageItem({
     () => onExportMessage(messageId),
     [onExportMessage, messageId]
   )
+  const handleRegenerateClick = useCallback(
+    () => onRegenerate(messageId),
+    [onRegenerate, messageId]
+  )
 
   // Unified header content for assistant messages
   const headerContent =
@@ -239,46 +247,54 @@ export const MessageItem = memo(function MessageItem({
       </div>
     ) : undefined
 
-  const userAfterContent =
-    isUserMessage && hasUserAttachments ? (
-      <div className="flex justify-end my-1">
-        <div className="max-w-[80%] space-y-1.5">
-          {(() => {
-            const imageAttachments = userAttachments.filter(
-              (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
-            )
-            const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
-              id: a.id,
-              fileName: a.file_name,
-              storagePath: a.storage_path,
-            }))
-
-            return userAttachments.map((attachment) => {
-              const isImage =
-                attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
-              const imageIndex = isImage
-                ? imageAttachments.findIndex((img) => img.id === attachment.id)
-                : undefined
-
-              return (
-                <AttachmentPreview
-                  key={attachment.id}
-                  userAttachment={attachment}
-                  allImages={isImage ? allImages : undefined}
-                  currentImageIndex={imageIndex}
-                />
+  const userAfterContent = isUserMessage ? (
+    <>
+      {hasUserAttachments && (
+        <div className="flex justify-end my-1">
+          <div className="max-w-[80%] space-y-1.5">
+            {(() => {
+              const imageAttachments = userAttachments.filter(
+                (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
               )
-            })
-          })()}
-          {userFetchResults.map((context) => (
-            <AttachmentPreview key={context.id} context={context} />
-          ))}
-          {urls.map((url) => (
-            <AttachmentPreview key={url} processingUrl={url} />
-          ))}
+              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
+                id: a.id,
+                fileName: a.file_name,
+                storagePath: a.storage_path,
+              }))
+
+              return userAttachments.map((attachment) => {
+                const isImage =
+                  attachment.type === 'file' && attachment.mime_type?.startsWith('image/')
+                const imageIndex = isImage
+                  ? imageAttachments.findIndex((img) => img.id === attachment.id)
+                  : undefined
+
+                return (
+                  <AttachmentPreview
+                    key={attachment.id}
+                    userAttachment={attachment}
+                    allImages={isImage ? allImages : undefined}
+                    currentImageIndex={imageIndex}
+                  />
+                )
+              })
+            })()}
+            {userFetchResults.map((context) => (
+              <AttachmentPreview key={context.id} context={context} />
+            ))}
+            {urls.map((url) => (
+              <AttachmentPreview key={url} processingUrl={url} />
+            ))}
+          </div>
         </div>
-      </div>
-    ) : undefined
+      )}
+      {message.conversation_id && (
+        <div className="flex justify-end mt-0.5">
+          <SiblingNavigator conversationId={message.conversation_id} messageId={message.id} />
+        </div>
+      )}
+    </>
+  ) : undefined
 
   const generatedImagesContent =
     assistantImageAttachments.length > 0 ? (
@@ -355,6 +371,11 @@ export const MessageItem = memo(function MessageItem({
         userMessageAlign={CHAT_CONFIG.userMessageAlign}
         userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
         headerContent={headerContent}
+        headerExtras={
+          isAssistantMessage && message.conversation_id ? (
+            <SiblingNavigator conversationId={message.conversation_id} messageId={message.id} />
+          ) : undefined
+        }
         footerContent={generatedImagesContent}
         userAfterContent={userAfterContent}
         onCopyOverride={
@@ -366,6 +387,7 @@ export const MessageItem = memo(function MessageItem({
         }
         onCopy={onCopy}
         onRevert={handleRevertClick}
+        onRegenerate={isAssistantMessage ? handleRegenerateClick : undefined}
         onFork={handleForkClick}
         onDownloadMarkdown={handleDownloadMarkdown}
         onExportAll={onExportAll}

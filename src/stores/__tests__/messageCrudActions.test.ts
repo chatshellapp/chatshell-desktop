@@ -65,6 +65,9 @@ const patchConv = (id: string, patch: Partial<ConversationState>) => {
 describe('message store crudActions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // loadMessages also fetches sibling variant groups; unstubbed commands
+    // must resolve (empty) instead of returning a bare undefined.
+    vi.mocked(invoke).mockResolvedValue([] as never)
     // Reset store state to initial values
     useMessageStore.setState({
       conversationStates: {},
@@ -536,8 +539,9 @@ describe('message store crudActions', () => {
       expect(cs.messages[0].id).toBe('old0')
       expect(cs.hasOlderMessages).toBe(false)
       expect(cs.isLoadingOlder).toBe(false)
-      // Initial window plus exactly one waited-for older page
-      expect(invokeMock).toHaveBeenCalledTimes(2)
+      // Initial window (path + sibling groups) plus exactly one waited-for
+      // older page
+      expect(invokeMock).toHaveBeenCalledTimes(3)
     })
   })
 })

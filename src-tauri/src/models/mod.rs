@@ -48,7 +48,7 @@ pub use conversation_settings::{
 };
 
 // Message
-pub use message::{CreateMessageRequest, Message};
+pub use message::{CreateMessageRequest, Message, SiblingGroup};
 
 // Attachments (user-provided files)
 pub use attachment::{

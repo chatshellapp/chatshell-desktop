@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, Undo, Scan, Check, GitFork, Download } from 'lucide-react'
+import { Copy, Undo, Scan, Check, GitFork, Download, RotateCcw } from 'lucide-react'
 import { useState, memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
@@ -77,6 +77,11 @@ interface ChatMessageProps {
    */
   headerContent?: React.ReactNode
   /**
+   * Content rendered at the end of the assistant header row (avatar/name
+   * line). Used for the sibling-variant branch navigator.
+   */
+  headerExtras?: React.ReactNode
+  /**
    * Content to render after the message text but before action buttons.
    * Used for generated images during streaming.
    */
@@ -93,6 +98,7 @@ interface ChatMessageProps {
   userAfterContent?: React.ReactNode
   onCopy?: () => void
   onRevert?: () => void
+  onRegenerate?: () => void
   onFork?: () => void
   onDownloadMarkdown?: () => void
   onExportAll?: () => void
@@ -120,11 +126,13 @@ export const ChatMessage = memo(function ChatMessage({
   isLoading = false,
   isStreaming = false,
   headerContent,
+  headerExtras,
   footerContent,
   userAfterContent,
   onCopyOverride,
   onCopy,
   onRevert,
+  onRegenerate,
   onFork,
   onDownloadMarkdown,
   onExportAll,
@@ -274,6 +282,7 @@ export const ChatMessage = memo(function ChatMessage({
             {timestamp}
           </span>
         )}
+        {headerExtras && <div className="ml-auto">{headerExtras}</div>}
       </div>
       {/* Assistant attachments (search_decision, search_result) rendered after header, before content */}
       {headerContent}
@@ -325,6 +334,18 @@ export const ChatMessage = memo(function ChatMessage({
                 <p>{tChat('downloadMarkdown')}</p>
               </TooltipContent>
             </Tooltip>
+            {onRegenerate && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRegenerate}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tChat('regenerateResponse')}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onFork}>

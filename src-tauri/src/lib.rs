@@ -403,6 +403,8 @@ pub fn run() {
             commands::list_messages_by_conversation,
             commands::clear_messages_by_conversation,
             commands::delete_messages_from,
+            commands::set_active_message,
+            commands::get_sibling_groups,
             commands::search_chat_history,
             // User Attachments (files)
             commands::get_message_attachments,
@@ -458,6 +460,7 @@ pub fn run() {
             commands::check_provider_api,
             // Chat commands
             commands::send_message,
+            commands::regenerate_message,
             commands::stop_generation,
             // Web search commands
             commands::chat::web_search::perform_web_search,

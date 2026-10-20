@@ -19,7 +19,7 @@ mod tools;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 11;
+const CURRENT_SCHEMA_VERSION: i32 = 12;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -116,6 +116,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v11 completed");
     }
 
+    if current_version < 12 {
+        migrate_v11_to_v12(pool).await?;
+        set_user_version(pool, 12).await?;
+        tracing::info!("Migration to v12 completed");
+    }
+
     // Ensure columns exist (idempotent, fixes databases
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
@@ -126,6 +132,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_natural_key_unique_indexes(pool).await?;
     ensure_conversation_timestamps(pool).await?;
     ensure_search_result_items_column(pool).await?;
+    ensure_message_tree_columns(pool).await?;
     prompt_history::create_prompt_history_table(pool).await?;
 
     Ok(())
@@ -350,6 +357,121 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "Added sync-readiness columns, meta/compactions tables, and natural-key indexes; \
          dropped never-shipped tables"
     );
+    Ok(())
+}
+
+/// Migration v11 -> v12: message tree (ADR: session tree).
+///
+/// - `messages.parent_id`: adjacency-list tree. NULL = first turn. Siblings
+///   under one parent are resend/regenerate variants.
+/// - `conversations.active_message_id`: active leaf pointer. Reads walk the
+///   ancestor chain of this message; appends parent to it.
+/// - Existing linear conversations are backfilled into chains ordered by
+///   `(created_at, id)` with the newest live message as the active leaf, so
+///   the tree view is byte-identical to the previous linear view.
+async fn migrate_v11_to_v12(pool: &SqlitePool) -> Result<()> {
+    ensure_message_tree_columns(pool).await
+}
+
+/// Ensure the message-tree columns/index exist. Idempotent: repairs
+/// databases created before the columns were added, then backfills chains
+/// for conversations that have live messages but no active pointer yet.
+async fn ensure_message_tree_columns(pool: &SqlitePool) -> Result<()> {
+    let has_parent = sqlx::query(
+        "SELECT COUNT(*) AS n FROM pragma_table_info('messages') WHERE name = 'parent_id'",
+    )
+    .fetch_one(pool)
+    .await?
+    .get::<i64, _>("n")
+        > 0;
+    if !has_parent {
+        sqlx::query("ALTER TABLE messages ADD COLUMN parent_id TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_active = sqlx::query(
+        "SELECT COUNT(*) AS n FROM pragma_table_info('conversations') WHERE name = 'active_message_id'",
+    )
+    .fetch_one(pool)
+    .await?
+ .get::<i64, _>("n")
+        > 0;
+    if !has_active {
+        sqlx::query("ALTER TABLE conversations ADD COLUMN active_message_id TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation_parent 
+         ON messages(conversation_id, parent_id)",
+    )
+    .execute(pool)
+    .await?;
+
+    backfill_conversation_trees(pool).await
+}
+
+/// Backfill tree links for conversations without an active pointer.
+///
+/// Chains live messages by `(created_at, id)` — identical to the previous
+/// linear ordering — filling only NULL parents, and stamps the newest live
+/// message as the active leaf. `updated_at` is bumped so the backfilled
+/// links propagate through snapshot sync (LWW row updates).
+async fn backfill_conversation_trees(pool: &SqlitePool) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let conversation_ids: Vec<String> = sqlx::query(
+        "SELECT id FROM conversations WHERE deleted_at IS NULL AND active_message_id IS NULL",
+    )
+    .fetch_all(pool)
+    .await?
+    .iter()
+    .map(|row| row.get("id"))
+    .collect();
+
+    for conversation_id in conversation_ids {
+        let message_ids: Vec<String> = sqlx::query(
+            "SELECT id FROM messages 
+             WHERE conversation_id = ? AND deleted_at IS NULL 
+             ORDER BY created_at ASC, id ASC",
+        )
+        .bind(&conversation_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(|row| row.get("id"))
+        .collect();
+
+        let Some(last_id) = message_ids.last() else {
+            continue;
+        };
+
+        for pair in message_ids.windows(2) {
+            // Only fill NULL parents: never overwrite links written by newer
+            // builds (partial upgrades, concurrent sync pulls).
+            sqlx::query(
+                "UPDATE messages SET parent_id = ?2, updated_at = ?3 
+                 WHERE id = ?1 AND parent_id IS NULL",
+            )
+            .bind(&pair[1])
+            .bind(&pair[0])
+            .bind(&now)
+            .execute(pool)
+            .await?;
+        }
+
+        sqlx::query(
+            "UPDATE conversations SET active_message_id = ?2, updated_at = ?3 
+             WHERE id = ?1 AND active_message_id IS NULL",
+        )
+        .bind(&conversation_id)
+        .bind(last_id)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -761,5 +883,76 @@ mod tests {
                 .is_empty(),
             "unknown id degrades to an empty list"
         );
+    }
+
+    /// The v12 migration backfills legacy linear history into tree chains:
+    /// messages ordered `(created_at, id)` become a parent chain with the
+    /// newest live row as the active leaf.
+    #[tokio::test]
+    async fn tree_backfill_chains_legacy_linear_history() {
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.expect("init schema");
+
+        let _: (String,) = sqlx::query_as(
+            "INSERT INTO conversations (id, title, created_at, updated_at) \
+             VALUES ('c1', 'legacy', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        for (id, ts) in [
+            ("a", "2026-01-01T00:00:01Z"),
+            ("b", "2026-01-01T00:00:02Z"),
+            ("c", "2026-01-01T00:00:03Z"),
+        ] {
+            sqlx::query(
+                "INSERT INTO messages (id, conversation_id, sender_type, content, created_at, updated_at) \
+                 VALUES (?, 'c1', 'user', ?, ?, ?)",
+            )
+            .bind(id)
+            .bind(id)
+            .bind(ts)
+            .bind(ts)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        backfill_conversation_trees(&pool).await.unwrap();
+
+        let chain: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT id, parent_id FROM messages WHERE conversation_id = 'c1' \
+             ORDER BY created_at, id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(chain[0], ("a".into(), None));
+        assert_eq!(chain[1], ("b".into(), Some("a".into())));
+        assert_eq!(chain[2], ("c".into(), Some("b".into())));
+
+        let (active,): (Option<String>,) =
+            sqlx::query_as("SELECT active_message_id FROM conversations WHERE id = 'c1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(active.as_deref(), Some("c"));
+
+        // Re-running never rewrites existing links (idempotent).
+        sqlx::query("UPDATE messages SET parent_id = NULL WHERE id = 'b'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE conversations SET active_message_id = NULL WHERE id = 'c1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        backfill_conversation_trees(&pool).await.unwrap();
+        let (parent,): (Option<String>,) =
+            sqlx::query_as("SELECT parent_id FROM messages WHERE id = 'c'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(parent.as_deref(), Some("b"));
     }
 }

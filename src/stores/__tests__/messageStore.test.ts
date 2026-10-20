@@ -35,6 +35,9 @@ const createMockMessage = (id: string, content: string, sender_type: string = 'u
 describe('useMessageStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // loadMessages also fetches sibling variant groups; unstubbed commands
+    // must resolve (empty) instead of returning a bare undefined.
+    vi.mocked(invoke).mockResolvedValue([] as never)
     vi.useFakeTimers()
     // Reset store state to initial values
     useMessageStore.setState({
@@ -471,7 +474,9 @@ describe('useMessageStore', () => {
       await first
 
       expect(second).toBe(false)
-      expect(invokeMock).toHaveBeenCalledTimes(1)
+      // loadMessages issues two commands (path window + sibling groups);
+      // the no-op second loadOlderMessages must add none.
+      expect(invokeMock).toHaveBeenCalledTimes(2)
     })
 
     it('ensureMessageLoaded pages upward until the target message is present', async () => {

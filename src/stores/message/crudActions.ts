@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Message, Conversation } from '@/types'
+import type { Message, Conversation, SiblingGroup } from '@/types'
 import type {
   ImmerSet,
   StoreGet,
@@ -25,11 +25,18 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     })
 
     try {
-      // One extra row detects older messages beyond the window.
-      const messages = await invoke<Message[]>('list_messages_by_conversation', {
-        conversationId,
-        limit: MESSAGES_PAGE_SIZE + 1,
-      })
+      // One extra row detects older messages beyond the window. Sibling
+      // groups ride along but must not fail the message load (the
+      // navigator simply hides when unavailable).
+      const [messages, siblingGroups] = await Promise.all([
+        invoke<Message[]>('list_messages_by_conversation', {
+          conversationId,
+          limit: MESSAGES_PAGE_SIZE + 1,
+        }),
+        invoke<SiblingGroup[]>('get_sibling_groups', { conversationId })
+          .then((groups) => groups ?? [])
+          .catch(() => [] as SiblingGroup[]),
+      ])
       const hasOlderMessages = messages.length > MESSAGES_PAGE_SIZE
       // ASC order: the extra detection row is the OLDEST, so keep the tail.
       const window = hasOlderMessages
@@ -42,6 +49,12 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           convState.messages = window
           convState.hasOlderMessages = hasOlderMessages
           convState.isLoading = false
+          // '' keys the first-turn group (messages without a parent).
+          const groups: Record<string, string[]> = {}
+          for (const group of siblingGroups) {
+            groups[group.parent_id ?? ''] = group.message_ids
+          }
+          convState.siblingGroups = groups
         }
       })
     } catch (error) {
@@ -155,7 +168,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
-    reuseFetchResultIds?: string[]
+    reuseFetchResultIds?: string[],
+    siblingOfMessageId?: string
   ) => {
     set((draft) => {
       draft.isSending = true
@@ -237,6 +251,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         contextMessageCount,
         useProviderDefaults,
         reuseFetchResultIds,
+        siblingOfMessageId,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
@@ -323,6 +338,78 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     }
   },
 
+  // Non-destructive resend: the new user message becomes a sibling variant
+  // of `siblingOfMessageId` instead of appending under the active leaf.
+  resendMessage: async (
+    content: string,
+    conversationId: string,
+    siblingOfMessageId: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    apiStyle?: string,
+    includeHistory?: boolean,
+    systemPrompt?: string,
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string,
+    urlsToFetch?: string[],
+    images?: { name: string; base64: string; mimeType: string }[],
+    files?: { name: string; content: string; mimeType: string }[],
+    searchEnabled?: boolean,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean,
+    reuseFetchResultIds?: string[]
+  ) => {
+    await get().sendMessage(
+      content,
+      conversationId,
+      provider,
+      model,
+      apiKey,
+      baseUrl,
+      apiStyle,
+      includeHistory,
+      systemPrompt,
+      userPrompt,
+      modelDbId,
+      assistantDbId,
+      urlsToFetch,
+      images,
+      files,
+      searchEnabled,
+      parameterOverrides,
+      contextMessageCount,
+      useProviderDefaults,
+      reuseFetchResultIds,
+      siblingOfMessageId
+    )
+  },
+
+  // Re-fetch only the sibling variant groups (after a turn created or
+  // removed a branch point). Cheaper than a full loadMessages.
+  refreshSiblingGroups: async (conversationId: string) => {
+    try {
+      const siblingGroups = await invoke<SiblingGroup[]>('get_sibling_groups', {
+        conversationId,
+      })
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          const groups: Record<string, string[]> = {}
+          for (const group of siblingGroups) {
+            groups[group.parent_id ?? ''] = group.message_ids
+          }
+          convState.siblingGroups = groups
+        }
+      })
+    } catch (error) {
+      logger.error('Failed to refresh sibling groups:', error)
+    }
+  },
+
   deleteMessagesFrom: async (conversationId: string, messageId: string) => {
     get().getConversationState(conversationId)
 
@@ -340,6 +427,84 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       })
     } catch (error) {
       logger.error('[messageStore] Failed to delete messages from:', error)
+      throw error
+    }
+  },
+
+  // Switch the conversation's active branch: the backend lands on the
+  // chosen branch's newest leaf, then we reload the path + sibling groups.
+  setActiveBranch: async (conversationId: string, messageId: string) => {
+    try {
+      await invoke('set_active_message', { conversationId, messageId })
+      await get().loadMessages(conversationId)
+    } catch (error) {
+      logger.error('Failed to switch branch:', error)
+      throw error
+    }
+  },
+
+  // Regenerate an assistant reply as a sibling variant. Mirrors
+  // sendMessage's streaming-state handling, but re-answers the existing
+  // user message instead of creating one.
+  regenerateMessage: async (
+    conversationId: string,
+    messageId: string,
+    provider: string,
+    model: string,
+    apiKey?: string,
+    baseUrl?: string,
+    apiStyle?: string,
+    systemPrompt?: string,
+    userPrompt?: string,
+    modelDbId?: string,
+    assistantDbId?: string,
+    parameterOverrides?: SendMessageParameterOverrides,
+    contextMessageCount?: number | null,
+    useProviderDefaults?: boolean,
+    disableTools?: boolean
+  ) => {
+    get().getConversationState(conversationId)
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.isStreaming = true
+        convState.isWaitingForAI = true
+        convState.streamingContent = ''
+        convState.streamingReasoningContent = ''
+        convState.streamingToolCalls = {}
+        convState.apiError = null
+      }
+    })
+
+    try {
+      await invoke('regenerate_message', {
+        conversationId,
+        messageId,
+        provider,
+        model,
+        apiKey,
+        baseUrl,
+        apiStyle,
+        systemPrompt,
+        userPrompt,
+        modelDbId,
+        assistantDbId,
+        parameterOverrides,
+        contextMessageCount,
+        useProviderDefaults,
+        disableTools,
+      })
+      // The regenerated assistant message arrives via chat-complete, which
+      // also refreshes the sibling groups.
+    } catch (error) {
+      logger.error('Failed to regenerate message:', error)
+      set((draft) => {
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.isStreaming = false
+          convState.isWaitingForAI = false
+        }
+      })
       throw error
     }
   },

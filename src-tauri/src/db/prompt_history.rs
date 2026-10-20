@@ -166,6 +166,7 @@ mod tests {
     async fn add_message(db: &Database, sender_type: &str, content: &str) {
         db.create_message(CreateMessageRequest {
             conversation_id: None,
+            parent_id: None,
             sender_type: sender_type.to_string(),
             sender_id: None,
             content: content.to_string(),

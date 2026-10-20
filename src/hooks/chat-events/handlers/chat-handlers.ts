@@ -37,6 +37,9 @@ export function useChatHandlers() {
     store.setIsStreaming(convId, false)
     store.setStreamingContent(convId, '')
     store.clearStreamingToolCalls(convId)
+    // The completed turn may have created a sibling variant (resend or
+    // regenerate): refresh the navigator's sibling groups. Fire-and-forget.
+    void store.refreshSiblingGroups(convId)
     store.processNextPendingMessage(convId)
   }, [])
 

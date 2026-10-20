@@ -55,6 +55,10 @@ pub async fn send_message(
     use_provider_defaults: Option<bool>,
     disable_tools: Option<bool>,
     reuse_fetch_result_ids: Option<Vec<String>>,
+    // Non-destructive resend: create the new user message as a SIBLING
+    // VARIANT of this message (same parent), instead of appending under
+    // the active leaf.
+    sibling_of_message_id: Option<String>,
 ) -> Result<Message, String> {
     log_send_message_params(
         &conversation_id,
@@ -76,8 +80,11 @@ pub async fn send_message(
         &reuse_fetch_result_ids,
     );
 
-    // Save user message to database
-    let user_message = save_user_message(&state, &conversation_id, &content).await?;
+    // Save user message to database. A sibling_of_message_id creates a
+    // sibling variant (non-destructive resend); None appends under the
+    // active leaf.
+    let user_message =
+        save_user_message(&state, &conversation_id, &content, sibling_of_message_id).await?;
 
     // Auto-add participants
     participants::ensure_participants(&state, &conversation_id, &model_db_id, &assistant_db_id)
@@ -118,7 +125,161 @@ pub async fn send_message(
         disable_tools.unwrap_or(false),
         reuse_fetch_result_ids,
     );
+    Ok(user_message)
+}
 
+/// Regenerate an assistant/model reply as a SIBLING VARIANT: rewind the
+/// active leaf to the reply's parent user message and re-run generation
+/// against the same history. The previous reply stays on its own branch,
+/// reachable via the sibling navigator. Attachments and fetched resources
+/// of the user message are reused from storage — nothing is re-fetched.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn regenerate_message(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    conversation_id: String,
+    message_id: String,
+    provider: String,
+    model: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    api_style: Option<String>,
+    system_prompt: Option<String>,
+    user_prompt: Option<String>,
+    model_db_id: Option<String>,
+    assistant_db_id: Option<String>,
+    parameter_overrides: Option<types::ParameterOverrides>,
+    context_message_count: Option<i64>,
+    use_provider_defaults: Option<bool>,
+    disable_tools: Option<bool>,
+) -> Result<(), String> {
+    {
+        let tasks = state.generation_tasks.read().await;
+        if tasks.contains_key(&conversation_id) {
+            return Err("A generation is already running for this conversation".into());
+        }
+    }
+
+    let target = state
+        .db
+        .get_message(&message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Message not found: {message_id}"))?;
+    if target.conversation_id.as_deref() != Some(&conversation_id) {
+        return Err(format!(
+            "Message {message_id} does not belong to conversation {conversation_id}"
+        ));
+    }
+    if target.sender_type == "user" {
+        return Err("Cannot regenerate a user message; use resend instead".into());
+    }
+    let parent_id = target
+        .parent_id
+        .clone()
+        .ok_or_else(|| "Message has no parent turn to regenerate from".to_string())?;
+    let parent = state
+        .db
+        .get_message(&parent_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Parent message not found".to_string())?;
+
+    // Rewind the leaf to the user message; the new assistant reply is
+    // created under the same parent and becomes the active variant.
+    state
+        .db
+        .rewind_active_to(&conversation_id, &parent_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Auto-add participants (mirrors send_message; cheap when present).
+    participants::ensure_participants(&state, &conversation_id, &model_db_id, &assistant_db_id)
+        .await;
+
+    let cancel_token = CancellationToken::new();
+    {
+        let mut tasks = state.generation_tasks.write().await;
+        tasks.insert(conversation_id.clone(), cancel_token.clone());
+    }
+
+    spawn_background_task(
+        state.inner().clone(),
+        app,
+        conversation_id,
+        parent.content,
+        provider,
+        model,
+        api_key,
+        base_url,
+        api_style,
+        None,
+        system_prompt,
+        user_prompt,
+        model_db_id,
+        assistant_db_id,
+        None,
+        None,
+        None,
+        false,
+        parent_id,
+        cancel_token,
+        parameter_overrides,
+        context_message_count,
+        use_provider_defaults.unwrap_or(false),
+        disable_tools.unwrap_or(false),
+        None,
+    );
+    Ok(())
+}
+
+async fn save_user_message(
+    state: &AppState,
+    conversation_id: &str,
+    content: &str,
+    sibling_of_message_id: Option<String>,
+) -> Result<Message, String> {
+    tracing::info!("📝 [send_message] Creating user message in database...");
+    // Sibling variant: the new message copies the original's parent. A
+    // first-turn original has no parent, expressed as the root sentinel.
+    let parent_id = match sibling_of_message_id.as_deref() {
+        Some(sibling_id) => {
+            let sibling = state
+                .db
+                .get_message(sibling_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Message not found: {sibling_id}"))?;
+            if sibling.conversation_id.as_deref() != Some(conversation_id) {
+                return Err(format!(
+                    "Message {sibling_id} does not belong to conversation {conversation_id}"
+                ));
+            }
+            Some(sibling.parent_id.unwrap_or_default())
+        }
+        None => None,
+    };
+    let user_message = state
+        .db
+        .create_message(CreateMessageRequest {
+            conversation_id: Some(conversation_id.to_string()),
+            parent_id,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .map_err(|e| {
+            tracing::info!("❌ [send_message] Failed to create message: {}", e);
+            e.to_string()
+        })?;
+
+    tracing::info!(
+        "✅ [send_message] User message created with id: {}",
+        user_message.id
+    );
     Ok(user_message)
 }
 
@@ -200,34 +361,6 @@ fn log_send_message_params(
         "   reuse_fetch_result_ids: {:?}",
         reuse_fetch_result_ids.as_ref().map(|v| v.len())
     );
-}
-
-async fn save_user_message(
-    state: &AppState,
-    conversation_id: &str,
-    content: &str,
-) -> Result<Message, String> {
-    tracing::info!("📝 [send_message] Creating user message in database...");
-    let user_message = state
-        .db
-        .create_message(CreateMessageRequest {
-            conversation_id: Some(conversation_id.to_string()),
-            sender_type: "user".to_string(),
-            sender_id: None,
-            content: content.to_string(),
-            tokens: None,
-        })
-        .await
-        .map_err(|e| {
-            tracing::info!("❌ [send_message] Failed to create message: {}", e);
-            e.to_string()
-        })?;
-
-    tracing::info!(
-        "✅ [send_message] User message created with id: {}",
-        user_message.id
-    );
-    Ok(user_message)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -564,6 +697,7 @@ async fn process_llm_request(
         app,
         conversation_id,
         content,
+        user_message_id,
         model_db_id,
         assistant_db_id,
         disable_tools,

@@ -7,6 +7,7 @@ pub async fn create_messages_table(pool: &SqlitePool) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
             conversation_id TEXT,
+            parent_id TEXT,
             sender_type TEXT NOT NULL,
             sender_id TEXT,
             content TEXT NOT NULL,
@@ -21,6 +22,14 @@ pub async fn create_messages_table(pool: &SqlitePool) -> Result<()> {
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_messages_conversation_created 
          ON messages(conversation_id, created_at DESC)",
+    )
+    .execute(pool)
+    .await?;
+
+    // Sibling lookup for the branch navigator: all variants of one parent.
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation_parent 
+         ON messages(conversation_id, parent_id)",
     )
     .execute(pool)
     .await?;

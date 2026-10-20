@@ -1,7 +1,6 @@
 use super::AppState;
-use crate::models::{CreateMessageRequest, Message};
+use crate::models::{CreateMessageRequest, Message, SiblingGroup};
 use tauri::State;
-
 #[tauri::command]
 pub async fn create_message(
     state: State<'_, AppState>,
@@ -56,6 +55,42 @@ pub async fn delete_messages_from(
     state
         .db
         .delete_messages_from(&conversation_id, &message_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Switch the conversation's active branch to the one containing
+/// `message_id` (lands on that branch's newest leaf). Refused while a
+/// generation is running for the conversation.
+#[tauri::command]
+pub async fn set_active_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+) -> Result<Message, String> {
+    {
+        let tasks = state.generation_tasks.read().await;
+        if tasks.contains_key(&conversation_id) {
+            return Err("A generation is already running for this conversation".into());
+        }
+    }
+    state
+        .db
+        .set_active_message(&conversation_id, &message_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Sibling variant groups (resend/regenerate alternates) for the branch
+/// navigator: one entry per parent with more than one live child.
+#[tauri::command]
+pub async fn get_sibling_groups(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<Vec<SiblingGroup>, String> {
+    state
+        .db
+        .get_sibling_groups(&conversation_id)
         .await
         .map_err(|e| e.to_string())
 }

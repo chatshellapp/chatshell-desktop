@@ -117,6 +117,7 @@ mod tests {
     async fn message(db: &Database, content: &str) -> String {
         db.create_message(CreateMessageRequest {
             conversation_id: None,
+            parent_id: None,
             sender_type: "user".to_string(),
             sender_id: None,
             content: content.to_string(),

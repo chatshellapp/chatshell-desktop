@@ -597,6 +597,7 @@ mod tests {
     async fn new_message_id(db: &Database) -> String {
         db.create_message(CreateMessageRequest {
             conversation_id: None,
+            parent_id: None,
             sender_type: "assistant".to_string(),
             sender_id: None,
             content: "parent message".to_string(),

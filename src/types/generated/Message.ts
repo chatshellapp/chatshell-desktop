@@ -3,4 +3,10 @@
 /**
  * Message model (thinking_content moved to thinking_steps table)
  */
-export type Message = { id: string, conversation_id?: string, sender_type: string, sender_id?: string, content: string, tokens?: number, created_at: string, };
+export type Message = { id: string, conversation_id?: string, 
+/**
+ * Adjacency-list tree: parent message in the conversation. NULL = first
+ * turn (root level). Siblings under one parent are resend/regenerate
+ * variants; the conversation's active_message_id picks the live branch.
+ */
+parent_id?: string, sender_type: string, sender_id?: string, content: string, tokens?: number, created_at: string, };

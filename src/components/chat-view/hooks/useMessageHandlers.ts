@@ -25,6 +25,7 @@ export interface UseMessageHandlersOptions {
 export interface UseMessageHandlersReturn {
   handleCopy: () => void
   handleRevert: (messageId: string) => Promise<void>
+  handleRegenerate: (messageId: string) => Promise<void>
   handleFork: (messageId: string) => Promise<void>
   handleExportAll: () => Promise<void>
   handleExportConversation: (messageId: string | null) => Promise<void>
@@ -47,11 +48,10 @@ export function useMessageHandlers({
   const loadSettings = useConversationSettingsStore((state) => state.loadSettings)
   const getPromptById = usePromptStore((state) => state.getPromptById)
 
-  const deleteMessagesFrom = useMessageStore((state) => state.deleteMessagesFrom)
-  const sendMessage = useMessageStore((state) => state.sendMessage)
+  const resendMessage = useMessageStore((state) => state.resendMessage)
+  const regenerateMessage = useMessageStore((state) => state.regenerateMessage)
   const getConversationState = useMessageStore((state) => state.getConversationState)
   const loadAllMessages = useMessageStore((state) => state.loadAllMessages)
-
   const handleCopy = useCallback(() => {
     logger.info('Message copied')
   }, [])
@@ -88,7 +88,14 @@ export function useMessageHandlers({
       }
 
       try {
-        // Retrieve original attachments before deleting the message
+        // Guard: one generation per conversation.
+        if (getConversationState(currentConversation.id).isStreaming) {
+          toast.error(t('generationInProgress'))
+          return
+        }
+
+        // Retrieve original attachments so the resend carries the same
+        // images/files/fetched pages as the first send.
         const resources = await invoke<MessageResources>('get_message_resources', {
           messageId,
         })
@@ -122,8 +129,6 @@ export function useMessageHandlers({
           ),
         ])
 
-        await deleteMessagesFrom(currentConversation.id, messageId)
-
         const settings =
           getSettings(currentConversation.id) ?? (await loadSettings(currentConversation.id))
 
@@ -148,9 +153,13 @@ export function useMessageHandlers({
             : undefined
         const contextMessageCount = settings?.contextMessageCount ?? undefined
 
-        await sendMessage(
+        // Non-destructive: the resent message lands as a SIBLING VARIANT of
+        // the original (same tree parent). The old branch stays reachable
+        // via the sibling navigator.
+        await resendMessage(
           content,
           currentConversation.id,
+          messageId,
           provider.provider_type,
           modelToUse.model_id,
           provider.api_key,
@@ -171,7 +180,7 @@ export function useMessageHandlers({
           reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined
         )
       } catch (error) {
-        logger.error('Failed to revert message:', error)
+        logger.error('Failed to resend message:', error)
         toast.error(t('failedToRevertMessage'), {
           description: error instanceof Error ? error.message : String(error),
         })
@@ -186,8 +195,101 @@ export function useMessageHandlers({
       getProviderById,
       getSettings,
       getPromptById,
-      deleteMessagesFrom,
-      sendMessage,
+      resendMessage,
+      getConversationState,
+    ]
+  )
+
+  const handleRegenerate = useCallback(
+    async (messageId: string) => {
+      if (!currentConversation) {
+        toast.error(t('noActiveConversation'))
+        return
+      }
+
+      const convState = getConversationState(currentConversation.id)
+      const message = convState.messages.find((m) => m.id === messageId)
+      if (!message || message.sender_type === 'user') {
+        toast.error(t('cannotRegenerateMessage'))
+        return
+      }
+      if (convState.isStreaming) {
+        toast.error(t('generationInProgress'))
+        return
+      }
+
+      const modelToUse = selectedAssistant
+        ? getModelById(selectedAssistant.model_id)
+        : selectedModel
+      if (!modelToUse) {
+        toast.error(t('pleaseSelectModelOrAssistant'))
+        return
+      }
+
+      const provider = getProviderById(modelToUse.provider_id)
+      if (!provider) {
+        toast.error(t('providerConfigNotFound'))
+        return
+      }
+
+      try {
+        const settings =
+          getSettings(currentConversation.id) ?? (await loadSettings(currentConversation.id))
+
+        let systemPrompt: string | undefined
+        if (settings?.systemPromptMode === 'existing' && settings.selectedSystemPromptId) {
+          systemPrompt = getPromptById(settings.selectedSystemPromptId)?.content
+        } else if (settings?.systemPromptMode === 'custom' && settings.customSystemPrompt) {
+          systemPrompt = settings.customSystemPrompt
+        } else if (selectedAssistant) {
+          systemPrompt = selectedAssistant.system_prompt
+        }
+
+        let userPrompt: string | undefined
+        if (settings?.userPromptMode === 'none' && selectedAssistant?.user_prompt) {
+          userPrompt = selectedAssistant.user_prompt
+        }
+
+        const useProviderDefaults = settings?.useProviderDefaults ?? false
+        const parameterOverrides =
+          settings?.useCustomParameters && settings.parameterOverrides
+            ? settings.parameterOverrides
+            : undefined
+        const contextMessageCount = settings?.contextMessageCount ?? undefined
+
+        await regenerateMessage(
+          currentConversation.id,
+          messageId,
+          provider.provider_type,
+          modelToUse.model_id,
+          provider.api_key,
+          provider.base_url,
+          provider.api_style,
+          systemPrompt,
+          userPrompt,
+          selectedAssistant ? undefined : modelToUse.id,
+          selectedAssistant?.id,
+          parameterOverrides,
+          contextMessageCount,
+          useProviderDefaults
+        )
+      } catch (error) {
+        logger.error('Failed to regenerate message:', error)
+        toast.error(t('failedToRegenerateMessage'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [
+      currentConversation,
+      selectedModel,
+      selectedAssistant,
+      loadSettings,
+      getModelById,
+      getProviderById,
+      getSettings,
+      getPromptById,
+      regenerateMessage,
       getConversationState,
     ]
   )
@@ -362,6 +464,7 @@ export function useMessageHandlers({
   return {
     handleCopy,
     handleRevert,
+    handleRegenerate,
     handleFork,
     handleExportAll,
     handleExportConversation,

@@ -4,7 +4,9 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
-use crate::models::{ConversationSearchResult, CreateMessageRequest, Message, MessageSearchResult};
+use crate::models::{
+    ConversationSearchResult, CreateMessageRequest, Message, MessageSearchResult, SiblingGroup,
+};
 use crate::search;
 use crate::tokenizer;
 
@@ -20,12 +22,44 @@ impl Database {
             target_id
         );
 
+        // Tree placement:
+        // - `parent_id: Some(id)`  -> child of that (live, same-conversation) message
+        // - `parent_id: Some("")`  -> root level: sibling of a first-turn message
+        // - `parent_id: None`      -> append under the conversation's active leaf
+        let parent_id = match req.parent_id.as_deref() {
+            Some(explicit) if explicit.is_empty() => None,
+            Some(explicit) => {
+                let live: Option<(Option<String>,)> = sqlx::query_as(
+                    "SELECT conversation_id FROM messages 
+                     WHERE id = ? AND deleted_at IS NULL",
+                )
+                .bind(explicit)
+                .fetch_optional(self.pool.as_ref())
+                .await?;
+                match live {
+                    Some((parent_conversation,))
+                        if parent_conversation.as_deref() == req.conversation_id.as_deref() =>
+                    {
+                        Some(explicit.to_string())
+                    }
+                    _ => anyhow::bail!(
+                        "Parent message {explicit} is not a live message of conversation {target_id}"
+                    ),
+                }
+            }
+            None => match req.conversation_id.as_deref() {
+                Some(conv) => self.resolve_active_leaf(conv).await,
+                None => None,
+            },
+        };
+
         sqlx::query(
-            "INSERT INTO messages (id, conversation_id, sender_type, sender_id, content, tokens, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO messages (id, conversation_id, parent_id, sender_type, sender_id, content, tokens, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(&req.conversation_id)
+        .bind(&parent_id)
         .bind(&req.sender_type)
         .bind(&req.sender_id)
         .bind(&req.content)
@@ -47,11 +81,16 @@ impl Database {
         .await?;
 
         if !conv_id.is_empty() {
-            sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?")
-                .bind(&now)
-                .bind(conv_id)
-                .execute(self.pool.as_ref())
-                .await?;
+            // The new message is the growing tip of its branch: appends and
+            // sibling variants both become the active leaf.
+            sqlx::query(
+                "UPDATE conversations SET updated_at = ?, active_message_id = ? WHERE id = ?",
+            )
+            .bind(&now)
+            .bind(&id)
+            .bind(conv_id)
+            .execute(self.pool.as_ref())
+            .await?;
         }
 
         tracing::info!("✅ [db] INSERT completed");
@@ -67,7 +106,7 @@ impl Database {
 
     pub async fn get_message(&self, id: &str) -> Result<Option<Message>> {
         let row = sqlx::query(
-            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
+            "SELECT id, conversation_id, parent_id, sender_type, sender_id, content, tokens, created_at
              FROM messages WHERE id = ? AND deleted_at IS NULL",
         )
         .bind(id)
@@ -78,6 +117,7 @@ impl Database {
             Some(row) => Ok(Some(Message {
                 id: row.get("id"),
                 conversation_id: row.get("conversation_id"),
+                parent_id: row.get("parent_id"),
                 sender_type: row.get("sender_type"),
                 sender_id: row.get("sender_id"),
                 content: row.get("content"),
@@ -88,12 +128,15 @@ impl Database {
         }
     }
 
-    /// List messages of a conversation, oldest first.
+    /// List the ACTIVE PATH of a conversation, oldest first: the ancestor
+    /// chain of the active leaf (see [`Database::resolve_active_leaf`]).
+    /// Off-branch siblings stay invisible here — they surface only through
+    /// [`Database::get_sibling_groups`].
     ///
-    /// `limit` caps the result to the newest `limit` messages (used by the
-    /// chat view's tail window). `before` = `(created_at, id)` cursor returns
-    /// only messages strictly older than that tuple (upward pagination);
-    /// it requires `limit`. `None, None` keeps the full-history behavior.
+    /// `limit` caps the result to the newest `limit` path members (chat
+    /// view tail window). `before` = `(created_at, id)` cursor returns only
+    /// members strictly older than that tuple (upward pagination); it
+    /// requires `limit`. `None, None` keeps the full-path behavior.
     pub async fn list_messages_by_conversation(
         &self,
         conversation_id: &str,
@@ -104,60 +147,115 @@ impl Database {
             anyhow::bail!("list_messages_by_conversation: `before` requires `limit`");
         }
 
-        const SELECT: &str =
-            "SELECT id, conversation_id, sender_type, sender_id, content, tokens, created_at
-             FROM messages WHERE conversation_id = ? AND deleted_at IS NULL";
-
-        let rows = match (limit, before) {
-            (Some(limit), Some((before_created_at, before_id))) => {
-                sqlx::query(&format!(
-                    "{SELECT} AND (created_at, id) < (?, ?)
-                     ORDER BY created_at DESC, id DESC LIMIT ?"
-                ))
-                .bind(conversation_id)
-                .bind(before_created_at)
-                .bind(before_id)
-                .bind(limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (Some(limit), None) => {
-                sqlx::query(&format!(
-                    "{SELECT} ORDER BY created_at DESC, id DESC LIMIT ?"
-                ))
-                .bind(conversation_id)
-                .bind(limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (None, _) => {
-                sqlx::query(&format!("{SELECT} ORDER BY created_at ASC, id ASC"))
-                    .bind(conversation_id)
-                    .fetch_all(self.pool.as_ref())
-                    .await?
-            }
+        let Some(leaf) = self.resolve_active_leaf(conversation_id).await else {
+            return Ok(Vec::new());
         };
 
-        let mut messages = rows
+        // Walk leaf -> root following parent links. The recursion only
+        // extends through LIVE parents, so a tombstoned (or missing) link
+        // ends the path read-time — an orphaned tail degrades gracefully
+        // instead of erroring. The depth cap bounds hypothetical cycles
+        // introduced by pathological merges.
+        let rows = sqlx::query(
+            "WITH RECURSIVE chain(id, depth) AS (
+                 SELECT id, 0 FROM messages WHERE id = ?1
+                 UNION ALL
+                 SELECT m.id, chain.depth + 1
+                 FROM messages m
+                 JOIN chain ON m.id = (SELECT parent_id FROM messages WHERE id = chain.id)
+                 WHERE m.deleted_at IS NULL AND chain.depth < 100000
+             )
+             SELECT msg.id, msg.conversation_id, msg.parent_id, msg.sender_type,
+                    msg.sender_id, msg.content, msg.tokens, msg.created_at
+             FROM messages msg JOIN chain ON msg.id = chain.id
+             ORDER BY chain.depth DESC, msg.created_at ASC, msg.id ASC",
+        )
+        .bind(&leaf)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        let mut path: Vec<Message> = rows
             .iter()
             .map(|row| Message {
                 id: row.get("id"),
                 conversation_id: row.get("conversation_id"),
+                parent_id: row.get("parent_id"),
                 sender_type: row.get("sender_type"),
                 sender_id: row.get("sender_id"),
                 content: row.get("content"),
                 tokens: row.get("tokens"),
                 created_at: row.get("created_at"),
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        // Windowed queries fetch newest-first; return oldest-first like the
-        // full-history path.
-        if limit.is_some() {
-            messages.reverse();
+        if let Some((before_created_at, before_id)) = before {
+            let before_created_at = before_created_at.to_string();
+            let before_id = before_id.to_string();
+            path.retain(|m| (&m.created_at, &m.id) < (&before_created_at, &before_id));
+        }
+        if let Some(limit) = limit {
+            let limit = limit.max(0) as usize;
+            if path.len() > limit {
+                path.drain(..path.len() - limit);
+            }
         }
 
-        Ok(messages)
+        Ok(path)
+    }
+
+    /// Resolve the conversation's active leaf. Falls back to the newest live
+    /// message (legacy `(created_at, id)` tip) when the stored pointer is
+    /// missing or points at a dead row, self-healing the stored pointer so
+    /// the repair propagates through snapshot sync.
+    pub async fn resolve_active_leaf(&self, conversation_id: &str) -> Option<String> {
+        let stored: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT active_message_id FROM conversations WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(conversation_id)
+        .fetch_optional(self.pool.as_ref())
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((Some(active),)) = &stored
+            && sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM messages 
+                 WHERE id = ? AND conversation_id = ? AND deleted_at IS NULL",
+            )
+            .bind(active)
+            .bind(conversation_id)
+            .fetch_one(self.pool.as_ref())
+            .await
+            .is_ok_and(|n| n > 0)
+        {
+            return Some(active.clone());
+        }
+
+        // Fallback + self-heal: newest live message by the legacy ordering.
+        let fallback: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM messages 
+             WHERE conversation_id = ? AND deleted_at IS NULL 
+             ORDER BY created_at DESC, id DESC LIMIT 1",
+        )
+        .bind(conversation_id)
+        .fetch_optional(self.pool.as_ref())
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((id,)) = &fallback {
+            let now = Utc::now().to_rfc3339();
+            let _ = sqlx::query(
+                "UPDATE conversations SET active_message_id = ?, updated_at = ? 
+                 WHERE id = ? AND deleted_at IS NULL",
+            )
+            .bind(id)
+            .bind(&now)
+            .bind(conversation_id)
+            .execute(self.pool.as_ref())
+            .await;
+        }
+        fallback.map(|(id,)| id)
     }
 
     pub async fn delete_messages_in_conversation(&self, conversation_id: &str) -> Result<()> {
@@ -184,9 +282,22 @@ impl Database {
         .bind(conversation_id)
         .execute(self.pool.as_ref())
         .await?;
+        // No live message remains: clear the tree pointer with the same LWW
+        // row update so peers converge on the empty conversation too.
+        sqlx::query(
+            "UPDATE conversations SET active_message_id = NULL, updated_at = ? 
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(&now)
+        .bind(conversation_id)
+        .execute(self.pool.as_ref())
+        .await?;
         Ok(())
     }
 
+    /// Tombstone `message_id` and its whole SUBTREE (descendants on every
+    /// branch), then repoint the active leaf at the nearest live ancestor.
+    /// Tree replacement for the legacy created_at-tail truncation.
     pub async fn delete_messages_from(
         &self,
         conversation_id: &str,
@@ -194,20 +305,43 @@ impl Database {
     ) -> Result<()> {
         let target = self.get_message(message_id).await?;
         let target = target.ok_or_else(|| anyhow::anyhow!("Message not found: {}", message_id))?;
+        if target.conversation_id.as_deref() != Some(conversation_id) {
+            anyhow::bail!("Message {message_id} does not belong to conversation {conversation_id}");
+        }
 
-        sqlx::query(
-            "DELETE FROM messages_fts WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ? AND created_at >= ?)",
-        )
-        .bind(conversation_id)
-        .bind(&target.created_at)
+        // Every descendant on every branch (their own deleted state is
+        // irrelevant — live grandchildren under dead children must die too).
+        // The CTE rides a FROM subquery (SQLite allows WITH there, unlike
+        // directly inside IN(...)). Anchors are numbered explicitly:
+        // tombstone_update's wipe reserves ?1 for the timestamps, so any
+        // predicate consumed by it must anchor the subtree at ?2 — sqlx
+        // binds positionally and a bare `?` after `?1` misnumbers.
+        const SUBTREE_ANCHOR: &str = "WITH RECURSIVE sub(id) AS (
+                SELECT id FROM messages WHERE id = ?
+                UNION ALL
+                SELECT m.id FROM messages m JOIN sub ON m.parent_id = sub.id
+            )
+            SELECT id FROM sub";
+        // Single-parameter users (FTS delete, EXISTS probe) bind the anchor
+        // at ?1; tombstone_update users bind it at ?2 (after the wipe's ?1).
+        let subtree_ids_1 = format!("SELECT id FROM ( {SUBTREE_ANCHOR} )");
+        let subtree_ids_2 = format!(
+            "SELECT id FROM ( {} )",
+            SUBTREE_ANCHOR.replacen("= ?", "= ?2", 1)
+        );
+
+        sqlx::query(&format!(
+            "DELETE FROM messages_fts WHERE message_id IN ({subtree_ids_1})"
+        ))
+        .bind(message_id)
         .execute(self.pool.as_ref())
         .await?;
         // Children first (while the parent rows still read as live), then
         // the messages themselves.
         crate::db::soft_delete::tombstone_children_of_messages(
             self.pool.as_ref(),
-            "conversation_id = ? AND created_at >= ?",
-            &[conversation_id, &target.created_at],
+            &format!("id IN ({subtree_ids_2})"),
+            &[message_id],
         )
         .await?;
         // Soft-delete (ADR 01): regenerated tail messages tombstone instead
@@ -215,14 +349,178 @@ impl Database {
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query(&crate::db::soft_delete::tombstone_update(
             "messages",
-            "conversation_id = ?2 AND created_at >= ?3 AND deleted_at IS NULL",
+            &format!("id IN ({subtree_ids_2}) AND deleted_at IS NULL"),
         ))
         .bind(&now)
+        .bind(message_id)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        // Active leaf fallback: if the pointer died with the subtree, land
+        // on the nearest live ancestor (the pre-existing branch tip).
+        let active: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT active_message_id FROM conversations WHERE id = ? AND deleted_at IS NULL",
+        )
         .bind(conversation_id)
-        .bind(&target.created_at)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        if let Some((Some(active_id),)) = active {
+            let in_subtree: bool = sqlx::query_scalar(&format!(
+                "SELECT EXISTS(SELECT 1 FROM ({subtree_ids_1}) WHERE id = ?)"
+            ))
+            .bind(message_id)
+            .bind(&active_id)
+            .fetch_one(self.pool.as_ref())
+            .await
+            .unwrap_or(false);
+            if in_subtree {
+                let fallback = self.nearest_live_ancestor(&target.parent_id).await;
+                sqlx::query(
+                    "UPDATE conversations SET active_message_id = ?, updated_at = ? 
+                     WHERE id = ? AND deleted_at IS NULL",
+                )
+                .bind(&fallback)
+                .bind(&now)
+                .bind(conversation_id)
+                .execute(self.pool.as_ref())
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// First live ancestor of `start` (or NULL at the root). The path walk
+    /// in [`Database::list_messages_by_conversation`] tolerates dead links,
+    /// so a NULL result simply empties the conversation view.
+    async fn nearest_live_ancestor(&self, start: &Option<String>) -> Option<String> {
+        let mut current = start.clone();
+        while let Some(id) = current.clone() {
+            let live: Option<(i64,)> =
+                sqlx::query_as("SELECT 1 FROM messages WHERE id = ? AND deleted_at IS NULL")
+                    .bind(&id)
+                    .fetch_optional(self.pool.as_ref())
+                    .await
+                    .ok()
+                    .flatten();
+            if live.is_some() {
+                return Some(id);
+            }
+            // Dead link: hop over it via the raw parent lookup so the chain
+            // survives intermediate loss.
+            let raw: Option<(Option<String>,)> =
+                sqlx::query_as("SELECT parent_id FROM messages WHERE id = ?")
+                    .bind(&id)
+                    .fetch_optional(self.pool.as_ref())
+                    .await
+                    .ok()
+                    .flatten();
+            current = raw.and_then(|(parent,)| parent);
+        }
+        None
+    }
+
+    /// Point the active leaf DIRECTLY at `message_id` (no newest-descendant
+    /// descent). Used by regenerate: the leaf must sit on the user message
+    /// so the regenerated assistant lands as its sibling, not its child.
+    pub async fn rewind_active_to(&self, conversation_id: &str, message_id: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE conversations SET active_message_id = ?, updated_at = ? 
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(message_id)
+        .bind(&now)
+        .bind(conversation_id)
         .execute(self.pool.as_ref())
         .await?;
         Ok(())
+    }
+
+    /// Switch the conversation's active branch. Lands on the NEWEST LEAF of
+    /// the branch containing `message_id` (cherry-studio invariant: the
+    /// active node is always a leaf), so switching to an old variant shows
+    /// its full continuation.
+    pub async fn set_active_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message> {
+        let target = self.get_message(message_id).await?;
+        let target = target.ok_or_else(|| anyhow::anyhow!("Message not found: {}", message_id))?;
+        if target.conversation_id.as_deref() != Some(conversation_id) {
+            anyhow::bail!("Message {message_id} does not belong to conversation {conversation_id}");
+        }
+
+        // Descend the newest-child chain to the branch tip.
+        let mut leaf = target.id.clone();
+        loop {
+            let next: Option<(String,)> = sqlx::query_as(
+                "SELECT id FROM messages 
+                 WHERE parent_id = ? AND deleted_at IS NULL 
+                 ORDER BY created_at DESC, id DESC LIMIT 1",
+            )
+            .bind(&leaf)
+            .fetch_optional(self.pool.as_ref())
+            .await?;
+            match next {
+                Some((id,)) if id != leaf => leaf = id,
+                _ => break,
+            }
+        }
+
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE conversations SET active_message_id = ?, updated_at = ? 
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(&leaf)
+        .bind(&now)
+        .bind(conversation_id)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_message(&leaf)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Active leaf vanished: {leaf}"))
+    }
+
+    /// Sibling variants per parent for the branch navigator: every live
+    /// message of the conversation grouped by `parent_id` (NULL = first
+    /// turn), ordered `(created_at, id)`, keeping only groups with more
+    /// than one member.
+    pub async fn get_sibling_groups(&self, conversation_id: &str) -> Result<Vec<SiblingGroup>> {
+        let rows: Vec<(Option<String>, String)> = sqlx::query_as(
+            "SELECT parent_id, id FROM messages 
+             WHERE conversation_id = ? AND deleted_at IS NULL 
+             ORDER BY created_at ASC, id ASC",
+        )
+        .bind(conversation_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        // Group by parent across the whole conversation (siblings are not
+        // necessarily adjacent in time). '' keys the first-turn group
+        // (NULL parent); message ids are UUIDs, never ''.
+        let mut by_parent: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (parent_id, id) in rows {
+            by_parent
+                .entry(parent_id.unwrap_or_default())
+                .or_default()
+                .push(id);
+        }
+        Ok(by_parent
+            .into_iter()
+            .filter(|(_, ids)| ids.len() > 1)
+            .map(|(parent, message_ids)| SiblingGroup {
+                parent_id: if parent.is_empty() {
+                    None
+                } else {
+                    Some(parent)
+                },
+                message_ids,
+            })
+            .collect())
     }
 
     /// Backfill messages_fts with existing messages (idempotent; runs once per DB).
@@ -581,6 +879,7 @@ mod tests {
         let (db, _dir) = test_db().await;
         db.create_message(CreateMessageRequest {
             conversation_id: None,
+            parent_id: None,
             sender_type: "user".into(),
             sender_id: None,
             content: "ordinary path".into(),
@@ -607,7 +906,9 @@ mod tests {
             .unwrap();
         let conv_id = conv.id.as_str();
         // Five messages in one conversation; m3 shares m2's timestamp to
-        // force the (created_at, id) tiebreak.
+        // force the (created_at, id) tiebreak. Rows are chained into a
+        // path (tree order = legacy order) with the last row active.
+        let mut prev_id: Option<String> = None;
         for (id, ts) in [
             ("m1", "2026-01-01T00:00:01Z"),
             ("m2", "2026-01-01T00:00:02Z"),
@@ -616,18 +917,26 @@ mod tests {
             ("m5", "2026-01-01T00:00:04Z"),
         ] {
             sqlx::query(
-                "INSERT INTO messages (id, conversation_id, sender_type, content, created_at, updated_at) \
-                 VALUES (?, ?, 'user', ?, ?, ?)",
+                "INSERT INTO messages (id, conversation_id, parent_id, sender_type, content, created_at, updated_at) \
+                 VALUES (?, ?, ?, 'user', ?, ?, ?)",
             )
             .bind(id)
             .bind(conv_id)
+            .bind(&prev_id)
             .bind(id)
             .bind(ts)
             .bind(ts)
             .execute(db.pool())
             .await
             .unwrap();
+            prev_id = Some(id.to_string());
         }
+        sqlx::query("UPDATE conversations SET active_message_id = ? WHERE id = ?")
+            .bind(&prev_id)
+            .bind(conv_id)
+            .execute(db.pool())
+            .await
+            .unwrap();
 
         fn ids(msgs: &[Message]) -> Vec<&str> {
             msgs.iter().map(|m| m.id.as_str()).collect()
@@ -670,5 +979,165 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    async fn conv(db: &Database) -> String {
+        db.create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
+            .await
+            .unwrap()
+            .id
+    }
+
+    async fn send(db: &Database, conv_id: &str, content: &str) -> Message {
+        db.create_message(CreateMessageRequest {
+            conversation_id: Some(conv_id.to_string()),
+            parent_id: None,
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn reply(db: &Database, conv_id: &str, parent: &Message, content: &str) -> Message {
+        db.create_message(CreateMessageRequest {
+            conversation_id: Some(conv_id.to_string()),
+            parent_id: Some(parent.id.clone()),
+            sender_type: "assistant".to_string(),
+            sender_id: None,
+            content: content.to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn path_contents(db: &Database, conv_id: &str) -> Vec<String> {
+        db.list_messages_by_conversation(conv_id, None, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|m| m.content)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn appends_chain_under_active_leaf() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+
+        let u1 = send(&db, &conv_id, "q1").await;
+        let a1 = reply(&db, &conv_id, &u1, "a1").await;
+
+        assert_eq!(a1.parent_id.as_deref(), Some(u1.id.as_str()));
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "a1"]);
+    }
+
+    #[tokio::test]
+    async fn resend_creates_sibling_and_keeps_old_branch() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+
+        let u1 = send(&db, &conv_id, "q1").await;
+        let _a1 = reply(&db, &conv_id, &u1, "old answer").await;
+
+        // Resend: a sibling user message under the SAME parent (u1's parent
+        // is the tree root, expressed via the root sentinel "").
+        let u2 = db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conv_id.to_string()),
+                parent_id: u1.parent_id.clone().or_else(|| Some(String::new())),
+                sender_type: "user".to_string(),
+                sender_id: None,
+                content: "q1 (resent)".to_string(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(u2.parent_id, u1.parent_id);
+        let _a2 = reply(&db, &conv_id, &u2, "new answer").await;
+
+        // Active path shows only the new branch; the old one survives.
+        assert_eq!(
+            path_contents(&db, &conv_id).await,
+            ["q1 (resent)", "new answer"]
+        );
+
+        let groups = db.get_sibling_groups(&conv_id).await.unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].parent_id, None);
+        assert_eq!(groups[0].message_ids, [u1.id.clone(), u2.id]);
+
+        // Switching back to the old user message restores its branch.
+        db.set_active_message(&conv_id, &u1.id).await.unwrap();
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "old answer"]);
+    }
+
+    #[tokio::test]
+    async fn regenerate_lands_as_assistant_sibling() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+
+        let u1 = send(&db, &conv_id, "q1").await;
+        let _a1 = reply(&db, &conv_id, &u1, "first take").await;
+
+        // Regenerate shape: rewind to the user message, then a fresh
+        // assistant reply parents onto it.
+        db.rewind_active_to(&conv_id, &u1.id).await.unwrap();
+        let a2 = reply(&db, &conv_id, &u1, "second take").await;
+        assert_eq!(a2.parent_id.as_deref(), Some(u1.id.as_str()));
+
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "second take"]);
+
+        let groups = db.get_sibling_groups(&conv_id).await.unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].parent_id.as_deref(), Some(u1.id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn branch_switch_lands_on_newest_leaf_of_that_branch() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+
+        let u1 = send(&db, &conv_id, "q1").await;
+        let a1 = reply(&db, &conv_id, &u1, "a1").await;
+        let u2 = send(&db, &conv_id, "q2").await;
+        let _a2 = reply(&db, &conv_id, &u2, "a2").await;
+
+        // Switch to a1 (mid-branch): the leaf descends to the branch tip,
+        // which is a2's line — i.e. no-op while a1's branch is active.
+        let leaf = db.set_active_message(&conv_id, &a1.id).await.unwrap();
+        assert_eq!(leaf.id, _a2.id);
+
+        // Rewind to u1, then switch to a1: the newest leaf under a1 is u2's
+        // line only if u2 descends from a1 — it does, so this still lands
+        // on a2. To exercise descent, grow a true sibling branch instead.
+        db.rewind_active_to(&conv_id, &u1.id).await.unwrap();
+        let _alt = reply(&db, &conv_id, &u1, "alt answer").await;
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "alt answer"]);
+
+        // Switching to a1 must land on the tip of a1's line (a2), not a1.
+        let leaf = db.set_active_message(&conv_id, &a1.id).await.unwrap();
+        assert_eq!(leaf.id, _a2.id);
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "a1", "q2", "a2"]);
+    }
+
+    #[tokio::test]
+    async fn delete_subtree_falls_back_to_live_ancestor() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+
+        let u1 = send(&db, &conv_id, "q1").await;
+        let _a1 = reply(&db, &conv_id, &u1, "a1").await;
+        let u2 = send(&db, &conv_id, "q2").await;
+        let _a2 = reply(&db, &conv_id, &u2, "a2").await;
+
+        db.delete_messages_from(&conv_id, &u2.id).await.unwrap();
+
+        // Active leaf fell back to the pre-branch tip; the off-branch
+        // sibling line stays untouched.
+        assert_eq!(path_contents(&db, &conv_id).await, ["q1", "a1"]);
     }
 }
