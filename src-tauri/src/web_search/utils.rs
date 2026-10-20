@@ -154,6 +154,9 @@ pub fn extract_search_keywords(user_input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // ---- extract_search_keywords ----
 
     #[test]
     fn test_extract_search_keywords_short() {
@@ -174,5 +177,190 @@ mod tests {
         let input = "a ".repeat(100);
         let result = extract_search_keywords(&input);
         assert!(result.len() <= 150);
+    }
+
+    #[test]
+    fn test_extract_search_keywords_empty_input() {
+        assert_eq!(extract_search_keywords(""), "");
+    }
+
+    #[test]
+    fn test_extract_search_keywords_whitespace_only_input() {
+        assert_eq!(extract_search_keywords(" \n\t  \n "), "");
+    }
+
+    #[test]
+    fn test_extract_search_keywords_collapses_inner_whitespace() {
+        assert_eq!(
+            extract_search_keywords("rust   web\t\tframework"),
+            "rust web framework"
+        );
+    }
+
+    #[test]
+    fn test_extract_search_keywords_truncation_counts_chars_not_bytes() {
+        // 200 CJK chars are 600 UTF-8 bytes; the 150 cap is applied per char.
+        let input = "密".repeat(200);
+        let result = extract_search_keywords(&input);
+        assert_eq!(result.chars().count(), 150);
+        assert!(result.chars().all(|c| c == '密'));
+    }
+
+    #[test]
+    fn test_extract_search_keywords_truncation_boundary() {
+        let exactly = "x".repeat(150);
+        assert_eq!(extract_search_keywords(&exactly).len(), 150);
+        let over = "y".repeat(151);
+        assert_eq!(extract_search_keywords(&over).len(), 150);
+    }
+
+    #[test]
+    fn test_extract_search_keywords_strips_crlf_endings() {
+        // `str::lines` drops the carriage return of CRLF line endings, and
+        // only the first three lines participate.
+        assert_eq!(
+            extract_search_keywords("one\r\ntwo\nthree\nfour"),
+            "one two three"
+        );
+    }
+
+    // ---- parse_tier_html ----
+
+    /// Test parser: echoes a marker from the HTML and caps at `max_results`
+    /// so tests can verify both values pass through the tier chain.
+    fn canned_parse(html: &str, max_results: usize) -> Vec<SearchResult> {
+        let marker = html.trim();
+        (0..max_results.min(3))
+            .map(|i| SearchResult {
+                title: format!("{marker} #{i}"),
+                url: format!("https://example.com/{i}"),
+                snippet: format!("snippet {i}"),
+            })
+            .collect()
+    }
+
+    fn empty_parse(_html: &str, _max_results: usize) -> Vec<SearchResult> {
+        Vec::new()
+    }
+
+    #[tokio::test]
+    async fn test_parse_tier_html_maps_and_caps_results() {
+        let items = parse_tier_html(
+            Some("<html>marker</html>".to_string()),
+            canned_parse,
+            2,
+            "http",
+            "http://127.0.0.1/serp",
+        )
+        .await
+        .expect("non-empty parse should produce items");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "<html>marker</html> #0");
+        assert_eq!(items[0].url, "https://example.com/0");
+        assert_eq!(items[0].snippet, "snippet 0");
+        assert_eq!(items[1].title, "<html>marker</html> #1");
+    }
+
+    #[tokio::test]
+    async fn test_parse_tier_html_none_when_parse_extracts_nothing() {
+        assert!(
+            parse_tier_html(
+                Some("<html>challenge shell</html>".to_string()),
+                empty_parse,
+                5,
+                "http",
+                "http://127.0.0.1/serp"
+            )
+            .await
+            .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_parse_tier_html_none_when_tier_yields_no_html() {
+        assert!(
+            parse_tier_html(None, canned_parse, 5, "obscura", "http://127.0.0.1/serp")
+                .await
+                .is_none()
+        );
+    }
+
+    // ---- try_http_serp / scrape_search_results ----
+    //
+    // Same convention as the `web_fetch` tests: bind an ephemeral 127.0.0.1
+    // port, answer exactly one request with a raw HTTP/1.1 response, close.
+
+    async fn serve_one_serp(status_line: &str, body: &str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let status_line = status_line.to_string();
+        let body = body.to_string();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 2048];
+            let _ = socket.read(&mut request).await;
+            let headers = format!(
+                "HTTP/1.1 {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                status_line,
+                body.len()
+            );
+            socket.write_all(headers.as_bytes()).await.unwrap();
+            socket.write_all(body.as_bytes()).await.unwrap();
+        });
+        format!("http://{}/serp", address)
+    }
+
+    fn dead_loopback_url() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        format!("http://{}/serp", address)
+    }
+
+    #[tokio::test]
+    async fn test_try_http_serp_returns_body_when_large_enough() {
+        let body = format!("<html>{}</html>", "x".repeat(600));
+        let url = serve_one_serp("200 OK", &body).await;
+        assert_eq!(try_http_serp(&url).await.as_deref(), Some(body.as_str()));
+    }
+
+    #[tokio::test]
+    async fn test_try_http_serp_accepts_exactly_500_byte_body() {
+        let body = "y".repeat(500);
+        let url = serve_one_serp("200 OK", &body).await;
+        assert_eq!(try_http_serp(&url).await.as_deref(), Some(body.as_str()));
+    }
+
+    #[tokio::test]
+    async fn test_try_http_serp_rejects_tiny_body() {
+        // Challenge interstitials and empty shells (< 500 bytes) are dropped.
+        let body = "z".repeat(499);
+        let url = serve_one_serp("200 OK", &body).await;
+        assert!(try_http_serp(&url).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_try_http_serp_rejects_non_success_status() {
+        let body = "b".repeat(600);
+        let url = serve_one_serp("403 Forbidden", &body).await;
+        assert!(try_http_serp(&url).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_try_http_serp_none_on_connection_refused() {
+        assert!(try_http_serp(&dead_loopback_url()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_scrape_search_results_succeeds_on_http_tier() {
+        // A parseable 200 response short-circuits the chain before the
+        // obscura/webview browser tiers, keeping the test offline.
+        let body = format!("<html>{}</html>", "r".repeat(600));
+        let url = serve_one_serp("200 OK", &body).await;
+        let results = scrape_search_results(&url, canned_parse, 2)
+            .await
+            .expect("http tier should win when it parses");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].url, "https://example.com/0");
     }
 }

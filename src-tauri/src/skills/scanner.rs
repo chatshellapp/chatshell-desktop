@@ -292,6 +292,7 @@ fn parse_yaml_frontmatter(yaml: &str) -> SkillFrontmatter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_parse_frontmatter_basic() {
@@ -357,5 +358,260 @@ Instructions here."#;
         assert_eq!(fm.name, Some("Auto Only".to_string()));
         assert_eq!(fm.disable_user_invocation, Some(true));
         assert!(fm.disable_model_invocation.is_none());
+    }
+
+    fn write_file(path: &Path, contents: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
+    }
+
+    fn scan_entry(path: std::path::PathBuf, source: &str) -> ScanDirectory {
+        ScanDirectory {
+            path,
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn parse_frontmatter_unclosed_delimiter_treated_as_body() {
+        let content = "---\nname: Ghost\nnever closed";
+        let (fm, body) = parse_frontmatter(content);
+        assert_eq!(fm.name, None);
+        assert_eq!(body, content);
+    }
+
+    #[test]
+    fn parse_frontmatter_empty_block_and_empty_content() {
+        let (fm, body) = parse_frontmatter("---\n---\nbody text");
+        assert_eq!(fm.name, None);
+        assert_eq!(body, "body text");
+
+        let (fm, body) = parse_frontmatter("");
+        assert_eq!(fm.name, None);
+        assert_eq!(body, "");
+
+        let (fm, body) = parse_frontmatter("   \n\t\n");
+        assert_eq!(fm.name, None);
+        assert_eq!(body, "   \n\t\n");
+    }
+
+    #[test]
+    fn parse_frontmatter_tolerates_leading_whitespace() {
+        let content = "\n\n  ---\nname: Indented\n---\n\nbody";
+        let (fm, body) = parse_frontmatter(content);
+        assert_eq!(fm.name, Some("Indented".to_string()));
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn parse_yaml_quoted_values_and_flags() {
+        let yaml = "\
+name: 'Single Quoted'
+description: \"Double Quoted\"
+icon: \"🧩\"
+unknown_key: ignored
+a line without colon
+disable_model_invocation: false
+disable_user_invocation: true
+";
+        let fm = parse_yaml_frontmatter(yaml);
+        assert_eq!(fm.name, Some("Single Quoted".to_string()));
+        assert_eq!(fm.description, Some("Double Quoted".to_string()));
+        assert_eq!(fm.icon, Some("🧩".to_string()));
+        assert_eq!(fm.disable_model_invocation, Some(false));
+        assert_eq!(fm.disable_user_invocation, Some(true));
+        assert!(fm.required_tools.is_none());
+    }
+
+    #[test]
+    fn parse_yaml_flushes_list_when_next_key_appears() {
+        let yaml = "\
+required_tools:
+  - tool-a
+  - \"tool-b\"
+name: After List
+";
+        let fm = parse_yaml_frontmatter(yaml);
+        assert_eq!(
+            fm.required_tools,
+            Some(vec!["tool-a".to_string(), "tool-b".to_string()])
+        );
+        assert_eq!(fm.name, Some("After List".to_string()));
+    }
+
+    #[test]
+    fn parse_yaml_ignores_empty_and_foreign_list_keys() {
+        let yaml = "\
+description:
+name: Kept
+tags:
+  - a
+  - b
+";
+        let fm = parse_yaml_frontmatter(yaml);
+        assert_eq!(fm.name, Some("Kept".to_string()));
+        assert_eq!(fm.description, None, "empty value without items is no list");
+        assert!(
+            fm.required_tools.is_none(),
+            "lists under other keys must be dropped"
+        );
+    }
+
+    #[test]
+    fn to_create_request_maps_every_field() {
+        let skill = DiscoveredSkill {
+            name: "n".to_string(),
+            description: Some("d".to_string()),
+            source: "s".to_string(),
+            path: "/p".to_string(),
+            icon: Some("🔧".to_string()),
+            required_tool_ids: vec!["t1".to_string()],
+            allow_model_invocation: false,
+            allow_user_invocation: true,
+            instructions: "i".to_string(),
+            content_hash: "h".to_string(),
+        };
+        let req = skill.to_create_request();
+        assert_eq!(req.name, "n");
+        assert_eq!(req.description, Some("d".to_string()));
+        assert_eq!(req.source, "s");
+        assert_eq!(req.path, "/p");
+        assert_eq!(req.icon, Some("🔧".to_string()));
+        assert_eq!(req.required_tool_ids, Some(vec!["t1".to_string()]));
+        assert_eq!(req.allow_model_invocation, Some(false));
+        assert_eq!(req.allow_user_invocation, Some(true));
+        assert_eq!(req.content_hash, Some("h".to_string()));
+        assert_eq!(req.cached_instructions, Some("i".to_string()));
+        assert_eq!(req.is_enabled, Some(true));
+    }
+
+    #[tokio::test]
+    async fn scan_all_discovers_and_maps_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir_a = tmp.path().join("bundled");
+        let dir_b = tmp.path().join("user");
+
+        let alpha_md = "---\nname: Alpha Skill\ndescription: Does alpha things\nicon: \"🧩\"\nrequired_tools:\n  - \"builtin-web-search\"\n  - builtin-code-exec\ndisable_model_invocation: true\n---\n\nDo the alpha dance.\n";
+        write_file(&dir_a.join("alpha").join("SKILL.md"), alpha_md.as_bytes());
+        // Decoys that must NOT be discovered: a loose non-skill file, an
+        // empty directory, and a skill nested one level too deep (the
+        // scanner does not recurse).
+        write_file(&dir_a.join("README.md"), b"not a skill");
+        fs::create_dir_all(dir_a.join("empty")).unwrap();
+        write_file(
+            &dir_a.join("outer").join("inner").join("SKILL.md"),
+            b"# too deep",
+        );
+
+        let beta_md = "# Just instructions\n\nPlain body without frontmatter.\n";
+        write_file(&dir_b.join("beta").join("SKILL.md"), beta_md.as_bytes());
+
+        let scanner = SkillScanner::new(vec![
+            scan_entry(dir_a.clone(), "bundled"),
+            scan_entry(dir_b.clone(), "user"),
+        ]);
+        let skills = scanner.scan_all().await.unwrap();
+        assert_eq!(skills.len(), 2, "{skills:?}");
+
+        let alpha = skills.iter().find(|s| s.source == "bundled").unwrap();
+        assert_eq!(alpha.name, "Alpha Skill");
+        assert_eq!(alpha.description, Some("Does alpha things".to_string()));
+        assert_eq!(alpha.icon, Some("🧩".to_string()));
+        assert_eq!(
+            alpha.required_tool_ids,
+            vec![
+                "builtin-web-search".to_string(),
+                "builtin-code-exec".to_string()
+            ]
+        );
+        assert!(!alpha.allow_model_invocation);
+        assert!(alpha.allow_user_invocation);
+        assert_eq!(alpha.instructions, "Do the alpha dance.");
+        assert_eq!(alpha.path, dir_a.join("alpha").to_string_lossy());
+        assert_eq!(alpha.content_hash, crate::storage::hash_content(alpha_md));
+
+        let beta = skills.iter().find(|s| s.source == "user").unwrap();
+        assert_eq!(beta.name, "beta", "name falls back to the directory name");
+        assert_eq!(beta.description, None);
+        assert!(beta.required_tool_ids.is_empty());
+        assert!(beta.allow_model_invocation);
+        assert!(beta.allow_user_invocation);
+        assert_eq!(beta.instructions, beta_md);
+        assert_eq!(beta.path, dir_b.join("beta").to_string_lossy());
+        assert_eq!(beta.content_hash, crate::storage::hash_content(beta_md));
+    }
+
+    #[tokio::test]
+    async fn scan_all_skips_missing_and_unreadable_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let valid = tmp.path().join("valid");
+        write_file(&valid.join("solo").join("SKILL.md"), b"# hi");
+        // A file where a directory is expected: read_dir fails (ENOTDIR)
+        // deterministically on every platform and permission setup.
+        let not_a_dir = tmp.path().join("not-a-dir");
+        write_file(&not_a_dir, b"plain file");
+
+        let broken = SkillScanner::new(vec![
+            scan_entry(tmp.path().join("does-not-exist"), "missing"),
+            scan_entry(not_a_dir.clone(), "unreadable"),
+        ]);
+        assert!(broken.scan_all().await.unwrap().is_empty());
+
+        // Broken targets never mask healthy ones.
+        let mixed = SkillScanner::new(vec![
+            scan_entry(tmp.path().join("does-not-exist"), "missing"),
+            scan_entry(not_a_dir, "unreadable"),
+            scan_entry(valid.clone(), "valid"),
+        ]);
+        let skills = mixed.scan_all().await.unwrap();
+        assert_eq!(skills.len(), 1, "{skills:?}");
+        assert_eq!(skills[0].name, "solo");
+        assert_eq!(skills[0].source, "valid");
+    }
+
+    #[tokio::test]
+    async fn scan_all_skips_non_utf8_skill_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("skills");
+        write_file(
+            &dir.join("broken").join("SKILL.md"),
+            &[0xff, 0xfe, 0x00, 0x80],
+        );
+        write_file(&dir.join("healthy").join("SKILL.md"), b"# fine");
+
+        let scanner = SkillScanner::new(vec![scan_entry(dir, "src")]);
+        let skills = scanner.scan_all().await.unwrap();
+        assert_eq!(skills.len(), 1, "{skills:?}");
+        assert_eq!(skills[0].name, "healthy");
+    }
+
+    #[tokio::test]
+    async fn same_named_skills_in_two_sources_are_both_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir_a = tmp.path().join("a");
+        let dir_b = tmp.path().join("b");
+        write_file(
+            &dir_a.join("my-skill").join("SKILL.md"),
+            b"---\nname: Shared\n---\nfrom A",
+        );
+        write_file(
+            &dir_b.join("my-skill").join("SKILL.md"),
+            b"# no frontmatter, from B",
+        );
+
+        let scanner = SkillScanner::new(vec![
+            scan_entry(dir_a, "first"),
+            scan_entry(dir_b, "second"),
+        ]);
+        let skills = scanner.scan_all().await.unwrap();
+        // Both are reported (dedup is the indexer's job via upsert); the
+        // concatenation follows the configured directory order.
+        assert_eq!(skills.len(), 2, "{skills:?}");
+        assert_eq!(skills[0].source, "first");
+        assert_eq!(skills[0].name, "Shared");
+        assert_eq!(skills[1].source, "second");
+        assert_eq!(skills[1].name, "my-skill");
     }
 }

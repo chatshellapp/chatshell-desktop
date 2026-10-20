@@ -247,6 +247,11 @@ fn replace_ignore_case(haystack: &str, needle: &str, replacement: &str) -> Strin
     let haystack_chars: Vec<char> = haystack.chars().collect();
     let haystack_lower_chars: Vec<char> = haystack_lower.chars().collect();
     let n = needle_lower.len();
+    // A needle longer than the haystack can never match (and previously
+    // panicked on the window slice); an empty needle would loop forever.
+    if n == 0 || haystack_chars.len() < n {
+        return haystack.to_string();
+    }
     let mut i = 0;
     while i <= haystack_chars.len().saturating_sub(n) {
         let window: Vec<char> = haystack_lower_chars[i..i + n].to_vec();
@@ -263,4 +268,297 @@ fn replace_ignore_case(haystack: &str, needle: &str, replacement: &str) -> Strin
         i += 1;
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn terms(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn floor_char_boundary_snaps_to_char_start() {
+        // "héllo": h=1B, é=2B (1..3), l=1, l=1, o=1 -> len 6.
+        assert_eq!(floor_char_boundary("héllo", 0), 0);
+        assert_eq!(floor_char_boundary("héllo", 1), 1);
+        assert_eq!(floor_char_boundary("héllo", 2), 1);
+        assert_eq!(floor_char_boundary("héllo", 3), 3);
+        assert_eq!(floor_char_boundary("héllo", 6), 6);
+        assert_eq!(floor_char_boundary("héllo", 10), 6);
+        // "a🙂b": a=1B, 🙂=4B (1..5), b=1B -> len 6.
+        assert_eq!(floor_char_boundary("a🙂b", 3), 1);
+        assert_eq!(floor_char_boundary("a🙂b", 5), 5);
+    }
+
+    #[test]
+    fn ceil_char_boundary_snaps_to_char_end() {
+        assert_eq!(ceil_char_boundary("héllo", 2), 3);
+        assert_eq!(ceil_char_boundary("héllo", 1), 1);
+        assert_eq!(ceil_char_boundary("héllo", 6), 6);
+        assert_eq!(ceil_char_boundary("héllo", 10), 6);
+        assert_eq!(ceil_char_boundary("a🙂b", 3), 5);
+        assert_eq!(ceil_char_boundary("a🙂b", 5), 5);
+        assert_eq!(ceil_char_boundary("a🙂b", 9), 6);
+    }
+
+    #[test]
+    fn strip_markdown_removes_formatting_and_escapes_angle_brackets() {
+        assert_eq!(
+            strip_markdown("```rust\nfn main() {}\n```"),
+            "\nrust\nfn main() {}\n\n"
+        );
+        assert_eq!(strip_markdown("# Heading"), "Heading");
+        assert_eq!(strip_markdown("**bold** *ital* __u__ _v_"), "bold ital u v");
+        assert_eq!(
+            strip_markdown("![alt](http://img) [text](http://x)"),
+            "alt text"
+        );
+        assert_eq!(strip_markdown("a `code` b"), "a code b");
+        assert_eq!(strip_markdown("x < y > z"), "x &lt; y &gt; z");
+    }
+
+    #[test]
+    fn normalize_text_converts_all_line_endings() {
+        assert_eq!(normalize_text("a\r\nb\rc\nd"), "a\nb\nc\nd");
+        assert_eq!(normalize_text("unchanged"), "unchanged");
+    }
+
+    #[test]
+    fn merge_ranges_sorts_overlaps_and_adjacent_gaps() {
+        assert_eq!(merge_ranges(vec![]), Vec::<(usize, usize)>::new());
+        // Unsorted input with overlap: (1,3)+(3,4)+(5,8) coalesce via adjacency.
+        assert_eq!(merge_ranges(vec![(5, 8), (1, 3), (3, 4)]), vec![(1, 8)]);
+        // Gap of one line still merges (start <= last.1 + 1).
+        assert_eq!(merge_ranges(vec![(0, 1), (2, 3)]), vec![(0, 3)]);
+        // Real gaps stay separate.
+        assert_eq!(merge_ranges(vec![(0, 1), (3, 5)]), vec![(0, 1), (3, 5)]);
+    }
+
+    #[test]
+    fn build_snippet_empty_content_returns_empty_string() {
+        assert_eq!(build_snippet("", &terms(&["term"]), 6, 1, 120), "");
+    }
+
+    #[test]
+    fn build_snippet_without_matches_returns_head_lines() {
+        let out = build_snippet("l0\nl1\nl2\nl3", &terms(&["zzz"]), 6, 1, 120);
+        assert_eq!(out, "l0\nl1\nl2\nl3");
+    }
+
+    #[test]
+    fn build_snippet_without_matches_caps_at_max_lines() {
+        let content = (0..10)
+            .map(|i| format!("l{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let out = build_snippet(&content, &terms(&["zzz"]), 3, 1, 120);
+        assert_eq!(out, "l0\nl1\nl2\n...");
+    }
+
+    #[test]
+    fn build_snippet_highlights_matches_case_insensitively_across_gap() {
+        let content = "one MATCH two\nx\ny\nz\nanother MATCH end";
+        let out = build_snippet(content, &terms(&["match"]), 6, 1, 120);
+        assert_eq!(
+            out,
+            "one <mark>match</mark> two\nx\n...\nz\nanother <mark>match</mark> end"
+        );
+    }
+
+    #[test]
+    fn build_snippet_blank_terms_fall_back_to_head_lines() {
+        let out = build_snippet("a\nb\nMATCH\nc", &terms(&["", "   "]), 6, 1, 120);
+        assert_eq!(out, "a\nb\nMATCH\nc");
+    }
+
+    #[test]
+    fn build_snippet_clamps_context_lines_to_one() {
+        let content = "one\ntwo\nthree\nfour hit\nfive\nsix\nseven\neight";
+        let out = build_snippet(content, &terms(&["hit"]), 6, 5, 120);
+        // context_lines=5 is clamped to 1: only lines 2..=4 plus ellipses.
+        assert_eq!(out, "...\nthree\nfour <mark>hit</mark>\nfive\n...");
+    }
+
+    #[test]
+    fn build_snippet_clamps_max_lines_to_six() {
+        let content = (1..=8)
+            .map(|i| format!("hit {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let out = build_snippet(&content, &terms(&["hit"]), 100, 1, 120);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 7); // 6 content lines + trailing ellipsis
+        for line in &lines[..6] {
+            assert!(
+                line.starts_with("<mark>hit</mark>"),
+                "line not highlighted: {line}"
+            );
+        }
+        assert_eq!(lines[6], "...");
+    }
+
+    #[test]
+    fn build_snippet_clamps_max_line_length_to_120() {
+        let content = "a".repeat(150);
+        let out = build_snippet(&content, &[], 6, 1, 1000);
+        assert_eq!(out.len(), 123);
+        assert!(out.ends_with("..."));
+    }
+
+    #[test]
+    fn build_line_snippet_returns_short_line_unchanged() {
+        assert_eq!(
+            build_line_snippet("hello world", &["world"], 120),
+            "hello world"
+        );
+        assert_eq!(build_line_snippet("hello", &[], 120), "hello");
+    }
+
+    #[test]
+    fn build_line_snippet_truncates_long_line_without_matches() {
+        let line = "a".repeat(150);
+        let out = build_line_snippet(&line, &[], 120);
+        assert_eq!(out, format!("{}...", "a".repeat(120)));
+    }
+
+    #[test]
+    fn build_line_snippet_truncation_respects_char_boundaries() {
+        // é is 2 bytes; 121 is mid-char, so the cut backs off to 120.
+        let line = "é".repeat(100);
+        let out = build_line_snippet(&line, &[], 121);
+        assert_eq!(out.len(), 123);
+        assert!(out.ends_with("..."));
+        assert_eq!(out.chars().count(), 63); // 60 é + "..."
+    }
+
+    #[test]
+    fn build_line_snippet_extracts_fragment_around_match() {
+        let line = format!("{}needle{}", "x".repeat(60), "y".repeat(60));
+        let out = build_line_snippet(&line, &["needle"], 120);
+        // Fragment window is match ± 40 bytes: line[20..106] plus ellipses.
+        assert!(out.starts_with("..."));
+        assert!(out.ends_with("..."));
+        assert!(out.contains("needle"));
+        assert_eq!(out.len(), 3 + 86 + 3);
+        assert_eq!(out.matches(" ... ").count(), 0);
+    }
+
+    #[test]
+    fn build_line_snippet_merges_nearby_matches_into_one_fragment() {
+        let line = format!(
+            "{}needle{}needle{}",
+            "x".repeat(60),
+            "m".repeat(30),
+            "y".repeat(60)
+        );
+        // max_len below the 162-byte line keeps the fragment path active.
+        let out = build_line_snippet(&line, &["needle"], 160);
+        assert_eq!(out.matches(" ... ").count(), 0);
+        assert_eq!(out.matches("needle").count(), 2);
+        assert!(out.starts_with("..."));
+        assert!(out.ends_with("..."));
+    }
+
+    #[test]
+    fn build_line_snippet_caps_fragments_at_three() {
+        let line = format!(
+            "{}needle{}needle{}needle{}needle{}",
+            "a".repeat(94),
+            "b".repeat(94),
+            "c".repeat(94),
+            "d".repeat(94),
+            "e".repeat(94)
+        );
+        // max_len below the 494-byte line keeps the fragment path active;
+        // the joined fragments (274 bytes) fit without final truncation.
+        let out = build_line_snippet(&line, &["needle"], 300);
+        // Only the first three matches survive the fragment cap.
+        assert_eq!(out.matches(" ... ").count(), 2);
+        assert_eq!(out.matches("needle").count(), 3);
+        assert_eq!(out.len(), 3 + 86 + 5 + 86 + 5 + 86 + 3);
+    }
+
+    #[test]
+    fn build_line_snippet_truncates_oversized_fragment_output() {
+        let line = format!(
+            "{}needle{}needle{}needle{}needle{}",
+            "a".repeat(94),
+            "b".repeat(94),
+            "c".repeat(94),
+            "d".repeat(94),
+            "e".repeat(94)
+        );
+        let out = build_line_snippet(&line, &["needle"], 120);
+        assert!(out.starts_with("..."));
+        assert!(out.ends_with("..."));
+        assert_eq!(out.len(), 123);
+    }
+
+    #[test]
+    fn build_line_snippet_handles_multibyte_matches() {
+        let line = format!("{}針{}", "日".repeat(50), "日".repeat(50));
+        let out = build_line_snippet(&line, &["針"], 120);
+        assert!(out.contains("針"));
+        assert!(out.starts_with("..."));
+        assert!(out.ends_with("..."));
+        assert_eq!(out.len(), 3 + 87 + 3); // fragment is 29 chars = 87 bytes
+    }
+
+    #[test]
+    fn highlight_terms_without_terms_returns_text_unchanged() {
+        assert_eq!(highlight_terms("abc", &[]), "abc");
+    }
+
+    #[test]
+    fn highlight_terms_wraps_all_case_insensitive_matches() {
+        assert_eq!(
+            highlight_terms("Hello WORLD foo", &["world"]),
+            "Hello <mark>world</mark> foo"
+        );
+        assert_eq!(
+            highlight_terms("alpha beta", &["alpha", "beta"]),
+            "<mark>alpha</mark> <mark>beta</mark>"
+        );
+    }
+
+    #[test]
+    fn highlight_terms_escapes_term_html() {
+        assert_eq!(
+            highlight_terms("x A&B y", &["a&b"]),
+            "x <mark>a&amp;b</mark> y"
+        );
+    }
+
+    #[test]
+    fn escape_html_replaces_all_entities() {
+        assert_eq!(escape_html("a&<>\""), "a&amp;&lt;&gt;&quot;");
+    }
+
+    #[test]
+    fn replace_ignore_case_replaces_every_match() {
+        assert_eq!(
+            replace_ignore_case("a Foo B foo c", "foo", "X"),
+            "a X B X c"
+        );
+        // Non-ASCII case folding.
+        assert_eq!(replace_ignore_case("ÇA va", "ça", "X"), "X va");
+        // Match at the very end of the haystack.
+        assert_eq!(
+            replace_ignore_case("say foo", "foo", "<mark>foo</mark>"),
+            "say <mark>foo</mark>"
+        );
+        // Needle absent -> haystack unchanged.
+        assert_eq!(replace_ignore_case("abc", "zz", "X"), "abc");
+    }
+
+    #[test]
+    fn replace_ignore_case_handles_degenerate_needle_lengths() {
+        // Regression: a query term longer than the snippet text used to
+        // panic on the window slice (reachable from build_snippet).
+        assert_eq!(replace_ignore_case("hi", "a-very-long-term", "X"), "hi");
+        // Empty needle would have looped forever; upstream filters blank
+        // terms, but the helper stays total.
+        assert_eq!(replace_ignore_case("abc", "", "X"), "abc");
+    }
 }

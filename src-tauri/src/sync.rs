@@ -409,7 +409,11 @@ pub async fn terminal_publish(engine: SyncEngineHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chatshell_agent_core::sync::{META_SYNC_VERSION, get_meta};
+    use chatshell_agent_core::sync::{
+        META_SYNC_VERSION, SNAPSHOT_FILE, compressed_snapshot_name, encrypted_snapshot_name,
+        get_meta,
+    };
+    use chatshell_agent_core::sync_crypto::ArgonParams;
     use std::path::{Path, PathBuf};
 
     /// Build a production-schema database (through the app's own schema code)
@@ -575,6 +579,177 @@ mod tests {
         // simply not panic and return None when missing.
         let result = detect_icloud_container();
         assert!(result.is_none() || result.unwrap().is_dir());
+    }
+
+    #[test]
+    fn resolve_sync_target_uses_container_or_debug_staging() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = resolve_sync_target(tmp.path());
+        if let Some(container) = detect_icloud_container() {
+            assert_eq!(target, Some((container, "iCloud container")));
+        } else if cfg!(debug_assertions) {
+            let (dir, label) = target.expect("debug builds resolve the local staging fallback");
+            assert_eq!(dir, tmp.path().join("sync-staging"));
+            assert_eq!(label, "local staging dir (debug)");
+            assert!(dir.is_dir(), "the staging dir must be created eagerly");
+        } else {
+            assert_eq!(
+                target, None,
+                "release builds stay off without the container"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn install_engine_populates_and_replaces_the_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("data.db");
+        let _db = make_db(&db_path, "c1", "t").await;
+        let cloud = tmp.path().join("cloud-a");
+        let cloud_b = tmp.path().join("cloud-b");
+        std::fs::create_dir_all(&cloud).unwrap();
+        std::fs::create_dir_all(&cloud_b).unwrap();
+        let wiring = SyncWiring {
+            app_data_dir: tmp.path().to_path_buf(),
+            db_path: db_path.clone(),
+            cache_dir: tmp.path().join("cache"),
+        };
+        let slot: SyncEngineHandle = Arc::new(std::sync::Mutex::new(None));
+        assert!(slot.lock().unwrap().is_none());
+
+        let crypto =
+            SyncCrypto::bootstrap_with_params("unit-test-passphrase", ArgonParams::test()).unwrap();
+        wiring.install_engine(&slot, cloud.clone(), crypto).unwrap();
+        {
+            let guard = slot.lock().unwrap();
+            let engine = guard.as_ref().expect("engine installed");
+            assert_eq!(engine.cloud_dir(), cloud);
+            assert_eq!(engine.cache_dir(), tmp.path().join("cache"));
+            assert!(engine.crypto().is_some(), "engine keeps the crypto state");
+        }
+
+        // Installing again replaces the stale engine instead of stacking.
+        let crypto =
+            SyncCrypto::bootstrap_with_params("unit-test-passphrase", ArgonParams::test()).unwrap();
+        wiring
+            .install_engine(&slot, cloud_b.clone(), crypto)
+            .unwrap();
+        assert_eq!(slot.lock().unwrap().as_ref().unwrap().cloud_dir(), cloud_b);
+
+        wiring.drop_engine(&slot);
+        assert!(slot.lock().unwrap().is_none());
+        // Dropping an empty slot must not panic either.
+        wiring.drop_engine(&slot);
+    }
+
+    #[tokio::test]
+    async fn terminal_publish_is_a_noop_without_an_engine() {
+        let slot: SyncEngineHandle = Arc::new(std::sync::Mutex::new(None));
+        terminal_publish(Arc::clone(&slot)).await;
+        assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn terminal_publish_ships_the_installed_engine_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("data.db");
+        let _db = make_db(&db_path, "c1", "t").await;
+        let cloud = tmp.path().join("cloud");
+        std::fs::create_dir_all(&cloud).unwrap();
+        let wiring = SyncWiring {
+            app_data_dir: tmp.path().to_path_buf(),
+            db_path,
+            cache_dir: tmp.path().join("cache"),
+        };
+        let slot: SyncEngineHandle = Arc::new(std::sync::Mutex::new(None));
+        let crypto =
+            SyncCrypto::bootstrap_with_params("unit-test-passphrase", ArgonParams::test()).unwrap();
+        wiring.install_engine(&slot, cloud.clone(), crypto).unwrap();
+
+        terminal_publish(Arc::clone(&slot)).await;
+
+        let snapshot_root = cloud.join(SNAPSHOT_FILE);
+        assert!(
+            encrypted_snapshot_name(&snapshot_root).exists(),
+            "terminal publish must ship the encrypted artifact"
+        );
+        assert!(
+            !compressed_snapshot_name(&snapshot_root).exists(),
+            "an engine with crypto must not leave plaintext artifacts"
+        );
+        assert!(
+            slot.lock().unwrap().as_ref().is_some(),
+            "terminal publish must not drop the engine"
+        );
+    }
+
+    #[tokio::test]
+    async fn force_publish_bumps_the_version_even_without_writes() {
+        let path = std::env::temp_dir().join(format!("sync-f-{}", unique_tag()));
+        remove_db(&path);
+        let _db = make_db(&path, "c1", "t").await;
+        let cloud = cloud_dir("force");
+        let staging = std::env::temp_dir().join(format!("sync-stage-f-{}", unique_tag()));
+        let mut engine = SyncEngine::new(&path, cloud.clone(), staging.clone(), None).unwrap();
+        engine.publish().unwrap();
+        let v1 = get_meta(engine.connection(), META_SYNC_VERSION)
+            .unwrap()
+            .unwrap();
+
+        engine.force_publish().unwrap();
+        let v2 = get_meta(engine.connection(), META_SYNC_VERSION)
+            .unwrap()
+            .unwrap();
+        assert_ne!(v1, v2, "a forced publish bumps the version id");
+
+        engine.force_publish().unwrap();
+        let v3 = get_meta(engine.connection(), META_SYNC_VERSION)
+            .unwrap()
+            .unwrap();
+        assert_ne!(v2, v3, "each forced publish bumps again");
+
+        drop(engine);
+        drop(_db);
+        remove_db(&path);
+        let _ = std::fs::remove_dir_all(&cloud);
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+
+    #[tokio::test]
+    async fn manual_pass_ships_same_session_pool_writes() {
+        let path = std::env::temp_dir().join(format!("sync-m-{}", unique_tag()));
+        remove_db(&path);
+        let db = make_db(&path, "c1", "first").await;
+        let cloud = cloud_dir("manual");
+        let staging = std::env::temp_dir().join(format!("sync-stage-m-{}", unique_tag()));
+        let mut engine = SyncEngine::new(&path, cloud.clone(), staging.clone(), None).unwrap();
+        engine.publish().unwrap();
+        let v1 = get_meta(engine.connection(), META_SYNC_VERSION)
+            .unwrap()
+            .unwrap();
+
+        // Same-session write through the app pool (a second connection).
+        db.create_conversation(crate::models::CreateConversationRequest {
+            title: "second".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // A manual pass bypasses the flush throttle: the write ships now.
+        let out = engine.sync_now_manual().unwrap();
+        assert_eq!(out.action, "flushed", "{out:?}");
+        assert_eq!(out.rows_merged, 0);
+        assert!(out.republished, "{out:?}");
+        let v2 = get_meta(engine.connection(), META_SYNC_VERSION)
+            .unwrap()
+            .unwrap();
+        assert_ne!(v1, v2, "shipping the write bumps the version id");
+
+        drop(engine);
+        drop(db);
+        remove_db(&path);
+        let _ = std::fs::remove_dir_all(&cloud);
+        let _ = std::fs::remove_dir_all(&staging);
     }
 }
 

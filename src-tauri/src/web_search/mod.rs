@@ -144,4 +144,28 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_provider_order_duckduckgo_preferred() {
+        assert_eq!(
+            provider_order(SearchProvider::DuckDuckGo),
+            vec![
+                SearchProvider::DuckDuckGo,
+                SearchProvider::Yahoo,
+                SearchProvider::Baidu
+            ]
+        );
+    }
+
+    #[test]
+    fn test_provider_order_yahoo_preferred() {
+        assert_eq!(
+            provider_order(SearchProvider::Yahoo),
+            vec![
+                SearchProvider::Yahoo,
+                SearchProvider::DuckDuckGo,
+                SearchProvider::Baidu
+            ]
+        );
+    }
 }
