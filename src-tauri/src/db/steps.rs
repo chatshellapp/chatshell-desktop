@@ -1076,11 +1076,16 @@ mod tests {
 
         db.delete_tool_call(&call.id).await.unwrap();
 
-        // tool_calls reads do not filter on deleted_at, so assert the
-        // tombstone directly against the row.
+        // tool_calls reads do not filter on deleted_at (no production
+        // caller deletes tool calls today), so assert both the tombstone
+        // and the current read-through semantics explicitly.
         assert!(
             row_deleted_at(&db, "tool_calls", &call.id).await.is_some(),
             "delete_tool_call sets deleted_at"
+        );
+        assert!(
+            db.get_tool_call(&call.id).await.is_ok(),
+            "current semantics: tombstoned tool calls stay readable"
         );
     }
 
@@ -1337,7 +1342,7 @@ mod tests {
                 message_id: msg.clone(),
                 content: "plan the work".to_string(),
                 source: None,
-                display_order: Some(0),
+                display_order: Some(4),
             })
             .await
             .unwrap();
@@ -1352,7 +1357,7 @@ mod tests {
                 status: Some("success".to_string()),
                 error: None,
                 duration_ms: Some(10),
-                display_order: Some(1),
+                display_order: Some(3),
                 completed_at: None,
             })
             .await
@@ -1375,7 +1380,7 @@ mod tests {
                 status: Some("success".to_string()),
                 error: None,
                 duration_ms: None,
-                display_order: Some(3),
+                display_order: Some(1),
                 completed_at: None,
             })
             .await
@@ -1387,41 +1392,43 @@ mod tests {
                 search_needed: true,
                 search_query: Some("latest news".to_string()),
                 search_result_id: None,
-                display_order: Some(4),
+                display_order: Some(0),
             })
             .await
             .unwrap();
 
+        // Creation order is the exact reverse of display_order, so only a
+        // display_order-primary sort can produce this sequence.
         let steps = db.get_message_steps(&msg).await.unwrap();
         assert_eq!(
             steps.iter().map(|s| s.step_type()).collect::<Vec<_>>(),
             vec![
-                StepType::Thinking,
-                StepType::ToolCall,
-                StepType::ContentBlock,
-                StepType::CodeExecution,
                 StepType::SearchDecision,
+                StepType::CodeExecution,
+                StepType::ContentBlock,
+                StepType::ToolCall,
+                StepType::Thinking,
             ]
         );
-        assert_eq!(steps[0].id(), think.id);
-        assert_eq!(steps[1].id(), tool.id);
+        assert_eq!(steps[0].id(), search.id);
+        assert_eq!(steps[1].id(), code.id);
         assert_eq!(steps[2].id(), block.id);
-        assert_eq!(steps[3].id(), code.id);
-        assert_eq!(steps[4].id(), search.id);
+        assert_eq!(steps[3].id(), tool.id);
+        assert_eq!(steps[4].id(), think.id);
 
         // Payloads survive the merge into the unified enum.
-        assert!(matches!(&steps[0], ProcessStep::Thinking(t) if t.content == "plan the work"));
+        assert!(matches!(&steps[4], ProcessStep::Thinking(t) if t.content == "plan the work"));
         assert!(matches!(
-            &steps[1],
+            &steps[3],
             ProcessStep::ToolCall(t) if t.tool_name == "web_search" && t.status == "success"
         ));
         assert!(matches!(&steps[2], ProcessStep::ContentBlock(b) if b.content == "partial answer"));
         assert!(matches!(
-            &steps[3],
+            &steps[1],
             ProcessStep::CodeExecution(c) if c.language == "python" && c.exit_code == Some(0)
         ));
         assert!(matches!(
-            &steps[4],
+            &steps[0],
             ProcessStep::SearchDecision(d) if d.search_needed && d.search_query.as_deref() == Some("latest news")
         ));
 
@@ -1450,13 +1457,23 @@ mod tests {
         let msg = new_message_id(&db).await;
 
         // Three different step types sharing display_order 0: created_at
-        // (= creation order here) decides, regardless of step type.
+        // (= creation order here) decides, regardless of step type. The
+        // creation order is deliberately the reverse of the per-type fetch
+        // order (thinking -> search -> tool_call), so a stable no-op sort
+        // cannot pass.
         let a = db
-            .create_thinking_step(CreateThinkingStepRequest {
+            .create_tool_call(CreateToolCallRequest {
+                id: None,
+                call_id: None,
                 message_id: msg.clone(),
-                content: "first".to_string(),
-                source: None,
+                tool_name: "first".to_string(),
+                tool_input: None,
+                tool_output: None,
+                status: None,
+                error: None,
+                duration_ms: None,
                 display_order: Some(0),
+                completed_at: None,
             })
             .await
             .unwrap();
@@ -1472,18 +1489,11 @@ mod tests {
             .await
             .unwrap();
         let c = db
-            .create_tool_call(CreateToolCallRequest {
-                id: None,
-                call_id: None,
+            .create_thinking_step(CreateThinkingStepRequest {
                 message_id: msg.clone(),
-                tool_name: "third".to_string(),
-                tool_input: None,
-                tool_output: None,
-                status: None,
-                error: None,
-                duration_ms: None,
+                content: "third".to_string(),
+                source: None,
                 display_order: Some(0),
-                completed_at: None,
             })
             .await
             .unwrap();

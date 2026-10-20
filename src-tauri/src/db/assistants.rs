@@ -626,6 +626,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_assistant_retaining_tool_link_succeeds() {
+        let (db, _dir) = test_db().await;
+        let model_id = make_model(&db).await;
+        let created = db
+            .create_assistant(CreateAssistantRequest {
+                tool_ids: Some(vec![BUILTIN_WEB_FETCH_ID.to_string()]),
+                ..assistant_req(&model_id)
+            })
+            .await
+            .unwrap();
+
+        // Retaining web_fetch while adding grep must not hit
+        // UNIQUE(assistant_id, tool_id): the retained pair revives its
+        // tombstoned junction row.
+        let updated = db
+            .update_assistant(
+                &created.id,
+                CreateAssistantRequest {
+                    tool_ids: Some(vec![
+                        BUILTIN_WEB_FETCH_ID.to_string(),
+                        BUILTIN_GREP_ID.to_string(),
+                    ]),
+                    ..assistant_req(&model_id)
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            sorted(updated.tool_ids),
+            vec![
+                BUILTIN_GREP_ID.to_string(),
+                BUILTIN_WEB_FETCH_ID.to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn get_assistant_tool_ids_returns_linked_tools_only() {
         let (db, _dir) = test_db().await;
         let model_id = make_model(&db).await;
@@ -707,7 +744,7 @@ mod tests {
             let mut req = assistant_req(&model_id);
             req.name = name.to_string();
             db.create_assistant(req).await.unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(3));
+            tokio::time::sleep(std::time::Duration::from_millis(3)).await;
         }
         let names: Vec<String> = db
             .list_assistants()

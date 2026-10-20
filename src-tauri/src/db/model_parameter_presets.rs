@@ -645,6 +645,26 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+
+        // Moving the flag via update: the newly flagged preset becomes the
+        // default and no other preset keeps it.
+        let other = db
+            .create_model_parameter_preset(create_req("Other"))
+            .await
+            .unwrap();
+        let mut req = update_req();
+        req.is_default = Some(true);
+        db.update_model_parameter_preset(&other.id, req)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_default_model_parameter_preset()
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            other.id
+        );
     }
 
     #[tokio::test]

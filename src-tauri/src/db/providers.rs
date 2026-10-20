@@ -90,7 +90,7 @@ impl Database {
     pub async fn get_provider(&self, id: &str) -> Result<Option<Provider>> {
         let row = sqlx::query(
             "SELECT id, name, provider_type, api_key, base_url, api_style, description, is_enabled, created_at, updated_at
-             FROM providers WHERE id = ?"
+             FROM providers WHERE id = ? AND deleted_at IS NULL"
         )
         .bind(id)
         .fetch_optional(self.pool.as_ref())
@@ -138,7 +138,7 @@ impl Database {
     pub async fn list_providers(&self) -> Result<Vec<Provider>> {
         let rows = sqlx::query(
             "SELECT id, name, provider_type, api_key, base_url, api_style, description, is_enabled, created_at, updated_at
-             FROM providers ORDER BY created_at ASC"
+             FROM providers WHERE deleted_at IS NULL ORDER BY created_at ASC"
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -500,6 +500,16 @@ mod tests {
         assert_eq!(api_key, None);
         assert_eq!(provider_type, "");
         assert_eq!(is_enabled, None);
+
+        // Deleted providers disappear from every read path.
+        assert!(db.get_provider(&created.id).await.unwrap().is_none());
+        assert!(
+            !db.list_providers()
+                .await
+                .unwrap()
+                .iter()
+                .any(|p| p.id == created.id)
+        );
 
         // Second delete is a no-op that still succeeds (guard: deleted_at IS NULL).
         db.delete_provider(&created.id).await.unwrap();

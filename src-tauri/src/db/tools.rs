@@ -67,7 +67,7 @@ impl Database {
     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
         let rows = sqlx::query(
             "SELECT id, name, type, endpoint, config, description, is_enabled, auth_token, created_at, updated_at
-             FROM tools ORDER BY created_at DESC",
+             FROM tools WHERE deleted_at IS NULL ORDER BY created_at DESC",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -646,7 +646,7 @@ mod tests {
                 .await
                 .unwrap()
                 .len(),
-            9
+            builtin_ids().len()
         );
 
         db.set_all_tools_enabled(TOOL_TYPE_MCP, true).await.unwrap();
@@ -742,13 +742,17 @@ mod tests {
                 .await
                 .unwrap()
                 .len(),
-            10
+            builtin_ids().len() + 1
         );
 
         db.ensure_builtin_tools().await.unwrap();
 
         let builtins = db.list_tools_by_type(TOOL_TYPE_BUILTIN).await.unwrap();
-        assert_eq!(builtins.len(), 9, "stale builtin must be pruned");
+        assert_eq!(
+            builtins.len(),
+            builtin_ids().len(),
+            "stale builtin must be pruned"
+        );
         assert!(!builtins.iter().any(|t| t.id == stale.id));
     }
 

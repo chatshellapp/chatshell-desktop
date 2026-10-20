@@ -217,14 +217,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_applies_defaults_for_totals_and_order() {
+    async fn create_applies_display_order_default() {
         let (db, _dir) = test_db().await;
         let m = message(&db, "message").await;
         let created = db
             .create_search_result(search_req(&m, "defaults", None))
             .await
             .unwrap();
-        assert_eq!(created.total_results, Some(7));
+        // total_results is whatever the caller supplied (fixture value);
+        // only display_order has a real default.
         assert_eq!(created.display_order, 0);
     }
 

@@ -800,6 +800,13 @@ mod tests {
         let p = add_user_participant(&db, &conv.id, "u9", None).await;
 
         db.remove_conversation_participant(&p.id).await.unwrap();
+        assert!(
+            db.get_conversation_participant(&p.id)
+                .await
+                .unwrap()
+                .is_none(),
+            "removed participant must vanish from reads"
+        );
         // Already tombstoned, then a never-existing id: both stay Ok no-ops.
         db.remove_conversation_participant(&p.id).await.unwrap();
         db.remove_conversation_participant(&Uuid::now_v7().to_string())
