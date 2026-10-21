@@ -1,3 +1,5 @@
+import type { PermissionGrant } from '@/stores/permissionStore'
+
 // Local event types not exported from @/types
 
 export interface ConversationUpdatedEvent {
@@ -46,7 +48,7 @@ export interface PermissionRequestedEvent {
   tool_name: string
   subject: string
   tier: 'read' | 'write' | 'exec'
-  allow_session: boolean
+  grant: PermissionGrant | null
 }
 
 export interface PermissionResolvedEvent {

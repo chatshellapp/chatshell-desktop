@@ -127,6 +127,12 @@
     "deny": "拒绝",
     "allowOnce": "允许一次",
     "allowSession": "本次会话内允许",
+    "scope": {
+      "bash": "选择“本次会话内允许”后,各段均以下列命令开头的调用将自动放行:{{bases}}",
+      "tool": "选择“本次会话内允许”后,本次会话内的所有 {{tool}} 调用将自动放行",
+      "serverTool": "选择“本次会话内允许”后,{{subject}} 在本次会话内将自动放行"
+    },
+    "queueCount": "还有 {{count}} 项审批等待中",
     "escalateTitle": "允许完全访问?",
     "escalateBody": "工具调用(写入文件、执行命令、MCP)将不再逐一确认。危险命令仍会被内置黑名单拦截。",
     "escalateConfirm": "允许完全访问",

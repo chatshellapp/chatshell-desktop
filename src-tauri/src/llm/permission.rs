@@ -29,6 +29,11 @@ pub const PERMISSION_RESOLVED_EVENT: &str = "permission-resolved";
 /// turn keeps running, so an idle dialog must not kill a task.
 const APPROVAL_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Denial reason fed back to the model when nobody answers an approval.
+/// Phrased to discourage an immediate retry loop (each retry re-prompts).
+const TIMEOUT_DENY_REASON: &str = "Approval request timed out (no user answer). \
+Do not retry the same call; ask the user how to proceed.";
+
 /// Frontend event emitter; abstracted so tests can capture payloads.
 pub type PermissionEmitter = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
@@ -192,6 +197,7 @@ impl PermissionGate {
                 grants.grant_bash_commands(&refs);
             }
             GrantScope::Tool(tool) => grants.grant_tool(tool),
+            GrantScope::ServerTool { server, tool } => grants.grant_server_tool(server, tool),
         }
     }
 
@@ -225,7 +231,16 @@ impl PermissionGate {
                 "tool_name": tool_name,
                 "subject": subject,
                 "tier": tier,
-                "allow_session": scope.is_some(),
+                "grant": match &scope {
+                    None => Value::Null,
+                    Some(GrantScope::BashCommands(bases)) => {
+                        json!({ "kind": "bash", "bases": bases })
+                    }
+                    Some(GrantScope::Tool(tool)) => json!({ "kind": "tool", "tool": tool }),
+                    Some(GrantScope::ServerTool { server, tool }) => {
+                        json!({ "kind": "server_tool", "server": server, "tool": tool })
+                    }
+                },
             }),
         );
         tracing::info!(
@@ -254,7 +269,7 @@ impl PermissionGate {
             Err(_elapsed) => {
                 self.registry.resolve(&request_id, ApprovalDecision::Deny);
                 self.emit_resolved(&request_id);
-                CheckOutcome::Deny("Approval request timed out".to_string())
+                CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string())
             }
         }
     }
@@ -369,21 +384,24 @@ mod tests {
         assert!(f.captured.lock().unwrap().is_empty());
     }
 
-    /// Poll the captured events for the latest permission request id and
-    /// answer it. Runs on the test side so `check` can block on its
-    /// receiver without deadlocking.
+    /// Poll the captured events for the `expect_ordinal`-th permission
+    /// request and answer it. Ordinal, not "latest": with concurrent
+    /// prompts the latest captured event may still be a stale one whose
+    /// registry entry is gone. Runs on the test side so `check` can block
+    /// on its receiver without deadlocking.
     async fn answer_when_prompted(
         registry: &ApprovalRegistry,
         captured: &Capture,
         decision: ApprovalDecision,
+        expect_ordinal: usize,
     ) {
         let request_id = loop {
             let found = captured
                 .lock()
                 .unwrap()
                 .iter()
-                .rev()
-                .find(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+                .filter(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+                .nth(expect_ordinal)
                 .map(|(_, payload)| payload["request_id"].as_str().unwrap().to_string());
             if let Some(id) = found {
                 break id;
@@ -403,7 +421,7 @@ mod tests {
                     .await
             }
         });
-        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce).await;
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
         assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
         // No session grant stored: the next write prompts again.
         assert!(matches!(
@@ -429,12 +447,61 @@ mod tests {
             let gate = f.gate.clone();
             async move { gate.check("bash", &bash("git status")).await }
         });
-        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession).await;
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession, 0).await;
         assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
         // Grant cached: covered commands run without a new prompt.
         assert_eq!(
             f.gate.check("bash", &bash("git push")).await,
             CheckOutcome::Allow
+        );
+    }
+
+    #[tokio::test]
+    async fn allow_session_mcp_grants_only_that_server_tool() {
+        let f = fixture(PermissionMode::Ask);
+        let call = json!({"server": "srv", "tool": "fetch"});
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            let call = call.clone();
+            async move { gate.check("mcp_tool_use", &call).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        // Same server/tool runs without a new prompt.
+        assert_eq!(
+            f.gate.check("mcp_tool_use", &call).await,
+            CheckOutcome::Allow
+        );
+        // A different tool on the same server prompts again.
+        let other = json!({"server": "srv", "tool": "delete"});
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("mcp_tool_use", &other).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 1).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+    }
+
+    #[tokio::test]
+    async fn requested_payload_carries_structured_grant() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("git status && git push")).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        task.await.unwrap();
+        let payload = f
+            .captured
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+            .map(|(_, payload)| payload.clone())
+            .expect("permission-requested emitted");
+        assert_eq!(
+            payload["grant"],
+            json!({ "kind": "bash", "bases": ["git"] })
         );
     }
 
@@ -445,7 +512,7 @@ mod tests {
             let gate = f.gate.clone();
             async move { gate.check("bash", &bash("npm install")).await }
         });
-        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny).await;
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
         assert_eq!(
             task.await.unwrap(),
             CheckOutcome::Deny("User denied this tool call".to_string())
@@ -489,10 +556,7 @@ mod tests {
             Duration::from_millis(30),
         ));
         let outcome = gate.check("bash", &bash("ls")).await;
-        assert_eq!(
-            outcome,
-            CheckOutcome::Deny("Approval request timed out".to_string())
-        );
+        assert_eq!(outcome, CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string()));
         assert_eq!(registry.pending_count(), 0);
         let events: Vec<String> = captured
             .lock()

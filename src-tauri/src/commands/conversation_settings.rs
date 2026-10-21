@@ -34,6 +34,20 @@ pub async fn update_conversation_settings(
         "[conversation_settings] update_conversation_settings called: {}, req: {:?}",
         conversation_id, req
     );
+    // A permission-mode switch invalidates this conversation's session
+    // grants: approvals given under the old mode must not silently
+    // authorize calls made under the new one. Grants live in RAM only.
+    let mode_changed = match req.permission_mode {
+        Some(new_mode) => {
+            let existing = state
+                .db
+                .get_conversation_settings(&conversation_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            existing.permission_mode != new_mode
+        }
+        None => false,
+    };
     let result = state
         .db
         .update_conversation_settings(&conversation_id, req)
@@ -43,6 +57,13 @@ pub async fn update_conversation_settings(
         "[conversation_settings] update_conversation_settings result: {:?}",
         result
     );
+    if mode_changed && result.is_ok() {
+        state
+            .permission_grants
+            .lock()
+            .unwrap()
+            .remove(&conversation_id);
+    }
     result
 }
 

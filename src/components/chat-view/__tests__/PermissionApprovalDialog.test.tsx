@@ -1,7 +1,7 @@
 import { describe, beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { PermissionApprovalDialog } from '../PermissionApprovalDialog'
-import { usePermissionStore } from '@/stores/permissionStore'
+import { usePermissionStore, type PermissionGrant } from '@/stores/permissionStore'
 
 const invoke = vi.fn()
 
@@ -9,14 +9,14 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
 }))
 
-function seedPending(allowSession = true) {
+function seedPending(grant: PermissionGrant | null = { kind: 'bash', bases: ['cargo'] }) {
   usePermissionStore.getState().show({
     requestId: 'req-1',
     conversationId: 'conv-1',
     toolName: 'bash',
     subject: 'cargo test',
     tier: 'exec',
-    allowSession,
+    grant,
   })
 }
 
@@ -70,12 +70,13 @@ describe('PermissionApprovalDialog', () => {
         request: { requestId: 'req-1', decision: 'deny' },
       })
     )
-    expect(usePermissionStore.getState().pending).toBeNull()
+    expect(usePermissionStore.getState().pending).toEqual([])
   })
 
   it('answers allow-session when the grant scope allows it', async () => {
-    seedPending(true)
+    seedPending()
     render(<PermissionApprovalDialog />)
+    expect(screen.getByText(/auto-approves commands/)).toBeInTheDocument()
     const session = await waitFor(() => {
       const button = screen.getByRole('button', { name: /allow for this session/i })
       expect(button).toBeEnabled()
@@ -91,7 +92,7 @@ describe('PermissionApprovalDialog', () => {
   })
 
   it('hides the session button when the backend reports no session scope', async () => {
-    seedPending(false)
+    seedPending(null)
     render(<PermissionApprovalDialog />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /allow once/i })).toBeEnabled()
@@ -99,5 +100,36 @@ describe('PermissionApprovalDialog', () => {
     expect(
       screen.queryByRole('button', { name: /allow for this session/i })
     ).not.toBeInTheDocument()
+  })
+
+  it('queues concurrent requests: shows the oldest first, then the next after answering', async () => {
+    seedPending()
+    usePermissionStore.getState().show({
+      requestId: 'req-2',
+      conversationId: 'conv-1',
+      toolName: 'write',
+      subject: '/tmp/b.txt',
+      tier: 'write',
+      grant: { kind: 'tool', tool: 'write' },
+    })
+    render(<PermissionApprovalDialog />)
+
+    expect(screen.getByText('cargo test')).toBeInTheDocument()
+    expect(screen.getByText('1 more approval request(s) waiting')).toBeInTheDocument()
+    expect(screen.queryByText('/tmp/b.txt')).not.toBeInTheDocument()
+
+    const deny = await waitFor(() => {
+      const button = screen.getByRole('button', { name: /deny/i })
+      expect(button).toBeEnabled()
+      return button
+    })
+    deny.click()
+
+    await waitFor(() => expect(screen.getByText('/tmp/b.txt')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('resolve_permission', {
+        request: { requestId: 'req-1', decision: 'deny' },
+      })
+    )
   })
 })

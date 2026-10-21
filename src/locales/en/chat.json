@@ -127,6 +127,12 @@
     "deny": "Deny",
     "allowOnce": "Allow once",
     "allowSession": "Allow for this session",
+    "scope": {
+      "bash": "\"Allow for this session\" auto-approves commands whose segments all begin with: {{bases}}",
+      "tool": "\"Allow for this session\" auto-approves every {{tool}} call this session",
+      "serverTool": "\"Allow for this session\" auto-approves {{subject}} for the rest of the session"
+    },
+    "queueCount": "{{count}} more approval request(s) waiting",
     "escalateTitle": "Allow full access?",
     "escalateBody": "Tool calls (file writes, terminal commands, MCP) will run without confirmation. Dangerous commands are still blocked by the built-in blocklist.",
     "escalateConfirm": "Allow full access",
