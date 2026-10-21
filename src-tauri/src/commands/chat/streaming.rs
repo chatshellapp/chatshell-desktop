@@ -461,6 +461,31 @@ pub(crate) async fn handle_agent_streaming(
         config = config.with_project_root(root);
     }
 
+    // Permission gate: per-conversation mode, conversation-scoped session
+    // grants, and the app-wide approval registry. Attached in every mode;
+    // yolo is pass-through apart from the bash blocklist pre-check.
+    let permission_mode = conv_settings
+        .as_ref()
+        .map(|settings| settings.permission_mode)
+        .unwrap_or_default();
+    tracing::info!(
+        "🛡️ [agent_streaming] Permission mode: {}",
+        permission_mode.as_str()
+    );
+    let app_for_permissions = app.clone();
+    let permission_emitter: crate::llm::permission::PermissionEmitter =
+        Arc::new(move |event, payload| {
+            let _ = app_for_permissions.emit(event, payload);
+        });
+    let gate = crate::llm::permission::PermissionGate::new(
+        conversation_id_clone.clone(),
+        chatshell_agent_core::permission::PermissionMode::from(permission_mode),
+        state_clone.permission_grants.clone(),
+        state_clone.approval_registry.clone(),
+        permission_emitter,
+    );
+    config = config.with_permission_gate(gate);
+
     // Collect MCP server IDs (non-builtin tools)
     let mcp_server_ids: Vec<String> = collect_mcp_server_ids(&all_enabled_tool_ids);
     // Load MCP tools from enabled servers and build McpSchemaTool + McpToolUseTool
@@ -1049,6 +1074,19 @@ async fn run_agent_stream<R: tauri::Runtime>(
         &provider_type,
     )
     .await;
+
+    // Close any approvals still pending for this conversation (the
+    // stream ended; nobody will answer them): deny and tell the frontend
+    // to dismiss the dialog.
+    for request_id in state_clone
+        .approval_registry
+        .cancel_conversation(&conversation_id_clone)
+    {
+        let _ = app.emit(
+            crate::llm::permission::PERMISSION_RESOLVED_EVENT,
+            serde_json::json!({ "request_id": request_id }),
+        );
+    }
 
     // Handle the response: on cancellation build synthetic response so we can save accumulated data
     let (response, was_stream_error) = match response {
@@ -2427,6 +2465,8 @@ mod tests {
             bash_session_manager: Arc::new(BashSessionManager::new()),
             capabilities_cache: Arc::new(CapabilitiesCache::new()),
             sync_engine: Arc::new(std::sync::Mutex::new(None)),
+            approval_registry: crate::llm::permission::ApprovalRegistry::new(),
+            permission_grants: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
         };
         (state, conv.id.to_string(), dir)
     }

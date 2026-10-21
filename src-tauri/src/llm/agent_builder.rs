@@ -97,6 +97,9 @@ pub struct AgentConfig {
     pub skill_tool: Option<SkillTool>,
     /// Project root directory for path security enforcement
     pub project_root: Option<PathBuf>,
+    /// Approval gate; when set, a permission hook intercepts every tool
+    /// call before execution (allow / deny / UI prompt).
+    pub permission_gate: Option<Arc<crate::llm::permission::PermissionGate>>,
 }
 
 impl AgentConfig {
@@ -244,9 +247,17 @@ impl AgentConfig {
 
     /// Set the project root directory for path security enforcement.
     /// Write operations are restricted to this directory; sensitive paths
-    /// outside it are blocked for reads.
     pub fn with_project_root(mut self, root: PathBuf) -> Self {
         self.project_root = Some(root);
+        self
+    }
+
+    /// Set the permission gate; attaches the approval hook to the agent
+    pub fn with_permission_gate(
+        mut self,
+        gate: Arc<crate::llm::permission::PermissionGate>,
+    ) -> Self {
+        self.permission_gate = Some(gate);
         self
     }
 
@@ -490,6 +501,12 @@ fn build_agent(mut builder: AgentBuilder, config: &AgentConfig) -> Agent {
     // Apply additional params
     if let Some(ref additional) = params.additional_params {
         builder = builder.additional_params(additional.clone());
+    }
+
+    // Attach the permission gate hook before any tool registration; the
+    // hook intercepts every tool call regardless of the typestate phase.
+    if let Some(gate) = &config.permission_gate {
+        builder = builder.add_hook(crate::llm::permission::PermissionHook::new(gate.clone()));
     }
 
     // Check if we need to add any native tools or MCP tools

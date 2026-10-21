@@ -44,7 +44,8 @@ pub use conversation::{
 
 // Conversation Settings
 pub use conversation_settings::{
-    ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest,
+    ConversationSettings, ModelParameterOverrides, PermissionMode, PromptMode,
+    UpdateConversationSettingsRequest,
 };
 
 // Message

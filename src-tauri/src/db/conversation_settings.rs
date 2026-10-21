@@ -4,7 +4,8 @@ use sqlx::Row;
 
 use super::Database;
 use crate::models::{
-    ConversationSettings, ModelParameterOverrides, PromptMode, UpdateConversationSettingsRequest,
+    ConversationSettings, ModelParameterOverrides, PermissionMode, PromptMode,
+    UpdateConversationSettingsRequest,
 };
 
 impl Database {
@@ -18,7 +19,8 @@ impl Database {
              parameter_overrides, context_message_count, selected_preset_id,
              system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
              user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-             enabled_mcp_server_ids, enabled_skill_ids, working_directory
+             enabled_mcp_server_ids, enabled_skill_ids, working_directory,
+             permission_mode
              FROM conversation_settings WHERE conversation_id = ? AND deleted_at IS NULL",
         )
         .bind(conversation_id)
@@ -64,6 +66,7 @@ impl Database {
                     enabled_mcp_server_ids: enabled_tool_ids,
                     enabled_skill_ids,
                     working_directory: None,
+                    permission_mode: PermissionMode::default(),
                 })
             }
         }
@@ -115,6 +118,7 @@ impl Database {
             .unwrap_or(existing.enabled_mcp_server_ids);
         let enabled_skill_ids = req.enabled_skill_ids.unwrap_or(existing.enabled_skill_ids);
         let working_directory = req.working_directory.unwrap_or(existing.working_directory);
+        let permission_mode = req.permission_mode.unwrap_or(existing.permission_mode);
 
         // Serialize parameter overrides to JSON
         let parameter_overrides_json = serde_json::to_string(&parameter_overrides)?;
@@ -130,8 +134,9 @@ impl Database {
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
                 user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-                enabled_mcp_server_ids, enabled_skill_ids, working_directory, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory,
+                permission_mode, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 deleted_at = NULL,
                 use_provider_defaults = excluded.use_provider_defaults,
@@ -148,6 +153,7 @@ impl Database {
                 enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
                 enabled_skill_ids = excluded.enabled_skill_ids,
                 working_directory = excluded.working_directory,
+                permission_mode = excluded.permission_mode,
                 updated_at = excluded.updated_at",
         )
         .bind(conversation_id)
@@ -165,6 +171,7 @@ impl Database {
         .bind(&enabled_mcp_server_ids_json)
         .bind(&enabled_skill_ids_json)
         .bind(&working_directory)
+        .bind(permission_mode.as_str())
         .bind(Utc::now().to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
@@ -252,6 +259,10 @@ impl Database {
             enabled_mcp_server_ids,
             enabled_skill_ids,
             working_directory: row.get("working_directory"),
+            permission_mode: PermissionMode::parse(
+                &row.get::<Option<String>, _>("permission_mode")
+                    .unwrap_or_default(),
+            ),
         }
     }
 }
@@ -376,6 +387,7 @@ mod tests {
                     enabled_mcp_server_ids: Some(vec!["tool-a".to_string(), "tool-b".to_string()]),
                     enabled_skill_ids: Some(vec!["skill-1".to_string()]),
                     working_directory: Some(Some("/tmp/chatshell".to_string())),
+                    permission_mode: Some(PermissionMode::Ask),
                 },
             )
             .await
@@ -418,6 +430,7 @@ mod tests {
             settings.working_directory.as_deref(),
             Some("/tmp/chatshell")
         );
+        assert_eq!(settings.permission_mode, PermissionMode::Ask);
     }
 
     #[tokio::test]

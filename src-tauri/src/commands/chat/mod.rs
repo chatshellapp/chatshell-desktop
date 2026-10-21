@@ -764,6 +764,8 @@ mod tests {
             bash_session_manager: Arc::new(BashSessionManager::new()),
             capabilities_cache: Arc::new(CapabilitiesCache::new()),
             sync_engine: Arc::new(std::sync::Mutex::new(None)),
+            approval_registry: crate::llm::permission::ApprovalRegistry::new(),
+            permission_grants: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
         };
         (state, conv.id, dir)
     }

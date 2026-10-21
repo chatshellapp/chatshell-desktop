@@ -70,6 +70,7 @@ const backendSettings = (
   enabled_mcp_server_ids: [],
   enabled_skill_ids: [],
   working_directory: null,
+  permission_mode: 'yolo',
   ...overrides,
 })
 

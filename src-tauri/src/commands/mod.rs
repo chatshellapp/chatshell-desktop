@@ -12,6 +12,7 @@ mod messages;
 mod model_fetch;
 mod model_parameter_presets;
 mod models;
+mod permission;
 mod prompt_history;
 mod prompts;
 mod providers;
@@ -51,6 +52,10 @@ pub struct AppState {
     pub capabilities_cache: Arc<CapabilitiesCache>,
     /// Snapshot-sync engine against the iCloud container, when present.
     pub sync_engine: Arc<std::sync::Mutex<Option<crate::sync::SyncEngine>>>,
+    /// Tool approval gate: pending UI round trips (keyed by request id).
+    pub approval_registry: Arc<crate::llm::permission::ApprovalRegistry>,
+    /// Session grants per conversation (RAM only; never synced).
+    pub permission_grants: crate::llm::permission::GrantStore,
 }
 
 /// One generation per conversation: refuse tree-mutating commands
@@ -82,6 +87,7 @@ pub use messages::*;
 pub use model_fetch::*;
 pub use model_parameter_presets::*;
 pub use models::*;
+pub use permission::*;
 pub use prompt_history::*;
 pub use prompts::*;
 pub use providers::*;

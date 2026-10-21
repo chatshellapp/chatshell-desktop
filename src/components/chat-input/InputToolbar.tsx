@@ -13,6 +13,9 @@ import {
   Wrench,
   Zap,
   FolderOpen,
+  Shield,
+  ShieldOff,
+  Check,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -26,6 +29,7 @@ import { InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
 import { ModelSelectorDropdown } from './ModelSelectorDropdown'
 import type { Model } from '@/types'
 import type { Assistant } from '@/types/assistant'
+import type { PermissionMode } from '@/types'
 
 interface InputToolbarProps {
   // Add attachment handlers
@@ -65,6 +69,9 @@ interface InputToolbarProps {
   skillsLabel: string
   // Working Directory
   onWorkingDirectorySelect: () => void
+  // Permission mode (ask / yolo)
+  permissionMode: PermissionMode
+  onPermissionModeSelect: (mode: PermissionMode) => void
   // Model capability flags
   toolsDisabled?: boolean
   skillsDisabled?: boolean
@@ -100,6 +107,8 @@ export function InputToolbar({
   onSkillsClick,
   skillsLabel,
   onWorkingDirectorySelect,
+  permissionMode,
+  onPermissionModeSelect,
   toolsDisabled = false,
   skillsDisabled = false,
   imageAttachDisabled = false,
@@ -263,6 +272,59 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
             <FolderOpen className="size-4" />
             <span>{t('workingDirectory')}</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Permission mode chip: always visible so the current mode is
+          inspectable before every send */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <InputGroupButton
+            variant="ghost"
+            className="rounded-full h-7 px-2.5 gap-1.5"
+            title={t('permission.title')}
+          >
+            {permissionMode === 'ask' ? (
+              <Shield className="size-3.5" />
+            ) : (
+              <ShieldOff className="size-3.5" />
+            )}
+            <span className="text-xs">
+              {permissionMode === 'ask' ? t('permission.mode.ask') : t('permission.mode.yolo')}
+            </span>
+          </InputGroupButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-[220px]">
+          <DropdownMenuItem
+            className="gap-2 justify-between"
+            onClick={() => onPermissionModeSelect('ask')}
+          >
+            <div className="flex items-center gap-2">
+              <Shield className="size-4" />
+              <div className="flex flex-col">
+                <span>{t('permission.mode.ask')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('permission.mode.askHint')}
+                </span>
+              </div>
+            </div>
+            {permissionMode === 'ask' && <Check className="size-4" />}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 justify-between"
+            onClick={() => onPermissionModeSelect('yolo')}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldOff className="size-4" />
+              <div className="flex flex-col">
+                <span>{t('permission.mode.yolo')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('permission.mode.yoloHint')}
+                </span>
+              </div>
+            </div>
+            {permissionMode === 'yolo' && <Check className="size-4" />}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

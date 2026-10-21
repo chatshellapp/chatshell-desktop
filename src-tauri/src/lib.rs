@@ -277,6 +277,8 @@ pub fn run() {
                 bash_session_manager: Arc::new(BashSessionManager::new()),
                 capabilities_cache,
                 sync_engine: sync_engine.clone(),
+                approval_registry: crate::llm::permission::ApprovalRegistry::new(),
+                permission_grants: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
             };
 
             // Pull remote changes shortly after startup, then keep ticking
@@ -398,6 +400,8 @@ pub fn run() {
             commands::update_conversation_settings,
             commands::reset_conversation_tools_to_global,
             commands::delete_conversation_settings,
+            // Permission gate
+            commands::resolve_permission,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

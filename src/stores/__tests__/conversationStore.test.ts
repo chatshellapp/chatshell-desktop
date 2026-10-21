@@ -356,6 +356,7 @@ const createBackendSettingsResponse = (conversationId: string): ConversationSett
   enabled_mcp_server_ids: [],
   enabled_skill_ids: [],
   working_directory: null,
+  permission_mode: 'yolo',
 })
 
 describe('useConversationStore participants and selection', () => {

@@ -3,8 +3,10 @@
 // Run `pnpm types:generate` in src-tauri to regenerate.
 
 import type { ModelParameterOverrides } from './generated/ModelParameterOverrides'
+import type { PermissionMode } from './generated/PermissionMode'
 import type { PromptMode } from './generated/PromptMode'
 export type { ModelParameterOverrides } from './generated/ModelParameterOverrides'
+export type { PermissionMode } from './generated/PermissionMode'
 export type { PromptMode } from './generated/PromptMode'
 
 // Wire format (snake_case) re-exported under its historical alias
@@ -56,6 +58,9 @@ export interface ConversationSettings {
 
   // Working directory for bash tool (overrides default home directory)
   workingDirectory: string | null
+
+  // Tool permission mode for the approval gate
+  permissionMode: PermissionMode
 }
 
 // Request to update conversation settings (all fields optional for partial updates).
@@ -76,9 +81,9 @@ export interface UpdateConversationSettingsRequest {
   enabledMcpServerIds?: string[]
   enabledSkillIds?: string[]
   workingDirectory?: string | null
+  permissionMode?: PermissionMode
 }
 
-// Convert backend response to frontend format
 export function fromBackendSettings(response: ConversationSettingsResponse): ConversationSettings {
   return {
     conversationId: response.conversation_id,
@@ -96,6 +101,7 @@ export function fromBackendSettings(response: ConversationSettingsResponse): Con
     enabledMcpServerIds: response.enabled_mcp_server_ids ?? [],
     enabledSkillIds: response.enabled_skill_ids ?? [],
     workingDirectory: response.working_directory ?? null,
+    permissionMode: response.permission_mode ?? 'yolo',
   }
 }
 
@@ -119,6 +125,7 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
   if (req.enabledMcpServerIds !== undefined) result.enabled_mcp_server_ids = req.enabledMcpServerIds
   if (req.enabledSkillIds !== undefined) result.enabled_skill_ids = req.enabledSkillIds
   if (req.workingDirectory !== undefined) result.working_directory = req.workingDirectory
+  if (req.permissionMode !== undefined) result.permission_mode = req.permissionMode
 
   return result
 }
@@ -145,6 +152,7 @@ export const createDefaultConversationSettings = (
   enabledMcpServerIds,
   enabledSkillIds,
   workingDirectory: null,
+  permissionMode: 'yolo',
 })
 
 // Parameter limits for validation

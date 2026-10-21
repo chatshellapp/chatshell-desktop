@@ -397,6 +397,11 @@ mod tests {
     use std::convert::Infallible;
     use std::sync::{Arc, Mutex};
 
+    use crate::llm::permission::{
+        ApprovalDecision, ApprovalRegistry, GrantStore, PermissionEmitter, PermissionGate,
+        PermissionHook,
+    };
+    use chatshell_agent_core::permission::PermissionMode;
     use rig::agent::AgentBuilder;
     use rig::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage,
@@ -409,7 +414,7 @@ mod tests {
     use rig::tool::{Tool, ToolContext};
     use serde::Deserialize;
     use serde_json::json;
-
+    use std::collections::HashMap;
     /// One raw provider event, yielded by the scripted model in order.
     type MockEvent = Result<RawStreamingChoice, CompletionError>;
 
@@ -611,6 +616,115 @@ mod tests {
         )
         .await;
         (result, chunks)
+    }
+
+    /// Build an agent whose tool calls pass through the permission gate.
+    /// `auto_answer` resolves every emitted request immediately (None:
+    /// nothing answers — yolo mode needs no answer).
+    fn build_gated_agent(
+        turns: Vec<Vec<MockEvent>>,
+        mode: PermissionMode,
+        auto_answer: Option<ApprovalDecision>,
+    ) -> Agent {
+        let model = ScriptedModel {
+            turns: Arc::new(Mutex::new(turns.into())),
+        };
+        let registry = ApprovalRegistry::new();
+        let grants: GrantStore = Arc::new(std::sync::Mutex::new(HashMap::new()));
+        let emitter: PermissionEmitter = {
+            let registry = registry.clone();
+            Arc::new(move |event, payload| {
+                if let (Some(decision), Some(id)) = (auto_answer, payload["request_id"].as_str())
+                    && event == crate::llm::permission::PERMISSION_REQUESTED_EVENT
+                {
+                    let _ = registry.resolve(id, decision);
+                }
+            })
+        };
+        let gate = PermissionGate::new("test-conv".to_string(), mode, grants, registry, emitter);
+        AgentBuilder::new(model)
+            .add_hook(PermissionHook::new(gate))
+            .tool(EchoTool)
+            .build()
+    }
+
+    /// `record`, but over a caller-built agent (gated variants).
+    async fn record_agent(agent: Agent) -> (anyhow::Result<ChatResponse>, Vec<Chunk>) {
+        let mut chunks: Vec<Chunk> = Vec::new();
+        let result = stream_agent(
+            agent,
+            Message::user("test prompt"),
+            Vec::new(),
+            CancellationToken::new(),
+            |payload, kind| {
+                chunks.push(normalize(&payload, &kind));
+                true
+            },
+            "test",
+        )
+        .await;
+        (result, chunks)
+    }
+
+    fn gated_turns() -> Vec<Vec<MockEvent>> {
+        vec![
+            vec![
+                text_event("Checking."),
+                tool_call_event("call-1", "echo", json!({"text": "hi"})),
+                final_event(),
+            ],
+            vec![text_event("done after tool"), final_event()],
+        ]
+    }
+
+    #[tokio::test]
+    async fn permission_hook_ask_mode_allow_runs_the_tool() {
+        let (result, chunks) = record_agent(build_gated_agent(
+            gated_turns(),
+            PermissionMode::Ask,
+            Some(ApprovalDecision::AllowOnce),
+        ))
+        .await;
+        let response = result.expect("stream should succeed");
+        assert!(response.content.contains("done after tool"));
+        assert!(chunks.iter().any(|c| matches!(
+            c,
+            Chunk::ToolResult { output, .. } if output.contains("echo: hi")
+        )));
+    }
+
+    #[tokio::test]
+    async fn permission_hook_ask_mode_denial_skips_the_tool() {
+        let (result, chunks) = record_agent(build_gated_agent(
+            gated_turns(),
+            PermissionMode::Ask,
+            Some(ApprovalDecision::Deny),
+        ))
+        .await;
+        let response = result.expect("stream should succeed");
+        // The loop continues: the model sees the denial and finishes.
+        assert!(response.content.contains("done after tool"));
+        assert!(chunks.iter().any(|c| matches!(
+            c,
+            Chunk::ToolResult { output, .. } if output.contains("Permission denied")
+                && output.contains("User denied")
+        )));
+        assert!(!chunks.iter().any(|c| matches!(
+            c,
+            Chunk::ToolResult { output, .. } if output.contains("echo: hi")
+        )));
+    }
+
+    #[tokio::test]
+    async fn permission_hook_yolo_mode_runs_without_asking() {
+        let (result, chunks) =
+            record_agent(build_gated_agent(gated_turns(), PermissionMode::Yolo, None)).await;
+        let response = result.expect("stream should succeed");
+        assert!(response.content.contains("done after tool"));
+        assert!(chunks.iter().any(|c| matches!(
+            c,
+            Chunk::ToolResult { output, .. } if output.contains("echo: hi")
+        )));
     }
 
     fn base64_image(data: &str, media_type: Option<ImageMediaType>) -> AssistantContent {

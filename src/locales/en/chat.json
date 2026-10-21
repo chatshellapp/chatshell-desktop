@@ -120,6 +120,21 @@
   "imageUnsupportedByModel": "No vision-capable model configured. Add one in Settings → Auxiliary Models to attach images.",
   "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools and skills will not be used.",
   "queued": "Queued",
-  "queuedCount": "Queued ({{count}})",
-  "removeQueued": "Remove from queue"
+  "removeQueued": "Remove from queue",
+  "permission": {
+    "title": "Tool approval required",
+    "body": "The assistant wants to run {{tool}}. Approve this action?",
+    "deny": "Deny",
+    "allowOnce": "Allow once",
+    "allowSession": "Allow for this session",
+    "escalateTitle": "Allow full access?",
+    "escalateBody": "Tool calls (file writes, terminal commands, MCP) will run without confirmation. Dangerous commands are still blocked by the built-in blocklist.",
+    "escalateConfirm": "Allow full access",
+    "mode": {
+      "ask": "Ask",
+      "askHint": "Confirm writes and commands",
+      "yolo": "Yolo",
+      "yoloHint": "Run everything without asking"
+    }
+  }
 }

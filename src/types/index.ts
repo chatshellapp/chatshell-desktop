@@ -144,6 +144,7 @@ export type UrlStatus = 'fetching' | 'fetched'
 export type {
   ModelParameterOverrides,
   ConversationSettings,
+  PermissionMode,
   PromptMode,
   UpdateConversationSettingsRequest,
   ConversationSettingsResponse,

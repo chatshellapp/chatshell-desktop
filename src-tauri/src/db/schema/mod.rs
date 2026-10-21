@@ -126,6 +126,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
     ensure_working_directory_column(pool).await?;
+    ensure_permission_mode_column(pool).await?;
     ensure_api_style_column(pool).await?;
     ensure_auth_token_column(pool).await?;
     ensure_tool_call_id_column(pool).await?;
@@ -660,6 +661,26 @@ async fn ensure_tool_call_id_column(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
         tracing::info!("Added call_id column to tool_calls table");
+    }
+
+    Ok(())
+}
+
+/// Ensure permission_mode column exists in conversation_settings
+/// (idempotent). NULL parses back to the default mode.
+async fn ensure_permission_mode_column(pool: &SqlitePool) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('conversation_settings')")
+            .fetch_all(pool)
+            .await?;
+
+    let has_column = columns.iter().any(|(name,)| name == "permission_mode");
+
+    if !has_column {
+        sqlx::query("ALTER TABLE conversation_settings ADD COLUMN permission_mode TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added permission_mode column to conversation_settings table");
     }
 
     Ok(())

@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   ConversationSettings,
   ConversationSettingsResponse,
+  PermissionMode,
   PromptMode,
   ModelParameterOverrides,
   UpdateConversationSettingsRequest,
@@ -103,6 +104,9 @@ interface ConversationSettingsActions {
 
   // Working directory for bash tool
   setWorkingDirectory: (conversationId: string, directory: string | null) => Promise<void>
+
+  // Tool permission mode (ask / yolo)
+  setPermissionMode: (conversationId: string, mode: PermissionMode) => Promise<void>
 }
 
 type ConversationSettingsStore = ConversationSettingsState & ConversationSettingsActions
@@ -513,7 +517,7 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       }
     },
 
-    setWorkingDirectory: async (conversationId: string, directory: string | null) => {
+    setWorkingDirectory: async (conversationId, directory) => {
       try {
         const response = await updateSettingsInBackend(conversationId, {
           workingDirectory: directory,
@@ -523,6 +527,19 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to update workingDirectory:', error)
+      }
+    },
+
+    setPermissionMode: async (conversationId, mode) => {
+      try {
+        const response = await updateSettingsInBackend(conversationId, {
+          permissionMode: mode,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = fromBackendSettings(response)
+        })
+      } catch (error) {
+        logger.error('[conversationSettingsStore] Failed to update permissionMode:', error)
       }
     },
   }))

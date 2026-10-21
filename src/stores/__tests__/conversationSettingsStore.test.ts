@@ -66,6 +66,7 @@ const backendResponse = (
   enabled_mcp_server_ids: [],
   enabled_skill_ids: [],
   working_directory: null,
+  permission_mode: 'yolo',
   ...overrides,
 })
 
@@ -109,6 +110,7 @@ describe('useConversationSettingsStore', () => {
         enabled_mcp_server_ids: ['s1'],
         enabled_skill_ids: ['k1'],
         working_directory: '/tmp/work',
+        permission_mode: 'ask',
       })
       mockInvoke.mockResolvedValue(response)
 
@@ -133,6 +135,7 @@ describe('useConversationSettingsStore', () => {
         enabledMcpServerIds: ['s1'],
         enabledSkillIds: ['k1'],
         workingDirectory: '/tmp/work',
+        permissionMode: 'ask',
       })
       const state = useConversationSettingsStore.getState()
       expect(state.settings['conv-1']).toEqual(result)

@@ -444,8 +444,9 @@ impl Database {
                 parameter_overrides, context_message_count, selected_preset_id,
                 system_prompt_mode, selected_system_prompt_id, custom_system_prompt,
                 user_prompt_mode, selected_user_prompt_id, custom_user_prompt,
-                enabled_mcp_server_ids, enabled_skill_ids, working_directory, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enabled_mcp_server_ids, enabled_skill_ids, working_directory,
+                permission_mode, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 use_provider_defaults = excluded.use_provider_defaults,
                 use_custom_parameters = excluded.use_custom_parameters,
@@ -461,6 +462,7 @@ impl Database {
                 enabled_mcp_server_ids = excluded.enabled_mcp_server_ids,
                 enabled_skill_ids = excluded.enabled_skill_ids,
                 working_directory = excluded.working_directory,
+                permission_mode = excluded.permission_mode,
                 updated_at = excluded.updated_at",
         )
         .bind(&new_conv.id)
@@ -478,6 +480,7 @@ impl Database {
         .bind(&mcp_json)
         .bind(&skill_json)
         .bind(&settings.working_directory)
+        .bind(settings.permission_mode.as_str())
         .bind(Utc::now().to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
@@ -1396,6 +1399,7 @@ mod tests {
                     enabled_mcp_server_ids: Some(vec!["mcp-a".to_string(), "mcp-b".to_string()]),
                     enabled_skill_ids: Some(vec!["skill-1".to_string()]),
                     working_directory: Some(Some("/tmp/scratch".to_string())),
+                    permission_mode: None,
                 },
             )
             .await
@@ -1479,6 +1483,10 @@ mod tests {
         assert_eq!(
             forked_settings.working_directory,
             source_settings.working_directory
+        );
+        assert_eq!(
+            forked_settings.permission_mode,
+            source_settings.permission_mode
         );
     }
 

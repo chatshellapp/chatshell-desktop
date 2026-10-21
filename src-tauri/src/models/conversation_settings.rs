@@ -35,6 +35,47 @@ impl From<PromptMode> for String {
     }
 }
 
+/// Permission mode for the tool approval gate. Mirrors
+/// `chatshell_agent_core::permission::PermissionMode`; keep the wire
+/// values (`ask` / `yolo`) in sync with it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, TS)]
+#[ts(export)]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    /// Prompt before write- and exec-tier tool calls
+    Ask,
+    /// Run tool calls without prompts (blocklist still enforced)
+    #[default]
+    Yolo,
+}
+
+impl PermissionMode {
+    /// Parse a stored/DB value; unknown values fall back to the default.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "ask" => Self::Ask,
+            _ => Self::Yolo,
+        }
+    }
+
+    /// Stored string form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Yolo => "yolo",
+        }
+    }
+}
+
+impl From<PermissionMode> for chatshell_agent_core::permission::PermissionMode {
+    fn from(mode: PermissionMode) -> Self {
+        match mode {
+            PermissionMode::Ask => Self::Ask,
+            PermissionMode::Yolo => Self::Yolo,
+        }
+    }
+}
+
 /// Custom deserializer for `Option<Option<T>>` fields in update requests.
 ///
 /// By default, serde treats JSON `null` as `None` for the outer Option (= "field not provided"),
@@ -122,6 +163,10 @@ pub struct ConversationSettings {
     /// Working directory for bash tool (overrides default home directory)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<String>,
+
+    /// Tool permission mode for the approval gate
+    #[serde(default)]
+    pub permission_mode: PermissionMode,
 }
 
 impl ConversationSettings {
@@ -143,6 +188,7 @@ impl ConversationSettings {
             enabled_mcp_server_ids: Vec::new(),
             enabled_skill_ids: Vec::new(),
             working_directory: None,
+            permission_mode: PermissionMode::default(),
         }
     }
 }
@@ -196,6 +242,9 @@ pub struct UpdateConversationSettingsRequest {
         deserialize_with = "deserialize_double_option"
     )]
     pub working_directory: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission_mode: Option<PermissionMode>,
 }
 
 #[cfg(test)]

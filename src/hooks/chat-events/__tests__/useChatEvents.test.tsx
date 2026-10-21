@@ -90,6 +90,8 @@ const BACKEND_EVENTS = [
   'conversation-updated',
   'generation-stopped',
   'mcp-auth-required',
+  'permission-requested',
+  'permission-resolved',
   'reasoning-started',
   'search-decision-complete',
   'search-decision-started',

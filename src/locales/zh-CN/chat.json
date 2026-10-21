@@ -120,6 +120,21 @@
   "imageUnsupportedByModel": "未配置视觉模型。请在 设置 → 辅助模型 中添加后再附加图片。",
   "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具和技能将不会被使用。",
   "queued": "排队中",
-  "queuedCount": "排队中 ({{count}})",
-  "removeQueued": "从队列中移除"
+  "removeQueued": "从队列中移除",
+  "permission": {
+    "title": "需要工具审批",
+    "body": "助手请求执行 {{tool}}。是否允许此操作?",
+    "deny": "拒绝",
+    "allowOnce": "允许一次",
+    "allowSession": "本次会话内允许",
+    "escalateTitle": "允许完全访问?",
+    "escalateBody": "工具调用(写入文件、执行命令、MCP)将不再逐一确认。危险命令仍会被内置黑名单拦截。",
+    "escalateConfirm": "允许完全访问",
+    "mode": {
+      "ask": "每次确认",
+      "askHint": "写入与命令需确认",
+      "yolo": "自由执行",
+      "yoloHint": "不再逐项询问"
+    }
+  }
 }

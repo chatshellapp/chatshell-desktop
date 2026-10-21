@@ -36,7 +36,17 @@ import { useModelStore } from '@/stores/modelStore'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { getContextCountOptions } from '@/types'
-import type { ModelParameterPreset, PromptMode } from '@/types'
+import type { ModelParameterPreset, PermissionMode, PromptMode } from '@/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { logger } from '@/lib/logger'
 
 // interface ChatInputProps {}
@@ -143,7 +153,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   )
   const setEnabledSkillIds = useConversationSettingsStore((state) => state.setEnabledSkillIds)
   const setWorkingDirectory = useConversationSettingsStore((state) => state.setWorkingDirectory)
-
+  const setPermissionMode = useConversationSettingsStore((state) => state.setPermissionMode)
   // Prompt store for getting prompt names
   const { prompts, ensureLoaded: ensurePromptsLoaded } = usePromptStore()
 
@@ -306,6 +316,24 @@ export function ChatInput(/* _props: ChatInputProps */) {
     }
   }
 
+  // Permission mode; switching ask -> yolo is an escalation and asks
+  // for explicit confirmation first (WorkBuddy-style).
+  const permissionMode: PermissionMode = conversationSettings?.permissionMode ?? 'yolo'
+  const [isYoloConfirmOpen, setIsYoloConfirmOpen] = useState(false)
+  const handlePermissionModeSelect = (mode: PermissionMode) => {
+    if (!currentConversation) return
+    if (mode === 'yolo' && permissionMode === 'ask') {
+      setIsYoloConfirmOpen(true)
+      return
+    }
+    setPermissionMode(currentConversation.id, mode)
+  }
+  const confirmYolo = () => {
+    if (currentConversation) {
+      setPermissionMode(currentConversation.id, 'yolo')
+    }
+    setIsYoloConfirmOpen(false)
+  }
   // Handler to clear system prompt
   const handleClearSystemPrompt = () => {
     if (currentConversation) {
@@ -611,6 +639,8 @@ export function ChatInput(/* _props: ChatInputProps */) {
             }}
             skillsLabel={skillsLabel}
             onWorkingDirectorySelect={handleWorkingDirectorySelect}
+            permissionMode={permissionMode}
+            onPermissionModeSelect={handlePermissionModeSelect}
             toolsDisabled={toolsDisabled}
             skillsDisabled={toolsDisabled}
             imageAttachDisabled={visionDisabled}
@@ -701,6 +731,22 @@ export function ChatInput(/* _props: ChatInputProps */) {
         onSkillIdsChange={handleSkillIdsChange}
         modelSupportsToolUse={capabilities.supports_tool_use}
       />
+
+      {/* Permission escalation confirm (ask -> yolo) */}
+      <AlertDialog open={isYoloConfirmOpen} onOpenChange={setIsYoloConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('permission.escalateTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('permission.escalateBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmYolo}>
+              {t('permission.escalateConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

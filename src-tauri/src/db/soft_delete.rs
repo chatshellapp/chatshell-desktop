@@ -80,7 +80,7 @@ pub fn wipe_fragment(table: &str) -> Option<&'static str> {
              parameter_overrides = NULL, context_message_count = NULL, \
              system_prompt_mode = NULL, custom_system_prompt = NULL, user_prompt_mode = NULL, \
              custom_user_prompt = NULL, enabled_mcp_server_ids = NULL, enabled_skill_ids = NULL, \
-             working_directory = NULL"
+             working_directory = NULL, permission_mode = NULL"
         }
         // Natural key is (conversation_id, participant_type, participant_id):
         // participant_type survives with the FK columns.

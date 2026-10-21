@@ -17,11 +17,14 @@ import type {
   ConversationUpdatedEvent,
   GenerationStoppedEvent,
   McpAuthRequiredEvent,
+  PermissionRequestedEvent,
+  PermissionResolvedEvent,
   ReasoningStartedEvent,
   SearchDecisionStartedEvent,
   ToolCallStartedEvent,
   ToolCallCompletedEvent,
 } from './types'
+import { usePermissionStore } from '@/stores/permissionStore'
 import { logger } from '@/lib/logger'
 import {
   useChatHandlers,
@@ -61,8 +64,13 @@ export function useChatEvents(conversationId: string | null) {
 
   const { handleConversationUpdated, handleGenerationStopped } = useConversationHandlers()
 
-  const { handleToolCallStarted, handleToolCallCompleted, handleMcpAuthRequired } =
-    useToolCallHandlers()
+  const {
+    handleToolCallStarted,
+    handleToolCallCompleted,
+    handleMcpAuthRequired,
+    handlePermissionRequested,
+    handlePermissionResolved,
+  } = useToolCallHandlers()
 
   useEffect(() => {
     if (!conversationId) return
@@ -187,6 +195,8 @@ export function useChatEvents(conversationId: string | null) {
       'generation-stopped',
       (event) => {
         logger.info('[useChatEvents] Received generation-stopped event:', event.payload)
+        // Any approval for the stopped conversation is closed backend-side.
+        usePermissionStore.getState().clear()
         handleGenerationStopped(event.payload.conversation_id)
       }
     )
@@ -227,6 +237,23 @@ export function useChatEvents(conversationId: string | null) {
       handleMcpAuthRequired(event.payload.server_id)
     })
 
+    // Listen for tool approval requests (permission gate, ask mode)
+    const unlistenPermissionRequested = listen<PermissionRequestedEvent>(
+      'permission-requested',
+      (event) => {
+        logger.info('[useChatEvents] Received permission-requested event:', event.payload)
+        handlePermissionRequested(event.payload)
+      }
+    )
+
+    // Backend-closed approvals (timeout / stream end): dismiss the dialog
+    const unlistenPermissionResolved = listen<PermissionResolvedEvent>(
+      'permission-resolved',
+      (event) => {
+        handlePermissionResolved(event.payload.request_id)
+      }
+    )
+
     // Cleanup listeners when component unmounts or conversationId changes
     return () => {
       logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
@@ -248,6 +275,8 @@ export function useChatEvents(conversationId: string | null) {
       unlistenToolCallStarted.then((fn) => fn())
       unlistenToolCallCompleted.then((fn) => fn())
       unlistenMcpAuthRequired.then((fn) => fn())
+      unlistenPermissionRequested.then((fn) => fn())
+      unlistenPermissionResolved.then((fn) => fn())
     }
   }, [
     conversationId,
@@ -267,7 +296,8 @@ export function useChatEvents(conversationId: string | null) {
     handleGenerationStopped,
     handleReasoningStarted,
     handleToolCallStarted,
-    handleToolCallCompleted,
     handleMcpAuthRequired,
+    handlePermissionRequested,
+    handlePermissionResolved,
   ])
 }

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
 import { useMcpStore } from '@/stores/mcpStore'
+import { usePermissionStore } from '@/stores/permissionStore'
 import { logger } from '@/lib/logger'
 
 /**
@@ -30,15 +31,47 @@ export function useToolCallHandlers() {
     },
     []
   )
-
   const handleMcpAuthRequired = useCallback((serverId: string) => {
     logger.warn('[useToolCallHandlers] MCP auth required for server:', serverId)
     useMcpStore.getState().probeEndpoint(serverId)
+  }, [])
+
+  const handlePermissionRequested = useCallback(
+    (request: {
+      conversation_id: string
+      request_id: string
+      tool_name: string
+      subject: string
+      tier: 'read' | 'write' | 'exec'
+      allow_session: boolean
+    }) => {
+      logger.info('[useToolCallHandlers] Permission requested:', {
+        conversation: request.conversation_id,
+        tool: request.tool_name,
+        subject: request.subject,
+      })
+      usePermissionStore.getState().show({
+        requestId: request.request_id,
+        conversationId: request.conversation_id,
+        toolName: request.tool_name,
+        subject: request.subject,
+        tier: request.tier,
+        allowSession: request.allow_session,
+      })
+    },
+    []
+  )
+
+  const handlePermissionResolved = useCallback((requestId: string) => {
+    logger.info('[useToolCallHandlers] Permission resolved:', requestId)
+    usePermissionStore.getState().clear(requestId)
   }, [])
 
   return {
     handleToolCallStarted,
     handleToolCallCompleted,
     handleMcpAuthRequired,
+    handlePermissionRequested,
+    handlePermissionResolved,
   }
 }

@@ -5,6 +5,7 @@ import { ChatInput } from '@/components/chat-input'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { PendingMessageItem } from './PendingMessageItem'
 import { MessageList } from './MessageList'
+import { PermissionApprovalDialog } from './PermissionApprovalDialog'
 import { useSearchStore } from '@/stores/searchStore'
 import { useMessageStore } from '@/stores/message'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
@@ -302,6 +303,8 @@ export function ChatView() {
           <ChatInput />
         </div>
       </div>
+
+      <PermissionApprovalDialog />
     </div>
   )
 }

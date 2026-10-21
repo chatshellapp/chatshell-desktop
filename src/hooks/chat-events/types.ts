@@ -38,3 +38,17 @@ export interface McpAuthRequiredEvent {
   conversation_id: string
   server_id: string
 }
+
+// Tool approval gate events
+export interface PermissionRequestedEvent {
+  conversation_id: string
+  request_id: string
+  tool_name: string
+  subject: string
+  tier: 'read' | 'write' | 'exec'
+  allow_session: boolean
+}
+
+export interface PermissionResolvedEvent {
+  request_id: string
+}

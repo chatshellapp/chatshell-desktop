@@ -21,6 +21,7 @@ pub mod ollama;
 pub mod openai;
 pub mod openai_compat;
 pub mod openrouter;
+pub mod permission;
 pub mod perplexity;
 #[cfg(test)]
 mod provider_smoke_eval;
