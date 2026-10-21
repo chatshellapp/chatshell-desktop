@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useAttachmentState } from '../useAttachmentState'
 
@@ -17,9 +17,9 @@ describe('useAttachmentState', () => {
 
     const [first, second] = result.current.attachments
     expect(first).toMatchObject({ type: 'file', name: 'notes.md' })
-    expect(first.id).toMatch(/^file-\d+$/)
+    expect(first.id).toMatch(/^file-\d+-\d+$/)
     expect(second).toMatchObject({ type: 'image', name: 'pic.png' })
-    expect(second.id).toMatch(/^image-\d+$/)
+    expect(second.id).toMatch(/^image-\d+-\d+$/)
   })
 
   it('keeps duplicate names and types — no dedup by design', () => {
@@ -42,6 +42,25 @@ describe('useAttachmentState', () => {
 
     expect(result.current.attachments).toHaveLength(1)
     expect(result.current.attachments[0].name).toBe('b.md')
+  })
+
+  it('two same-type attachments added in one millisecond keep distinct ids', () => {
+    const { result } = renderHook(() => useAttachmentState())
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+
+    try {
+      act(() => result.current.addAttachment('file', 'a.md'))
+      act(() => result.current.addAttachment('file', 'b.md'))
+
+      const [first, second] = result.current.attachments
+      expect(first.id).not.toBe(second.id)
+
+      act(() => result.current.removeAttachment(first.id))
+      expect(result.current.attachments).toHaveLength(1)
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('removeAttachment with an unknown id is a no-op', () => {
