@@ -2212,7 +2212,7 @@ mod tests {
     use rig::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage,
     };
-    use rig::message::{ReasoningContent, UserContent};
+    use rig::message::{AssistantContent, ReasoningContent, UserContent};
     use rig::streaming::{
         RawStreamingChoice, RawStreamingToolCall, StreamFinal, StreamPartId,
         StreamingCompletionResponse, WireId,
@@ -2927,6 +2927,153 @@ mod tests {
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].status, "cancelled");
         assert!(tool_calls[0].tool_output.is_none());
+    }
+
+    #[tokio::test]
+    async fn next_turn_after_cancelled_tool_call_answers_every_call() {
+        // Regression (MiniMax CN, observed on device): stopping a turn
+        // mid-tool-call persists an assistant message whose tool call has
+        // no output. The next send used to replay that call with no paired
+        // tool message, and strict OpenAI-compatible endpoints reject the
+        // whole request (500 / abnormal terminal chunk). The projection
+        // must answer every replayed tool call.
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+
+        // Turn 1: the tool cancels the token mid-execution (user stop).
+        let cancel = TestCancellationToken::new();
+        let (agent, _requests) = scripted_agent_with_tool(
+            vec![
+                vec![
+                    text_event("before "),
+                    tool_call_event("c1", "cancel_echo", json!({ "text": "x" })),
+                    final_event(),
+                ],
+                // Scripted but never consumed: cancellation breaks the loop
+                // before the follow-up model call.
+                vec![text_event("after"), final_event()],
+            ],
+            CancellingEchoTool {
+                cancel: cancel.clone(),
+            },
+        );
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            cancel,
+            base_ctx(&state, &conv_id).await,
+        )
+        .await;
+
+        // Turn 2: rebuild the projection from the DB exactly as the send
+        // pipeline does, then run it through the agent again.
+        let user2 = state
+            .db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conv_id.clone()),
+                parent_id: None,
+                sender_type: "user".to_string(),
+                sender_id: None,
+                content: "again".to_string(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+        let chat_messages = super::super::message_builder::build_chat_messages(
+            &state,
+            &conv_id,
+            &user2.id,
+            "again",
+            &None,
+            &None,
+            true,
+            &[],
+            &[],
+            &[],
+            &app.handle(),
+            false,
+            None,
+        )
+        .await;
+
+        // Projection invariant: the cancelled call is replayed AND answered
+        // by a tool-role message carrying the same call id.
+        let call_ids: Vec<&str> = chat_messages
+            .iter()
+            .flat_map(|m| m.tool_calls.iter().map(|tc| tc.id.as_str()))
+            .collect();
+        assert_eq!(call_ids, vec!["c1"], "cancelled call is replayed once");
+        assert!(
+            chat_messages
+                .iter()
+                .any(|m| m.role == "tool" && m.tool_call_id.as_deref() == Some("c1")),
+            "cancelled call must be answered by a tool message, got: {chat_messages:?}"
+        );
+
+        let (agent2, requests) = scripted_agent(vec![vec![text_event("ok"), final_event()]]);
+        let ctx2 = AgentStreamContext {
+            conversation_id: conv_id.clone(),
+            content: "again".into(),
+            user_message_id: user2.id,
+            system_prompt_provided: false,
+            model_id: "test-model".into(),
+            provider_type: "test".into(),
+            model_db_id: None,
+            assistant_db_id: None,
+            disable_tools: false,
+            stored_images: vec![],
+            supports_vision: None,
+            mcp_tool_name_to_server_id: Arc::new(HashMap::new()),
+            mcp_tool_name_to_server_name: Arc::new(HashMap::new()),
+        };
+        run_pipeline(
+            &app,
+            &state,
+            agent2,
+            chat_messages,
+            TestCancellationToken::new(),
+            ctx2,
+        )
+        .await;
+
+        // The wire history the model received answers the call too.
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        let wire_call_ids: Vec<String> = requests[0]
+            .chat_history
+            .iter()
+            .flat_map(|m| match m {
+                RigMessage::Assistant { content, .. } => content
+                    .iter()
+                    .filter_map(|item| match item {
+                        AssistantContent::ToolCall(tc) => Some(tc.id.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
+            })
+            .collect();
+        assert_eq!(wire_call_ids.len(), 1);
+        assert!(
+            requests[0].chat_history.iter().any(|m| match m {
+                RigMessage::User { content } => content.iter().any(
+                    |item| matches!(item, UserContent::ToolResult(tr) if tr.call.to_string() == wire_call_ids[0]),
+                ),
+                _ => false,
+            }),
+            "wire history must answer the cancelled tool call"
+        );
+
+        let log = log.lock().unwrap();
+        assert!(
+            !names(&log).contains(&"chat-error".to_string()),
+            "second send must not error, events: {:?}",
+            names(&log)
+        );
+        assert_eq!(names(&log).last().unwrap(), "chat-complete");
     }
 
     #[tokio::test]

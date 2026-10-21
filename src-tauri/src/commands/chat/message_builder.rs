@@ -234,7 +234,7 @@ fn history_attachment_manifest(
 ///   - `None` or negative value: include all history
 ///   - `Some(n)` where n > 0: include only the last n messages
 #[allow(clippy::too_many_arguments)]
-pub async fn build_chat_messages(
+pub async fn build_chat_messages<R: tauri::Runtime>(
     state: &AppState,
     conversation_id: &str,
     user_message_id: &str,
@@ -245,7 +245,7 @@ pub async fn build_chat_messages(
     user_images: &[attachment_processing::ParsedImage],
     user_files: &[llm::FileData],
     stored_files: &[Option<StoredFile>],
-    app: &tauri::AppHandle,
+    app: &tauri::AppHandle<R>,
     read_available: bool,
     context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
