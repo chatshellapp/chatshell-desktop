@@ -216,6 +216,9 @@ function Host() {
       <button data-testid="fork" onClick={() => void handlers.handleFork('msg-user-1')}>
         fork
       </button>
+      <button data-testid="delete" onClick={() => void handlers.handleDeleteFromHere('msg-user-1')}>
+        delete
+      </button>
       <button data-testid="export-all" onClick={() => void handlers.handleExportAll()}>
         export-all
       </button>
@@ -503,6 +506,44 @@ describe('useMessageHandlers', () => {
         })
       )
       expect(sendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('handleDeleteFromHere', () => {
+    it('deletes the message subtree through the store action', async () => {
+      render(<Host />)
+
+      click('delete')
+      await waitFor(() => expect(deleteMessagesFrom).toHaveBeenCalledTimes(1))
+
+      expect(deleteMessagesFrom).toHaveBeenCalledWith(CONV, 'msg-user-1')
+      expect(toast.error).not.toHaveBeenCalled()
+    })
+
+    it('refuses while a generation is streaming', async () => {
+      const state = createDefaultConversationState()
+      state.messages = [makeMessage('msg-user-1', 'user', 'hello there')]
+      state.isStreaming = true
+      useMessageStore.setState({ conversationStates: { [CONV]: state } })
+      render(<Host />)
+
+      click('delete')
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('generationInProgress'))
+
+      expect(deleteMessagesFrom).not.toHaveBeenCalled()
+    })
+
+    it('reports failures with a toast', async () => {
+      deleteMessagesFrom.mockRejectedValueOnce(new Error('boom'))
+      render(<Host />)
+
+      click('delete')
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith('failedToDeleteFrom', {
+          description: 'boom',
+        })
+      )
+      expect(deleteMessagesFrom).toHaveBeenCalledTimes(1)
     })
   })
 

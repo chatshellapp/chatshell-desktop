@@ -42,11 +42,14 @@ impl Database {
                 c.created_at, 
                 c.updated_at,
                 c.active_message_id,
-                (SELECT m.content 
-                 FROM messages m 
-                 WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
-                 ORDER BY m.created_at DESC 
-                 LIMIT 1) as last_message
+                COALESCE(
+                    (SELECT m.content FROM messages m
+                     WHERE m.id = c.active_message_id
+                       AND m.conversation_id = c.id AND m.deleted_at IS NULL),
+                    (SELECT m.content FROM messages m
+                     WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
+                     ORDER BY m.created_at DESC, m.id DESC LIMIT 1)
+                ) as last_message
              FROM conversations c 
              WHERE c.id = ? AND c.deleted_at IS NULL",
         )
@@ -75,11 +78,14 @@ impl Database {
                 c.created_at, 
                 c.updated_at,
                 c.active_message_id,
-                (SELECT m.content 
-                 FROM messages m 
-                 WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
-                 ORDER BY m.created_at DESC 
-                 LIMIT 1) as last_message
+                COALESCE(
+                    (SELECT m.content FROM messages m
+                     WHERE m.id = c.active_message_id
+                       AND m.conversation_id = c.id AND m.deleted_at IS NULL),
+                    (SELECT m.content FROM messages m
+                     WHERE m.conversation_id = c.id AND m.deleted_at IS NULL
+                     ORDER BY m.created_at DESC, m.id DESC LIMIT 1)
+                ) as last_message
              FROM conversations c 
              WHERE c.deleted_at IS NULL
              ORDER BY c.updated_at DESC",
@@ -475,6 +481,10 @@ impl Database {
         .bind(Utc::now().to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
+        // The copy path raw-INSERTs messages, bypassing create_message's
+        // FTS maintenance; reconcile so the fork is searchable immediately
+        // instead of waiting for the next sync pull.
+        self.sync_fts_incremental().await?;
 
         self.get_conversation(&new_conv.id)
             .await?
@@ -914,6 +924,78 @@ mod tests {
                 .last_message
                 .as_deref(),
             Some("hello")
+        );
+    }
+
+    #[tokio::test]
+    async fn last_message_follows_active_branch() {
+        let (db, _dir) = test_db().await;
+        let conv = new_conversation(&db, "branchy").await;
+
+        let u1 = add_message(&db, &conv.id, "q1").await;
+        let _a1 = db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conv.id.clone()),
+                parent_id: Some(u1.id.clone()),
+                sender_type: "assistant".to_string(),
+                sender_id: None,
+                content: "old answer".to_string(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+        // Resend shape: a sibling first-turn variant under the root sentinel.
+        db.create_message(CreateMessageRequest {
+            conversation_id: Some(conv.id.clone()),
+            parent_id: Some(String::new()),
+            sender_type: "user".to_string(),
+            sender_id: None,
+            content: "q1 resent".to_string(),
+            tokens: None,
+        })
+        .await
+        .unwrap();
+        add_message(&db, &conv.id, "new answer").await;
+
+        // Active branch tip is the newest line...
+        assert_eq!(
+            db.get_conversation(&conv.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .last_message
+                .as_deref(),
+            Some("new answer")
+        );
+
+        // ...and switching back moves the preview with the branch instead
+        // of showing the abandoned (chronologically newest) tail.
+        db.set_active_message(&conv.id, &u1.id).await.unwrap();
+        assert_eq!(
+            db.get_conversation(&conv.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .last_message
+                .as_deref(),
+            Some("old answer")
+        );
+    }
+
+    #[tokio::test]
+    async fn forked_messages_are_fts_searchable_immediately() {
+        let (db, _dir) = test_db().await;
+        let conv = new_conversation(&db, "src").await;
+        let msg = add_message(&db, &conv.id, "xylophone query").await;
+
+        let forked = db.fork_conversation(&conv.id, &msg.id).await.unwrap();
+
+        // The copy path bypasses create_message; without the reconcile the
+        // fork would stay invisible to search until the next sync pull.
+        let hits = db.search_messages("xylophone", 10, 0).await.unwrap();
+        assert!(
+            hits.iter().any(|h| h.conversation_id == forked.id),
+            "forked conversation missing from FTS hits: {hits:?}"
         );
     }
 

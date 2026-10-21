@@ -425,6 +425,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           }
         }
       })
+      // Deleted members leave their sibling groups (off-branch variants
+      // survive); refresh so the navigator counts stay accurate.
+      await get().refreshSiblingGroups(conversationId)
     } catch (error) {
       logger.error('[messageStore] Failed to delete messages from:', error)
       throw error

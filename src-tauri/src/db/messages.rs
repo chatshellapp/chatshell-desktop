@@ -10,6 +10,12 @@ use crate::models::{
 use crate::search;
 use crate::tokenizer;
 
+/// Depth bound for tree walks. Real conversations stay far below this; the
+/// bound only stops a `parent_id` cycle (possible only through pathological
+/// merges — the tree columns carry no FK) from expanding a recursive CTE or
+/// descent loop forever.
+const MAX_TREE_DEPTH: i64 = 100_000;
+
 impl Database {
     pub async fn create_message(&self, req: CreateMessageRequest) -> Result<Message> {
         tracing::info!("🔒 [db] Creating message...");
@@ -156,20 +162,20 @@ impl Database {
         // ends the path read-time — an orphaned tail degrades gracefully
         // instead of erroring. The depth cap bounds hypothetical cycles
         // introduced by pathological merges.
-        let rows = sqlx::query(
+        let rows = sqlx::query(&format!(
             "WITH RECURSIVE chain(id, depth) AS (
                  SELECT id, 0 FROM messages WHERE id = ?1
                  UNION ALL
                  SELECT m.id, chain.depth + 1
                  FROM messages m
                  JOIN chain ON m.id = (SELECT parent_id FROM messages WHERE id = chain.id)
-                 WHERE m.deleted_at IS NULL AND chain.depth < 100000
+                 WHERE m.deleted_at IS NULL AND chain.depth < {MAX_TREE_DEPTH}
              )
              SELECT msg.id, msg.conversation_id, msg.parent_id, msg.sender_type,
                     msg.sender_id, msg.content, msg.tokens, msg.created_at
              FROM messages msg JOIN chain ON msg.id = chain.id
              ORDER BY chain.depth DESC, msg.created_at ASC, msg.id ASC",
-        )
+        ))
         .bind(&leaf)
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -312,22 +318,27 @@ impl Database {
         // Every descendant on every branch (their own deleted state is
         // irrelevant — live grandchildren under dead children must die too).
         // The CTE rides a FROM subquery (SQLite allows WITH there, unlike
-        // directly inside IN(...)). Anchors are numbered explicitly:
-        // tombstone_update's wipe reserves ?1 for the timestamps, so any
-        // predicate consumed by it must anchor the subtree at ?2 — sqlx
-        // binds positionally and a bare `?` after `?1` misnumbers.
-        const SUBTREE_ANCHOR: &str = "WITH RECURSIVE sub(id) AS (
+        // directly inside IN(...)). UNION (not ALL) projects id only, so a
+        // parent cycle — creatable solely by pathological merges, the tree
+        // columns carry no FK — starves the frontier of unseen ids and
+        // terminates at table size instead of expanding forever.
+        // Anchors are numbered explicitly: tombstone_update's wipe reserves
+        // ?1 for the timestamps, so any predicate consumed by it must anchor
+        // the subtree at ?2 — sqlx binds positionally and a bare `?` after
+        // `?1` misnumbers.
+        let subtree_anchor = "\
+            WITH RECURSIVE sub(id) AS (
                 SELECT id FROM messages WHERE id = ?
-                UNION ALL
+                UNION
                 SELECT m.id FROM messages m JOIN sub ON m.parent_id = sub.id
             )
             SELECT id FROM sub";
         // Single-parameter users (FTS delete, EXISTS probe) bind the anchor
         // at ?1; tombstone_update users bind it at ?2 (after the wipe's ?1).
-        let subtree_ids_1 = format!("SELECT id FROM ( {SUBTREE_ANCHOR} )");
+        let subtree_ids_1 = format!("SELECT id FROM ( {subtree_anchor} )");
         let subtree_ids_2 = format!(
             "SELECT id FROM ( {} )",
-            SUBTREE_ANCHOR.replacen("= ?", "= ?2", 1)
+            subtree_anchor.replacen("= ?", "= ?2", 1)
         );
 
         sqlx::query(&format!(
@@ -394,7 +405,10 @@ impl Database {
     /// so a NULL result simply empties the conversation view.
     async fn nearest_live_ancestor(&self, start: &Option<String>) -> Option<String> {
         let mut current = start.clone();
-        while let Some(id) = current.clone() {
+        let mut visited = std::collections::HashSet::new();
+        while let Some(id) = current.clone()
+            && visited.insert(id.clone())
+        {
             let live: Option<(i64,)> =
                 sqlx::query_as("SELECT 1 FROM messages WHERE id = ? AND deleted_at IS NULL")
                     .bind(&id)
@@ -406,7 +420,9 @@ impl Database {
                 return Some(id);
             }
             // Dead link: hop over it via the raw parent lookup so the chain
-            // survives intermediate loss.
+            // survives intermediate loss. The visited set stops a parent
+            // cycle (pathological merges — see MAX_TREE_DEPTH) from
+            // spinning forever.
             let raw: Option<(Option<String>,)> =
                 sqlx::query_as("SELECT parent_id FROM messages WHERE id = ?")
                     .bind(&id)
@@ -451,19 +467,22 @@ impl Database {
             anyhow::bail!("Message {message_id} does not belong to conversation {conversation_id}");
         }
 
-        // Descend the newest-child chain to the branch tip.
+        // Descend the newest-child chain to the branch tip. The visited
+        // set stops a parent cycle (possible only through pathological
+        // merges — see MAX_TREE_DEPTH) from spinning forever.
         let mut leaf = target.id.clone();
+        let mut visited = std::collections::HashSet::from([leaf.clone()]);
         loop {
             let next: Option<(String,)> = sqlx::query_as(
-                "SELECT id FROM messages 
-                 WHERE parent_id = ? AND deleted_at IS NULL 
+                "SELECT id FROM messages
+                 WHERE parent_id = ? AND deleted_at IS NULL
                  ORDER BY created_at DESC, id DESC LIMIT 1",
             )
             .bind(&leaf)
             .fetch_optional(self.pool.as_ref())
             .await?;
             match next {
-                Some((id,)) if id != leaf => leaf = id,
+                Some((id,)) if visited.insert(id.clone()) => leaf = id,
                 _ => break,
             }
         }
@@ -1139,5 +1158,44 @@ mod tests {
         // Active leaf fell back to the pre-branch tip; the off-branch
         // sibling line stays untouched.
         assert_eq!(path_contents(&db, &conv_id).await, ["q1", "a1"]);
+    }
+
+    /// A parent cycle is creatable only through pathological merges (no FK
+    /// on parent_id). Every walk must terminate on it.
+    async fn seed_parent_cycle(db: &Database, conv_id: &str) -> (Message, Message) {
+        let u1 = send(db, conv_id, "q1").await;
+        let a1 = reply(db, conv_id, &u1, "a1").await;
+        // u1 <-> a1: a1 already parents onto u1; link u1 back onto a1.
+        sqlx::query("UPDATE messages SET parent_id = ? WHERE id = ?")
+            .bind(&a1.id)
+            .bind(&u1.id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        (u1, a1)
+    }
+
+    #[tokio::test]
+    async fn set_active_message_terminates_on_parent_cycle() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+        let (u1, _a1) = seed_parent_cycle(&db, &conv_id).await;
+
+        // Would spin forever without the visited set.
+        let leaf = db.set_active_message(&conv_id, &u1.id).await.unwrap();
+        assert!(leaf.id == u1.id || leaf.parent_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_messages_from_terminates_on_parent_cycle() {
+        let (db, _dir) = test_db().await;
+        let conv_id = conv(&db).await;
+        let (u1, a1) = seed_parent_cycle(&db, &conv_id).await;
+
+        // Would expand the recursive CTE forever without the depth cap.
+        db.delete_messages_from(&conv_id, &u1.id).await.unwrap();
+
+        assert!(db.get_message(&u1.id).await.unwrap().is_none());
+        assert!(db.get_message(&a1.id).await.unwrap().is_none());
     }
 }

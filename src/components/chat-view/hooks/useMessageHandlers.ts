@@ -25,6 +25,7 @@ export interface UseMessageHandlersOptions {
 export interface UseMessageHandlersReturn {
   handleCopy: () => void
   handleRevert: (messageId: string) => Promise<void>
+  handleDeleteFromHere: (messageId: string) => Promise<void>
   handleRegenerate: (messageId: string) => Promise<void>
   handleFork: (messageId: string) => Promise<void>
   handleExportAll: () => Promise<void>
@@ -198,6 +199,38 @@ export function useMessageHandlers({
       resendMessage,
       getConversationState,
     ]
+  )
+
+  const deleteMessagesFrom = useMessageStore((state) => state.deleteMessagesFrom)
+
+  // Delete a message and its whole subtree (tombstone; the active leaf
+  // falls back to the nearest live ancestor). The explicit truncation
+  // path — resend/regenerate are non-destructive siblings instead.
+  const handleDeleteFromHere = useCallback(
+    async (messageId: string) => {
+      if (!currentConversation) {
+        toast.error(t('noActiveConversation'))
+        return
+      }
+      const convState = getConversationState(currentConversation.id)
+      if (!convState.messages.find((m) => m.id === messageId)) {
+        return
+      }
+      if (convState.isStreaming) {
+        toast.error(t('generationInProgress'))
+        return
+      }
+
+      try {
+        await deleteMessagesFrom(currentConversation.id, messageId)
+      } catch (error) {
+        logger.error('Failed to delete messages from:', error)
+        toast.error(t('failedToDeleteFrom'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [currentConversation, deleteMessagesFrom, getConversationState, t]
   )
 
   const handleRegenerate = useCallback(
@@ -464,6 +497,7 @@ export function useMessageHandlers({
   return {
     handleCopy,
     handleRevert,
+    handleDeleteFromHere,
     handleRegenerate,
     handleFork,
     handleExportAll,

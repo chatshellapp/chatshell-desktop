@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, Undo, Scan, Check, GitFork, Download, RotateCcw } from 'lucide-react'
+import { Copy, Undo, Scan, Check, GitFork, Download, RotateCcw, Trash2 } from 'lucide-react'
 import { useState, memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
@@ -98,6 +98,7 @@ interface ChatMessageProps {
   userAfterContent?: React.ReactNode
   onCopy?: () => void
   onRevert?: () => void
+  onDeleteFromHere?: () => void
   onRegenerate?: () => void
   onFork?: () => void
   onDownloadMarkdown?: () => void
@@ -132,6 +133,7 @@ export const ChatMessage = memo(function ChatMessage({
   onCopyOverride,
   onCopy,
   onRevert,
+  onDeleteFromHere,
   onRegenerate,
   onFork,
   onDownloadMarkdown,
@@ -241,6 +243,23 @@ export const ChatMessage = memo(function ChatMessage({
                 <p>{tChat('resend')}</p>
               </TooltipContent>
             </Tooltip>
+            {onDeleteFromHere && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={onDeleteFromHere}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tChat('deleteFromHere')}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -356,6 +375,23 @@ export const ChatMessage = memo(function ChatMessage({
                 <p>{tChat('fork')}</p>
               </TooltipContent>
             </Tooltip>
+            {onDeleteFromHere && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={onDeleteFromHere}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tChat('deleteFromHere')}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <DropdownMenu open={isExportOpen} onOpenChange={setIsExportOpen}>
               <Tooltip>
                 <TooltipTrigger asChild>

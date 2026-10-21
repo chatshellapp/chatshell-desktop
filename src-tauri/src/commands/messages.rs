@@ -52,6 +52,12 @@ pub async fn delete_messages_from(
     conversation_id: String,
     message_id: String,
 ) -> Result<(), String> {
+    {
+        let tasks = state.generation_tasks.read().await;
+        if tasks.contains_key(&conversation_id) {
+            return Err("A generation is already running for this conversation".into());
+        }
+    }
     state
         .db
         .delete_messages_from(&conversation_id, &message_id)

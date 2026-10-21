@@ -40,6 +40,7 @@ interface MessageItemProps {
   getMessageDisplayInfo: (message: Message) => DisplayInfo
   onCopy: () => void
   onRevert: (messageId: string) => void
+  onDeleteFromHere: (messageId: string) => void
   onRegenerate: (messageId: string) => void
   onFork: (messageId: string) => void
   onExportAll: () => void
@@ -61,6 +62,7 @@ function messageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): 
   if (
     prev.onCopy !== next.onCopy ||
     prev.onRevert !== next.onRevert ||
+    prev.onDeleteFromHere !== next.onDeleteFromHere ||
     prev.onRegenerate !== next.onRegenerate ||
     prev.onFork !== next.onFork ||
     prev.onExportAll !== next.onExportAll ||
@@ -99,6 +101,7 @@ export const MessageItem = memo(function MessageItem({
   getMessageDisplayInfo,
   onCopy,
   onRevert,
+  onDeleteFromHere,
   onRegenerate,
   onFork,
   onExportAll,
@@ -179,6 +182,10 @@ export const MessageItem = memo(function MessageItem({
   // item re-renders for a reason that does not change its own content.
   const messageId = message.id
   const handleRevertClick = useCallback(() => onRevert(messageId), [onRevert, messageId])
+  const handleDeleteFromHereClick = useCallback(
+    () => onDeleteFromHere(messageId),
+    [onDeleteFromHere, messageId]
+  )
   const handleForkClick = useCallback(() => onFork(messageId), [onFork, messageId])
   const handleExportConversationClick = useCallback(
     () => onExportConversation(messageId),
@@ -387,6 +394,7 @@ export const MessageItem = memo(function MessageItem({
         }
         onCopy={onCopy}
         onRevert={handleRevertClick}
+        onDeleteFromHere={handleDeleteFromHereClick}
         onRegenerate={isAssistantMessage ? handleRegenerateClick : undefined}
         onFork={handleForkClick}
         onDownloadMarkdown={handleDownloadMarkdown}

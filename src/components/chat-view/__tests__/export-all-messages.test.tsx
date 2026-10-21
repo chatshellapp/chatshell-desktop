@@ -68,6 +68,7 @@ function Host() {
             onClearApiError={noop}
             onCopy={noop}
             onRevert={noop}
+            onDeleteFromHere={noop}
             onRegenerate={noop}
             onFork={noop}
             onExportAll={noop}

@@ -129,6 +129,7 @@ export function ChatView() {
   const {
     handleCopy,
     handleRevert,
+    handleDeleteFromHere,
     handleRegenerate,
     handleFork,
     handleExportAll,
@@ -243,6 +244,7 @@ export function ChatView() {
             onClearApiError={handleClearApiError}
             onCopy={handleCopy}
             onRevert={handleRevert}
+            onDeleteFromHere={handleDeleteFromHere}
             onRegenerate={handleRegenerate}
             onFork={handleFork}
             onExportAll={handleExportAll}

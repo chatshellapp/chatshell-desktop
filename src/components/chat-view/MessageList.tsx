@@ -34,6 +34,7 @@ interface MessageListProps {
   onClearApiError: () => void
   onCopy: () => void
   onRevert: (messageId: string) => void
+  onDeleteFromHere: (messageId: string) => void
   onRegenerate: (messageId: string) => void
   onFork: (messageId: string) => void
   onExportAll: () => void
@@ -77,6 +78,7 @@ export function MessageList({
   onClearApiError,
   onCopy,
   onRevert,
+  onDeleteFromHere,
   onRegenerate,
   onFork,
   onExportAll,
@@ -129,6 +131,7 @@ export function MessageList({
           getMessageDisplayInfo={getMessageDisplayInfo}
           onCopy={onCopy}
           onRevert={onRevert}
+          onDeleteFromHere={onDeleteFromHere}
           onRegenerate={onRegenerate}
           onFork={onFork}
           onExportAll={onExportAll}

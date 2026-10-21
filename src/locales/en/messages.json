@@ -48,7 +48,7 @@
   "modelConfigNotFound": "Error: Model configuration not found",
   "failedToRevertMessage": "Failed to resend message",
   "cannotRegenerateMessage": "Cannot regenerate: reply not found",
-  "failedToRegenerateMessage": "Failed to regenerate response",
+  "failedToDeleteFrom": "Failed to delete messages",
   "generationInProgress": "A generation is already running",
   "conversationForked": "Conversation forked",
   "noMessagesToCapture": "No messages to capture",
