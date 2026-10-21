@@ -83,7 +83,10 @@ pub async fn ensure_referenced_blobs_uploaded(
     std::fs::create_dir_all(&blobs_dir)
         .with_context(|| format!("provision {}", blobs_dir.display()))?;
 
+    let pending = rows.len();
     let mut uploaded = 0usize;
+    let mut done = 0usize;
+    let mut consecutive_failures = 0usize;
     for (storage_path, hash) in rows {
         let dest = blob_path(cloud_dir, &hash);
         if dest.exists() {
@@ -137,20 +140,84 @@ pub async fn ensure_referenced_blobs_uploaded(
         // content-addressed destination (a corrupt blob there blocks
         // re-upload forever because dest.exists() skips).
         let tmp = dest.with_extension(format!("tmp-{}", uuid::Uuid::now_v7()));
-        if std::fs::write(&tmp, &sealed)
-            .and_then(|_| std::fs::rename(&tmp, &dest))
-            .is_err()
-        {
+        if let Err(err) = std::fs::write(&tmp, &sealed).and_then(|_| std::fs::rename(&tmp, &dest)) {
             let _ = std::fs::remove_file(&tmp);
-            tracing::warn!("Failed to write blob {} into the container", hash);
+            // Never swallow the reason: a wedged container once took three
+            // sessions to diagnose because only the hash was logged.
+            tracing::warn!("Blob {} not uploaded: {err}", hash);
+            consecutive_failures += 1;
+            if is_container_congestion(&err) {
+                // EDEADLK means the macOS file provider holds the container
+                // (bird mid-sync, or a wedged directory): every remaining
+                // write fails identically, and each attempt leaks a temp
+                // when cleanup fails with the same error. Stop hammering;
+                // the next pass retries.
+                let remaining = pending - done;
+                tracing::warn!(
+                    "Container congested (EDEADLK); deferring {remaining} blob upload(s) to a later pass"
+                );
+                break;
+            }
+            if consecutive_failures >= MAX_CONSECUTIVE_WRITE_FAILURES {
+                tracing::warn!(
+                    "{consecutive_failures} consecutive blob write failures; deferring the rest to a later pass"
+                );
+                break;
+            }
             continue;
         }
+        consecutive_failures = 0;
         uploaded += 1;
+        done += 1;
     }
     if uploaded > 0 {
         tracing::info!("Uploaded {uploaded} new blob(s) to the container");
     }
     Ok(uploaded)
+}
+
+/// macOS errno 11 is EDEADLK ("Resource deadlock avoided"): the file
+/// provider holds the container — bird mid-sync, or a wedged directory
+/// (observed live: a blobs/ directory whose readdir and creates all failed
+/// EDEADLK while the container root stayed writable). Retryable across
+/// passes, never within one.
+fn is_container_congestion(err: &std::io::Error) -> bool {
+    err.raw_os_error() == Some(11)
+}
+
+/// Abort the blob sweep after this many consecutive non-congestion write
+/// failures: anything systemic (permissions, disk full) fails every blob
+/// the same way, and per-blob warnings at that point are noise.
+const MAX_CONSECUTIVE_WRITE_FAILURES: usize = 5;
+
+/// Best-effort removal of leaked upload temps. A failed upload's cleanup
+/// can fail with the same congestion error that failed the write, leaving
+/// one `<hash>.tmp-<uuid>` file per attempt; left unchecked these
+/// accumulate pass after pass (the wedged container that motivated this
+/// grew its blobs/ until the file provider stopped serving it). Only
+/// temps older than an hour are touched, so in-flight uploads from a
+/// concurrent engine are never deleted.
+pub fn sweep_stale_blob_temps(cloud_dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(cloud_dir.join(BLOB_DIR)) else {
+        return 0;
+    };
+    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if !name.contains(".tmp-") {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else {
+            continue;
+        };
+        if modified < cutoff && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// Fetch-on-open (plan §5): materialize the attachment bytes a conversation
@@ -678,5 +745,42 @@ mod tests {
             .unwrap();
         assert_eq!(statuses.statuses[0].status, "skipped");
         assert!(!attach.join("files").exists());
+    }
+
+    #[test]
+    fn sweep_removes_only_stale_temps() {
+        let dir = tempfile::tempdir().unwrap();
+        let blobs = dir.path().join(BLOB_DIR);
+        std::fs::create_dir_all(&blobs).unwrap();
+
+        let stale = blobs.join("deadbeef.tmp-00000000-0000-7000-8000-000000000000");
+        std::fs::write(&stale, b"x").unwrap();
+        let fresh = blobs.join("cafebabe.tmp-00000000-0000-7000-8000-000000000001");
+        std::fs::write(&fresh, b"x").unwrap();
+        // A live content-addressed blob whose name merely contains "tmp-".
+        let live = blobs.join("abc.tmp-looking-hash");
+        std::fs::write(&live, b"x").unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+
+        assert_eq!(sweep_stale_blob_temps(dir.path()), 1);
+        assert!(!stale.exists());
+        assert!(fresh.exists(), "in-flight temp must survive the sweep");
+        assert!(live.exists(), "content-addressed name must never be swept");
+    }
+
+    #[test]
+    fn congestion_classification_matches_macos_edeadlk() {
+        let err = std::io::Error::from_raw_os_error(11);
+        assert!(is_container_congestion(&err));
+        assert!(!is_container_congestion(
+            &std::io::Error::from_raw_os_error(13)
+        ));
+        assert!(!is_container_congestion(&std::io::Error::other("boom")));
     }
 }

@@ -306,6 +306,15 @@ async fn upload_blobs_before_publish(
         }
     };
     let attach_dir = crate::storage::get_attachments_dir(app).ok();
+    if let Some(dir) = cloud_dir.as_ref() {
+        // Failed uploads can leave temps behind when their cleanup fails
+        // with the same error; sweep them so a congested container cannot
+        // accumulate garbage across passes.
+        let removed = blob_sync::sweep_stale_blob_temps(dir);
+        if removed > 0 {
+            tracing::info!("Swept {removed} stale blob temp file(s) from the container");
+        }
+    }
     if let (Some(dir), Some(attach), Some(keys)) =
         (cloud_dir.as_ref(), attach_dir.as_ref(), keys.as_ref())
         && let Err(err) = blob_sync::ensure_referenced_blobs_uploaded(db, dir, attach, keys).await
