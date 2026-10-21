@@ -131,5 +131,21 @@
   "aboutIssuesTitle": "Ran into a problem?",
   "aboutIssuesDescription": "Bug reports and feature ideas both land on GitHub Issues.",
   "aboutFileIssueButton": "File an issue",
-  "aboutVersion": "ChatShell v{{version}}"
+  "aboutVersion": "ChatShell v{{version}}",
+  "updateSectionTitle": "Updates",
+  "updateCheckButton": "Check for Updates",
+  "updateChecking": "Checking…",
+  "updateUpToDate": "You're up to date",
+  "updateCheckFailed": "Update check failed. Check your connection and try again.",
+  "updateAvailableToast": "ChatShell v{{version}} is available",
+  "updateAvailableLine": "v{{version}} is available — you have v{{current}}",
+  "updateDownloadButton": "Download update",
+  "updateDownloading": "Downloading update…",
+  "updateDownloadingProgress": "Downloading… {{received}} / {{total}}",
+  "updateReadyButton": "Install and restart",
+  "updateReadyToast": "Update downloaded and ready to install",
+  "updateInstalling": "Installing…",
+  "updateSkipVersion": "Skip this version",
+  "updateAutoCheckLabel": "Check for updates automatically",
+  "updateAutoCheckDescription": "Checks dl.chatshell.app once shortly after launch. No usage data is sent."
 }

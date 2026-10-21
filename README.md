@@ -262,6 +262,13 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Flexible Scope**: Export all messages, a single conversation, or an individual message
 - **Theme-Aware**: Exports respect current light/dark mode setting
 
+### Auto-Update
+
+- **In-App Updates**: Check, download, and install updates from Settings → About — no manual downloads
+- **Signature-Verified**: Every update package is minisign-verified against a public key baked into the app; verification cannot be disabled
+- **First-Party Feed**: Update checks hit `dl.chatshell.app` first (GitHub Releases as fallback); no usage data is sent
+- **You Stay in Control**: Nothing installs without an explicit click; automatic checking can be turned off, and a version can be skipped until a newer one ships
+
 ### Multilingual Interface
 
 - **Multiple Languages**: Interface available in English and Chinese, with more languages planned

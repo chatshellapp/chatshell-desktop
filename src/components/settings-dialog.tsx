@@ -8,6 +8,7 @@ import {
   Check,
   Cloud,
   ChevronDown,
+  Download,
   Eye,
   EyeOff,
   FileDown,
@@ -32,7 +33,6 @@ import {
   LogIn,
 } from 'lucide-react'
 
-import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { toast } from 'sonner'
@@ -68,6 +68,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUpdaterStore } from '@/stores/updaterStore'
 import { useSkillStore } from '@/stores/skillStore'
 import type {
   Model,
@@ -235,8 +236,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Skill search state
   const [skillSearchQuery, setSkillSearchQuery] = React.useState('')
 
-  // About section state
-  const [appVersion, setAppVersion] = React.useState<string | null>(null)
+  // About section state (updater store also owns the app version)
+  const updaterStatus = useUpdaterStore((s) => s.status)
+  const updaterUpdate = useUpdaterStore((s) => s.update)
+  const updaterVersion = useUpdaterStore((s) => s.currentVersion)
+  const updaterError = useUpdaterStore((s) => s.error)
+  const updaterDownloadedBytes = useUpdaterStore((s) => s.downloadedBytes)
+  const updaterTotalBytes = useUpdaterStore((s) => s.totalBytes)
+  const autoCheckEnabled = useUpdaterStore((s) => s.autoCheckEnabled)
+  const checkForUpdates = useUpdaterStore((s) => s.checkForUpdates)
+  const downloadUpdate = useUpdaterStore((s) => s.downloadUpdate)
+  const installAndRestart = useUpdaterStore((s) => s.installAndRestart)
+  const setAutoCheck = useUpdaterStore((s) => s.setAutoCheck)
+  const skipCurrentVersion = useUpdaterStore((s) => s.skipCurrentVersion)
+  const loadUpdaterPreferences = useUpdaterStore((s) => s.loadPreferences)
 
   const loadLogStorageInfo = React.useCallback(async () => {
     try {
@@ -331,12 +344,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   React.useEffect(() => {
     loadCapabilitiesInfo()
   }, [loadCapabilitiesInfo])
-
   React.useEffect(() => {
-    getVersion()
-      .then(setAppVersion)
-      .catch((error) => logger.error('Failed to get app version:', error))
-  }, [])
+    void loadUpdaterPreferences()
+  }, [loadUpdaterPreferences])
+
+  const handleManualUpdateCheck = async () => {
+    const found = await checkForUpdates({ silent: false })
+    if (found === null) {
+      if (useUpdaterStore.getState().error) toast.error(t('updateCheckFailed'))
+      else toast.success(t('updateUpToDate'))
+    } else {
+      toast.success(t('updateAvailableToast', { version: found.version }))
+    }
+  }
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const getSetting = useSettingsStore((state) => state.getSetting)
@@ -1638,10 +1658,107 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
           </div>
 
-          {appVersion !== null && (
+          <div className="grid gap-2">
+            <Label>{t('updateSectionTitle')}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualUpdateCheck}
+                disabled={
+                  updaterStatus === 'checking' ||
+                  updaterStatus === 'downloading' ||
+                  updaterStatus === 'installing'
+                }
+              >
+                {updaterStatus === 'checking' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {updaterStatus === 'checking' ? t('updateChecking') : t('updateCheckButton')}
+              </Button>
+              {updaterUpdate && updaterStatus === 'idle' && (
+                <>
+                  <Button size="sm" onClick={() => void downloadUpdate()}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {t('updateDownloadButton')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => void skipCurrentVersion()}>
+                    {t('updateSkipVersion')}
+                  </Button>
+                </>
+              )}
+              {(updaterStatus === 'ready' || updaterStatus === 'installing') && (
+                <Button
+                  size="sm"
+                  onClick={() => void installAndRestart()}
+                  disabled={updaterStatus === 'installing'}
+                >
+                  {updaterStatus === 'installing' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="mr-2 h-4 w-4" />
+                  )}
+                  {updaterStatus === 'installing' ? t('updateInstalling') : t('updateReadyButton')}
+                </Button>
+              )}
+            </div>
+
+            {updaterUpdate && updaterStatus === 'idle' && (
+              <div className="grid gap-1 max-w-md">
+                <p className="text-xs text-muted-foreground">
+                  {t('updateAvailableLine', {
+                    version: updaterUpdate.version,
+                    current: updaterUpdate.currentVersion,
+                  })}
+                </p>
+                {updaterUpdate.body && (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                    {updaterUpdate.body}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            {updaterStatus === 'downloading' && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {updaterTotalBytes > 0
+                  ? t('updateDownloadingProgress', {
+                      received: formatLogSize(updaterDownloadedBytes),
+                      total: formatLogSize(updaterTotalBytes),
+                    })
+                  : t('updateDownloading')}
+              </p>
+            )}
+
+            {updaterStatus === 'installing' && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('updateInstalling')}
+              </p>
+            )}
+
+            {updaterError && <p className="text-xs text-destructive max-w-md">{updaterError}</p>}
+
+            <div className="flex items-center justify-between gap-4 max-w-md pt-2">
+              <div className="grid gap-1">
+                <Label htmlFor="update-auto-check">{t('updateAutoCheckLabel')}</Label>
+                <p className="text-xs text-muted-foreground">{t('updateAutoCheckDescription')}</p>
+              </div>
+              <Switch
+                id="update-auto-check"
+                checked={autoCheckEnabled}
+                onCheckedChange={(checked) => void setAutoCheck(checked)}
+              />
+            </div>
+          </div>
+
+          {updaterVersion !== null && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <img src={appIcon} alt="ChatShell" className="size-4 rounded-[4px]" />
-              {t('aboutVersion', { version: appVersion })}
+              {t('aboutVersion', { version: updaterVersion })}
             </p>
           )}
         </div>

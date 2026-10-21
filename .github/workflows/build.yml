@@ -11,8 +11,12 @@
 #   Cloudflare R2 (dl.chatshell.app):
 #     CLOUDFLARE_ACCOUNT_ID        - Cloudflare account ID
 #     R2_ACCESS_KEY_ID             - R2 S3-compatible API token
-#     R2_SECRET_ACCESS_KEY         - R2 S3-compatible API secret
-#     R2_BUCKET_NAME               - R2 bucket name backing dl.chatshell.app
+#   Updater (minisign; artifacts signed when present):
+#     TAURI_SIGNING_PRIVATE_KEY       - Private key from `pnpm tauri signer generate`
+#                                       (stored at ~/.tauri/chatshell-desktop-updater.key).
+#                                       Its absence disables updater artifacts, not the release.
+#     TAURI_SIGNING_PRIVATE_KEY_PASSWORD - Password for that key
+#                                       (stored at ~/.tauri/chatshell-desktop-updater.key.password).
 #
 #   Website version update:
 #     WEBSITE_REPO                 - Website GitHub repo (e.g. chatshellapp/chatshell-website)
@@ -83,6 +87,10 @@ jobs:
     name: Build Windows
     needs: check
     runs-on: windows-latest
+    env:
+      # Without the signing key the release still ships; it just carries no
+      # updater artifacts.
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -110,13 +118,24 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Build App
-        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi
+        shell: bash
+        run: |
+          UPDATER_ARGS=()
+          if [[ "$HAS_UPDATER_KEY" == "true" ]]; then
+            UPDATER_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          fi
+          pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi "${UPDATER_ARGS[@]}"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-windows
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.sig
 
   build-macos:
     name: Build macOS
@@ -127,6 +146,7 @@ jobs:
     env:
       HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_ISSUER != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -159,12 +179,18 @@ jobs:
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
       - name: Build Universal App
-        run: pnpm tauri build --target universal-apple-darwin --bundles dmg
+        run: |
+          UPDATER_ARGS=()
+          if [[ "$HAS_UPDATER_KEY" == "true" ]]; then
+            UPDATER_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          fi
+          pnpm tauri build --target universal-apple-darwin --bundles dmg "${UPDATER_ARGS[@]}"
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Setup API Key for Notarization
         if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
@@ -192,12 +218,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-macos
-          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz*
 
   build-linux:
     name: Build Linux
     needs: check
     runs-on: ubuntu-22.04
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -226,7 +256,15 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Build App
-        run: pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+        run: |
+          UPDATER_ARGS=()
+          if [[ "$HAS_UPDATER_KEY" == "true" ]]; then
+            UPDATER_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          fi
+          pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage "${UPDATER_ARGS[@]}"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -234,27 +272,43 @@ jobs:
           name: chatshell-linux
           path: |
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
 
   release:
     name: Create Release & Upload to R2
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
+
+      - name: Assemble updater feed (latest.json)
+        # Fan-in: merges the per-platform minisign .sig artifacts into the
+        # Tauri updater feed. URLs point at the first-party dl.chatshell.app
+        # mirror; the same feed is attached to the GitHub release as fallback.
+        if: env.HAS_UPDATER_KEY == 'true'
+        run: node scripts/finalize-latest-json.mjs --release-dir release
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/chatshell-windows/*.msi
+            release/chatshell-windows/*.msi.sig
             release/chatshell-macos/*
             release/chatshell-linux/*.AppImage
+            release/chatshell-linux/*.AppImage.sig
+            release/latest.json
           generate_release_notes: true
 
       - name: Install rclone
@@ -272,9 +326,13 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Uploading artifacts for v${VERSION} to R2..."
-          rclone copy release/chatshell-macos/ "r2:${R2_BUCKET}/v${VERSION}/darwin/universal/" --include "*.dmg" -v
-          rclone copy release/chatshell-windows/ "r2:${R2_BUCKET}/v${VERSION}/windows/x86_64/" --include "*.msi" -v
-          rclone copy release/chatshell-linux/ "r2:${R2_BUCKET}/v${VERSION}/linux/x86_64/" --include "*.AppImage" -v
+          rclone copy release/chatshell-macos/ "r2:${R2_BUCKET}/v${VERSION}/darwin/universal/" --include "*.dmg" --include "*.app.tar.gz*" -v
+          rclone copy release/chatshell-windows/ "r2:${R2_BUCKET}/v${VERSION}/windows/x86_64/" --include "*.msi" --include "*.msi.sig" -v
+          rclone copy release/chatshell-linux/ "r2:${R2_BUCKET}/v${VERSION}/linux/x86_64/" --include "*.AppImage" --include "*.AppImage.sig" -v
+          # Updater feed at the domain root: https://dl.chatshell.app/latest.json
+          if [ -f release/latest.json ]; then
+            rclone copyto release/latest.json "r2:${R2_BUCKET}/latest.json" -v
+          fi
           echo "R2 upload complete."
 
   update-website:

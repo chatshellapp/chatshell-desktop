@@ -131,5 +131,21 @@
   "aboutIssuesTitle": "遇到了问题？",
   "aboutIssuesDescription": "Bug 反馈和功能建议都欢迎提交到 GitHub Issues。",
   "aboutFileIssueButton": "提交 Issue",
-  "aboutVersion": "ChatShell v{{version}}"
+  "aboutVersion": "ChatShell v{{version}}",
+  "updateSectionTitle": "软件更新",
+  "updateCheckButton": "检查更新",
+  "updateChecking": "检查中…",
+  "updateUpToDate": "已是最新版本",
+  "updateCheckFailed": "检查更新失败，请检查网络后重试。",
+  "updateAvailableToast": "ChatShell v{{version}} 可用",
+  "updateAvailableLine": "v{{version}} 可用 — 当前 v{{current}}",
+  "updateDownloadButton": "下载更新",
+  "updateDownloading": "正在下载更新…",
+  "updateDownloadingProgress": "下载中… {{received}} / {{total}}",
+  "updateReadyButton": "安装并重启",
+  "updateReadyToast": "更新已下载，可以安装",
+  "updateInstalling": "安装中…",
+  "updateSkipVersion": "跳过此版本",
+  "updateAutoCheckLabel": "自动检查更新",
+  "updateAutoCheckDescription": "启动后不久访问一次 dl.chatshell.app 检查更新，不会发送任何使用数据。"
 }

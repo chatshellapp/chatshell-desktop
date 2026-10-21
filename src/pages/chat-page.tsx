@@ -23,6 +23,8 @@ import { OnboardingDialog } from '@/components/onboarding-dialog'
 import { SyncOnboardingDialog } from '@/components/sync/sync-onboarding-dialog'
 import { SyncLockedBanner } from '@/components/sync/sync-locked-banner'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
+import { toast } from 'sonner'
+import { useUpdaterStore } from '@/stores/updaterStore'
 
 export function ChatPage() {
   const { t } = useTranslation()
@@ -36,6 +38,40 @@ export function ChatPage() {
   useEffect(() => {
     loadSyncSetup()
   }, [loadSyncSetup])
+
+  // Updater: deferred silent check shortly after startup (dev builds skip it).
+  const runStartupUpdateCheck = useUpdaterStore((s) => s.runStartupCheck)
+  useEffect(() => {
+    if (import.meta.env.DEV) return
+    const timer = setTimeout(() => void runStartupUpdateCheck(), 5000)
+    return () => clearTimeout(timer)
+  }, [runStartupUpdateCheck])
+
+  // Surface background-found updates and finished downloads as toasts with
+  // one-click actions; the full flow also lives in Settings > About.
+  const { t: ts } = useTranslation('settings')
+  const updaterUpdate = useUpdaterStore((s) => s.update)
+  const updaterDownloadReady = useUpdaterStore((s) => s.status === 'ready')
+  useEffect(() => {
+    if (!updaterUpdate) return
+    toast(ts('updateAvailableToast', { version: updaterUpdate.version }), {
+      duration: 10000,
+      action: {
+        label: ts('updateDownloadButton'),
+        onClick: () => void useUpdaterStore.getState().downloadUpdate(),
+      },
+    })
+  }, [updaterUpdate, ts])
+  useEffect(() => {
+    if (!updaterDownloadReady) return
+    toast(ts('updateReadyToast'), {
+      duration: 10000,
+      action: {
+        label: ts('updateReadyButton'),
+        onClick: () => void useUpdaterStore.getState().installAndRestart(),
+      },
+    })
+  }, [updaterDownloadReady, ts])
 
   // Prevent default browser drag-drop behavior (which opens files)
   // This allows only the chat-input component to handle file drops
