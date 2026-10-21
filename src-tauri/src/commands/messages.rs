@@ -52,12 +52,8 @@ pub async fn delete_messages_from(
     conversation_id: String,
     message_id: String,
 ) -> Result<(), String> {
-    {
-        let tasks = state.generation_tasks.read().await;
-        if tasks.contains_key(&conversation_id) {
-            return Err("A generation is already running for this conversation".into());
-        }
-    }
+    super::ensure_no_generation(&state, &conversation_id).await?;
+
     state
         .db
         .delete_messages_from(&conversation_id, &message_id)
@@ -74,12 +70,7 @@ pub async fn set_active_message(
     conversation_id: String,
     message_id: String,
 ) -> Result<Message, String> {
-    {
-        let tasks = state.generation_tasks.read().await;
-        if tasks.contains_key(&conversation_id) {
-            return Err("A generation is already running for this conversation".into());
-        }
-    }
+    super::ensure_no_generation(&state, &conversation_id).await?;
     state
         .db
         .set_active_message(&conversation_id, &message_id)

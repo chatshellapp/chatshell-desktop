@@ -53,6 +53,20 @@ pub struct AppState {
     pub sync_engine: Arc<std::sync::Mutex<Option<crate::sync::SyncEngine>>>,
 }
 
+/// One generation per conversation: refuse tree-mutating commands
+/// (send / regenerate / branch switch / delete) while a turn streams.
+/// Accepting a concurrent send would overwrite the running task's
+/// cancellation token and race the active-leaf pointer. The frontend
+/// disables the send control while streaming; this keeps the backend
+/// from depending on that as its only defense.
+pub async fn ensure_no_generation(state: &AppState, conversation_id: &str) -> Result<(), String> {
+    let tasks = state.generation_tasks.read().await;
+    if tasks.contains_key(conversation_id) {
+        return Err("A generation is already running for this conversation".into());
+    }
+    Ok(())
+}
+
 // Re-export all commands
 pub use assistants::*;
 pub use attachments::*;

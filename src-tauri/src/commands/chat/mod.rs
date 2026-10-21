@@ -60,6 +60,8 @@ pub async fn send_message(
     // the active leaf.
     sibling_of_message_id: Option<String>,
 ) -> Result<Message, String> {
+    super::ensure_no_generation(&state, &conversation_id).await?;
+
     log_send_message_params(
         &conversation_id,
         &content,
@@ -154,12 +156,7 @@ pub async fn regenerate_message(
     use_provider_defaults: Option<bool>,
     disable_tools: Option<bool>,
 ) -> Result<(), String> {
-    {
-        let tasks = state.generation_tasks.read().await;
-        if tasks.contains_key(&conversation_id) {
-            return Err("A generation is already running for this conversation".into());
-        }
-    }
+    super::ensure_no_generation(&state, &conversation_id).await?;
 
     let target = state
         .db
@@ -736,5 +733,66 @@ async fn get_assistant_config(
         }
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::llm::capabilities::CapabilitiesCache;
+    use crate::llm::tools::BashSessionManager;
+    use crate::mcp::McpConnectionManager;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    async fn bare_state() -> (crate::AppState, String, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let conv = db
+            .create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
+            .await
+            .unwrap();
+        let state = crate::AppState {
+            db,
+            generation_tasks: Arc::new(RwLock::new(HashMap::new())),
+            mcp_manager: Arc::new(McpConnectionManager::new()),
+            pending_oauth: Arc::new(RwLock::new(HashMap::new())),
+            bash_session_manager: Arc::new(BashSessionManager::new()),
+            capabilities_cache: Arc::new(CapabilitiesCache::new()),
+            sync_engine: Arc::new(std::sync::Mutex::new(None)),
+        };
+        (state, conv.id, dir)
+    }
+
+    /// A send arriving while a generation is active for the conversation
+    /// must be rejected before any state is written: accepting it would
+    /// overwrite the running task's cancellation token and race the
+    /// active-leaf pointer. send_message delegates its guard to
+    /// ensure_no_generation, exercised here.
+    #[tokio::test]
+    async fn send_message_rejected_while_generation_running() {
+        let (state, conv_id, _dir) = bare_state().await;
+        state
+            .generation_tasks
+            .write()
+            .await
+            .insert(conv_id.clone(), CancellationToken::new());
+
+        let err = super::super::ensure_no_generation(&state, &conv_id)
+            .await
+            .unwrap_err();
+        assert_eq!(err, "A generation is already running for this conversation");
+
+        // A quiet conversation passes the guard.
+        state.generation_tasks.write().await.remove(&conv_id);
+        assert!(
+            super::super::ensure_no_generation(&state, &conv_id)
+                .await
+                .is_ok()
+        );
     }
 }
