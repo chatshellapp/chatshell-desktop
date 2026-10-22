@@ -94,9 +94,7 @@ describe('PermissionApprovalDialog', () => {
   it('hides the session button when the backend reports no session scope', async () => {
     seedPending(null)
     render(<PermissionApprovalDialog />)
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /allow once/i })).toBeEnabled()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /allow once/i })).toBeEnabled())
     expect(
       screen.queryByRole('button', { name: /allow for this session/i })
     ).not.toBeInTheDocument()

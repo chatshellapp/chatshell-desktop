@@ -38,8 +38,6 @@ export const usePermissionStore = create<PermissionState>()((set) => ({
   show: (request) => set((state) => ({ pending: [...state.pending, request] })),
   clear: (requestId) =>
     set((state) => ({
-      pending: requestId
-        ? state.pending.filter((request) => request.requestId !== requestId)
-        : [],
+      pending: requestId ? state.pending.filter((request) => request.requestId !== requestId) : [],
     })),
 }))
