@@ -1,6 +1,8 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemHeader } from '@/components/ui/item'
 import { cn } from '@/lib/utils'
+import { MorphSpinner } from '@/components/ui/morph-spinner'
 import type { MessageListItemProps } from './types'
 import { MessageAvatarGroup } from './message-avatar'
 import { ActionsMenu } from './actions-menu'
@@ -20,7 +22,9 @@ export function MessageListItem({
   onEditTitle,
   onDelete,
   placeholderTitle,
+  isStreaming = false,
 }: MessageListItemProps) {
+  const { t: tChat } = useTranslation('chat')
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
   const [showRenameDialog, setShowRenameDialog] = React.useState(false)
@@ -67,9 +71,18 @@ export function MessageListItem({
           {/* Second line: Last message content (truncated) */}
           <ItemDescription className="line-clamp-1 text-xs">{lastMessage}</ItemDescription>
 
-          {/* Third line: Timestamp and small avatars */}
+          {/* Third line: Timestamp (spinner while generating) and small avatars */}
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">{timestamp}</span>
+            {isStreaming ? (
+              <MorphSpinner
+                size={14}
+                role="status"
+                aria-label={tChat('generatingResponse')}
+                className="flex-shrink-0"
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">{timestamp}</span>
+            )}
             <MessageAvatarGroup avatars={avatars} summary={summary} />
           </div>
         </ItemContent>

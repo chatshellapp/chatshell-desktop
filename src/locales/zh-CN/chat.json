@@ -1,5 +1,6 @@
 {
   "sendMessage": "发送消息",
+  "generatingResponse": "生成回复中…",
   "stopGenerating": "停止生成",
   "stop": "停止",
   "send": "发送",

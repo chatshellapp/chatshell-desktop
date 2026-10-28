@@ -2,11 +2,12 @@ import { MessageSquare } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageListItem } from '@/components/message-list-item'
 import { useConversationStore } from '@/stores/conversation'
+import { useMessageStore } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import { formatConversationTimestamp } from '@/lib/utils'
 import { buildConversationAvatars } from '@/lib/conversation-avatars'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import type { ParticipantSummary } from '@/types'
+import type { Conversation, ParticipantSummary } from '@/types'
 
 interface ConversationListProps {
   conversationParticipantsMap: Map<string, ParticipantSummary[]>
@@ -24,10 +25,8 @@ export function ConversationList({
   onDelete,
 }: ConversationListProps) {
   const { t } = useTranslation('sidebar')
-  const { t: tChat } = useTranslation('chat')
   const conversations = useConversationStore((state) => state.conversations)
   const currentConversation = useConversationStore((state) => state.currentConversation)
-  const getModelById = useModelStore((state) => state.getModelById)
 
   if (conversations.length === 0) {
     return (
@@ -47,48 +46,87 @@ export function ConversationList({
 
   return (
     <div className="space-y-1 p-2">
-      {conversations.map((conversation) => {
-        const participants = conversationParticipantsMap.get(conversation.id) || []
-        const avatars = buildConversationAvatars(participants, getModelById)
-
-        const displayAvatars =
-          avatars.length > 0
-            ? avatars
-            : [
-                {
-                  type: 'text' as const,
-                  text: '',
-                  fallback: '',
-                  isPlaceholder: true,
-                },
-              ]
-
-        const lastMessage = conversation.last_message
-          ? conversation.last_message.length > 50
-            ? conversation.last_message.substring(0, 50) + '...'
-            : conversation.last_message
-          : tChat('noMessages')
-
-        const placeholderTitle = t('newConversation')
-
-        return (
-          <MessageListItem
-            key={conversation.id}
-            avatars={displayAvatars}
-            summary={conversation.title || placeholderTitle}
-            placeholderTitle={placeholderTitle}
-            timestamp={formatConversationTimestamp(conversation.updated_at)}
-            lastMessage={lastMessage}
-            isActive={currentConversation?.id === conversation.id}
-            onClick={() => onConversationClick(conversation.id)}
-            onGenerateTitle={onGenerateTitle ? () => onGenerateTitle(conversation.id) : undefined}
-            onEditTitle={
-              onEditTitle ? (newTitle: string) => onEditTitle(conversation.id, newTitle) : undefined
-            }
-            onDelete={onDelete ? () => onDelete(conversation.id) : undefined}
-          />
-        )
-      })}
+      {conversations.map((conversation) => (
+        <ConversationRow
+          key={conversation.id}
+          conversation={conversation}
+          participants={conversationParticipantsMap.get(conversation.id) || []}
+          isActive={currentConversation?.id === conversation.id}
+          onConversationClick={onConversationClick}
+          onGenerateTitle={onGenerateTitle}
+          onEditTitle={onEditTitle}
+          onDelete={onDelete}
+        />
+      ))}
     </div>
+  )
+}
+
+interface ConversationRowProps {
+  conversation: Conversation
+  participants: ParticipantSummary[]
+  isActive: boolean
+  onConversationClick: (conversationId: string) => void
+  onGenerateTitle?: (conversationId: string) => void
+  onEditTitle?: (conversationId: string, newTitle: string) => void
+  onDelete?: (conversationId: string) => void
+}
+
+function ConversationRow({
+  conversation,
+  participants,
+  isActive,
+  onConversationClick,
+  onGenerateTitle,
+  onEditTitle,
+  onDelete,
+}: ConversationRowProps) {
+  const { t } = useTranslation('sidebar')
+  const { t: tChat } = useTranslation('chat')
+  const getModelById = useModelStore((state) => state.getModelById)
+  // Primitive selector: the row re-renders only when this conversation's
+  // streaming flag flips, not on every throttled token batch.
+  const isStreaming = useMessageStore(
+    (state) => state.conversationStates[conversation.id]?.isStreaming ?? false
+  )
+
+  const avatars = buildConversationAvatars(participants, getModelById)
+
+  const displayAvatars =
+    avatars.length > 0
+      ? avatars
+      : [
+          {
+            type: 'text' as const,
+            text: '',
+            fallback: '',
+            isPlaceholder: true,
+          },
+        ]
+
+  const lastMessage = conversation.last_message
+    ? conversation.last_message.length > 50
+      ? conversation.last_message.substring(0, 50) + '...'
+      : conversation.last_message
+    : tChat('noMessages')
+
+  const placeholderTitle = t('newConversation')
+
+  return (
+    <MessageListItem
+      avatars={displayAvatars}
+      summary={conversation.title || placeholderTitle}
+      placeholderTitle={placeholderTitle}
+      timestamp={formatConversationTimestamp(conversation.updated_at)}
+      lastMessage={lastMessage}
+      isActive={isActive}
+      isStreaming={isStreaming}
+      onClick={() => onConversationClick(conversation.id)}
+      onGenerateTitle={onGenerateTitle ? () => onGenerateTitle(conversation.id) : undefined}
+      onEditTitle={
+        onEditTitle ? (newTitle: string) => onEditTitle(conversation.id, newTitle) : undefined
+      }
+      onDelete={onDelete ? () => onDelete(conversation.id) : undefined}
+    />
   )
 }

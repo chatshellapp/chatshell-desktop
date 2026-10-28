@@ -57,4 +57,9 @@ export interface MessageListItemProps {
    * When summary transitions from this value to a real title, a typewriter animation plays.
    */
   placeholderTitle?: string
+  /**
+   * Whether a generation is in flight for this conversation. While true the
+   * timestamp slot shows a spinner (the timestamp is stale mid-stream anyway).
+   */
+  isStreaming?: boolean
 }

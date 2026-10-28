@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { ConversationList } from '../conversation-list'
 import { useConversationStore } from '@/stores/conversation'
+import { useMessageStore, createDefaultConversationState } from '@/stores/message'
 import { useModelStore } from '@/stores/modelStore'
 import type * as UtilsModule from '@/lib/utils'
 import type { Conversation, ParticipantSummary } from '@/types'
@@ -71,6 +72,11 @@ describe('ConversationList', () => {
       selectedModel: null,
       selectedAssistant: null,
     })
+    useMessageStore.setState({
+      conversationStates: {},
+      isSending: false,
+      error: null,
+    })
     useModelStore.setState({ models: [], providers: [], isLoading: false, error: null })
   })
 
@@ -127,6 +133,50 @@ describe('ConversationList', () => {
 
     expect(rowOf('Beta').className).toMatch(/(^|\s)bg-accent(\s|$)/)
     expect(rowOf('Alpha').className).not.toMatch(/(^|\s)bg-accent(\s|$)/)
+  })
+
+  it('replaces the timestamp with a spinner on rows that are streaming', () => {
+    useConversationStore.setState({
+      conversations: [
+        makeConversation('c1', { title: 'Alpha', last_message: 'hi' }),
+        makeConversation('c2', { title: 'Beta', last_message: 'yo' }),
+      ],
+    })
+    useMessageStore.setState({
+      conversationStates: {
+        c1: { ...createDefaultConversationState(), isStreaming: true },
+      },
+    })
+    renderList()
+
+    expect(within(rowOf('Alpha')).getByRole('status')).toBeInTheDocument()
+    expect(within(rowOf('Alpha')).queryByText(TS)).toBeNull()
+    expect(within(rowOf('Beta')).getByText(TS)).toBeInTheDocument()
+    expect(within(rowOf('Beta')).queryByRole('status')).toBeNull()
+  })
+
+  it('clears the spinner once the stream ends', () => {
+    useConversationStore.setState({
+      conversations: [makeConversation('c1', { title: 'Alpha', last_message: 'hi' })],
+    })
+    useMessageStore.setState({
+      conversationStates: {
+        c1: { ...createDefaultConversationState(), isStreaming: true },
+      },
+    })
+    renderList()
+    expect(within(rowOf('Alpha')).getByRole('status')).toBeInTheDocument()
+
+    act(() => {
+      useMessageStore.setState({
+        conversationStates: {
+          c1: { ...createDefaultConversationState(), isStreaming: false },
+        },
+      })
+    })
+
+    expect(within(rowOf('Alpha')).queryByRole('status')).toBeNull()
+    expect(within(rowOf('Alpha')).getByText(TS)).toBeInTheDocument()
   })
 
   it('invokes onConversationClick with the conversation id', () => {

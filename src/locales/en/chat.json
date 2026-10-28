@@ -1,5 +1,6 @@
 {
   "sendMessage": "Send message",
+  "generatingResponse": "Generating response…",
   "stopGenerating": "Stop generating",
   "stop": "Stop",
   "send": "Send",
