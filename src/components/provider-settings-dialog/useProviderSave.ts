@@ -9,6 +9,8 @@ import { logger } from '@/lib/logger'
 
 export interface UseProviderSaveReturn {
   isSaving: boolean
+  /** The last save left the provider with zero models (dialog stays open). */
+  savedWithoutModels: boolean
   handleSave: () => Promise<void>
 }
 
@@ -27,6 +29,9 @@ interface UseProviderSaveParams {
   loadExistingData: () => void
   onOpenChange: (open: boolean) => void
   onProviderCreated?: (providerId: string) => void
+  /** Called instead of closing when the provider has no models after saving —
+   * the host opens model selection so the saved provider becomes usable. */
+  onSavedWithoutModels?: () => void
 }
 
 /**
@@ -47,9 +52,17 @@ export function useProviderSave({
   loadExistingData,
   onOpenChange,
   onProviderCreated,
+  onSavedWithoutModels,
 }: UseProviderSaveParams): UseProviderSaveReturn {
   const { t } = useTranslation('messages')
   const [isSaving, setIsSaving] = React.useState(false)
+  const [savedWithoutModels, setSavedWithoutModels] = React.useState(false)
+
+  React.useEffect(() => {
+    if (models.some((model) => !modelsToDelete.includes(model.id))) {
+      setSavedWithoutModels(false)
+    }
+  }, [models, modelsToDelete])
 
   const handleSave = React.useCallback(async () => {
     const newModels = models.filter((m) => !m.isExisting)
@@ -59,16 +72,8 @@ export function useProviderSave({
         (originalModelNames[m.id] !== m.displayName || originalModelIds[m.id] !== m.modelId)
     )
 
-    if (
-      newModels.length === 0 &&
-      modelsToDelete.length === 0 &&
-      modifiedModels.length === 0 &&
-      !existingProvider
-    ) {
-      logger.warn('No changes to save')
-      onOpenChange(false)
-      return
-    }
+    const remainingModels =
+      models.filter((m) => m.isExisting && !modelsToDelete.includes(m.id)).length + newModels.length
 
     setIsSaving(true)
     try {
@@ -149,6 +154,14 @@ export function useProviderSave({
       }
 
       loadExistingData()
+      setSavedWithoutModels(remainingModels === 0)
+      if (remainingModels === 0) {
+        // Saved credentials are real; a chat cannot send until a model is
+        // added. Keep the editor open and let the host open model selection.
+        toast.success(t('providerSavedNeedsModels'))
+        onSavedWithoutModels?.()
+        return
+      }
       toast.success(t('providerSavedSuccessfully'))
       onOpenChange(false)
     } catch (error) {
@@ -174,10 +187,12 @@ export function useProviderSave({
     loadExistingData,
     onOpenChange,
     onProviderCreated,
+    onSavedWithoutModels,
   ])
 
   return {
     isSaving,
+    savedWithoutModels,
     handleSave,
   }
 }

@@ -9,6 +9,7 @@ import { useModelList } from './useModelList'
 import { useFetchModels } from './useFetchModels'
 import { useModelFiltering } from './useModelFiltering'
 import { useProviderSave } from './useProviderSave'
+import { isSupportedFetchProvider, requiresApiKeyForFetch } from './constants'
 
 /**
  * Main hook that composes all provider settings functionality
@@ -75,6 +76,25 @@ export function useProviderSettings(
     [formState]
   )
 
+  // A provider saved with zero models is unusable. Keep the dialog open and
+  // open the existing model-fetch flow so the user finishes setup right here.
+  const handleSavedWithoutModels = React.useCallback(() => {
+    const provider = formState.selectedProvider
+    const providerType = provider.isCustom
+      ? formState.compatibilityType === 'anthropic'
+        ? 'custom_anthropic'
+        : 'custom_openai'
+      : provider.id
+    if (!isSupportedFetchProvider(providerType)) return
+    if (requiresApiKeyForFetch(providerType) && !formState.apiKey.trim()) return
+    fetchModels.handleOpenFetchModal()
+  }, [
+    formState.selectedProvider,
+    formState.compatibilityType,
+    formState.apiKey,
+    fetchModels.handleOpenFetchModal,
+  ])
+
   const save = useProviderSave({
     models: modelList.models,
     modelsToDelete: modelList.modelsToDelete,
@@ -90,6 +110,7 @@ export function useProviderSettings(
     loadExistingData: providerData.loadExistingData,
     onOpenChange,
     onProviderCreated: handleProviderCreated,
+    onSavedWithoutModels: handleSavedWithoutModels,
   })
 
   // 7. Manual add model dialog state
@@ -144,6 +165,7 @@ export function useProviderSettings(
 
     // Save
     isSaving: save.isSaving,
+    savedWithoutModels: save.savedWithoutModels,
 
     // Manual add model dialog
     addModelDialogOpen,

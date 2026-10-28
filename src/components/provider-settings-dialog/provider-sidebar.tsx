@@ -1,7 +1,8 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus } from 'lucide-react'
+import { AlertTriangle, Plus } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +18,8 @@ import type { LLMProvider } from './types'
 import { isCustomProviderType } from './types'
 import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER } from './constants'
 import { ProviderLogo } from './provider-logo'
+import { useModelStore } from '@/stores/modelStore'
+import { modelCountsByProvider } from '@/lib/model-setup'
 
 interface ProviderSidebarProps {
   selectedProvider: LLMProvider
@@ -32,6 +35,8 @@ export function ProviderSidebar({
   editingCustomProviderId,
 }: ProviderSidebarProps) {
   const { t } = useTranslation('providers')
+  const models = useModelStore((state) => state.models)
+  const modelCounts = useMemo(() => modelCountsByProvider(models), [models])
   const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
 
   return (
@@ -41,7 +46,7 @@ export function ProviderSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               {BUILTIN_PROVIDERS.map((provider) => {
-                const hasExisting = storeProviders.some((p) => p.provider_type === provider.id)
+                const savedProvider = storeProviders.find((p) => p.provider_type === provider.id)
                 return (
                   <SidebarMenuItem key={provider.id}>
                     <SidebarMenuButton
@@ -50,8 +55,8 @@ export function ProviderSidebar({
                     >
                       <ProviderLogo providerType={provider.id} />
                       <span>{provider.name}</span>
-                      {hasExisting && (
-                        <span className="ml-auto text-xs text-muted-foreground">●</span>
+                      {savedProvider && (
+                        <ProviderStatus count={modelCounts[savedProvider.id] ?? 0} />
                       )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -80,7 +85,7 @@ export function ProviderSidebar({
                   >
                     <ProviderLogo providerType={cp.provider_type} name={cp.name} />
                     <span className="truncate">{cp.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">●</span>
+                    <ProviderStatus count={modelCounts[cp.id] ?? 0} />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -99,5 +104,26 @@ export function ProviderSidebar({
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
+  )
+}
+
+/** Setup truth for a configured provider row: count when usable, warning
+ * when saved without models (the state that blocked the composer). */
+function ProviderStatus({ count }: { count: number }) {
+  const { t } = useTranslation('providers')
+
+  if (count === 0) {
+    return (
+      <span className="ml-auto" title={t('needsModels')}>
+        <AlertTriangle className="size-3 text-amber-600" />
+        <span className="sr-only">{t('needsModels')}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="ml-auto text-[10px] text-muted-foreground" title={t('modelCount', { count })}>
+      {count}
+    </span>
   )
 }

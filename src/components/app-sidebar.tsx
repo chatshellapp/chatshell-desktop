@@ -31,6 +31,7 @@ import { useSearchStore } from '@/stores/searchStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
+import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
 import { SIDEBAR_DATA, getNavItems } from '@/lib/sidebar-data'
 import type { Prompt as PromptListItem, PromptGroup } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
@@ -44,7 +45,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navItems = React.useMemo(() => getNavItems(t), [t])
   const [activeItem, setActiveItem] = React.useState<NavItem>(() => getNavItems(t)[0])
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
-  const [providerDialogOpen, setProviderDialogOpen] = React.useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
   const [promptDialogOpen, setPromptDialogOpen] = React.useState(false)
@@ -54,6 +54,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
   const { setOpen } = useSidebar()
+  const providerDialogOpen = useProviderSettingsStore((state) => state.open)
+  const providerDialogInitialId = useProviderSettingsStore((state) => state.initialProviderId)
+  const openProviderSettings = useProviderSettingsStore((state) => state.openProviderSettings)
+  const closeProviderSettings = useProviderSettingsStore((state) => state.closeProviderSettings)
 
   const { conversationParticipantsMap } = useConversationParticipants()
   const vendorsList = useVendorsList()
@@ -215,7 +219,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   variant="outline"
                   size="sm"
                   className="w-full justify-center gap-2 h-9"
-                  onClick={() => setProviderDialogOpen(true)}
+                  onClick={() => openProviderSettings()}
                 >
                   <Plus className="size-4" />
                   {t('sidebar:addModels')}
@@ -318,7 +322,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>
       </Sidebar>
 
-      <ProviderSettingsDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
+      <ProviderSettingsDialog
+        open={providerDialogOpen}
+        initialProviderId={providerDialogInitialId}
+        onOpenChange={(open) => {
+          if (open) openProviderSettings(providerDialogInitialId)
+          else closeProviderSettings()
+        }}
+      />
 
       <SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
 

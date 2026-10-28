@@ -1,18 +1,8 @@
 'use client'
 
 import { useTranslation } from 'react-i18next'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { ProviderForm } from '@/components/provider-settings-dialog/provider-form'
 import { ModelsTable } from '@/components/provider-settings-dialog/models-table'
@@ -20,9 +10,8 @@ import { FetchModelsDialog } from '@/components/provider-settings-dialog/fetch-m
 import { AddModelDialog } from '@/components/provider-settings-dialog/add-model-dialog'
 import { EditModelDialog } from '@/components/provider-settings-dialog/edit-model-dialog'
 import { useProviderSettings } from '@/components/provider-settings-dialog/useProviderSettings'
-import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER } from '@/components/provider-settings-dialog/constants'
-import { ProviderLogo } from '@/components/provider-settings-dialog/provider-logo'
-import { isCustomProvider, isCustomProviderType } from '@/components/provider-settings-dialog/types'
+import { ProviderSidebar } from '@/components/provider-settings-dialog/provider-sidebar'
+import { isCustomProvider, type LLMProvider } from '@/components/provider-settings-dialog/types'
 
 interface LLMProviderSettingsProps {
   open: boolean
@@ -77,11 +66,11 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
     isModelImported,
     handleSave,
     groupedModels,
+    savedWithoutModels,
   } = useProviderSettings(open, () => {})
 
   const isCustom = isCustomProvider(selectedProvider)
   const displayName = existingProvider ? existingProvider.name : selectedProvider.name
-  const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
 
   const effectiveProviderType = isCustom
     ? compatibilityType === 'anthropic'
@@ -104,82 +93,28 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
         existingProvider.name !== (isCustom ? providerName : selectedProvider.name) ||
         existingProvider.provider_type !== effectiveProviderType ||
         existingProvider.api_style !== effectiveApiStyle)) ||
-    (!existingProvider && isCustom)
+    (!existingProvider && (isCustom || apiKey.trim().length > 0))
+
+  const handleSelectProvider = (provider: LLMProvider) => {
+    if (provider.isCustom) {
+      const storeProvider = storeProviders.find(
+        (p) => p.provider_type === provider.id && p.name === provider.name
+      )
+      if (storeProvider) setEditingCustomProviderId(storeProvider.id)
+    } else {
+      setEditingCustomProviderId(null)
+    }
+    setSelectedProvider(provider)
+  }
 
   return (
     <div className="flex h-full">
-      {/* Inner Provider Sidebar */}
-      <Sidebar collapsible="none" className="w-[180px]">
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {BUILTIN_PROVIDERS.map((provider) => {
-                  const hasExisting = storeProviders.some((p) => p.provider_type === provider.id)
-                  return (
-                    <SidebarMenuItem key={provider.id}>
-                      <SidebarMenuButton
-                        onClick={() => {
-                          setEditingCustomProviderId(null)
-                          setSelectedProvider(provider)
-                        }}
-                        isActive={provider.id === selectedProvider.id && !editingCustomProviderId}
-                      >
-                        <ProviderLogo providerType={provider.id} />
-                        <span>{provider.name}</span>
-                        {hasExisting && (
-                          <span className="ml-auto text-xs text-muted-foreground">●</span>
-                        )}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('common:custom', 'Custom')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {customStoreProviders.map((cp) => (
-                  <SidebarMenuItem key={cp.id}>
-                    <SidebarMenuButton
-                      onClick={() => {
-                        setEditingCustomProviderId(cp.id)
-                        setSelectedProvider({
-                          id: cp.provider_type,
-                          name: cp.name,
-                          baseUrl: cp.base_url || '',
-                          isCustom: true,
-                        })
-                      }}
-                      isActive={editingCustomProviderId === cp.id}
-                    >
-                      <ProviderLogo providerType={cp.provider_type} name={cp.name} />
-                      <span className="truncate">{cp.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">●</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => {
-                      setEditingCustomProviderId(null)
-                      setSelectedProvider(CUSTOM_PROVIDER)
-                    }}
-                    isActive={selectedProvider.id === 'custom' && !editingCustomProviderId}
-                  >
-                    <Plus className="size-4" />
-                    <span>{t('addProvider')}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
+      <ProviderSidebar
+        selectedProvider={selectedProvider}
+        onSelectProvider={handleSelectProvider}
+        storeProviders={storeProviders}
+        editingCustomProviderId={editingCustomProviderId}
+      />
 
       {/* Provider Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -231,7 +166,10 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
         </div>
 
         {/* Footer with Save Button */}
-        <div className="shrink-0 border-t p-4 flex justify-end gap-2">
+        <div className="shrink-0 border-t p-4 flex items-center justify-end gap-2">
+          {savedWithoutModels && (
+            <p className="mr-auto text-sm text-amber-600">{t('addModelsBeforeChatting')}</p>
+          )}
           <Button
             onClick={handleSave}
             disabled={

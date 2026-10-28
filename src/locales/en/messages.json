@@ -69,6 +69,7 @@
   "imagesInspectViaReadTool": "Attachments are preserved. The model can inspect them with the read tool.",
   "failedToSaveProvider": "Failed to save provider settings",
   "providerSavedSuccessfully": "Provider settings saved",
+  "providerSavedNeedsModels": "Provider saved - add at least one model to start chatting.",
   "apiError": "API Error",
   "apiErrorBadRequest": "Bad Request",
   "apiErrorUnauthorized": "Unauthorized",

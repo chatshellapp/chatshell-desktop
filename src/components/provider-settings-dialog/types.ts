@@ -3,6 +3,8 @@ import type { Provider } from '@/types'
 export interface ProviderSettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Provider row to focus on open (composer's setup CTA). */
+  initialProviderId?: string | null
 }
 
 // Re-export hook return types for external use
@@ -79,6 +81,7 @@ export interface UseProviderSettingsReturn {
   modelSearchQuery: string
   setModelSearchQuery: (query: string) => void
   isSaving: boolean
+  savedWithoutModels: boolean
   existingProvider: Provider | null
   modelsToDelete: string[]
   setModelsToDelete: React.Dispatch<React.SetStateAction<string[]>>

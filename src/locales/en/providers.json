@@ -92,5 +92,8 @@
   "fetchModels.baseUrlRequired": "Base URL is required for {{provider}}.",
   "fetchModels.apiKeyRequiredForProvider": "{{provider}} API key is required. Please enter your API key above.",
   "fetchModels.modelFetchingNotSupported": "Model fetching is not yet supported for {{provider}}. Please add models manually.",
+  "needsModels": "Needs models",
+  "modelCount": "{{count}} models",
+  "addModelsBeforeChatting": "Add at least one model to start chatting.",
   "customProviderPlaceholder": "e.g. My Local LLM"
 }

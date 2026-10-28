@@ -69,6 +69,7 @@
   "imagesInspectViaReadTool": "附件已保留，模型可通过 read 工具查看。",
   "failedToSaveProvider": "保存提供商设置失败",
   "providerSavedSuccessfully": "提供商设置已保存",
+  "providerSavedNeedsModels": "提供商已保存，添加至少一个模型后即可开始对话。",
   "apiError": "API 错误",
   "apiErrorBadRequest": "请求错误",
   "apiErrorUnauthorized": "未授权",

@@ -283,3 +283,10 @@ const FETCH_SUPPORTED_PROVIDERS = new Set([
 export function isSupportedFetchProvider(id: string): boolean {
   return FETCH_SUPPORTED_PROVIDERS.has(id)
 }
+
+// Providers whose model list can be fetched without an API key.
+const NO_KEY_FETCH_PROVIDERS = new Set(['ollama', 'lmstudio', 'gpustack', 'ovms'])
+
+export function requiresApiKeyForFetch(id: string): boolean {
+  return !NO_KEY_FETCH_PROVIDERS.has(id)
+}

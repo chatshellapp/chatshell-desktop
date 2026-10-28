@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AlertCircle } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { InputGroupButton } from '@/components/ui/input-group'
@@ -13,6 +15,8 @@ import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
+import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
+import { computeModelSetupState } from '@/lib/model-setup'
 import { ModelList, type ModelVendor, type Model as ModelListModel } from '@/components/model-list'
 import {
   AssistantList,
@@ -45,12 +49,28 @@ export function ModelSelectorDropdown({
   const setSelectedAssistant = useConversationStore((state) => state.setSelectedAssistant)
 
   const models = useModelStore((state) => state.models)
+  const providers = useModelStore((state) => state.providers)
   const getModelById = useModelStore((state) => state.getModelById)
   const getProviderById = useModelStore((state) => state.getProviderById)
   const updateModel = useModelStore((state) => state.updateModel)
 
   const assistants = useAssistantStore((state) => state.assistants)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
+  const openProviderSettings = useProviderSettingsStore((state) => state.openProviderSettings)
+
+  // A provider row with no models looks configured but leaves the composer
+  // with nothing to select. Derived from the same stores the provider list
+  // uses, so the label always names the provider that needs fixing.
+  const setupState = useMemo(() => computeModelSetupState(providers, models), [providers, models])
+  const needsSetup = !selectedModel && !selectedAssistant && setupState.kind !== 'ready'
+  const setupLabel =
+    setupState.kind === 'needsModels'
+      ? t('addModelsFor', { provider: setupState.providerName })
+      : t('setupProvider')
+  const openSetup = () => {
+    onOpenChange(false)
+    openProviderSettings(setupState.kind === 'needsModels' ? setupState.providerId : null)
+  }
 
   // Get display text for current selection
   const getSelectionDisplay = () => {
@@ -61,6 +81,8 @@ export function ModelSelectorDropdown({
     } else if (selectedModel) {
       const provider = getProviderById(selectedModel.provider_id)
       return provider ? `${selectedModel.name} - ${provider.name}` : selectedModel.name
+    } else if (setupState.kind !== 'ready') {
+      return setupLabel
     } else {
       return t('selectModelOrAssistant')
     }
@@ -270,7 +292,14 @@ export function ModelSelectorDropdown({
         </>
       )
     } else {
-      return <span className="text-xs">{getSelectionDisplay()}</span>
+      return (
+        <>
+          {needsSetup && <AlertCircle className="size-3 text-amber-600" />}
+          <span className={cn('text-xs', needsSetup && 'text-amber-600')}>
+            {getSelectionDisplay()}
+          </span>
+        </>
+      )
     }
   }
 
@@ -332,8 +361,15 @@ export function ModelSelectorDropdown({
                 compact={true}
               />
             ) : (
-              <div className="text-xs text-muted-foreground px-2 py-4 text-center">
-                {t('noModelsAvailable')}
+              <div className="px-2 py-3 text-center">
+                <p className="text-xs text-muted-foreground">{t('noModelsAvailable')}</p>
+                <DropdownMenuItem
+                  className="mt-2 justify-center text-xs text-amber-600"
+                  onSelect={openSetup}
+                >
+                  <AlertCircle className="size-3.5" />
+                  {setupState.kind === 'needsModels' ? setupLabel : t('setupProvider')}
+                </DropdownMenuItem>
               </div>
             )}
           </TabsContent>

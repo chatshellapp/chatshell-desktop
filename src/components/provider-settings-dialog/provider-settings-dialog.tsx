@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import {
@@ -21,7 +22,7 @@ import {
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import type { ProviderSettingsDialogProps } from './types'
-import { isCustomProvider } from './types'
+import { isCustomProvider, isCustomProviderType } from './types'
 import { useProviderSettings } from './useProviderSettings'
 import { ProviderSidebar } from './provider-sidebar'
 import { ProviderForm } from './provider-form'
@@ -29,8 +30,15 @@ import { ModelsTable } from './models-table'
 import { FetchModelsDialog } from './fetch-models-dialog'
 import { AddModelDialog } from './add-model-dialog'
 import { EditModelDialog } from './edit-model-dialog'
+import { BUILTIN_PROVIDERS } from './constants'
+import { isSupportedFetchProvider, requiresApiKeyForFetch } from './constants'
+import { useModelStore } from '@/stores/modelStore'
 
-export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsDialogProps) {
+export function ProviderSettingsDialog({
+  open,
+  onOpenChange,
+  initialProviderId,
+}: ProviderSettingsDialogProps) {
   const { t } = useTranslation('providers')
   const {
     selectedProvider,
@@ -79,6 +87,8 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
     isModelImported,
     handleSave,
     groupedModels,
+    savedWithoutModels,
+    isDataLoaded,
   } = useProviderSettings(open, onOpenChange)
 
   const isCustom = isCustomProvider(selectedProvider)
@@ -105,7 +115,84 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
         existingProvider.name !== (isCustom ? providerName : selectedProvider.name) ||
         existingProvider.provider_type !== effectiveProviderType ||
         existingProvider.api_style !== effectiveApiStyle)) ||
-    (!existingProvider && isCustom)
+    (!existingProvider && (isCustom || apiKey.trim().length > 0))
+
+  const appliedFocusRef = React.useRef<string | null>(null)
+  const autoOpenedModelsRef = React.useRef<string | null>(null)
+
+  // Focus the provider the composer asked for (setup CTA). Runs after the
+  // dialog's data load so storeProviders carries the synced row.
+  React.useEffect(() => {
+    if (!open) {
+      appliedFocusRef.current = null
+      autoOpenedModelsRef.current = null
+      return
+    }
+    if (!initialProviderId || !isDataLoaded) return
+    if (appliedFocusRef.current === initialProviderId) return
+    const provider = storeProviders.find((p) => p.id === initialProviderId)
+    if (!provider) return
+    appliedFocusRef.current = initialProviderId
+    if (isCustomProviderType(provider.provider_type)) {
+      setEditingCustomProviderId(provider.id)
+      setSelectedProvider({
+        id: provider.provider_type,
+        name: provider.name,
+        baseUrl: provider.base_url || '',
+        isCustom: true,
+      })
+    } else {
+      setEditingCustomProviderId(null)
+      const template = BUILTIN_PROVIDERS.find((p) => p.id === provider.provider_type)
+      if (template) setSelectedProvider(template)
+    }
+  }, [
+    open,
+    initialProviderId,
+    isDataLoaded,
+    storeProviders,
+    setEditingCustomProviderId,
+    setSelectedProvider,
+  ])
+
+  // A focused provider with zero models opens model selection immediately,
+  // mirroring the iOS setup CTA. Only for the deep-linked entry point.
+  React.useEffect(() => {
+    if (!open || !initialProviderId || !isDataLoaded) return
+    if (autoOpenedModelsRef.current === initialProviderId) return
+    const provider = storeProviders.find((p) => p.id === initialProviderId)
+    if (!provider) return
+    const focusApplied = isCustomProviderType(provider.provider_type)
+      ? editingCustomProviderId === provider.id
+      : selectedProvider.id === provider.provider_type
+    if (!focusApplied) return
+    // Wait until the form holds THIS provider's credentials; otherwise the
+    // auto-open can fire with the previous provider's key during the reload.
+    if (existingProvider?.id !== provider.id) return
+    const count = useModelStore
+      .getState()
+      .models.filter((model) => !model.is_deleted && model.provider_id === provider.id).length
+    if (count > 0) {
+      autoOpenedModelsRef.current = initialProviderId
+      return
+    }
+    if (!isSupportedFetchProvider(provider.provider_type)) return
+    if (requiresApiKeyForFetch(provider.provider_type) && !apiKey.trim()) return
+    if (isCustomProviderType(provider.provider_type) && !apiBaseUrl.trim()) return
+    autoOpenedModelsRef.current = initialProviderId
+    handleOpenFetchModal()
+  }, [
+    open,
+    initialProviderId,
+    isDataLoaded,
+    storeProviders,
+    editingCustomProviderId,
+    selectedProvider.id,
+    existingProvider?.id,
+    apiKey,
+    apiBaseUrl,
+    handleOpenFetchModal,
+  ])
 
   const handleSidebarSelect = (provider: typeof selectedProvider) => {
     setEditingCustomProviderId(null)
@@ -202,7 +289,10 @@ export function ProviderSettingsDialog({ open, onOpenChange }: ProviderSettingsD
                 />
               </div>
             </div>
-            <DialogFooter className="shrink-0 border-t p-4 sm:justify-end">
+            <DialogFooter className="shrink-0 border-t p-4 sm:justify-end items-center gap-3">
+              {savedWithoutModels && (
+                <p className="mr-auto text-sm text-amber-600">{t('addModelsBeforeChatting')}</p>
+              )}
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
                 {t('common:cancel')}
               </Button>

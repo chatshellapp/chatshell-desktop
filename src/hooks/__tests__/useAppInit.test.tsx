@@ -404,5 +404,36 @@ describe('useAppInit', () => {
       expect(useConversationStore.getState().isFirstConversationSinceStartup).toBe(true)
       expect(selectConversation).not.toHaveBeenCalled()
     })
+
+    it('selects a default model when models appear after initialization', async () => {
+      await renderInitialized()
+      expect(useConversationStore.getState().selectedModel).toBeNull()
+
+      await act(async () => {
+        useConversationStore.setState({ currentConversation: makeConversation('conv-open') })
+        useModelStore.setState({
+          models: [makeModel('model-a', false), makeModel('model-b', true)],
+        })
+      })
+
+      await waitFor(() => {
+        expect(useConversationStore.getState().selectedModel?.id).toBe('model-b')
+      })
+    })
+
+    it('keeps an explicit selection when models appear after initialization', async () => {
+      await renderInitialized()
+      const kept = makeModel('model-kept', false)
+
+      await act(async () => {
+        useConversationStore.setState({
+          currentConversation: makeConversation('conv-open'),
+          selectedModel: kept,
+        })
+        useModelStore.setState({ models: [kept, makeModel('model-new', true)] })
+      })
+
+      expect(useConversationStore.getState().selectedModel?.id).toBe('model-kept')
+    })
   })
 })

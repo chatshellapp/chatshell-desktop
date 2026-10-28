@@ -86,6 +86,8 @@
   "dragToResize": "Drag to resize",
   "selectModelOrAssistant": "Select model or assistant",
   "noModelsAvailable": "No models available",
+  "setupProvider": "Set up provider",
+  "addModelsFor": "Add models for {{provider}}",
   "noAssistantsAvailable": "No assistants available",
   "unlimited": "Unlimited",
   "countMsgs": "{{count}} msgs",

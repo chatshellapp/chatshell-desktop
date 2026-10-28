@@ -86,6 +86,8 @@
   "dragToResize": "拖动以调整大小",
   "selectModelOrAssistant": "选择模型或助手",
   "noModelsAvailable": "暂无模型",
+  "setupProvider": "配置服务商",
+  "addModelsFor": "为 {{provider}} 添加模型",
   "noAssistantsAvailable": "暂无助手",
   "unlimited": "无限制",
   "countMsgs": "{{count}} 条",

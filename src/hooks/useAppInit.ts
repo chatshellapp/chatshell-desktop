@@ -12,14 +12,17 @@ import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
 import { logger } from '@/lib/logger'
+import { pickDefaultModel } from '@/lib/model-setup'
 
 export function useAppInit() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [keychainAvailable, setKeychainAvailable] = useState(true)
 
-  // Use selector only for reactive state (conversations)
+  // Use selectors only for reactive state (conversations/models)
   const conversations = useConversationStore((state) => state.conversations)
+  const currentConversation = useConversationStore((state) => state.currentConversation)
+  const models = useModelStore((state) => state.models)
 
   // Initialize once on mount - use getState() to avoid dependency issues
   useEffect(() => {
@@ -179,35 +182,33 @@ export function useAppInit() {
     } else if (conversations.length === 0) {
       // No conversation history - determine default model selection
       logger.info('[useAppInit] No conversation history, determining default model...')
-      const models = modelStore.models
+      const defaultModel = pickDefaultModel(modelStore.models)
 
-      if (models.length === 0) {
+      if (!defaultModel) {
         // Case 4: No models at all - don't select anything
         logger.info('[useAppInit] No models available, no selection')
       } else {
-        const starredModels = models.filter((m) => m.is_starred)
-
-        if (starredModels.length > 0) {
-          // Case 2: Has starred models - select the last starred model
-          const lastStarredModel = starredModels[starredModels.length - 1]
-          logger.info('[useAppInit] Selecting last starred model:', lastStarredModel.name)
-          conversationStore.setSelectedModel(lastStarredModel)
-          // Mark as initialized since we've set a default
-          useConversationStore.setState({ isFirstConversationSinceStartup: false })
-        } else {
-          // Case 3: No starred models - select the last added model
-          const lastAddedModel = models[models.length - 1]
-          logger.info(
-            '[useAppInit] No starred models, selecting last added model:',
-            lastAddedModel.name
-          )
-          conversationStore.setSelectedModel(lastAddedModel)
-          // Mark as initialized since we've set a default
-          useConversationStore.setState({ isFirstConversationSinceStartup: false })
-        }
+        logger.info('[useAppInit] Selecting default model:', defaultModel.name)
+        conversationStore.setSelectedModel(defaultModel)
+        // Mark as initialized since we've set a default
+        useConversationStore.setState({ isFirstConversationSinceStartup: false })
       }
     }
   }, [conversations])
+
+  // Models can appear after initialization (a provider was configured in
+  // Settings). Without this the composer stayed on "Select model or
+  // assistant" with the textarea disabled even though models existed.
+  useEffect(() => {
+    if (!currentConversation) return
+    const conversationStore = useConversationStore.getState()
+    if (conversationStore.selectedModel || conversationStore.selectedAssistant) return
+    const defaultModel = pickDefaultModel(models)
+    if (!defaultModel) return
+    logger.info('[useAppInit] Auto-selected default model after catalog change:', defaultModel.name)
+    conversationStore.setSelectedModel(defaultModel)
+    useConversationStore.setState({ isFirstConversationSinceStartup: false })
+  }, [models, currentConversation])
 
   return { isInitialized, error, keychainAvailable }
 }
