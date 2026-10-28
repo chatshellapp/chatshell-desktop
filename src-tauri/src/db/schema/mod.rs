@@ -418,8 +418,18 @@ async fn ensure_message_tree_columns(pool: &SqlitePool) -> Result<()> {
 ///
 /// Chains live messages by `(created_at, id)` — identical to the previous
 /// linear ordering — filling only NULL parents, and stamps the newest live
-/// message as the active leaf. `updated_at` is bumped so the backfilled
-/// links propagate through snapshot sync (LWW row updates).
+/// message as the active leaf.
+///
+/// `messages.updated_at` rides the link writes (links propagate through
+/// snapshot sync LWW), but `conversations.updated_at` is deliberately left
+/// alone: every device recomputes the same pointer from the same rows, so
+/// shipping it by stamp is redundant — while the bump reorders the
+/// sidebar with a fake activity time (real-device finding 2026-10-28: a
+/// stale device's backfill stamped 322 old conversations "now" and, once
+/// sync was unblocked, they jumped to the top of every peer's list).
+/// Writes that genuinely change the pointer (append, branch switch,
+/// truncation, heal) bump the stamp on their own write paths and keep
+/// propagating.
 async fn backfill_conversation_trees(pool: &SqlitePool) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     let conversation_ids: Vec<String> = sqlx::query(
@@ -463,12 +473,11 @@ async fn backfill_conversation_trees(pool: &SqlitePool) -> Result<()> {
         }
 
         sqlx::query(
-            "UPDATE conversations SET active_message_id = ?2, updated_at = ?3 
+            "UPDATE conversations SET active_message_id = ?2 \
              WHERE id = ?1 AND active_message_id IS NULL",
         )
         .bind(&conversation_id)
         .bind(last_id)
-        .bind(&now)
         .execute(pool)
         .await?;
     }
@@ -975,5 +984,65 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(parent.as_deref(), Some("b"));
+    }
+
+    /// Real-device finding 2026-10-28: the backfill used to bump
+    /// `conversations.updated_at`, so a stale device's startup backfill
+    /// re-stamped hundreds of old conversations with "now"; once sync was
+    /// unblocked those stamps won LWW and the old conversations jumped to
+    /// the top of every peer's sidebar. The pointer converges by each
+    /// device's own deterministic recomputation, so the conversation's
+    /// stamp must stay untouched (message stamps still ride the link
+    /// writes).
+    #[tokio::test]
+    async fn tree_backfill_leaves_conversation_updated_at_alone() {
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.expect("init schema");
+
+        sqlx::query(
+            "INSERT INTO conversations (id, title, created_at, updated_at) \
+             VALUES ('c1', 'legacy', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for (id, ts) in [("a", "2026-01-01T00:00:01Z"), ("b", "2026-01-01T00:00:02Z")] {
+            sqlx::query(
+                "INSERT INTO messages (id, conversation_id, sender_type, content, created_at, updated_at) \
+                 VALUES (?, 'c1', 'user', ?, ?, ?)",
+            )
+            .bind(id)
+            .bind(id)
+            .bind(ts)
+            .bind(ts)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        backfill_conversation_trees(&pool).await.unwrap();
+
+        let (conv_stamp, active): (String, Option<String>) = sqlx::query_as(
+            "SELECT updated_at, active_message_id FROM conversations WHERE id = 'c1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            conv_stamp, "2026-01-01T00:00:00Z",
+            "backfill must not fake a newer activity time"
+        );
+        assert_eq!(active.as_deref(), Some("b"), "pointer still lands");
+
+        let (parent, msg_stamp): (Option<String>, String) =
+            sqlx::query_as("SELECT parent_id, updated_at FROM messages WHERE id = 'b'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(parent.as_deref(), Some("a"), "link still lands");
+        assert_ne!(
+            msg_stamp, "2026-01-01T00:00:02Z",
+            "message stamps still ride the link writes (LWW propagation)"
+        );
     }
 }
