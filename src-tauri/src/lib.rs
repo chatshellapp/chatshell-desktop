@@ -17,6 +17,8 @@ pub mod sync_crypto_state;
 pub mod sync_keychain;
 mod thinking_parser;
 mod tokenizer;
+#[cfg(debug_assertions)]
+mod ui_automation;
 mod web_fetch;
 mod web_search;
 
@@ -64,6 +66,10 @@ pub fn run() {
             // The system-WebView fetch tier needs the app handle to create
             // hidden fetch webviews at runtime.
             web_fetch::webview_set_app_handle(app.handle().clone());
+
+            // Debug-only UI automation endpoint (CHATSHELL_UI_AUTOMATION_PORT)
+            #[cfg(debug_assertions)]
+            ui_automation::start(app.handle());
 
             // Initialize app data directory
             let app_data_dir = app

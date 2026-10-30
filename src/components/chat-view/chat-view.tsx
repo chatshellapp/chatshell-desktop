@@ -197,6 +197,7 @@ export function ChatView() {
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
+        data-transcript-scroll="true"
         className="flex-1 overflow-y-auto px-4 [overflow-anchor:none]"
         onScroll={handleScroll}
       >
