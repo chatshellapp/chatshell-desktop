@@ -47,7 +47,6 @@
   "clickToUpload": "or click to upload",
   "fileTooLarge": "File is too large. Max size: {{size}}",
   "invalidFileType": "Invalid file type",
-  "newMessages": "New messages",
   "enterNewTitle": "Enter a new title for this conversation.",
   "conversationTitlePlaceholder": "Conversation title",
   "modelParameters": "Model Parameters",
@@ -153,5 +152,6 @@
     "runFailed": "Run failed",
     "runStopped": "Stopped",
     "waitingForResponse": "Waiting for response"
-  }
+  },
+  "jumpToLatest": "Jump to latest"
 }

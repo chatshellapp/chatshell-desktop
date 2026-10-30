@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useMessageStore } from '@/stores/message'
 import { logger } from '@/lib/logger'
+import { requestTranscriptScroll } from '@/lib/transcript-scroll'
 
 interface SiblingNavigatorProps {
   conversationId: string
@@ -36,6 +37,21 @@ function SiblingNavigator({ conversationId, messageId }: SiblingNavigatorProps) 
 
   const index = siblings.indexOf(messageId)
 
+  // The selected sibling takes this one's on-screen position. Requested
+  // before the switch so the current row can still be measured; the scroll
+  // runs once the reloaded window renders the sibling.
+  const switchTo = (siblingId: string) => {
+    requestTranscriptScroll({
+      conversationId,
+      reason: 'branch',
+      messageId: siblingId,
+      placement: { kind: 'swap', fromId: messageId },
+    })
+    setActiveBranch(conversationId, siblingId).catch((error) => {
+      logger.error('Failed to switch sibling variant:', error)
+    })
+  }
+
   return (
     <div className="flex items-center gap-0.5 text-xs text-muted-foreground select-none">
       <Button
@@ -43,11 +59,7 @@ function SiblingNavigator({ conversationId, messageId }: SiblingNavigatorProps) 
         size="sm"
         className="h-5 w-5 p-0"
         disabled={isStreaming || index <= 0}
-        onClick={() =>
-          setActiveBranch(conversationId, siblings[index - 1]).catch((error) => {
-            logger.error('Failed to switch sibling variant:', error)
-          })
-        }
+        onClick={() => switchTo(siblings[index - 1])}
         aria-label={t('previousVariant')}
       >
         <ChevronLeft className="h-3 w-3" />
@@ -60,11 +72,7 @@ function SiblingNavigator({ conversationId, messageId }: SiblingNavigatorProps) 
         size="sm"
         className="h-5 w-5 p-0"
         disabled={isStreaming || index >= siblings.length - 1}
-        onClick={() =>
-          setActiveBranch(conversationId, siblings[index + 1]).catch((error) => {
-            logger.error('Failed to switch sibling variant:', error)
-          })
-        }
+        onClick={() => switchTo(siblings[index + 1])}
         aria-label={t('nextVariant')}
       >
         <ChevronRight className="h-3 w-3" />

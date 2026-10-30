@@ -47,7 +47,6 @@
   "clickToUpload": "或点击上传",
   "fileTooLarge": "文件过大，最大大小：{{size}}",
   "invalidFileType": "无效的文件类型",
-  "newMessages": "新消息",
   "enterNewTitle": "输入对话的新标题。",
   "conversationTitlePlaceholder": "对话标题",
   "modelParameters": "模型参数",
@@ -153,5 +152,6 @@
     "runFailed": "运行失败",
     "runStopped": "已停止",
     "waitingForResponse": "等待响应"
-  }
+  },
+  "jumpToLatest": "跳到最新"
 }

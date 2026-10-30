@@ -74,7 +74,6 @@ function WorstCaseHost() {
       isStreaming={false}
       isLoadingOlder={false}
       messagesContentRef={EMPTY_REFS}
-      messagesEndRef={EMPTY_REFS}
       getDisplayInfo={getDisplayInfo}
       getMessageDisplayInfo={getMessageDisplayInfo}
       onRetryFailedTurn={noop}

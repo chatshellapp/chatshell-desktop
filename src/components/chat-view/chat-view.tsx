@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clock } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
@@ -9,8 +9,9 @@ import { PermissionApprovalDialog } from './PermissionApprovalDialog'
 import { useSearchStore } from '@/stores/searchStore'
 import { useMessageStore } from '@/stores/message'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
+import { requestTranscriptScroll } from '@/lib/transcript-scroll'
 import {
-  useScrollBehavior,
+  useTranscriptScroll,
   useInputResize,
   useMessageResources,
   useDisplayInfo,
@@ -44,57 +45,26 @@ export function ChatView() {
   const loadOlderMessages = useMessageStore((state) => state.loadOlderMessages)
   const ensureMessageLoaded = useMessageStore((state) => state.ensureMessageLoaded)
 
-  // Upward paging: capture the scroll state before an older page prepends so
-  // the layout effect below can restore the viewport position (R3.2).
-  const anchorRef = useRef<{ scrollHeight: number; scrollTop: number; firstId: string } | null>(
-    null
-  )
+  // Upward paging: the transcript holds its top row while the older page
+  // prepends, so no position bookkeeping is needed here.
   const handleNearTop = useCallback(() => {
     if (!conversationId) return
     const cs = useMessageStore.getState().conversationStates[conversationId]
     if (!cs?.hasOlderMessages || cs.isLoadingOlder) return
-    const container = messagesContainerRef.current
-    if (container) {
-      anchorRef.current = {
-        scrollHeight: container.scrollHeight,
-        scrollTop: container.scrollTop,
-        firstId: cs.messages[0]?.id ?? '',
-      }
-    }
-    void loadOlderMessages(conversationId).then((loaded) => {
-      if (!loaded) anchorRef.current = null
-    })
+    void loadOlderMessages(conversationId)
   }, [conversationId, loadOlderMessages])
 
-  // Custom hooks
   const {
-    messagesEndRef,
-    messagesContainerRef,
-    messagesContentRef,
-    isAtBottom,
-    setIsAtBottom,
-    buttonLeft,
+    containerRef: messagesContainerRef,
+    contentRef: transcriptContentRef,
+    floorRef,
     handleScroll,
-  } = useScrollBehavior({
-    messagesLength: messages.length,
-    conversationId,
-    onNearTop: handleNearTop,
-  })
-
-  // Restore the scroll position after an older page prepended: the content
-  // grew upward by exactly the height delta, so shift scrollTop by it. Only
-  // applies when the first message actually changed (a plain append at the
-  // tail must not shift the viewport).
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current
-    if (!anchor) return
-    const container = messagesContainerRef.current
-    anchorRef.current = null
-    if (!container) return
-    if (messages[0]?.id === anchor.firstId) return
-    const delta = container.scrollHeight - anchor.scrollHeight
-    if (delta > 0) container.scrollTop = anchor.scrollTop + delta
-  }, [messages, messagesContainerRef])
+    showJumpToLatest,
+    jumpToLatest,
+    buttonLeft,
+  } = useTranscriptScroll({ conversationId, messages, onNearTop: handleNearTop })
+  // The rendered message window (screenshot export reads it)
+  const messagesContentRef = useRef<HTMLDivElement>(null)
 
   const { rootRef, inputAreaRef, inputAreaHeight, manualInputHeight, handleDragStart } =
     useInputResize()
@@ -136,12 +106,7 @@ export function ChatView() {
     handleExportAll,
     handleExportConversation,
     handleExportMessage,
-    handleScrollToBottom,
-  } = useMessageHandlers({
-    messagesEndRef,
-    messagesContentRef,
-    setIsAtBottom,
-  })
+  } = useMessageHandlers({ messagesContentRef })
 
   const handleExportStreamingConversation = useCallback(() => {
     void handleExportConversation(null)
@@ -204,7 +169,13 @@ export function ChatView() {
         if (cancelled) return
         const el = document.getElementById(`message-${targetMessageId}`)
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          requestTranscriptScroll({
+            conversationId,
+            reason: 'search',
+            messageId: targetMessageId,
+            placement: { kind: 'center' },
+            smooth: true,
+          })
           el.classList.add('search-highlight')
           setTimeout(() => {
             el.classList.remove('search-highlight')
@@ -226,61 +197,66 @@ export function ChatView() {
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4"
+        className="flex-1 overflow-y-auto px-4 [overflow-anchor:none]"
         onScroll={handleScroll}
       >
-        {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
-          // Distinguish "fetching the window" from "genuinely empty": without
-          // the isLoading branch the empty state flashes for the duration of
-          // every conversation switch.
-          isLoading ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <p className="text-sm animate-pulse">{t('loadingMessages')}</p>
-            </div>
+        {/* Transcript content: rows, then the last-turn floor (sized by
+            useTranscriptScroll; outside the exported message window). */}
+        <div ref={transcriptContentRef} className="min-h-full flex flex-col">
+          {messages.length === 0 && !isStreaming && !isWaitingForAI ? (
+            // Distinguish "fetching the window" from "genuinely empty": without
+            // the isLoading branch the empty state flashes for the duration of
+            // every conversation switch.
+            isLoading ? (
+              <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                <p className="text-sm animate-pulse">{t('loadingMessages')}</p>
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                <p>{t('noMessagesStart')}</p>
+              </div>
+            )
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <p>{t('noMessagesStart')}</p>
-            </div>
-          )
-        ) : (
-          <MessageList
-            conversationId={conversationId ?? ''}
-            messages={messages}
-            lastUserMessage={lastUserMessage}
-            showStreamingMessage={showStreamingMessage}
-            messageResources={messageResources}
-            urlStatuses={urlStatuses}
-            failedTurn={failedTurn}
-            runOutcomes={runOutcomes}
-            isStreaming={isStreaming}
-            isLoadingOlder={isLoadingOlder || (hasOlderMessages && messages.length === 0)}
-            revealAll={revealAll}
-            messagesContentRef={messagesContentRef}
-            messagesEndRef={messagesEndRef}
-            getDisplayInfo={getDisplayInfo}
-            getMessageDisplayInfo={getMessageDisplayInfo}
-            onRetryFailedTurn={handleRetryFailedTurn}
-            onDismissFailedTurn={handleDismissFailedTurn}
-            onShowPreviousReply={handleShowPreviousReply}
-            onCopy={handleCopy}
-            onRevert={handleRevert}
-            onDeleteFromHere={handleDeleteFromHere}
-            onRegenerate={handleRegenerate}
-            onFork={handleFork}
-            onExportAll={handleExportAll}
-            onExportConversation={handleExportConversation}
-            onExportStreamingConversation={handleExportStreamingConversation}
-            onExportMessage={handleExportMessage}
-          />
-        )}
+            <MessageList
+              conversationId={conversationId ?? ''}
+              messages={messages}
+              lastUserMessage={lastUserMessage}
+              showStreamingMessage={showStreamingMessage}
+              messageResources={messageResources}
+              urlStatuses={urlStatuses}
+              failedTurn={failedTurn}
+              runOutcomes={runOutcomes}
+              isStreaming={isStreaming}
+              isLoadingOlder={isLoadingOlder || (hasOlderMessages && messages.length === 0)}
+              revealAll={revealAll}
+              messagesContentRef={messagesContentRef}
+              getDisplayInfo={getDisplayInfo}
+              getMessageDisplayInfo={getMessageDisplayInfo}
+              onRetryFailedTurn={handleRetryFailedTurn}
+              onDismissFailedTurn={handleDismissFailedTurn}
+              onShowPreviousReply={handleShowPreviousReply}
+              onCopy={handleCopy}
+              onRevert={handleRevert}
+              onDeleteFromHere={handleDeleteFromHere}
+              onRegenerate={handleRegenerate}
+              onFork={handleFork}
+              onExportAll={handleExportAll}
+              onExportConversation={handleExportConversation}
+              onExportStreamingConversation={handleExportStreamingConversation}
+              onExportMessage={handleExportMessage}
+            />
+          )}
+          <div ref={floorRef} aria-hidden="true" className="shrink-0" />
+        </div>
       </div>
 
-      {/* Scroll to bottom button */}
+      {/* Jump to latest */}
       <ScrollToBottomButton
-        isVisible={!isAtBottom}
+        isVisible={showJumpToLatest}
+        hasBadge={isStreaming || failedTurn?.kind === 'failed'}
         inputAreaHeight={inputAreaHeight}
         buttonLeft={buttonLeft}
-        onScrollToBottom={handleScrollToBottom}
+        onScrollToBottom={jumpToLatest}
       />
 
       {/* Pending messages (outside scroll area to avoid jitter during streaming) */}

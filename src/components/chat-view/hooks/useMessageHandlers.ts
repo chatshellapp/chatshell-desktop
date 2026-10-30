@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { logger } from '@/lib/logger'
+import { requestSentMessageScroll } from '@/lib/transcript-scroll'
 import {
   saveScreenshot,
   saveScreenshotMulti,
@@ -17,9 +18,7 @@ import { usePromptStore } from '@/stores/promptStore'
 import type { Conversation, MessageResources } from '@/types'
 
 export interface UseMessageHandlersOptions {
-  messagesEndRef: RefObject<HTMLDivElement | null>
   messagesContentRef: RefObject<HTMLDivElement | null>
-  setIsAtBottom: (value: boolean) => void
 }
 
 export interface UseMessageHandlersReturn {
@@ -31,13 +30,10 @@ export interface UseMessageHandlersReturn {
   handleExportAll: () => Promise<void>
   handleExportConversation: (messageId: string | null) => Promise<void>
   handleExportMessage: (messageId: string) => void
-  handleScrollToBottom: () => void
 }
 
 export function useMessageHandlers({
-  messagesEndRef,
   messagesContentRef,
-  setIsAtBottom,
 }: UseMessageHandlersOptions): UseMessageHandlersReturn {
   const { t } = useTranslation('messages')
   const currentConversation = useConversationStore((state) => state.currentConversation)
@@ -179,6 +175,10 @@ export function useMessageHandlers({
           contextMessageCount,
           useProviderDefaults,
           reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined
+        )
+        requestSentMessageScroll(
+          currentConversation.id,
+          getConversationState(currentConversation.id).messages
         )
       } catch (error) {
         logger.error('Failed to resend message:', error)
@@ -368,10 +368,6 @@ export function useMessageHandlers({
     // store to the full history, then wait for the progressive list to mount
     // every row. Otherwise the screenshot contains only the loaded tail (or
     // the first 16 rows if the list is still mounting).
-    const scrollContainer = el.parentElement
-    const previousHeight = scrollContainer?.scrollHeight ?? 0
-    const previousTop = scrollContainer?.scrollTop ?? 0
-
     if (currentConversation) {
       const conversationId = currentConversation.id
       await loadAllMessages(conversationId)
@@ -397,14 +393,8 @@ export function useMessageHandlers({
       }
     }
 
-    // Paging history in and mounting the earlier rows grows the list above
-    // the viewport; shift scrollTop by the same delta so exporting does not
-    // teleport the reader.
-    if (scrollContainer) {
-      const growth = scrollContainer.scrollHeight - previousHeight
-      if (growth > 0) scrollContainer.scrollTop = previousTop + growth
-    }
-
+    // Paging history in grows the list above the viewport; the transcript
+    // holds its top row, so exporting does not move the reader.
     const ok = await saveScreenshot(el)
     if (ok) toast.success(t('screenshotSaved'))
   }, [currentConversation, getConversationState, loadAllMessages, messagesContentRef, t])
@@ -491,11 +481,6 @@ export function useMessageHandlers({
     })
   }, [])
 
-  const handleScrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    setIsAtBottom(true)
-  }, [messagesEndRef, setIsAtBottom])
-
   return {
     handleCopy,
     handleRevert,
@@ -505,6 +490,5 @@ export function useMessageHandlers({
     handleExportAll,
     handleExportConversation,
     handleExportMessage,
-    handleScrollToBottom,
   }
 }

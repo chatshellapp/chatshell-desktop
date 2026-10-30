@@ -49,7 +49,6 @@ function Host() {
       isLoadingOlder={false}
       revealAll={state.revealAll}
       messagesContentRef={EMPTY_REFS}
-      messagesEndRef={EMPTY_REFS}
       getDisplayInfo={getDisplayInfo}
       getMessageDisplayInfo={getMessageDisplayInfo}
       onRetryFailedTurn={noop}

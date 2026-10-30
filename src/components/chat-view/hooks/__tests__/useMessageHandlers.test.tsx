@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, screen, waitFor, act } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
@@ -200,10 +200,8 @@ let exportTarget: string | null = 'msg-user-1'
 let renderContent = true
 
 function Host() {
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const messagesContentRef = useRef<HTMLDivElement | null>(null)
-  const [atBottom, setIsAtBottom] = useState(false)
-  const handlers = useMessageHandlers({ messagesEndRef, messagesContentRef, setIsAtBottom })
+  const handlers = useMessageHandlers({ messagesContentRef })
   latestHandlers = handlers
   const messages = useMessageStore((s) => s.conversationStates[CONV]?.messages ?? [])
   return (
@@ -232,9 +230,6 @@ function Host() {
       <button data-testid="export-msg" onClick={() => handlers.handleExportMessage('msg-user-1')}>
         export-msg
       </button>
-      <button data-testid="scroll-bottom" onClick={() => handlers.handleScrollToBottom()}>
-        scroll-bottom
-      </button>
       {renderContent ? (
         <div data-testid="scroll-parent">
           <div ref={messagesContentRef} data-testid="content">
@@ -244,8 +239,6 @@ function Host() {
           </div>
         </div>
       ) : null}
-      <div ref={messagesEndRef} data-testid="end" />
-      <span data-testid="at-bottom">{String(atBottom)}</span>
     </div>
   )
 }
@@ -331,20 +324,6 @@ describe('useMessageHandlers', () => {
       click('copy')
       expect(sendMessage).not.toHaveBeenCalled()
       expect(invoke).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('handleScrollToBottom', () => {
-    it('scrolls the end marker into view and re-enters follow mode', () => {
-      render(<Host />)
-      const end = screen.getByTestId('end')
-      const scrollIntoView = vi.fn()
-      end.scrollIntoView = scrollIntoView
-
-      click('scroll-bottom')
-
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' })
-      expect(screen.getByTestId('at-bottom').textContent).toBe('true')
     })
   })
 
@@ -642,32 +621,6 @@ describe('useMessageHandlers', () => {
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('failedToExportAllMessages'))
       expect(saveScreenshot).not.toHaveBeenCalled()
       vi.mocked(performance.now).mockRestore()
-    })
-
-    it('shifts the viewport by the height the paged-in history added', async () => {
-      vi.mocked(saveScreenshot).mockResolvedValue(true)
-      render(<Host />)
-
-      const scrollParent = screen.getByTestId('scroll-parent')
-      let scrollHeight = 100
-      const scrollTopWrites: number[] = []
-      Object.defineProperty(scrollParent, 'scrollHeight', {
-        configurable: true,
-        get: () => scrollHeight,
-      })
-      Object.defineProperty(scrollParent, 'scrollTop', {
-        configurable: true,
-        get: () => scrollTopWrites.at(-1) ?? 40,
-        set: (v: number) => scrollTopWrites.push(v),
-      })
-      // History paged in doubles the scrollable height
-      loadAllMessages.mockImplementation(async () => {
-        scrollHeight = 300
-      })
-
-      click('export-all')
-      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('screenshotSaved'))
-      expect(scrollTopWrites).toEqual([240]) // 40 previous top + 200 growth
     })
   })
 

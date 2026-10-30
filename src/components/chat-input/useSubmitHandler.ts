@@ -9,6 +9,7 @@ import { useInputHistoryStore } from '@/stores/inputHistoryStore'
 import type { Attachment } from './types'
 import type { Model } from '@/types'
 import { logger } from '@/lib/logger'
+import { requestSentMessageScroll } from '@/lib/transcript-scroll'
 
 interface UseSubmitHandlerOptions {
   input: string
@@ -266,6 +267,15 @@ export function useSubmitHandler({
           resolvedParams.useProviderDefaults,
           resolvedParams.reuseFetchResultIds
         )
+        // A new conversation opens on its last user message on its own; an
+        // existing one positions the sent message explicitly.
+        const sentTo = useConversationStore.getState().currentConversation?.id
+        if (sentTo) {
+          requestSentMessageScroll(
+            sentTo,
+            useMessageStore.getState().getConversationState(sentTo).messages
+          )
+        }
         logger.info('Message sent successfully')
       }
 

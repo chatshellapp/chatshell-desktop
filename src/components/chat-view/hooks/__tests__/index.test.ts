@@ -3,7 +3,7 @@ import * as chatViewHooks from '../index'
 
 describe('chat-view hooks barrel', () => {
   it('exports the public hook surface', () => {
-    expect(typeof chatViewHooks.useScrollBehavior).toBe('function')
+    expect(typeof chatViewHooks.useTranscriptScroll).toBe('function')
     expect(typeof chatViewHooks.useInputResize).toBe('function')
     expect(typeof chatViewHooks.useMessageResources).toBe('function')
     expect(typeof chatViewHooks.useDisplayInfo).toBe('function')

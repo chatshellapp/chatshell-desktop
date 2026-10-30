@@ -1,4 +1,4 @@
-export { useScrollBehavior } from './useScrollBehavior'
+export { useTranscriptScroll } from './useTranscriptScroll'
 export { useInputResize } from './useInputResize'
 export { useMessageResources } from './useMessageResources'
 export { useDisplayInfo, type DisplayInfo } from './useDisplayInfo'

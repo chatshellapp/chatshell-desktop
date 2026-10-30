@@ -32,7 +32,6 @@ interface MessageListProps {
    * outside the progressively mounted slice). */
   revealAll?: boolean
   messagesContentRef: RefObject<HTMLDivElement | null>
-  messagesEndRef: RefObject<HTMLDivElement | null>
   getDisplayInfo: () => DisplayInfo
   getMessageDisplayInfo: (message: Message) => DisplayInfo
   onRetryFailedTurn: () => void
@@ -64,8 +63,9 @@ interface MessageListProps {
  * is cheap). The switch commit therefore mounts nothing and shows the
  * loading line; the growth effect below mounts the visible tail on the next
  * frame, one chunk per animation frame afterwards. Off-screen rows cost
- * little once mounted (content-visibility culling), and the pin in
- * useScrollBehavior keeps the viewport at the bottom while content grows.
+ * little once mounted (content-visibility culling), and the anchor held by
+ * useTranscriptScroll keeps the reader's top row in place while rows mount
+ * above it.
  */
 export function MessageList({
   conversationId,
@@ -80,7 +80,6 @@ export function MessageList({
   isLoadingOlder,
   revealAll = false,
   messagesContentRef,
-  messagesEndRef,
   getDisplayInfo,
   getMessageDisplayInfo,
   onRetryFailedTurn,
@@ -118,7 +117,7 @@ export function MessageList({
   }, [growing, conversationId, mountedCount])
 
   return (
-    <div ref={messagesContentRef} className="max-w-4xl mx-auto py-4">
+    <div ref={messagesContentRef} className="w-full max-w-4xl mx-auto py-4">
       {mounted.length === 0 && messages.length > 0 && (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <p className="text-sm animate-pulse">{t('loadingMessages')}</p>
@@ -174,8 +173,6 @@ export function MessageList({
           onShowPreviousReply={onShowPreviousReply}
         />
       )}
-      {/* Scroll anchor */}
-      <div ref={messagesEndRef} />
     </div>
   )
 }

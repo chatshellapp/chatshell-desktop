@@ -34,16 +34,10 @@ const getMessageDisplayInfo = () => DISPLAY
 // Stable module-level callbacks: MessageItem's memo comparator compares
 // identity, matching ChatView's useCallback-stable props.
 const noop = () => {}
-const setIsAtBottom = () => {}
 
 function Host() {
   const messagesContentRef = useRef<HTMLDivElement | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const { handleExportAll } = useMessageHandlers({
-    messagesEndRef,
-    messagesContentRef,
-    setIsAtBottom,
-  })
+  const { handleExportAll } = useMessageHandlers({ messagesContentRef })
   const messages = useMessageStore((s) => s.conversationStates[CONV]?.messages ?? [])
   const conversationId = useConversationStore((s) => s.currentConversation?.id ?? '')
 
@@ -64,7 +58,6 @@ function Host() {
             isStreaming={false}
             isLoadingOlder={false}
             messagesContentRef={messagesContentRef}
-            messagesEndRef={messagesEndRef}
             getDisplayInfo={getDisplayInfo}
             getMessageDisplayInfo={getMessageDisplayInfo}
             onRetryFailedTurn={noop}
