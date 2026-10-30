@@ -7,20 +7,17 @@ import {
   ImageLightbox,
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
-import {
-  ToolCallPreview,
-  type StreamingToolCall,
-} from '@/components/attachment-preview/tool-call-preview'
-import { CollapsedToolGroup } from '@/components/attachment-preview/collapsed-tool-group'
+import { ToolCallPreview } from '@/components/attachment-preview/tool-call-preview'
 import { MarkdownContent } from '@/components/markdown-content'
 import { parseThinkingContent } from '@/lib/utils'
-import type { ToolWithThinking } from '@/lib/step-grouping'
-import type { Message, ToolCall, UrlStatus } from '@/types'
+import { liveRunFoldKey } from '@/stores/runFoldStore'
+import type { Message, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG } from './utils'
 import type { DisplayInfo } from './hooks'
 import { useTranslation } from 'react-i18next'
 import { WaitingForResponse } from './WaitingForResponse'
+import { RunFold } from './RunFold'
 
 interface StreamingMessageProps {
   conversationId: string
@@ -90,7 +87,6 @@ export function StreamingMessage({
 
   const hasPendingDecision = lastUserMessage ? pendingSearchDecisions[lastUserMessage.id] : false
   const hasAssistantResources = searchResultContexts.length > 0 || searchDecisionSteps.length > 0
-  const hasStreamingThinking = combinedThinkingContent !== null
   const hasStreamingToolCalls = Object.keys(streamingToolCalls).length > 0
 
   // Show thinking when reasoning has actually started (received first reasoning chunk)
@@ -131,276 +127,160 @@ export function StreamingMessage({
     }
   }
 
-  // Collapse completed tool calls once the model starts outputting final content
-  const allToolCallsCompleted =
-    sortedToolCalls.length > 0 &&
-    sortedToolCalls.every((tc) => tc.status === 'success' || tc.status === 'error')
-  const shouldCollapseTools = allToolCallsCompleted && finalContent.trim().length > 0
+  // Process steps in display order: thinking, tool calls, and text between
+  // tool calls. With a tool call they sit under the live run fold; a
+  // thinking-only run keeps its own collapsible thinking block.
+  const processElements: React.ReactNode[] = []
+  let thinkingBlocks = 0
 
-  if (
-    hasAssistantResources ||
-    hasPendingDecision ||
-    hasStreamingThinking ||
-    showThinkingPlaceholder ||
-    hasStreamingToolCalls
-  ) {
-    if (hasInterleavedContent) {
-      // Smart per-segment grouping: collapse completed tool calls before content boundaries
-      const elements: React.ReactNode[] = []
-      let pendingCompleted: { tc: StreamingToolCall; thinkingContent?: string }[] = []
+  if (hasInterleavedContent) {
+    for (let index = 0; index < sortedToolCalls.length; index++) {
+      const toolCall = sortedToolCalls[index]
 
-      const toCollapsedItems = (
-        pending: { tc: StreamingToolCall; thinkingContent?: string }[]
-      ): ToolWithThinking[] =>
-        pending.map((item) => ({
-          toolCall: {
-            id: item.tc.id,
-            tool_name: item.tc.tool_name,
-            tool_input: item.tc.tool_input,
-            tool_output: item.tc.tool_output,
-            status: item.tc.status,
-            error: item.tc.error,
-            display_order: item.tc.order,
-            created_at: '',
-          } as ToolCall,
-          thinkingContent: item.thinkingContent,
-        }))
-
-      const flushAsCollapsed = () => {
-        if (pendingCompleted.length === 0) return
-        const rowCount = pendingCompleted.reduce(
-          (total, item) => total + 1 + (item.thinkingContent ? 1 : 0),
-          0
-        )
-        if (rowCount >= 2) {
-          const items = toCollapsedItems(pendingCompleted)
-          elements.push(<CollapsedToolGroup key={`group-${items[0].toolCall.id}`} items={items} />)
-          pendingCompleted = []
-        } else {
-          flushAsIndividual()
+      // API reasoning that arrived since the previous tool call
+      let reasoningSegment = ''
+      if (index === 0) {
+        reasoningSegment = toolCall.reasoningBefore || ''
+      } else {
+        const prevReasoningLength = sortedToolCalls[index - 1].reasoningBefore?.length || 0
+        if ((toolCall.reasoningBefore?.length || 0) > prevReasoningLength) {
+          reasoningSegment = (toolCall.reasoningBefore || '').slice(prevReasoningLength)
         }
       }
 
-      const flushAsIndividual = () => {
-        for (const item of pendingCompleted) {
-          elements.push(
-            <div key={item.tc.id} className="space-y-2">
-              {item.thinkingContent && item.thinkingContent.trim() && searchDecisionResolved && (
-                <ThinkingPreview content={item.thinkingContent} isStreaming={false} />
-              )}
-              <ToolCallPreview streamingToolCall={item.tc} isStreaming={false} />
-            </div>
-          )
-        }
-        pendingCompleted = []
+      // Text since the previous tool call, with any XML thinking extracted
+      let contentSegment = ''
+      let xmlThinkingSegment: string | null = null
+      const prevContentLength =
+        index === 0 ? 0 : sortedToolCalls[index - 1].contentBefore?.length || 0
+      const currentContentLength = toolCall.contentBefore?.length || 0
+      if (currentContentLength > prevContentLength) {
+        const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
+        const parsed = parseThinkingContent(rawSegment)
+        contentSegment = parsed.content
+        xmlThinkingSegment = parsed.thinkingContent
       }
 
-      for (let index = 0; index < sortedToolCalls.length; index++) {
-        const toolCall = sortedToolCalls[index]
-
-        // Calculate API reasoning segment
-        let reasoningSegment = ''
-        if (index === 0) {
-          reasoningSegment = toolCall.reasoningBefore || ''
-        } else {
-          const prevReasoningLength = sortedToolCalls[index - 1].reasoningBefore?.length || 0
-          if ((toolCall.reasoningBefore?.length || 0) > prevReasoningLength) {
-            reasoningSegment = (toolCall.reasoningBefore || '').slice(prevReasoningLength)
-          }
-        }
-
-        // Calculate content segment and extract XML thinking
-        let contentSegment = ''
-        let xmlThinkingSegment: string | null = null
-        const prevContentLength =
-          index === 0 ? 0 : sortedToolCalls[index - 1].contentBefore?.length || 0
-        const currentContentLength = toolCall.contentBefore?.length || 0
-        if (currentContentLength > prevContentLength) {
-          const rawSegment = (toolCall.contentBefore || '').slice(prevContentLength)
-          const parsed = parseThinkingContent(rawSegment)
-          contentSegment = parsed.content
-          xmlThinkingSegment = parsed.thinkingContent
-        }
-
-        // Combine thinking sources for this tool call
-        const thinkingParts = [reasoningSegment, xmlThinkingSegment].filter(
-          (p): p is string => !!p && p.trim().length > 0
-        )
-        const thinkingContent = thinkingParts.length > 0 ? thinkingParts.join('\n\n') : undefined
-
-        const isCompleted = toolCall.status === 'success' || toolCall.status === 'error'
-
-        // Content boundary: collapse preceding completed tool calls
-        if (contentSegment.trim()) {
-          flushAsCollapsed()
-          elements.push(
-            <div
-              key={`content-${index}`}
-              className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
-            >
-              <MarkdownContent content={contentSegment} />
-            </div>
-          )
-        }
-
-        if (isCompleted) {
-          pendingCompleted.push({ tc: toolCall, thinkingContent })
-        } else {
-          flushAsIndividual()
-          elements.push(
-            <div key={toolCall.id} className="space-y-2">
-              {thinkingContent && thinkingContent.trim() && searchDecisionResolved && (
-                <ThinkingPreview content={thinkingContent} isStreaming={false} />
-              )}
-              <ToolCallPreview
-                streamingToolCall={toolCall}
-                isStreaming={
-                  isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
-                }
-              />
-            </div>
-          )
-        }
-      }
-
-      // Flush remaining: collapse if final content follows, otherwise show individually
-      if (pendingCompleted.length > 0) {
-        if (finalContent.trim()) {
-          flushAsCollapsed()
-        } else {
-          flushAsIndividual()
-        }
-      }
-
-      // Remaining reasoning/thinking after last tool call
-      {
-        const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
-
-        const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
-        if (streamingReasoningContent.length > lastReasoningLength) {
-          const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
-          if (remainingReasoning.trim() && searchDecisionResolved) {
-            elements.push(
-              <ThinkingPreview
-                key="remaining-api-reasoning"
-                content={remainingReasoning}
-                isStreaming={isThinkingInProgress}
-              />
-            )
-          }
-        }
-
-        const lastContentLength = lastToolCall?.contentBefore?.length || 0
-        if (streamingContent.length > lastContentLength) {
-          const rawSegment = streamingContent.slice(lastContentLength)
-          const parsed = parseThinkingContent(rawSegment)
-          if (parsed.thinkingContent?.trim() && searchDecisionResolved) {
-            elements.push(
-              <ThinkingPreview
-                key="remaining-xml-thinking"
-                content={parsed.thinkingContent}
-                isStreaming={parsed.isThinkingInProgress}
-              />
-            )
-          }
-        }
-      }
-
-      streamingHeaderContent = (
-        <div className="space-y-2 mb-2">
-          {hasPendingDecision && searchDecisionSteps.length === 0 && (
-            <AttachmentPreview pendingSearchDecision={true} />
-          )}
-          {searchDecisionSteps.map((step) => (
-            <AttachmentPreview key={step.id} step={step} />
-          ))}
-          {searchResultContexts.map((context) => (
-            <AttachmentPreview
-              key={context.id}
-              context={context}
-              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
-              messageId={lastUserMessage?.id}
-            />
-          ))}
-          {elements}
-        </div>
+      const thinkingParts = [reasoningSegment, xmlThinkingSegment].filter(
+        (p): p is string => !!p && p.trim().length > 0
       )
-    } else if (shouldCollapseTools) {
-      const collapsedItems: ToolWithThinking[] = sortedToolCalls.map((tc, index) => ({
-        toolCall: {
-          id: tc.id,
-          tool_name: tc.tool_name,
-          tool_input: tc.tool_input,
-          tool_output: tc.tool_output,
-          status: tc.status,
-          error: tc.error,
-          display_order: tc.order,
-          created_at: '',
-        } as ToolCall,
-        thinkingContent: index === 0 ? (combinedThinkingContent ?? undefined) : undefined,
-      }))
+      const thinkingContent = thinkingParts.length > 0 ? thinkingParts.join('\n\n') : undefined
+      const showThinking = !!thinkingContent && searchDecisionResolved
+      if (showThinking) thinkingBlocks += 1
 
-      streamingHeaderContent = (
-        <div className="space-y-1.5 mb-2">
-          {hasPendingDecision && searchDecisionSteps.length === 0 && (
-            <AttachmentPreview pendingSearchDecision={true} />
-          )}
-          {searchDecisionSteps.map((step) => (
-            <AttachmentPreview key={step.id} step={step} />
-          ))}
-          {searchResultContexts.map((context) => (
-            <AttachmentPreview
-              key={context.id}
-              context={context}
-              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
-              messageId={lastUserMessage?.id}
-            />
-          ))}
-          <CollapsedToolGroup items={collapsedItems} />
-        </div>
-      )
-    } else {
-      // Non-interleaved display (original behavior)
-      streamingHeaderContent = (
-        <div className="space-y-1.5 mb-2">
-          {/* Show pending search decision preview */}
-          {hasPendingDecision && searchDecisionSteps.length === 0 && (
-            <AttachmentPreview pendingSearchDecision={true} />
-          )}
-          {/* Show search decisions */}
-          {searchDecisionSteps.map((step) => (
-            <AttachmentPreview key={step.id} step={step} />
-          ))}
-          {/* Show search results (fetch results from search are shown inside) */}
-          {searchResultContexts.map((context) => (
-            <AttachmentPreview
-              key={context.id}
-              context={context}
-              urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
-              messageId={lastUserMessage?.id}
-            />
-          ))}
-          {/* Show thinking placeholder while waiting, or actual content when available */}
-          {/* Only show when search decision is resolved */}
-          {searchDecisionResolved && (showThinkingPlaceholder || combinedThinkingContent) && (
-            <ThinkingPreview
-              content={combinedThinkingContent || ''}
-              isStreaming={showThinkingPlaceholder || isThinkingInProgress}
-            />
-          )}
-          {/* Show streaming tool calls (MCP) - below thinking, ordered */}
-          {sortedToolCalls.map((toolCall) => (
-            <ToolCallPreview
-              key={toolCall.id}
-              streamingToolCall={toolCall}
-              isStreaming={
-                isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
-              }
-            />
-          ))}
+      if (contentSegment.trim()) {
+        processElements.push(
+          <div
+            key={`content-${index}`}
+            className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
+          >
+            <MarkdownContent content={contentSegment} />
+          </div>
+        )
+      }
+
+      processElements.push(
+        <div key={toolCall.id} className="space-y-2">
+          {showThinking && <ThinkingPreview content={thinkingContent} isStreaming={false} />}
+          <ToolCallPreview
+            streamingToolCall={toolCall}
+            isStreaming={
+              isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
+            }
+          />
         </div>
       )
     }
+
+    // Reasoning/thinking after the last tool call
+    const lastToolCall = sortedToolCalls[sortedToolCalls.length - 1]
+    const lastReasoningLength = lastToolCall?.reasoningBefore?.length || 0
+    if (streamingReasoningContent.length > lastReasoningLength) {
+      const remainingReasoning = streamingReasoningContent.slice(lastReasoningLength)
+      if (remainingReasoning.trim() && searchDecisionResolved) {
+        thinkingBlocks += 1
+        processElements.push(
+          <ThinkingPreview
+            key="remaining-api-reasoning"
+            content={remainingReasoning}
+            isStreaming={isThinkingInProgress}
+          />
+        )
+      }
+    }
+    const lastContentLength = lastToolCall?.contentBefore?.length || 0
+    if (streamingContent.length > lastContentLength) {
+      const parsed = parseThinkingContent(streamingContent.slice(lastContentLength))
+      if (parsed.thinkingContent?.trim() && searchDecisionResolved) {
+        thinkingBlocks += 1
+        processElements.push(
+          <ThinkingPreview
+            key="remaining-xml-thinking"
+            content={parsed.thinkingContent}
+            isStreaming={parsed.isThinkingInProgress}
+          />
+        )
+      }
+    }
+  } else {
+    // Show the thinking placeholder while waiting, or actual content when
+    // available; only once the search decision is resolved.
+    if (searchDecisionResolved && (showThinkingPlaceholder || combinedThinkingContent)) {
+      thinkingBlocks += 1
+      processElements.push(
+        <ThinkingPreview
+          key="thinking"
+          content={combinedThinkingContent || ''}
+          isStreaming={showThinkingPlaceholder || isThinkingInProgress}
+        />
+      )
+    }
+    for (const toolCall of sortedToolCalls) {
+      processElements.push(
+        <ToolCallPreview
+          key={toolCall.id}
+          streamingToolCall={toolCall}
+          isStreaming={
+            isStreaming && (toolCall.status === 'running' || toolCall.status === 'pending')
+          }
+        />
+      )
+    }
+  }
+
+  if (hasAssistantResources || hasPendingDecision || processElements.length > 0) {
+    streamingHeaderContent = (
+      <div className="space-y-1.5 mb-2">
+        {hasPendingDecision && searchDecisionSteps.length === 0 && (
+          <AttachmentPreview pendingSearchDecision={true} />
+        )}
+        {searchDecisionSteps.map((step) => (
+          <AttachmentPreview key={step.id} step={step} />
+        ))}
+        {/* Search results (fetch results from search are shown inside) */}
+        {searchResultContexts.map((context) => (
+          <AttachmentPreview
+            key={context.id}
+            context={context}
+            urlStatuses={lastUserMessage ? urlStatuses[lastUserMessage.id] : undefined}
+            messageId={lastUserMessage?.id}
+          />
+        ))}
+        {hasStreamingToolCalls ? (
+          <RunFold
+            foldKey={liveRunFoldKey(conversationId)}
+            live={true}
+            status="running"
+            steps={sortedToolCalls.length + thinkingBlocks}
+            failedTools={sortedToolCalls.filter((tc) => tc.status === 'error').length}
+          >
+            {processElements}
+          </RunFold>
+        ) : (
+          processElements
+        )}
+      </div>
+    )
   }
 
   // Only show content when:

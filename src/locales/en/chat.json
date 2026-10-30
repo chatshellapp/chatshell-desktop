@@ -153,5 +153,15 @@
     "runStopped": "Stopped",
     "waitingForResponse": "Waiting for response"
   },
-  "jumpToLatest": "Jump to latest"
+  "jumpToLatest": "Jump to latest",
+  "runFold": {
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Run failed",
+    "stopped": "Stopped",
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "failedTools_one": "{{count}} tool failed",
+    "failedTools_other": "{{count}} tools failed"
+  }
 }

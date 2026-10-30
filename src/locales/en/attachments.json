@@ -50,7 +50,6 @@
   "downloadSvg": "Download as SVG",
   "copyCode": "Copy code",
   "copied": "Copied!",
-  "usedTools": "Used {{count}} tool(s)",
   "copy": "Copy",
   "fullError": "Full error",
   "loadingSearchResults": "Loading search results...",

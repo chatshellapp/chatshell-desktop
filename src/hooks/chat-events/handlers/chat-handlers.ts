@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMessageStore } from '@/stores/message'
+import { useRunFoldStore } from '@/stores/runFoldStore'
 import type { Message } from '@/types'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -33,9 +34,12 @@ export function useChatHandlers() {
         } else if (stopRequested) {
           store.setRunOutcome(convId, message.id, { kind: 'stopped' })
         }
+        // A toggle on the live run fold carries over to the saved reply
+        useRunFoldStore.getState().adoptLiveOverride(convId, message.id)
       } else {
         // Stopped before any output: nothing was saved
         store.failTurn(convId, 'stopped', null)
+        useRunFoldStore.getState().clearLiveOverride(convId)
       }
       store.setIsStreaming(convId, false)
       store.setStreamingContent(convId, '')
@@ -61,6 +65,7 @@ export function useChatHandlers() {
     logger.info('[useChatEvents] handleChatError called', { conversation: convId, error })
     const store = useMessageStore.getState()
     store.failTurn(convId, 'failed', error)
+    useRunFoldStore.getState().clearLiveOverride(convId)
     store.clearStreamingToolCalls(convId)
     store.setIsStreaming(convId, false)
     // No-op while the failed turn pauses the queue

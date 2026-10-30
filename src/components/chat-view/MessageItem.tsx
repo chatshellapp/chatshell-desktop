@@ -11,12 +11,17 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import { ToolCallPreview } from '@/components/attachment-preview/tool-call-preview'
-import { CollapsedToolGroup } from '@/components/attachment-preview/collapsed-tool-group'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
 import { isContentBlock, isThinkingStep, isToolCall, getDisplayOrder } from '@/types/process-step'
 import type { MessageResources } from '@/types/message-resources'
-import { groupOrderedSteps } from '@/lib/step-grouping'
+import {
+  countRunSteps,
+  groupOrderedSteps,
+  splitRunItems,
+  type GroupedItem,
+} from '@/lib/step-grouping'
+import { RunFold, savedRunStatus } from './RunFold'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
 import { GeneratedImageGallery } from './GeneratedImageGallery'
@@ -179,9 +184,16 @@ export const MessageItem = memo(function MessageItem({
       return 0
     })
 
-  // Group steps: attach thinking to tool calls, collapse consecutive completed tool calls
+  // Group steps (thinking attached to tool calls), then split the run: the
+  // process up to the last tool call folds, the answer after it does not.
   const groupedSteps = groupOrderedSteps(orderedSteps)
   const hasGroupedSteps = groupedSteps.length > 0
+  const run = splitRunItems(groupedSteps)
+  const runCounts = countRunSteps(run.fold)
+  const runStatus = savedRunStatus(
+    runOutcome,
+    run.fold.flatMap((item) => (item.kind === 'tool' ? [item.data.toolCall.status] : []))
+  )
   const hasAssistantResources = contextsToShow.length > 0 || searchDecisionSteps.length > 0
 
   // Stable per-row callbacks so memo(ChatMessage) can bail out when this
@@ -206,6 +218,29 @@ export const MessageItem = memo(function MessageItem({
     [onRegenerate, messageId]
   )
 
+  const renderStep = (item: GroupedItem) => {
+    switch (item.kind) {
+      case 'tool':
+        return (
+          <div key={item.id} className="space-y-1.5">
+            {item.data.thinkingContent && <ThinkingPreview content={item.data.thinkingContent} />}
+            <ToolCallPreview toolCall={item.data.toolCall} />
+          </div>
+        )
+      case 'content':
+        return (
+          <div
+            key={item.id}
+            className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
+          >
+            <MarkdownContent content={item.content} />
+          </div>
+        )
+      case 'thinking':
+        return <ThinkingPreview key={item.id} content={item.content} />
+    }
+  }
+
   // Unified header content for assistant messages
   const headerContent =
     isAssistantMessage && (hasAssistantResources || hasGroupedSteps) ? (
@@ -227,36 +262,18 @@ export const MessageItem = memo(function MessageItem({
             messageId={prevUserMessageId ?? undefined}
           />
         ))}
-        {/* Grouped steps: tool calls (with merged thinking), collapsed groups, content blocks */}
-        {groupedSteps.map((item) => {
-          switch (item.kind) {
-            case 'tool':
-              return (
-                <div key={item.id} className="space-y-1.5">
-                  {item.data.thinkingContent && (
-                    <ThinkingPreview content={item.data.thinkingContent} />
-                  )}
-                  <ToolCallPreview toolCall={item.data.toolCall} />
-                  {item.data.trailingThinkingContent && (
-                    <ThinkingPreview content={item.data.trailingThinkingContent} />
-                  )}
-                </div>
-              )
-            case 'tool-group':
-              return <CollapsedToolGroup key={item.id} items={item.items} />
-            case 'content':
-              return (
-                <div
-                  key={item.id}
-                  className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none"
-                >
-                  <MarkdownContent content={item.content} />
-                </div>
-              )
-            case 'thinking':
-              return <ThinkingPreview key={item.id} content={item.content} />
-          }
-        })}
+        {run.fold.length > 0 && (
+          <RunFold
+            foldKey={message.id}
+            live={false}
+            status={runStatus}
+            steps={runCounts.steps}
+            failedTools={runCounts.failedTools}
+          >
+            {run.fold.map(renderStep)}
+          </RunFold>
+        )}
+        {run.after.map(renderStep)}
       </div>
     ) : undefined
 

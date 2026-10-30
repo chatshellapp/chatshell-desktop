@@ -50,7 +50,6 @@
   "downloadSvg": "下载为SVG",
   "copyCode": "复制代码",
   "copied": "已复制！",
-  "usedTools": "使用了 {{count}} 个工具",
   "copy": "复制",
   "fullError": "完整错误",
   "loadingSearchResults": "正在加载搜索结果...",
