@@ -148,10 +148,10 @@ Most AI desktop clients are chat wrappers. ChatShell is built differently — fr
 
 ### Agent-Ready Built-in Tools
 
-Your AI can use these tools autonomously — no user intervention needed:
+Your AI can combine these tools to complete tasks. Choose Ask mode to approve tool calls or YOLO mode for autonomous execution:
 
 - **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
-- **Web Fetch**: Intelligent content extraction from URLs (Readability + headless Chrome, or Jina Reader API)
+- **Web Fetch**: Intelligent content extraction from URLs using HTTP, optional Obscura, the system WebView, and headless Chrome, or the Jina Reader API
 - **Bash**: Execute shell commands in a per-conversation working directory
 - **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets)
 - **Edit**: Make precise text replacements in files
@@ -161,6 +161,12 @@ Your AI can use these tools autonomously — no user intervention needed:
 - **Kill Shell**: Terminate the current bash session and start fresh
 
 The AI decides when and how to combine these tools to fulfill your requests.
+
+### Tool Approvals
+
+- **Ask / YOLO Modes**: Choose the approval mode per conversation from the input toolbar
+- **Approval Controls**: Allow a tool call once, allow it for the session, or deny it
+- **Queued Requests**: Concurrent approval requests are presented in order; switching modes clears session grants
 
 ### Skills
 
@@ -186,8 +192,10 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Local**: Ollama, LM Studio, GPUStack, OVMS — run LLMs entirely on your machine
 - **Custom Endpoints**: Connect any OpenAI-compatible or Anthropic-compatible API
 - **Smart Model Discovery**: Automatically fetch available models from 30+ providers
-- **Model Capability Awareness**: ChatShell knows each model's capabilities — vision, tool use, image generation — and adapts the UI automatically (e.g., disables image paste for text-only models)
+- **Model Capability Awareness**: ChatShell knows each model's capabilities — vision, tool use, image generation — and adapts the UI automatically, including image attachment availability based on vision support and fallback models
 - **Image Generation**: Generate images directly in chat with supported models (e.g., Gemini)
+- **Vision Fallback**: Attach images even when the conversation model is text-only by routing image questions to a configured vision-capable model
+- **Auxiliary Models**: Choose separate models for titles and compaction summaries, and for answering image questions
 - **Manual Model Entry**: Add any model manually when auto-discovery doesn't find it
 - **API Connectivity Check**: Test your provider connection right from the settings page
 - **Configurable Parameters**: Temperature, max tokens, top-p, frequency/presence penalty, and more
@@ -208,14 +216,31 @@ The AI decides when and how to combine these tools to fulfill your requests.
 ### Rich Conversations
 
 - **Streaming Responses**: See AI output as it generates in real time
+- **Generation Status**: Sidebar conversation rows show when a response is generating; a waiting indicator with elapsed time appears before the first output
 - **Thinking Display**: View the model's reasoning process (for supported models)
+- **Collapsible Runs**: Expand thinking, tool calls, and intermediate text together, with step counts and completion status; the final answer stays visible outside the group
 - **Fork Conversations**: Branch off from any AI reply into a new conversation, keeping full context up to that point
 - **Resend Messages**: Retry any user message with one click
+- **Conversation Trees**: Resend messages or regenerate replies without losing earlier branches, and switch between alternate versions with the message navigation arrows
+- **Failure Recovery**: Retry failed or stopped turns, inspect errors, and return to the previous reply when available; partial replies remain visible with their run status
 - **Message Queue**: Keep typing while the AI is responding — your messages are queued and sent in order
 - **Auto Title Generation**: Smart conversation titling
 - **Context Window Control**: Configurable message context (5, 10, 20, 50, 100, or unlimited)
+- **Automatic Context Compaction**: Compact older context as long conversations approach the model's context window
 - **Working Directory**: Per-conversation working directory for file system tools
 - **Persistent History**: All conversations stored locally in SQLite
+
+### Encrypted iCloud Sync
+
+- **Optional Cross-Device Sync**: Sync conversation history and attachments through iCloud Drive on supported macOS and iOS builds
+- **Encrypted Transport**: Snapshots and attachments are encrypted before upload; save the sync passphrase to unlock history on new devices
+- **Manual Controls**: Sync now, force publish this device's state, stop publishing, or delete cloud data from Settings
+- **Availability**: Requires iCloud Drive; see [sync development requirements](CONTRIBUTING.md#testing-icloud-sync) when building from source
+
+### Sidebar Translator
+
+- **Quick Translation**: Translate text between languages from the sidebar
+- **Continue in Conversation**: Move a translation into a conversation for follow-up questions
 
 ### Chat History Search
 
@@ -244,8 +269,10 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Intelligent Search Decision**: AI autonomously determines when to search the web
 - **Multi-Engine Support**: DuckDuckGo, Baidu, Yahoo
 - **Smart Web Fetching**: Extract and summarize content from URLs
-- **Dual Fetch Modes**: Local (Readability + headless Chrome) or API (Jina Reader)
-- **Configurable Local Methods**: Auto, fetch-only, or headless-only
+- **Dual Fetch Modes**: Local content extraction with browser fallbacks, or API (Jina Reader)
+- **Tiered Fetching**: Auto mode falls back from HTTP to optional Obscura, the system WebView, and then headless Chrome
+- **Configurable Local Methods**: Auto, fetch-only, Obscura (when installed), system WebView, or Chrome
+- **Optional Obscura**: Settings shows an installation link when the browser is unavailable
 
 ### Prompt Management
 
@@ -254,6 +281,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Starred Prompts**: Mark frequently used prompts for quick access
 - **System & User Prompts**: Separate system-level templates from user-level prompts
 - **Quick Select**: Rapidly apply prompts from within the chat input
+- **Sent Prompt History**: Press ArrowUp in an empty input to recall sent prompts across conversations; use ArrowUp/ArrowDown to browse them
 
 ### Export
 
@@ -276,76 +304,21 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 ### Privacy-First Design
 
-- **Local SQLite Storage**: All data stays on your machine
+- **Local SQLite Storage**: Conversations are stored locally; optional iCloud sync uploads encrypted copies, and cloud models receive the content sent to them
 - **Encrypted Secrets**: API keys and MCP tokens encrypted with AES-256-GCM in local SQLite
 - **Keychain Integration**: Master encryption key stored in native OS credential storage (Apple Keychain, Windows Credential Manager, Secret Service)
 - **No Cloud Dependency**: Works entirely offline with local models
 
----
+### Diagnostics
 
-## Development
-
-### Prerequisites
-
-- Node.js 20+
-- pnpm
-- Rust 1.85+
-
-### Quick Start
-
-```bash
-pnpm install
-pnpm tauri dev
-```
-
-The app will be available at `http://localhost:1420`
-
-### Testing
-
-```bash
-pnpm test                    # Run frontend tests
-pnpm test:watch              # Watch mode
-cd src-tauri && cargo test   # Run backend tests
-```
-
-For detailed commands and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### Build
-
-```bash
-pnpm tauri build
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | [Tauri 2](https://tauri.app/) |
-| Frontend | React 19, TypeScript, Vite 6 |
-| Styling | TailwindCSS 4, Radix UI, Lucide icons |
-| State | Zustand + Immer |
-| Markdown | react-markdown, remark-gfm, KaTeX, Mermaid |
-| Backend | Rust (Edition 2024), Tokio |
-| LLM | [rig-core](https://rig.rs/) |
-| MCP | [rmcp](https://github.com/modelcontextprotocol/rust-sdk) (HTTP + STDIO transports) |
-| Database | SQLite via sqlx |
-| Security | AES-256-GCM, keyring, Blake3 |
-| Web Scraping | Readability, headless Chrome, htmd |
+- **Log Storage Controls**: View log storage usage, open the log directory, and set a storage size limit
+- **AI Log Diagnosis**: Start a conversation with a prompt to inspect recent logs and suggest fixes
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Ways to Contribute
-
-- Submit issues for bugs or feature requests
-- Create pull requests for code improvements
-- Improve documentation
-- Report security vulnerabilities
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, builds, the tech stack, and contribution guidelines. Bug fixes, performance improvements, documentation updates, UI enhancements, and minor refactors are welcome.
 
 ---
 

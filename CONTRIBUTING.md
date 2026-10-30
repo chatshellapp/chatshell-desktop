@@ -40,15 +40,38 @@ There are several ways you can contribute:
 
 ## Development Setup
 
-For installation and quick start commands, see the [Development section in README.md](README.md#development).
+### Prerequisites
 
-### Commands
+- Node.js 20+
+- pnpm
+- Rust 1.85+ (edition 2024); use a current stable toolchain for dependency compatibility
+- Platform build dependencies for Tauri 2
+- The `chatshell-agent` repository checked out alongside `chatshell-desktop`; the Rust backend depends on `../chatshell-agent/crates/chatshell-agent-core`
+
+### Run the App
+
+From the `chatshell-desktop` repository root:
 
 ```bash
-pnpm install              # Install dependencies
-pnpm tauri dev            # Start development app
-pnpm tauri build          # Build release bundle
+pnpm install
+pnpm tauri dev
 ```
+
+This launches the desktop app with the Vite development server at `http://localhost:1420`. Use `pnpm dev` to run only the frontend server.
+
+### Build
+
+```bash
+pnpm tauri build          # Build a release bundle for the current platform
+```
+
+See [Testing](#testing) for frontend and backend checks, and [Available Commands](#available-commands) for the command reference.
+
+### Testing iCloud Sync
+
+End-to-end sync requires iCloud Drive and provisioning-profile-signed macOS and iOS builds with the appropriate iCloud and Keychain entitlements. Ordinary `pnpm tauri dev` and unsigned Xcode debug builds can exercise local staging but cannot access the iCloud container or shared Keychain item. iOS testing requires a physical device.
+
+On macOS, `scripts/sign-dev-profile.sh` embeds a development provisioning profile and signs a release app bundle. See the script for signing prerequisites. Keep signing credentials and provisioning profiles out of Git.
 
 ## Tech Stack
 
@@ -56,8 +79,8 @@ ChatShell is built with a modern hybrid architecture:
 
 | Layer               | Technology                                      |
 | ------------------- | ----------------------------------------------- |
-| Desktop Framework   | Tauri 2 (Rust edition 2024)                     |
-| Frontend            | React 19, TypeScript, Vite                      |
+| Desktop Framework   | Tauri 2 (Rust edition 2024), Tokio              |
+| Frontend            | React 19, TypeScript, Vite 6                    |
 | Styling             | TailwindCSS v4                                  |
 | UI Components       | shadcn/ui (built on Radix UI), Lucide Icons     |
 | State Management    | Zustand + Immer                                 |
@@ -68,6 +91,8 @@ ChatShell is built with a modern hybrid architecture:
 | Charts              | Mermaid                                         |
 | Syntax Highlighting | react-syntax-highlighter                        |
 | Toasts              | Sonner                                          |
+| Security            | AES-256-GCM, keyring, Blake3                      |
+| Web Scraping        | Readability, system WebView, optional Obscura, headless Chrome, htmd |
 
 ### Key Libraries
 
