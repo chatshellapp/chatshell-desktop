@@ -1088,39 +1088,40 @@ async fn run_agent_stream<R: tauri::Runtime>(
         );
     }
 
-    // Handle the response: on cancellation build synthetic response so we can save accumulated data
-    let (response, was_stream_error) = match response {
-        Ok(r) => (r, false),
+    // Handle the response. Cancellation and stream errors both build a
+    // synthetic response from the accumulated stream so partial output is
+    // saved; a non-cancel error is carried to the frontend as the failure.
+    let (response, was_stream_error, stream_failure) = match response {
+        Ok(r) => {
+            let failure = r.interrupted.clone();
+            (r, false, failure)
+        }
         Err(e) => {
-            if cancel_token.is_cancelled() {
+            let failure = if cancel_token.is_cancelled() {
                 tracing::info!("🛑 [agent_streaming] Generation cancelled (stream returned error)");
-                let accumulated = accumulated_content.read().await.clone();
-                let accumulated_reason = accumulated_reasoning.read().await.clone();
-                let parsed = crate::thinking_parser::parse_thinking_content(&accumulated);
-                let thinking = if !accumulated_reason.is_empty() {
-                    Some(accumulated_reason)
-                } else {
-                    parsed.thinking_content
-                };
-                (
-                    ChatResponse {
-                        content: parsed.content,
-                        thinking_content: thinking,
-                        tokens: None,
-                    },
-                    true,
-                )
+                None
             } else {
                 tracing::error!("❌ [agent_streaming] Stream error: {}", e);
-                let error_payload = serde_json::json!({
-                    "conversation_id": conversation_id_clone,
-                    "error": e.to_string(),
-                });
-                let _ = app.emit("chat-error", error_payload);
-                let mut tasks = state_clone.generation_tasks.write().await;
-                tasks.remove(&conversation_id_clone);
-                return;
-            }
+                Some(e.to_string())
+            };
+            let accumulated = accumulated_content.read().await.clone();
+            let accumulated_reason = accumulated_reasoning.read().await.clone();
+            let parsed = crate::thinking_parser::parse_thinking_content(&accumulated);
+            let thinking = if !accumulated_reason.is_empty() {
+                Some(accumulated_reason)
+            } else {
+                parsed.thinking_content
+            };
+            (
+                ChatResponse {
+                    content: parsed.content,
+                    thinking_content: thinking,
+                    tokens: None,
+                    interrupted: None,
+                },
+                true,
+                failure,
+            )
         }
     };
 
@@ -1132,6 +1133,12 @@ async fn run_agent_stream<R: tauri::Runtime>(
             "🛑 [agent_streaming] Cancelled. Content: {} chars, stream_error: {}",
             final_content.len(),
             was_stream_error
+        );
+    } else if let Some(failure) = &stream_failure {
+        tracing::info!(
+            "⚠️ [agent_streaming] Stream failed after {} chars: {}",
+            final_content.len(),
+            failure
         );
     } else {
         tracing::info!(
@@ -1173,7 +1180,7 @@ async fn run_agent_stream<R: tauri::Runtime>(
             tracing::info!("⚠️ [agent_streaming] Skipping save of empty response");
             let error_payload = serde_json::json!({
                 "conversation_id": conversation_id_clone,
-                "error": "Model returned empty response",
+                "error": stream_failure.as_deref().unwrap_or("Model returned empty response"),
             });
             let _ = app.emit("chat-error", error_payload);
         }
@@ -1388,7 +1395,11 @@ async fn run_agent_stream<R: tauri::Runtime>(
         for (tool_call_id, (display_order, tool_name, tool_input, tool_output, call_id)) in
             tool_calls_data.iter()
         {
-            let status = tool_call_status(tool_output.as_ref(), was_cancelled);
+            let status = tool_call_status(
+                tool_output.as_ref(),
+                was_cancelled,
+                stream_failure.is_some(),
+            );
 
             let display_name =
                 mcp_display_name_from_stored(tool_name, &mcp_tool_name_to_server_name);
@@ -1546,6 +1557,7 @@ async fn run_agent_stream<R: tauri::Runtime>(
     let completion_payload = serde_json::json!({
         "conversation_id": conversation_id_clone,
         "message": assistant_message,
+        "error": stream_failure,
     });
     let _ = app.emit("chat-complete", completion_payload);
 
@@ -1851,13 +1863,20 @@ fn has_any_data(
         || has_images
 }
 
-/// Derive the persisted status for a tool call from its output and the
-/// stream's cancellation state.
-fn tool_call_status(tool_output: Option<&String>, was_cancelled: bool) -> &'static str {
+/// Derive the persisted status for a tool call from its output and how the
+/// stream ended: a call left without output is `cancelled` after a stop and
+/// `error` after a stream failure.
+fn tool_call_status(
+    tool_output: Option<&String>,
+    was_cancelled: bool,
+    stream_failed: bool,
+) -> &'static str {
     if tool_output.is_some() {
         "success"
     } else if was_cancelled {
         "cancelled"
+    } else if stream_failed {
+        "error"
     } else {
         "pending"
     }
@@ -2198,10 +2217,12 @@ mod tests {
     #[test]
     fn tool_call_status_prefers_output_then_cancellation() {
         let output = Some("done".to_string());
-        assert_eq!(tool_call_status(output.as_ref(), true), "success");
-        assert_eq!(tool_call_status(output.as_ref(), false), "success");
-        assert_eq!(tool_call_status(None, true), "cancelled");
-        assert_eq!(tool_call_status(None, false), "pending");
+        assert_eq!(tool_call_status(output.as_ref(), true, false), "success");
+        assert_eq!(tool_call_status(output.as_ref(), false, true), "success");
+        assert_eq!(tool_call_status(None, true, false), "cancelled");
+        assert_eq!(tool_call_status(None, true, true), "cancelled");
+        assert_eq!(tool_call_status(None, false, true), "error");
+        assert_eq!(tool_call_status(None, false, false), "pending");
     }
 
     #[test]
@@ -2863,6 +2884,47 @@ mod tests {
                 .unwrap()
                 .contains("provider exploded")
         );
+        assert!(state.generation_tasks.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stream_error_after_output_saves_partial_reply_with_failure() {
+        let app = tauri::test::mock_app();
+        let log = record_events(&app);
+        let (state, conv_id, _dir) = pipeline_state().await;
+        let (agent, _requests) = scripted_agent(vec![vec![
+            text_event("partial answer"),
+            error_event("connection reset"),
+        ]]);
+
+        run_pipeline(
+            &app,
+            &state,
+            agent,
+            vec![user_message("hi")],
+            TestCancellationToken::new(),
+            base_ctx(&state, &conv_id).await,
+        )
+        .await;
+
+        let log = log.lock().unwrap();
+        let last = log.last().unwrap();
+        assert_eq!(last.name, "chat-complete");
+        assert!(!names(&log).contains(&"chat-error".to_string()));
+        assert!(
+            last.payload["error"]
+                .as_str()
+                .unwrap()
+                .contains("connection reset")
+        );
+        let messages = state
+            .db
+            .list_messages_by_conversation(&conv_id, None, None)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].content, "partial answer");
+        assert_eq!(last.payload["message"]["id"], messages[1].id.as_str());
         assert!(state.generation_tasks.read().await.is_empty());
     }
 

@@ -3,7 +3,8 @@ import type { RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Message, UrlStatus } from '@/types'
 import type { MessageResources } from '@/types/message-resources'
-import { ApiErrorPreview } from './api-error-preview'
+import type { FailedTurn as FailedTurnState, RunOutcome } from '@/stores/message/types'
+import { FailedTurn } from './FailedTurn'
 import { MessageItem } from './MessageItem'
 import { StreamingMessage } from './StreamingMessage'
 import type { DisplayInfo } from './hooks'
@@ -22,7 +23,10 @@ interface MessageListProps {
   showStreamingMessage: boolean
   messageResources: Record<string, MessageResources>
   urlStatuses: Record<string, Record<string, UrlStatus>>
-  apiError: string | null
+  failedTurn: FailedTurnState | null
+  runOutcomes: Record<string, RunOutcome>
+  /** A generation is running: the failed turn's retry is unavailable. */
+  isStreaming: boolean
   isLoadingOlder: boolean
   /** Forces the whole window to mount in one commit (search jump to a row
    * outside the progressively mounted slice). */
@@ -31,7 +35,9 @@ interface MessageListProps {
   messagesEndRef: RefObject<HTMLDivElement | null>
   getDisplayInfo: () => DisplayInfo
   getMessageDisplayInfo: (message: Message) => DisplayInfo
-  onClearApiError: () => void
+  onRetryFailedTurn: () => void
+  onDismissFailedTurn: () => void
+  onShowPreviousReply: () => void
   onCopy: () => void
   onRevert: (messageId: string) => void
   onDeleteFromHere: (messageId: string) => void
@@ -68,14 +74,18 @@ export function MessageList({
   showStreamingMessage,
   messageResources,
   urlStatuses,
-  apiError,
+  failedTurn,
+  runOutcomes,
+  isStreaming,
   isLoadingOlder,
   revealAll = false,
   messagesContentRef,
   messagesEndRef,
   getDisplayInfo,
   getMessageDisplayInfo,
-  onClearApiError,
+  onRetryFailedTurn,
+  onDismissFailedTurn,
+  onShowPreviousReply,
   onCopy,
   onRevert,
   onDeleteFromHere,
@@ -126,6 +136,7 @@ export function MessageList({
           prevUserMessage={
             index > 0 && mounted[index - 1].sender_type === 'user' ? mounted[index - 1] : null
           }
+          runOutcome={runOutcomes[message.id]}
           messageResources={messageResources}
           urlStatuses={urlStatuses}
           getMessageDisplayInfo={getMessageDisplayInfo}
@@ -154,11 +165,14 @@ export function MessageList({
           />
         </div>
       )}
-      {/* API Error display */}
-      {apiError && (
-        <div className="py-2">
-          <ApiErrorPreview error={apiError} onDismiss={onClearApiError} />
-        </div>
+      {failedTurn && !showStreamingMessage && (
+        <FailedTurn
+          failedTurn={failedTurn}
+          disabled={isStreaming}
+          onRetry={onRetryFailedTurn}
+          onDismiss={onDismissFailedTurn}
+          onShowPreviousReply={onShowPreviousReply}
+        />
       )}
       {/* Scroll anchor */}
       <div ref={messagesEndRef} />

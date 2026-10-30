@@ -66,6 +66,8 @@ interface ChatMessageProps {
   userMessageAlign?: 'left' | 'right'
   userMessageShowBackground?: boolean
   isLoading?: boolean
+  /** Replaces the plain spinner while `isLoading` (e.g. waiting copy). */
+  loadingContent?: React.ReactNode
   /**
    * Whether this message is part of an active streaming turn.
    * When true, shows loading spinner at the bottom and hides action buttons.
@@ -125,6 +127,7 @@ export const ChatMessage = memo(function ChatMessage({
   userMessageAlign = 'right',
   userMessageShowBackground = true,
   isLoading = false,
+  loadingContent,
   isStreaming = false,
   headerContent,
   headerExtras,
@@ -307,9 +310,11 @@ export const ChatMessage = memo(function ChatMessage({
       {headerContent}
       <div className="text-base text-foreground prose prose-sm dark:prose-invert max-w-none mb-2">
         {isLoading ? (
-          <div className="flex items-center gap-2 py-2">
-            <MorphSpinner size={16} />
-          </div>
+          (loadingContent ?? (
+            <div className="flex items-center gap-2 py-2">
+              <MorphSpinner size={16} />
+            </div>
+          ))
         ) : (
           <>
             <MarkdownContent content={content} />

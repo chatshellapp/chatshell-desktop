@@ -157,6 +157,11 @@ function StatusBadge({
   )
 }
 
+/**
+ * One readable summary line for a provider error (status badge + the
+ * provider's own message), rendered inside a surrounding status block (failed
+ * turn, run outcome footer). Clicking opens the full error.
+ */
 export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
   const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -173,17 +178,13 @@ export function ApiErrorPreview({ error, onDismiss }: ApiErrorPreviewProps) {
     <>
       <button
         onClick={() => setIsDialogOpen(true)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg border border-destructive/50 bg-destructive/5 text-left hover:border-destructive/70 transition-colors cursor-pointer"
+        className="flex items-center gap-2 w-full min-w-0 text-left text-sm cursor-pointer group/error"
       >
-        <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-        <span className="flex-1 text-sm truncate">
-          <span className="font-medium text-destructive">{t('messages:apiError')}</span>
-          {parsed.statusCode && (
-            <span className="ml-2">
-              <StatusBadge code={parsed.statusCode} text={parsed.statusText} t={t} />
-            </span>
-          )}
-          <span className="text-muted-foreground ml-2 truncate">{parsed.summary}</span>
+        {parsed.statusCode && (
+          <StatusBadge code={parsed.statusCode} text={parsed.statusText} t={t} />
+        )}
+        <span className="text-muted-foreground truncate group-hover/error:text-foreground transition-colors">
+          {parsed.summary}
         </span>
       </button>
 

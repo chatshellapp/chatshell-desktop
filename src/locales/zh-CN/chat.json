@@ -145,5 +145,13 @@
       "yolo": "自由执行",
       "yoloHint": "不再逐项询问"
     }
+  },
+  "turn": {
+    "sendFailed": "发送失败",
+    "stoppedBeforeResponse": "已在回复前停止",
+    "showPreviousReply": "显示上一个回复",
+    "runFailed": "运行失败",
+    "runStopped": "已停止",
+    "waitingForResponse": "等待响应"
   }
 }

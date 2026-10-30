@@ -85,6 +85,9 @@ pub async fn stream_agent(
     let mut consecutive_errors = 0;
     let mut is_reasoning = false;
     let mut last_error: Option<String> = None;
+    // The error that ended the stream, if no item arrived after it. A
+    // transient error followed by more output is recovered and cleared.
+    let mut trailing_error: Option<String> = None;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
     tracing::info!("📥 [{}] Processing stream...", log_prefix);
@@ -112,6 +115,7 @@ pub async fn stream_agent(
         match result {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 // Detect transition from reasoning to text
                 if is_reasoning {
                     is_reasoning = false;
@@ -133,6 +137,7 @@ pub async fn stream_agent(
                 id,
             })) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 if !is_reasoning {
                     is_reasoning = true;
                     tracing::info!("💡 [{}] Reasoning started", log_prefix);
@@ -173,6 +178,7 @@ pub async fn stream_agent(
                 ..
             })) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 let tool_input = serde_json::to_string(&tool_call.function.arguments)
                     .unwrap_or_else(|_| "{}".to_string());
 
@@ -205,6 +211,7 @@ pub async fn stream_agent(
                 ..
             })) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 let tool_output = tool_result
                     .content
                     .iter()
@@ -235,6 +242,7 @@ pub async fn stream_agent(
             }
             Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 // Log final response usage if available
                 let usage = final_response.usage();
                 if usage.input_tokens > 0 || usage.output_tokens > 0 {
@@ -263,6 +271,7 @@ pub async fn stream_agent(
                 StreamedAssistantContent::ReasoningDelta { id, reasoning, .. },
             )) => {
                 consecutive_errors = 0;
+                trailing_error = None;
                 if !is_reasoning {
                     is_reasoning = true;
                     tracing::info!("💡 [{}] Reasoning started", log_prefix);
@@ -286,11 +295,13 @@ pub async fn stream_agent(
             }
             Ok(_) => {
                 consecutive_errors = 0;
+                trailing_error = None;
             }
             Err(e) => {
                 consecutive_errors += 1;
                 let error_str = e.to_string();
                 last_error = Some(strip_internal_prefixes(&error_str));
+                trailing_error = last_error.clone();
 
                 let is_decode_error = error_str.contains("decoding response body")
                     || error_str.contains("error reading a body")
@@ -370,8 +381,15 @@ pub async fn stream_agent(
         tracing::info!("💡 [{}] Reasoning ended", log_prefix);
     }
 
+    let interrupted = if cancelled { None } else { trailing_error };
     if cancelled {
         tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
+    } else if let Some(err) = &interrupted {
+        tracing::warn!(
+            "⚠️ [{}] Stream ended on an error after partial output: {}",
+            log_prefix,
+            err
+        );
     } else {
         tracing::info!("✅ [{}] Stream completed successfully", log_prefix);
     }
@@ -387,6 +405,7 @@ pub async fn stream_agent(
         content: parsed.content,
         thinking_content: final_thinking,
         tokens: None,
+        interrupted,
     })
 }
 
@@ -675,6 +694,23 @@ mod tests {
             ],
             vec![text_event("done after tool"), final_event()],
         ]
+    }
+
+    #[tokio::test]
+    async fn error_after_output_returns_partial_content_marked_interrupted() {
+        let (result, _chunks) = record_agent(build_agent(
+            vec![vec![text_event("partial"), error_event("connection reset")]],
+            false,
+        ))
+        .await;
+        let response = result.expect("partial output is returned, not an error");
+        assert_eq!(response.content, "partial");
+        assert!(
+            response
+                .interrupted
+                .as_deref()
+                .is_some_and(|e| e.contains("connection reset"))
+        );
     }
 
     #[tokio::test]

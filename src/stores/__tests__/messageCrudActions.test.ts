@@ -83,7 +83,8 @@ describe('message store crudActions', () => {
         conversationStates: {
           'conv-1': {
             ...createDefaultConversationState(),
-            apiError: 'previous failure',
+            failedTurn: { kind: 'failed', error: 'previous failure', previousReplyId: null },
+            stopRequested: true,
             streamingContent: 'leftover',
             streamingReasoningContent: 'leftover reasoning',
             streamingToolCalls: {
@@ -117,7 +118,8 @@ describe('message store crudActions', () => {
       const cs = state.getConversationState('conv-1')
       expect(cs.messages).toHaveLength(1)
       expect(cs.messages[0]).toEqual(userMessage)
-      expect(cs.apiError).toBeNull()
+      expect(cs.failedTurn).toBeNull()
+      expect(cs.stopRequested).toBe(false)
       expect(cs.streamingContent).toBe('')
       expect(cs.streamingReasoningContent).toBe('')
       expect(cs.streamingToolCalls).toEqual({})
@@ -242,6 +244,56 @@ describe('message store crudActions', () => {
     })
   })
 
+  describe('branch-following window', () => {
+    const turn = () => [
+      createMockMessage('u1', 'q1'),
+      createMockMessage('a1', 'r1', 'assistant'),
+      createMockMessage('u2', 'q2'),
+      createMockMessage('a2', 'r2', 'assistant'),
+    ]
+
+    it('regenerating a reply drops it and its descendants from the window', async () => {
+      patchConv('conv-1', { messages: turn() })
+      invokeMock.mockResolvedValue(undefined)
+
+      await useMessageStore.getState().regenerateMessage('conv-1', 'a1', 'openai', 'gpt-4')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => m.id)).toEqual(['u1'])
+      expect(cs.regenerateTargetId).toBe('a1')
+      expect(cs.isWaitingForAI).toBe(true)
+    })
+
+    it('retrying a user message keeps it and the reply a failed regenerate replaced', async () => {
+      patchConv('conv-1', {
+        messages: turn().slice(0, 3),
+        failedTurn: { kind: 'failed', error: 'boom', previousReplyId: 'a2-old' },
+      })
+      invokeMock.mockResolvedValue(undefined)
+
+      await useMessageStore.getState().regenerateMessage('conv-1', 'u2', 'openai', 'gpt-4')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2'])
+      expect(cs.regenerateTargetId).toBe('a2-old')
+      expect(cs.failedTurn).toBeNull()
+      expect(invokeMock).toHaveBeenCalledWith(
+        'regenerate_message',
+        expect.objectContaining({ conversationId: 'conv-1', messageId: 'u2' })
+      )
+    })
+
+    it('resending replaces the original user message and its branch', async () => {
+      patchConv('conv-1', { messages: turn() })
+      invokeMock.mockResolvedValue(createMockMessage('u2b', 'q2 again'))
+
+      await useMessageStore.getState().resendMessage('q2 again', 'conv-1', 'u2', 'openai', 'gpt-4')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2b'])
+    })
+  })
+
   describe('stopGeneration', () => {
     it('asks the backend to stop and resets the sending flag', async () => {
       useMessageStore.setState({ isSending: true })
@@ -251,6 +303,7 @@ describe('message store crudActions', () => {
 
       expect(invokeMock).toHaveBeenCalledWith('stop_generation', { conversationId: 'conv-1' })
       expect(useMessageStore.getState().isSending).toBe(false)
+      expect(useMessageStore.getState().getConversationState('conv-1').stopRequested).toBe(true)
     })
 
     it('swallows backend errors without resetting the sending flag', async () => {

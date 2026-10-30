@@ -19,37 +19,51 @@ export function useChatHandlers() {
     useMessageStore.getState().appendStreamingReasoningChunk(convId, chunk)
   }, [])
 
-  const handleChatComplete = useCallback((convId: string, message: Message | null) => {
-    logger.info('[useChatEvents] handleChatComplete called', { conversation: convId, message })
-    const store = useMessageStore.getState()
-    if (message) {
-      const convState = store.getConversationState(convId)
-      logger.info(
-        '[useChatEvents] Current messages count for conversation:',
-        convState.messages.length
-      )
-      store.addMessage(convId, message)
-      logger.info(
-        '[useChatEvents] After addMessage, messages count:',
-        store.getConversationState(convId).messages.length
-      )
-    }
-    store.setIsStreaming(convId, false)
-    store.setStreamingContent(convId, '')
-    store.clearStreamingToolCalls(convId)
-    // The completed turn may have created a sibling variant (resend or
-    // regenerate): refresh the navigator's sibling groups. Fire-and-forget.
-    void store.refreshSiblingGroups(convId)
-    store.processNextPendingMessage(convId)
-  }, [])
+  const handleChatComplete = useCallback(
+    (convId: string, message: Message | null, error?: string | null) => {
+      logger.info('[useChatEvents] handleChatComplete called', { conversation: convId, message })
+      const store = useMessageStore.getState()
+      const { stopRequested } = store.getConversationState(convId)
+      if (message) {
+        store.addMessage(convId, message)
+        // A reply that kept partial output after a failure or a stop gets a
+        // session-only outcome; the saved row itself looks like any reply.
+        if (error) {
+          store.setRunOutcome(convId, message.id, { kind: 'failed', error })
+        } else if (stopRequested) {
+          store.setRunOutcome(convId, message.id, { kind: 'stopped' })
+        }
+      } else {
+        // Stopped before any output: nothing was saved
+        store.failTurn(convId, 'stopped', null)
+      }
+      store.setIsStreaming(convId, false)
+      store.setStreamingContent(convId, '')
+      store.clearStreamingToolCalls(convId)
+      if (message) {
+        useMessageStore.setState((draft) => {
+          const cs = draft.conversationStates[convId]
+          if (cs) {
+            cs.stopRequested = false
+            cs.regenerateTargetId = null
+          }
+        })
+      }
+      // The completed turn may have created a sibling variant (resend or
+      // regenerate): refresh the navigator's sibling groups. Fire-and-forget.
+      void store.refreshSiblingGroups(convId)
+      store.processNextPendingMessage(convId)
+    },
+    []
+  )
 
   const handleChatError = useCallback((convId: string, error: string) => {
     logger.info('[useChatEvents] handleChatError called', { conversation: convId, error })
     const store = useMessageStore.getState()
-    store.setApiError(convId, error)
-    store.setIsStreaming(convId, false)
-    store.setStreamingContent(convId, '')
+    store.failTurn(convId, 'failed', error)
     store.clearStreamingToolCalls(convId)
+    store.setIsStreaming(convId, false)
+    // No-op while the failed turn pauses the queue
     store.processNextPendingMessage(convId)
   }, [])
 

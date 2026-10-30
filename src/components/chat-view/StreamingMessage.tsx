@@ -20,6 +20,7 @@ import type { MessageResources } from '@/types/message-resources'
 import { CHAT_CONFIG } from './utils'
 import type { DisplayInfo } from './hooks'
 import { useTranslation } from 'react-i18next'
+import { WaitingForResponse } from './WaitingForResponse'
 
 interface StreamingMessageProps {
   conversationId: string
@@ -470,6 +471,7 @@ export function StreamingMessage({
       userMessageAlign={CHAT_CONFIG.userMessageAlign}
       userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
       isLoading={isWaitingForAI || !searchDecisionResolved}
+      loadingContent={isWaitingForAI ? <WaitingForResponse /> : undefined}
       isStreaming={isStreaming}
       headerContent={streamingHeaderContent}
       footerContent={streamingImagesContent}

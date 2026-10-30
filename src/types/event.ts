@@ -14,7 +14,12 @@ export interface ChatStreamReasoningEvent {
 
 export interface ChatCompleteEvent {
   conversation_id: string
+  // Null when the generation was stopped before any output
   message: Message | null
+  // The stream broke on this error after producing output; `message` holds
+  // the partial reply
+  error?: string | null
+  cancelled?: boolean
 }
 
 export interface ChatErrorEvent {

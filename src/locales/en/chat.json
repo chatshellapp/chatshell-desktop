@@ -145,5 +145,13 @@
       "yolo": "Yolo",
       "yoloHint": "Run everything without asking"
     }
+  },
+  "turn": {
+    "sendFailed": "Send failed",
+    "stoppedBeforeResponse": "Stopped before a response",
+    "showPreviousReply": "Show previous reply",
+    "runFailed": "Run failed",
+    "runStopped": "Stopped",
+    "waitingForResponse": "Waiting for response"
   }
 }

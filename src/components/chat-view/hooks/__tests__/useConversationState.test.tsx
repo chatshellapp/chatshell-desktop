@@ -25,7 +25,6 @@ const conversation: Conversation = {
 }
 
 const loadMessages = vi.fn()
-const clearApiError = vi.fn()
 
 function seedConversation(overrides: Record<string, unknown> = {}) {
   const state = createDefaultConversationState()
@@ -39,7 +38,6 @@ describe('useConversationState', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     loadMessages.mockReset().mockResolvedValue(undefined)
-    clearApiError.mockReset()
 
     useMessageStore.setState({
       conversationStates: {},
@@ -47,7 +45,6 @@ describe('useConversationState', () => {
       error: null,
       onNewConversationCreated: undefined,
       loadMessages,
-      clearApiError,
     })
     useConversationStore.setState({
       conversations: [],
@@ -76,7 +73,7 @@ describe('useConversationState', () => {
     expect(result.current.isStreaming).toBe(false)
     expect(result.current.isWaitingForAI).toBe(false)
     expect(result.current.hasStreamingData).toBe(false)
-    expect(result.current.apiError).toBeNull()
+    expect(result.current.failedTurn).toBeNull()
     expect(result.current.attachmentStatus).toBe('idle')
     expect(result.current.attachmentRefreshKey).toBe(0)
     expect(result.current.urlStatuses).toEqual({})
@@ -104,7 +101,8 @@ describe('useConversationState', () => {
       hasOlderMessages: true,
       isLoadingOlder: true,
       isLoading: true,
-      apiError: 'boom',
+      failedTurn: { kind: 'failed', error: 'boom', previousReplyId: null },
+      runOutcomes: { m1: { kind: 'stopped' } },
       attachmentStatus: 'processing',
       attachmentRefreshKey: 3,
       urlStatuses: { m1: { 'https://example.com': 'fetching' } },
@@ -125,7 +123,8 @@ describe('useConversationState', () => {
     expect(result.current.hasOlderMessages).toBe(true)
     expect(result.current.isLoadingOlder).toBe(true)
     expect(result.current.isLoading).toBe(true)
-    expect(result.current.apiError).toBe('boom')
+    expect(result.current.failedTurn?.error).toBe('boom')
+    expect(result.current.runOutcomes).toEqual({ m1: { kind: 'stopped' } })
     expect(result.current.attachmentStatus).toBe('processing')
     expect(result.current.attachmentRefreshKey).toBe(3)
     expect(result.current.urlStatuses).toEqual({ m1: { 'https://example.com': 'fetching' } })
@@ -149,29 +148,6 @@ describe('useConversationState', () => {
 
       seedConversation({})
       expect(result.current.hasStreamingData).toBe(false)
-    })
-  })
-
-  describe('handleClearApiError', () => {
-    it('clears the api error for the active conversation', () => {
-      useConversationStore.setState({ currentConversation: conversation })
-      const { result } = renderHook(() => useConversationState())
-
-      act(() => {
-        result.current.handleClearApiError()
-      })
-
-      expect(clearApiError).toHaveBeenCalledWith(CONV)
-    })
-
-    it('does nothing without an active conversation', () => {
-      const { result } = renderHook(() => useConversationState())
-
-      act(() => {
-        result.current.handleClearApiError()
-      })
-
-      expect(clearApiError).not.toHaveBeenCalled()
     })
   })
 })

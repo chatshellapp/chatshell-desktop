@@ -19,6 +19,25 @@ export interface StreamingToolCall {
   reasoningBefore?: string
 }
 
+// A turn whose generation ended without a saved reply. Session-only: it is
+// never persisted, so a blank assistant row can never sync.
+export interface FailedTurn {
+  // 'failed': provider/network error; 'stopped': the user stopped the
+  // generation before any output.
+  kind: 'failed' | 'stopped'
+  error: string | null
+  // The reply a failed regenerate replaced. The backend leaf is moved back
+  // to it, and the failed turn offers to show it again.
+  previousReplyId: string | null
+}
+
+// How a saved reply's run ended when it did not complete normally
+// (partial output kept). Session-only.
+export interface RunOutcome {
+  kind: 'failed' | 'stopped'
+  error?: string
+}
+
 // Per-conversation state
 export interface ConversationState {
   // Tail window of loaded messages (see MESSAGES_PAGE_SIZE); grows upward
@@ -46,8 +65,14 @@ export interface ConversationState {
   urlStatuses: Record<string, Record<string, 'fetching' | 'fetched'>>
   // Track pending search decisions per message: { messageId: true/false }
   pendingSearchDecisions: Record<string, boolean>
-  // API error state - shown when LLM request fails
-  apiError: string | null
+  // Generation that ended without a saved reply (see FailedTurn)
+  failedTurn: FailedTurn | null
+  // Saved replies whose run failed or was stopped: messageId -> outcome
+  runOutcomes: Record<string, RunOutcome>
+  // stopGeneration was requested for the current run
+  stopRequested: boolean
+  // The reply the current regenerate replaces (restored if it fails empty)
+  regenerateTargetId: string | null
   // Track streaming tool calls (MCP): { toolCallId: StreamingToolCall }
   streamingToolCalls: Record<string, StreamingToolCall>
   // Track streaming generated images (base64 data URLs)
@@ -72,7 +97,10 @@ export const createDefaultConversationState = (): ConversationState => ({
   attachmentRefreshKey: 0,
   urlStatuses: {},
   pendingSearchDecisions: {},
-  apiError: null,
+  failedTurn: null,
+  runOutcomes: {},
+  stopRequested: false,
+  regenerateTargetId: null,
   streamingToolCalls: {},
   streamingImages: [],
   pendingMessages: [],
@@ -237,8 +265,15 @@ export interface MessageStoreCrudActions {
     status: 'idle' | 'processing' | 'complete' | 'error'
   ) => void
   incrementAttachmentRefreshKey: (conversationId: string) => void
-  setApiError: (conversationId: string, error: string | null) => void
-  clearApiError: (conversationId: string) => void
+  // Record a generation that ended without a saved reply. A failure (not a
+  // stop) pauses the send queue until the turn is retried or dismissed.
+  failTurn: (conversationId: string, kind: FailedTurn['kind'], error: string | null) => void
+  // Add a reply finished with a non-normal outcome
+  setRunOutcome: (conversationId: string, messageId: string, outcome: RunOutcome) => void
+  // Remove the failed turn and resume the send queue
+  dismissFailedTurn: (conversationId: string) => void
+  // Reload the window onto the restored previous reply and dismiss
+  showPreviousReply: (conversationId: string) => Promise<void>
   cleanupConversation: (conversationId: string) => void
   removeConversationState: (conversationId: string) => void
   enqueueMessage: (conversationId: string, message: PendingMessage) => void

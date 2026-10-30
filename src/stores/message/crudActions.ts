@@ -6,6 +6,7 @@ import type {
   MessageStoreCrudActions,
   SendMessageParameterOverrides,
   PendingMessage,
+  RunOutcome,
 } from './types'
 import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
@@ -204,7 +205,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           convState.streamingContent = ''
           convState.streamingReasoningContent = ''
           convState.streamingToolCalls = {}
-          convState.apiError = null
+          convState.failedTurn = null
+          convState.stopRequested = false
+          convState.regenerateTargetId = null
         }
       })
 
@@ -256,10 +259,16 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
       logger.info('[messageStore] Received user message:', userMessage)
 
-      // Add user message to the conversation
+      // Add user message to the conversation. A resend replaces the
+      // original's branch: the window follows the rewound leaf, so the
+      // original and everything after it leave the window.
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
+          if (siblingOfMessageId) {
+            const idx = convState.messages.findIndex((m: Message) => m.id === siblingOfMessageId)
+            if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
+          }
           convState.messages.push(userMessage)
         }
         draft.isSending = false
@@ -294,9 +303,14 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       logger.info('[messageStore] Stopping generation for conversation:', conversationId)
       await invoke('stop_generation', { conversationId })
 
-      // Only reset sending flag
+      // The completion that follows is a stop, not a normal finish
+      get().getConversationState(conversationId) // Ensure state exists
       set((draft) => {
         draft.isSending = false
+        const convState = draft.conversationStates[conversationId]
+        if (convState) {
+          convState.stopRequested = true
+        }
       })
 
       logger.info('[messageStore] Generation stopped successfully')
@@ -470,12 +484,26 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
+        // The backend rewinds the leaf to the answered user message: the
+        // window follows, dropping the replaced reply and its descendants.
+        // A user target is a retry of a turn without a reply; it keeps the
+        // reply an earlier failed regenerate replaced.
+        const idx = convState.messages.findIndex((m: Message) => m.id === messageId)
+        const target = idx >= 0 ? convState.messages[idx] : undefined
+        if (target?.sender_type === 'user') {
+          convState.messages = convState.messages.slice(0, idx + 1)
+          convState.regenerateTargetId = convState.failedTurn?.previousReplyId ?? null
+        } else {
+          if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
+          convState.regenerateTargetId = messageId
+        }
         convState.isStreaming = true
         convState.isWaitingForAI = true
         convState.streamingContent = ''
         convState.streamingReasoningContent = ''
         convState.streamingToolCalls = {}
-        convState.apiError = null
+        convState.failedTurn = null
+        convState.stopRequested = false
       }
     })
 
@@ -559,28 +587,57 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     })
   },
 
-  setApiError: (conversationId: string, error: string | null) => {
+  failTurn: (conversationId: string, kind: 'failed' | 'stopped', error: string | null) => {
     get().getConversationState(conversationId) // Ensure state exists
+    const previousReplyId = get().conversationStates[conversationId]?.regenerateTargetId ?? null
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
-        convState.apiError = error
-        // Reset streaming states when error occurs
+        convState.failedTurn = { kind, error, previousReplyId }
+        convState.regenerateTargetId = null
+        convState.stopRequested = false
         convState.isStreaming = false
         convState.isWaitingForAI = false
         convState.streamingContent = ''
       }
     })
+    // A regenerate that produced nothing left the backend leaf on the
+    // unanswered user message: point it back at the replaced reply so a
+    // relaunch or another device lands on an answer. The window keeps the
+    // failed turn until the user asks for the previous reply.
+    if (previousReplyId) {
+      invoke('set_active_message', { conversationId, messageId: previousReplyId }).catch(
+        (error) => {
+          logger.error('[messageStore] Failed to restore the previous reply:', error)
+        }
+      )
+    }
   },
 
-  clearApiError: (conversationId: string) => {
+  setRunOutcome: (conversationId: string, messageId: string, outcome: RunOutcome) => {
     get().getConversationState(conversationId) // Ensure state exists
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
-        convState.apiError = null
+        convState.runOutcomes[messageId] = outcome
       }
     })
+  },
+
+  dismissFailedTurn: (conversationId: string) => {
+    get().getConversationState(conversationId) // Ensure state exists
+    set((draft) => {
+      const convState = draft.conversationStates[conversationId]
+      if (convState) {
+        convState.failedTurn = null
+      }
+    })
+    get().processNextPendingMessage(conversationId)
+  },
+
+  showPreviousReply: async (conversationId: string) => {
+    await get().loadMessages(conversationId)
+    get().dismissFailedTurn(conversationId)
   },
 
   cleanupConversation: (conversationId: string) => {
@@ -639,6 +696,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   processNextPendingMessage: (conversationId: string) => {
     const convState = get().getConversationState(conversationId)
     if (convState.pendingMessages.length === 0) return
+    // A failed turn pauses the queue: queued messages would otherwise go
+    // out after an unanswered question. Retry or dismiss resumes it.
+    if (convState.failedTurn?.kind === 'failed') return
 
     const next = convState.pendingMessages[0]
     set((draft) => {

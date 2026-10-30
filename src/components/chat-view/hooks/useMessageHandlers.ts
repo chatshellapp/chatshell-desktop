@@ -240,9 +240,11 @@ export function useMessageHandlers({
         return
       }
 
+      // An assistant target is re-answered as a sibling; a user target is a
+      // retry of a turn that never got a reply and is answered in place.
       const convState = getConversationState(currentConversation.id)
       const message = convState.messages.find((m) => m.id === messageId)
-      if (!message || message.sender_type === 'user') {
+      if (!message) {
         toast.error(t('cannotRegenerateMessage'))
         return
       }

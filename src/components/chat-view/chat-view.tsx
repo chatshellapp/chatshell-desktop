@@ -33,12 +33,12 @@ export function ChatView() {
     isStreaming,
     isWaitingForAI,
     hasStreamingData,
-    apiError,
+    failedTurn,
+    runOutcomes,
     attachmentStatus,
     attachmentRefreshKey,
     urlStatuses,
     pendingMessages,
-    handleClearApiError,
   } = useConversationState()
 
   const loadOlderMessages = useMessageStore((state) => state.loadOlderMessages)
@@ -147,6 +147,21 @@ export function ChatView() {
     void handleExportConversation(null)
   }, [handleExportConversation])
 
+  // Failed turn actions. Retry answers the unanswered user message in place
+  // (the window tail while a failed turn shows).
+  const dismissFailedTurn = useMessageStore((state) => state.dismissFailedTurn)
+  const showPreviousReply = useMessageStore((state) => state.showPreviousReply)
+  const handleRetryFailedTurn = useCallback(() => {
+    const tail = messages[messages.length - 1]
+    if (tail?.sender_type === 'user') void handleRegenerate(tail.id)
+  }, [messages, handleRegenerate])
+  const handleDismissFailedTurn = useCallback(() => {
+    if (conversationId) dismissFailedTurn(conversationId)
+  }, [conversationId, dismissFailedTurn])
+  const handleShowPreviousReply = useCallback(() => {
+    if (conversationId) void showPreviousReply(conversationId)
+  }, [conversationId, showPreviousReply])
+
   const removePendingMessage = useMessageStore((state) => state.removePendingMessage)
   const handleRemovePending = useCallback(
     (index: number) => {
@@ -235,14 +250,18 @@ export function ChatView() {
             showStreamingMessage={showStreamingMessage}
             messageResources={messageResources}
             urlStatuses={urlStatuses}
-            apiError={apiError}
+            failedTurn={failedTurn}
+            runOutcomes={runOutcomes}
+            isStreaming={isStreaming}
             isLoadingOlder={isLoadingOlder || (hasOlderMessages && messages.length === 0)}
             revealAll={revealAll}
             messagesContentRef={messagesContentRef}
             messagesEndRef={messagesEndRef}
             getDisplayInfo={getDisplayInfo}
             getMessageDisplayInfo={getMessageDisplayInfo}
-            onClearApiError={handleClearApiError}
+            onRetryFailedTurn={handleRetryFailedTurn}
+            onDismissFailedTurn={handleDismissFailedTurn}
+            onShowPreviousReply={handleShowPreviousReply}
             onCopy={handleCopy}
             onRevert={handleRevert}
             onDeleteFromHere={handleDeleteFromHere}

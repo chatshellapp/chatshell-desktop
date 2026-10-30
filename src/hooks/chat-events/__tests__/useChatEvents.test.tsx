@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import i18n from '@/lib/i18n'
 import { useChatEvents } from '../useChatEvents'
@@ -278,6 +279,53 @@ describe('useChatEvents', () => {
       expect(convState().messages).toEqual([])
       expect(convState().isStreaming).toBe(false)
       expect(convState().streamingContent).toBe('')
+      // Stopped before any output: a stopped turn, nothing saved
+      expect(convState().failedTurn).toEqual({
+        kind: 'stopped',
+        error: null,
+        previousReplyId: null,
+      })
+    })
+
+    it('marks a partial reply saved after a stream failure', () => {
+      beginStreaming()
+      setupHook()
+
+      emit('chat-complete', {
+        conversation_id: CONV,
+        message: makeMessage('msg-1', 'partial'),
+        error: 'connection reset',
+      })
+
+      expect(convState().messages).toEqual([makeMessage('msg-1', 'partial')])
+      expect(convState().runOutcomes['msg-1']).toEqual({
+        kind: 'failed',
+        error: 'connection reset',
+      })
+      expect(convState().failedTurn).toBeNull()
+    })
+
+    it('marks a partial reply saved after a stop, then resets the stop flag', () => {
+      beginStreaming()
+      setupHook()
+      useMessageStore.setState((state) => {
+        state.conversationStates[CONV].stopRequested = true
+        return state
+      })
+
+      emit('chat-complete', { conversation_id: CONV, message: makeMessage('msg-1', 'partial') })
+
+      expect(convState().runOutcomes['msg-1']).toEqual({ kind: 'stopped' })
+      expect(convState().stopRequested).toBe(false)
+    })
+
+    it('leaves a normal completion without an outcome', () => {
+      beginStreaming()
+      setupHook()
+
+      emit('chat-complete', { conversation_id: CONV, message: makeMessage('msg-1', 'done') })
+
+      expect(convState().runOutcomes).toEqual({})
     })
 
     it('replaces an existing message with the same id instead of duplicating', () => {
@@ -367,14 +415,18 @@ describe('useChatEvents', () => {
 
       emit('chat-error', { conversation_id: CONV, error: 'rate limited' })
 
-      expect(convState().apiError).toBe('rate limited')
+      expect(convState().failedTurn).toEqual({
+        kind: 'failed',
+        error: 'rate limited',
+        previousReplyId: null,
+      })
       expect(convState().isStreaming).toBe(false)
       expect(convState().isWaitingForAI).toBe(false)
       expect(convState().streamingContent).toBe('')
       expect(convState().streamingToolCalls).toEqual({})
     })
 
-    it('dequeues a pending message so the queue is not stranded', () => {
+    it('pauses the queue on a failed turn and resumes it on dismiss', () => {
       beginStreaming()
       setupHook()
       const sendMessage = useMessageStore.getState().sendMessage as Mock
@@ -387,8 +439,33 @@ describe('useChatEvents', () => {
 
       emit('chat-error', { conversation_id: CONV, error: 'boom' })
 
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(convState().pendingMessages).toHaveLength(1)
+
+      useMessageStore.getState().dismissFailedTurn(CONV)
+
+      expect(convState().failedTurn).toBeNull()
       expect(sendMessage.mock.calls[0]?.slice(0, 4)).toEqual(['queued', CONV, 'openai', 'gpt-4o'])
       expect(convState().pendingMessages).toEqual([])
+    })
+
+    it('points the leaf back at the replaced reply when a regenerate fails empty', () => {
+      vi.mocked(invoke).mockResolvedValue(undefined)
+      beginStreaming()
+      setupHook()
+      useMessageStore.setState((state) => {
+        state.conversationStates[CONV].regenerateTargetId = 'reply-1'
+        return state
+      })
+
+      emit('chat-error', { conversation_id: CONV, error: 'boom' })
+
+      expect(convState().failedTurn?.previousReplyId).toBe('reply-1')
+      expect(convState().regenerateTargetId).toBeNull()
+      expect(invoke).toHaveBeenCalledWith('set_active_message', {
+        conversationId: CONV,
+        messageId: 'reply-1',
+      })
     })
   })
 

@@ -111,6 +111,10 @@ pub struct ChatResponse {
     pub content: String,
     pub thinking_content: Option<String>,
     pub tokens: Option<i64>,
+    /// Set when the stream broke on an error after producing output: the
+    /// content is partial and this is the provider error that ended it.
+    #[serde(default)]
+    pub interrupted: Option<String>,
 }
 
 /// Unified function to call any LLM provider (non-streaming)

@@ -84,7 +84,8 @@ describe('useMessageStore', () => {
       expect(state.attachmentRefreshKey).toBe(0)
       expect(state.urlStatuses).toEqual({})
       expect(state.pendingSearchDecisions).toEqual({})
-      expect(state.apiError).toBeNull()
+      expect(state.failedTurn).toBeNull()
+      expect(state.runOutcomes).toEqual({})
       expect(state.streamingToolCalls).toEqual({})
     })
   })
@@ -258,22 +259,28 @@ describe('useMessageStore', () => {
     })
   })
 
-  describe('setApiError', () => {
-    it('should set API error', () => {
-      useMessageStore.getState().setApiError('conv-1', 'API rate limit exceeded')
+  describe('failTurn', () => {
+    it('records a failed turn and clears the streaming state', () => {
+      useMessageStore.getState().setIsStreaming('conv-1', true)
+      useMessageStore.getState().failTurn('conv-1', 'failed', 'API rate limit exceeded')
 
       const state = useMessageStore.getState().getConversationState('conv-1')
-      expect(state.apiError).toBe('API rate limit exceeded')
+      expect(state.failedTurn).toEqual({
+        kind: 'failed',
+        error: 'API rate limit exceeded',
+        previousReplyId: null,
+      })
+      expect(state.isStreaming).toBe(false)
+      expect(state.isWaitingForAI).toBe(false)
     })
   })
 
-  describe('clearApiError', () => {
-    it('should clear API error', () => {
-      useMessageStore.getState().setApiError('conv-1', 'Some error')
-      useMessageStore.getState().clearApiError('conv-1')
+  describe('setRunOutcome', () => {
+    it('records the outcome per message', () => {
+      useMessageStore.getState().setRunOutcome('conv-1', 'm1', { kind: 'stopped' })
 
       const state = useMessageStore.getState().getConversationState('conv-1')
-      expect(state.apiError).toBeNull()
+      expect(state.runOutcomes).toEqual({ m1: { kind: 'stopped' } })
     })
   })
 

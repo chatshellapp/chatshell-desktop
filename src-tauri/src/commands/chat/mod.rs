@@ -135,6 +135,9 @@ pub async fn send_message(
 /// against the same history. The previous reply stays on its own branch,
 /// reachable via the sibling navigator. Attachments and fetched resources
 /// of the user message are reused from storage — nothing is re-fetched.
+///
+/// A user message target is answered in place: this is the retry path for a
+/// turn whose generation failed or was stopped before any reply was saved.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn regenerate_message(
@@ -158,30 +161,8 @@ pub async fn regenerate_message(
 ) -> Result<(), String> {
     super::ensure_no_generation(&state, &conversation_id).await?;
 
-    let target = state
-        .db
-        .get_message(&message_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Message not found: {message_id}"))?;
-    if target.conversation_id.as_deref() != Some(&conversation_id) {
-        return Err(format!(
-            "Message {message_id} does not belong to conversation {conversation_id}"
-        ));
-    }
-    if target.sender_type == "user" {
-        return Err("Cannot regenerate a user message; use resend instead".into());
-    }
-    let parent_id = target
-        .parent_id
-        .clone()
-        .ok_or_else(|| "Message has no parent turn to regenerate from".to_string())?;
-    let parent = state
-        .db
-        .get_message(&parent_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Parent message not found".to_string())?;
+    let parent = regenerate_parent(&state, &conversation_id, &message_id).await?;
+    let parent_id = parent.id.clone();
 
     // Rewind the leaf to the user message; the new assistant reply is
     // created under the same parent and becomes the active variant.
@@ -229,6 +210,40 @@ pub async fn regenerate_message(
         None,
     );
     Ok(())
+}
+
+/// The user message a regenerate answers. A user target is answered in
+/// place (retry of a turn that never got a reply); an assistant target
+/// re-answers its parent.
+async fn regenerate_parent(
+    state: &AppState,
+    conversation_id: &str,
+    message_id: &str,
+) -> Result<Message, String> {
+    let target = state
+        .db
+        .get_message(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Message not found: {message_id}"))?;
+    if target.conversation_id.as_deref() != Some(conversation_id) {
+        return Err(format!(
+            "Message {message_id} does not belong to conversation {conversation_id}"
+        ));
+    }
+    if target.sender_type == "user" {
+        return Ok(target);
+    }
+    let parent_id = target
+        .parent_id
+        .clone()
+        .ok_or_else(|| "Message has no parent turn to regenerate from".to_string())?;
+    state
+        .db
+        .get_message(&parent_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Parent message not found".to_string())
 }
 
 async fn save_user_message(
@@ -795,6 +810,51 @@ mod tests {
             super::super::ensure_no_generation(&state, &conv_id)
                 .await
                 .is_ok()
+        );
+    }
+
+    /// Retry of a turn without a reply targets the user message itself;
+    /// regenerating a reply targets its parent user message.
+    #[tokio::test]
+    async fn regenerate_parent_answers_user_targets_in_place() {
+        let (state, conv_id, _dir) = bare_state().await;
+        let user = state
+            .db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conv_id.clone()),
+                parent_id: None,
+                sender_type: "user".into(),
+                sender_id: None,
+                content: "question".into(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+        let reply = state
+            .db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some(conv_id.clone()),
+                parent_id: Some(user.id.clone()),
+                sender_type: "model".into(),
+                sender_id: None,
+                content: "answer".into(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+
+        let from_user = super::regenerate_parent(&state, &conv_id, &user.id)
+            .await
+            .unwrap();
+        assert_eq!(from_user.id, user.id);
+        let from_reply = super::regenerate_parent(&state, &conv_id, &reply.id)
+            .await
+            .unwrap();
+        assert_eq!(from_reply.id, user.id);
+        assert!(
+            super::regenerate_parent(&state, "other", &user.id)
+                .await
+                .is_err()
         );
     }
 }

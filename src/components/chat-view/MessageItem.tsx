@@ -20,6 +20,8 @@ import { groupOrderedSteps } from '@/lib/step-grouping'
 import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
 import { GeneratedImageGallery } from './GeneratedImageGallery'
+import { RunOutcomeFooter } from './FailedTurn'
+import type { RunOutcome } from '@/stores/message/types'
 
 /**
  * Rough height placeholder for a row that has never rendered (CJK/latin
@@ -35,6 +37,8 @@ interface MessageItemProps {
   /** Previous message in the window; assistant items read the prior user
    * message's resources from it. Null at the window head. */
   prevUserMessage: Message | null
+  /** Session-only outcome of a reply that failed or was stopped mid-run. */
+  runOutcome?: RunOutcome
   messageResources: Record<string, MessageResources>
   urlStatuses: Record<string, Record<string, UrlStatus>>
   getMessageDisplayInfo: (message: Message) => DisplayInfo
@@ -58,6 +62,7 @@ interface MessageItemProps {
 function messageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
   if (prev.message !== next.message) return false
   if (prev.prevUserMessage !== next.prevUserMessage) return false
+  if (prev.runOutcome !== next.runOutcome) return false
   if (prev.getMessageDisplayInfo !== next.getMessageDisplayInfo) return false
   if (
     prev.onCopy !== next.onCopy ||
@@ -96,6 +101,7 @@ function messageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): 
 export const MessageItem = memo(function MessageItem({
   message,
   prevUserMessage,
+  runOutcome,
   messageResources,
   urlStatuses,
   getMessageDisplayInfo,
@@ -303,9 +309,14 @@ export const MessageItem = memo(function MessageItem({
     </>
   ) : undefined
 
-  const generatedImagesContent =
-    assistantImageAttachments.length > 0 ? (
-      <GeneratedImageGallery attachments={assistantImageAttachments} />
+  const footerContent =
+    assistantImageAttachments.length > 0 || runOutcome ? (
+      <>
+        {assistantImageAttachments.length > 0 && (
+          <GeneratedImageGallery attachments={assistantImageAttachments} />
+        )}
+        {runOutcome && <RunOutcomeFooter outcome={runOutcome} onRetry={handleRegenerateClick} />}
+      </>
     ) : undefined
 
   const handleCopyImage = useCallback(async () => {
@@ -383,7 +394,7 @@ export const MessageItem = memo(function MessageItem({
             <SiblingNavigator conversationId={message.conversation_id} messageId={message.id} />
           ) : undefined
         }
-        footerContent={generatedImagesContent}
+        footerContent={footerContent}
         userAfterContent={userAfterContent}
         onCopyOverride={
           assistantImageAttachments.length > 0

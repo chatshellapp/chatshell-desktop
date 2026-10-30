@@ -69,13 +69,17 @@ function WorstCaseHost() {
       showStreamingMessage
       messageResources={{}}
       urlStatuses={{}}
-      apiError={null}
+      failedTurn={null}
+      runOutcomes={{}}
+      isStreaming={false}
       isLoadingOlder={false}
       messagesContentRef={EMPTY_REFS}
       messagesEndRef={EMPTY_REFS}
       getDisplayInfo={getDisplayInfo}
       getMessageDisplayInfo={getMessageDisplayInfo}
-      onClearApiError={noop}
+      onRetryFailedTurn={noop}
+      onDismissFailedTurn={noop}
+      onShowPreviousReply={noop}
       onCopy={noop}
       onRevert={noop}
       onDeleteFromHere={noop}

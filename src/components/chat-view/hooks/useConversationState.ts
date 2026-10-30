@@ -3,7 +3,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore, type MessageStore } from '@/stores/message'
 import { useChatEvents } from '@/hooks/chat-events'
 import type { Message, UrlStatus } from '@/types'
-import type { PendingMessage } from '@/stores/message/types'
+import type { PendingMessage, RunOutcome } from '@/stores/message/types'
 
 // Stable fallbacks so per-field selectors never produce new references and
 // consumers can rely on reference equality.
@@ -11,6 +11,7 @@ const EMPTY_MESSAGES: Message[] = []
 const EMPTY_URL_STATUSES: Record<string, Record<string, UrlStatus>> = {}
 const EMPTY_PENDING_DECISIONS: Record<string, boolean> = {}
 const EMPTY_PENDING_MESSAGES: PendingMessage[] = []
+const EMPTY_RUN_OUTCOMES: Record<string, RunOutcome> = {}
 
 /**
  * Low-frequency conversation state for ChatView.
@@ -45,7 +46,8 @@ export function useConversationState() {
   const pendingSearchDecisions = useMessageStore(
     (state) => conv(state)?.pendingSearchDecisions ?? EMPTY_PENDING_DECISIONS
   )
-  const apiError = useMessageStore((state) => conv(state)?.apiError ?? null)
+  const failedTurn = useMessageStore((state) => conv(state)?.failedTurn ?? null)
+  const runOutcomes = useMessageStore((state) => conv(state)?.runOutcomes ?? EMPTY_RUN_OUTCOMES)
   const pendingMessages = useMessageStore(
     (state) => conv(state)?.pendingMessages ?? EMPTY_PENDING_MESSAGES
   )
@@ -63,7 +65,6 @@ export function useConversationState() {
   })
 
   const loadMessages = useMessageStore((state) => state.loadMessages)
-  const clearApiError = useMessageStore((state) => state.clearApiError)
 
   // Set up event listeners for chat streaming and scraping
   useChatEvents(conversationId)
@@ -74,12 +75,6 @@ export function useConversationState() {
       loadMessages(currentConversation.id)
     }
   }, [currentConversation, loadMessages])
-
-  const handleClearApiError = () => {
-    if (currentConversation) {
-      clearApiError(currentConversation.id)
-    }
-  }
 
   return {
     // Conversation info
@@ -96,7 +91,8 @@ export function useConversationState() {
     isStreaming,
     isWaitingForAI,
     hasStreamingData,
-    apiError,
+    failedTurn,
+    runOutcomes,
 
     // Attachment state
     attachmentStatus,
@@ -104,8 +100,5 @@ export function useConversationState() {
     urlStatuses,
     pendingSearchDecisions,
     pendingMessages,
-
-    // Actions
-    handleClearApiError,
   }
 }

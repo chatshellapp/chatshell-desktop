@@ -111,7 +111,7 @@ export function useChatEvents(conversationId: string | null) {
         current: conversationIdRef.current,
       })
       // Process the event for the specific conversation (no need to check if it's current)
-      handleChatComplete(event.payload.conversation_id, event.payload.message)
+      handleChatComplete(event.payload.conversation_id, event.payload.message, event.payload.error)
     })
 
     // Listen for chat errors (API failures)
