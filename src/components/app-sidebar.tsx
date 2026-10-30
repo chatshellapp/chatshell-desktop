@@ -20,7 +20,6 @@ import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
 import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
-import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
 import { useConversationParticipants } from '@/hooks/useConversationParticipants'
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
@@ -38,12 +37,16 @@ import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
-import type { NavItem } from '@/components/sidebar/sidebar-navigation'
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  activeSection: string
+  onSectionChange: (section: string) => void
+}
+
+export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSidebarProps) {
   const { t } = useTranslation()
   const navItems = React.useMemo(() => getNavItems(t), [t])
-  const [activeItem, setActiveItem] = React.useState<NavItem>(() => getNavItems(t)[0])
+  const activeItem = navItems.find((item) => item.id === activeSection) || navItems[0]
   const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
@@ -53,7 +56,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [promptDialogMode, setPromptDialogMode] = React.useState<'create' | 'edit'>('create')
   const [activeContactsTab, setActiveContactsTab] = React.useState('models')
   const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
-  const { setOpen } = useSidebar()
+  const { setOpen, setOpenMobile } = useSidebar()
   const providerDialogOpen = useProviderSettingsStore((state) => state.open)
   const providerDialogInitialId = useProviderSettingsStore((state) => state.initialProviderId)
   const openProviderSettings = useProviderSettingsStore((state) => state.openProviderSettings)
@@ -69,13 +72,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const togglePromptStar = usePromptStore((state) => state.togglePromptStar)
   const selectedModel = useConversationStore((state) => state.selectedModel)
   const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
-
-  React.useEffect(() => {
-    const updated = navItems.find((item) => item.id === activeItem.id)
-    if (updated && updated.title !== activeItem.title) {
-      setActiveItem(updated)
-    }
-  }, [navItems, activeItem])
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
@@ -156,8 +152,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             onGroupSettings={() => {}}
           />
         )
-      case 'translation':
-        return <TranslationContent />
       case 'library':
         return (
           <LibraryContent
@@ -277,50 +271,54 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar
       collapsible="icon"
       className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      style={
+        activeSection === 'translation'
+          ? ({ '--sidebar-width': 'var(--sidebar-width-icon)' } as React.CSSProperties)
+          : undefined
+      }
       {...props}
     >
       <SidebarNavigation
         navItems={navItems}
         activeItem={activeItem}
         onItemClick={(item) => {
-          setActiveItem(item)
-          setOpen(true)
+          onSectionChange(item.id)
+          setOpen(item.id !== 'translation')
+          setOpenMobile(false)
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
-        onNewConversation={handlers.handleNewConversation}
+        onNewConversation={() => {
+          onSectionChange('conversations')
+          setOpen(true)
+          handlers.handleNewConversation()
+        }}
         user={SIDEBAR_DATA.user}
       />
 
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="gap-3.5 border-b p-4">
-          <div className="flex w-full items-center justify-between h-7">
-            <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0"
-              onClick={() => useSearchStore.getState().setOpen(true)}
-              aria-label="Search chat history"
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-          </div>
-        </SidebarHeader>
-        <SidebarContent
-          className={activeItem.id === 'translation' ? 'gap-0 overflow-hidden' : undefined}
-        >
-          <SidebarGroup className={activeItem.id === 'translation' ? 'flex-1 min-h-0 p-0' : 'px-0'}>
-            <SidebarGroupContent
-              className={
-                activeItem.id === 'translation' ? 'flex-1 min-h-0 flex flex-col' : undefined
-              }
-            >
-              {renderContent()}
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>
-      </Sidebar>
+      {activeSection !== 'translation' && (
+        <Sidebar collapsible="none" className="hidden flex-1 md:flex">
+          <SidebarHeader className="gap-3.5 border-b p-4">
+            <div className="flex w-full items-center justify-between h-7">
+              <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => useSearchStore.getState().setOpen(true)}
+                aria-label="Search chat history"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarGroup className="px-0">
+              <SidebarGroupContent>{renderContent()}</SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+          <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>
+        </Sidebar>
+      )}
 
       <ProviderSettingsDialog
         open={providerDialogOpen}

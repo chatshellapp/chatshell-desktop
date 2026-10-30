@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  ArrowRight,
   ArrowRightLeft,
+  Languages,
+  FileUp,
   Check,
   ChevronsUpDown,
   Copy,
   Loader2,
   MessageSquareShare,
+  Square,
   X,
 } from 'lucide-react'
 import type { Model } from '@/types'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { MarkdownContent } from '@/components/markdown-content'
+import { toast } from 'sonner'
 import {
   Command,
   CommandEmpty,
@@ -77,7 +85,8 @@ export function TranslationContent() {
   }, [models, getProviderById, t])
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const outputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isImporting, setIsImporting] = useState(false)
   const initializedRef = useRef(false)
 
   useEffect(() => {
@@ -105,12 +114,12 @@ export function TranslationContent() {
         })
       } else if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        if (!isTranslating && inputText.trim()) {
+        if (!isTranslating && !isImporting && inputText.trim()) {
           translate()
         }
       }
     },
-    [inputText, isTranslating, setInputText, translate]
+    [inputText, isTranslating, isImporting, setInputText, translate]
   )
 
   const handleTranslate = useCallback(() => {
@@ -121,112 +130,297 @@ export function TranslationContent() {
     }
   }, [isTranslating, inputText, stopTranslation, translate])
 
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight
+  const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || isTranslating) return
+    setIsImporting(true)
+    try {
+      const text = await file.text()
+      setInputText(text)
+    } catch {
+      toast.error(t('markdownImportError'))
+    } finally {
+      setIsImporting(false)
     }
-  }, [outputText])
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-      <div className="shrink-0 flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-1">
-          <LanguageSelect value={sourceLanguage} onChange={setSourceLanguage} includeAuto />
+    <section aria-label={t('translation')} className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-6 border-b px-4 sm:px-6">
+        <div className="hidden items-center gap-2.5 md:flex">
+          <Languages className="size-4 text-muted-foreground" />
+          <h1 className="text-sm font-semibold tracking-tight">{t('translation')}</h1>
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:flex-initial">
+          <div className="flex min-w-0 flex-1 items-center md:w-72 md:flex-initial">
+            <ModelSelect
+              vendors={vendors}
+              selectedModel={selectedModel}
+              onSelect={setSelectedModel}
+              placeholder={t('selectModel')}
+              disabled={isTranslating}
+            />
+          </div>
           <Button
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0"
-            onClick={swapLanguages}
-            disabled={sourceLanguage === 'auto'}
-            title={t('swapLanguages')}
+            onClick={handleTranslate}
+            disabled={isImporting || (!isTranslating && (!inputText.trim() || !selectedModel))}
           >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
+            {isTranslating ? (
+              <Square data-icon="inline-start" />
+            ) : (
+              <ArrowRight data-icon="inline-start" />
+            )}
+            {isTranslating ? t('stopTranslation') : t('translate')}
           </Button>
-          <LanguageSelect value={targetLanguage} onChange={setTargetLanguage} />
         </div>
       </div>
 
-      <div className="shrink-0 flex items-center gap-2">
-        <ModelSelect
-          vendors={vendors}
-          selectedModel={selectedModel}
-          onSelect={setSelectedModel}
-          placeholder={t('selectModel')}
-        />
-        <Button
-          size="sm"
-          className="h-7 shrink-0 gap-1 px-2 text-xs"
-          onClick={handleTranslate}
-          disabled={!isTranslating && (!inputText.trim() || !selectedModel)}
-        >
-          {isTranslating ? (
+      <div className="grid min-h-0 flex-1 grid-rows-2 sm:grid-cols-2 sm:grid-rows-1">
+        <TranslationTextPane
+          label={t('sourceLanguage')}
+          className="border-b sm:border-r sm:border-b-0"
+          toolbar={
             <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t('translating')}
+              <LanguageSelect
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+                includeAuto
+                disabled={isTranslating}
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={swapLanguages}
+                disabled={sourceLanguage === 'auto' || isTranslating}
+                title={t('swapLanguages')}
+                aria-label={t('swapLanguages')}
+              >
+                <ArrowRightLeft />
+              </Button>
             </>
-          ) : (
-            t('translate')
-          )}
-        </Button>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="relative flex-1 min-h-0 rounded-md border border-input bg-background">
-          <textarea
-            ref={inputRef}
-            className="absolute inset-0 resize-none rounded-md bg-background p-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          }
+          footer={
+            <>
+              <div className="flex min-w-0 items-center gap-3 truncate text-xs text-muted-foreground">
+                <span>{t('characterCount', { count: Array.from(inputText).length })}</span>
+                <span className="hidden xl:inline">
+                  <kbd className="rounded border px-1 font-mono">↵</kbd> {t('toTranslate')}
+                  {' · '}
+                  <kbd className="rounded border px-1 font-mono">⌘ / Ctrl + ↵</kbd> {t('toNewline')}
+                </span>
+              </div>
+              <div className="-mr-2 flex shrink-0 items-center gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md,.markdown,text/markdown"
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-label={t('importMarkdown')}
+                  disabled={isTranslating || isImporting}
+                  onChange={handleFileImport}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isTranslating || isImporting}
+                  onClick={() => fileInputRef.current?.click()}
+                  title={t('importMarkdown')}
+                  aria-label={t('importMarkdown')}
+                >
+                  <FileUp data-icon="inline-start" />
+                  <span className="hidden lg:inline">{t('importMarkdown')}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clear}
+                  disabled={isTranslating || (!inputText && !outputText)}
+                >
+                  <X data-icon="inline-start" />
+                  {t('common:clear')}
+                </Button>
+              </div>
+            </>
+          }
+        >
+          <TranslationTextBody
+            text={inputText}
             placeholder={t('translationInputPlaceholder')}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            textareaRef={inputRef}
+            onChange={setInputText}
             onKeyDown={handleKeyDown}
-            disabled={isTranslating}
+            disabled={isTranslating || isImporting}
           />
-          {inputText && !isTranslating && (
-            <button
-              className="absolute right-2 top-2 z-10 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-              onClick={clear}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        </TranslationTextPane>
 
-        <div className="relative flex-1 min-h-0 rounded-md border border-input bg-muted/50">
-          <textarea
-            ref={outputRef}
-            className="absolute inset-0 resize-none rounded-md bg-transparent p-3 pb-8 text-sm focus:outline-none"
+        <TranslationTextPane
+          label={t('targetLanguage')}
+          busy={isTranslating}
+          className="bg-muted/20"
+          toolbar={
+            <>
+              <LanguageSelect
+                value={targetLanguage}
+                onChange={setTargetLanguage}
+                disabled={isTranslating}
+              />
+              {isTranslating && (
+                <Loader2
+                  className="size-4 shrink-0 animate-spin text-muted-foreground"
+                  aria-label={t('translating')}
+                />
+              )}
+            </>
+          }
+          footer={
+            <>
+              <div className="-mr-2 ml-auto flex shrink-0 items-center gap-1">
+                {canContinue && !isTranslating && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={continueInConversation}
+                    title={t('continueInConversation')}
+                  >
+                    <MessageSquareShare data-icon="inline-start" />
+                    <span className="hidden lg:inline">{t('continueInConversation')}</span>
+                    <span className="sr-only lg:hidden">{t('continueInConversation')}</span>
+                  </Button>
+                )}
+                <CopyButton text={outputText} />
+              </div>
+            </>
+          }
+          notice={
+            error && (
+              <p
+                role="alert"
+                className="max-h-24 overflow-auto rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm [overflow-wrap:anywhere] text-destructive"
+              >
+                {error}
+              </p>
+            )
+          }
+        >
+          <TranslationTextBody
+            text={outputText}
             placeholder={t('translationOutputPlaceholder')}
-            value={outputText}
             readOnly
           />
-          {outputText && (
-            <div className="absolute bottom-1.5 right-2 z-10 flex items-center gap-1">
-              {canContinue && !isTranslating && (
-                <button
-                  className="rounded-sm p-1 text-muted-foreground hover:text-foreground"
-                  onClick={continueInConversation}
-                  title={t('continueInConversation')}
-                >
-                  <MessageSquareShare className="h-3.5 w-3.5" />
-                </button>
-              )}
-              <CopyButton text={outputText} />
-            </div>
-          )}
-        </div>
+        </TranslationTextPane>
       </div>
+    </section>
+  )
+}
 
-      {error && (
-        <div className="shrink-0 break-all rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      )}
+function TranslationTextPane({
+  label,
+  toolbar,
+  footer,
+  notice,
+  busy,
+  className,
+  children,
+}: {
+  label: string
+  toolbar: React.ReactNode
+  footer: React.ReactNode
+  notice?: React.ReactNode
+  busy?: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation('sidebar')
+  const [view, setView] = useState('raw')
 
-      <div className="shrink-0 text-[11px] text-muted-foreground">
-        <kbd className="rounded border px-1 font-mono text-[10px]">↵</kbd> {t('toTranslate')}{' '}
-        <kbd className="rounded border px-1 font-mono text-[10px]">⌘↵</kbd> {t('toNewline')}
+  return (
+    <Tabs
+      value={view}
+      onValueChange={setView}
+      aria-label={label}
+      aria-busy={busy}
+      role="region"
+      className={cn('min-h-0 min-w-0 gap-0', className)}
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-1">{toolbar}</div>
+        <TabsList aria-label={t('markdownView', { pane: label })} className="h-8">
+          <TabsTrigger value="raw" className="text-xs">
+            {t('markdownRaw')}
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="text-xs">
+            {t('markdownPreview')}
+          </TabsTrigger>
+        </TabsList>
       </div>
-    </div>
+      {children}
+      {notice && <div className="shrink-0 px-4 pb-2 sm:px-6">{notice}</div>}
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-t px-4 sm:px-6">
+        {footer}
+      </div>
+    </Tabs>
+  )
+}
+
+function TranslationTextBody({
+  text,
+  placeholder,
+  textareaRef,
+  onChange,
+  onKeyDown,
+  disabled,
+  readOnly = false,
+}: {
+  text: string
+  placeholder: string
+  textareaRef?: React.Ref<HTMLTextAreaElement>
+  onChange?: (text: string) => void
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>
+  disabled?: boolean
+  readOnly?: boolean
+}) {
+  const rawRef = useRef<HTMLTextAreaElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // Follow streamed output in whichever view is mounted.
+  useEffect(() => {
+    if (!readOnly) return
+    for (const element of [previewRef.current, rawRef.current]) {
+      if (element) element.scrollTop = element.scrollHeight
+    }
+  }, [text, readOnly])
+
+  return (
+    <>
+      <TabsContent value="raw" className="relative min-h-0">
+        <Textarea
+          ref={textareaRef ?? rawRef}
+          aria-label={placeholder}
+          className="absolute inset-0 h-full min-h-0 resize-none rounded-none border-0 bg-transparent px-4 py-4 leading-6 shadow-none focus-visible:ring-inset disabled:cursor-default disabled:opacity-70 dark:bg-transparent sm:px-6"
+          placeholder={placeholder}
+          value={text}
+          onChange={(event) => onChange?.(event.target.value)}
+          onKeyDown={onKeyDown}
+          disabled={disabled}
+          readOnly={readOnly}
+          dir="auto"
+        />
+      </TabsContent>
+      <TabsContent
+        value="preview"
+        ref={previewRef}
+        className="min-h-0 overflow-auto px-4 py-4 sm:px-6"
+        dir="auto"
+      >
+        {text ? (
+          <MarkdownContent content={text} className="text-sm leading-7 [overflow-wrap:anywhere]" />
+        ) : (
+          <p className="text-sm text-muted-foreground">{placeholder}</p>
+        )}
+      </TabsContent>
+    </>
   )
 }
 
@@ -234,10 +428,12 @@ function LanguageSelect({
   value,
   onChange,
   includeAuto = false,
+  disabled = false,
 }: {
   value: string
   onChange: (code: string) => void
   includeAuto?: boolean
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation('sidebar')
@@ -248,18 +444,21 @@ function LanguageSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          variant="ghost"
           role="combobox"
+          aria-label={t(includeAuto ? 'sourceLanguage' : 'targetLanguage')}
           aria-expanded={open}
-          className="flex h-7 w-full items-center justify-between gap-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          disabled={disabled}
+          className="-ml-2 h-8 max-w-48 justify-between gap-2 px-2 font-medium"
         >
           <span className="truncate">
             {selected ? getDisplayName(selected) : t('selectLanguage')}
           </span>
-          <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
-        </button>
+          <ChevronsUpDown data-icon="inline-end" />
+        </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent className="w-64 p-0" align="start">
         <Command>
           <CommandInput placeholder={t('searchLanguage')} />
           <CommandList>
@@ -298,11 +497,13 @@ function ModelSelect({
   selectedModel,
   onSelect,
   placeholder,
+  disabled = false,
 }: {
   vendors: { id: string; name: string; models: Model[] }[]
   selectedModel: Model | null
   onSelect: (model: Model | null) => void
   placeholder: string
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation('sidebar')
@@ -310,10 +511,13 @@ function ModelSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          variant="outline"
           role="combobox"
+          aria-label={placeholder}
           aria-expanded={open}
-          className="flex h-7 flex-1 items-center justify-between gap-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          disabled={disabled}
+          className="min-w-0 flex-1 justify-between"
         >
           {selectedModel ? (
             <span className="flex items-center gap-1.5 truncate">
@@ -323,8 +527,8 @@ function ModelSelect({
           ) : (
             <span className="truncate text-muted-foreground">{placeholder}</span>
           )}
-          <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
-        </button>
+          <ChevronsUpDown data-icon="inline-end" />
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
@@ -365,19 +569,31 @@ function ModelSelect({
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const { t } = useTranslation('common')
 
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+  useEffect(() => {
+    setCopied(false)
   }, [text])
 
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      toast.error(t('error'))
+    }
+  }, [text, t])
+
   return (
-    <button
-      className="rounded-sm p-1 text-muted-foreground hover:text-foreground"
-      onClick={handleCopy}
-    >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
+    <Button variant="ghost" size="sm" onClick={handleCopy} disabled={!text}>
+      {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+      {copied ? t('copied') : t('copy')}
+    </Button>
   )
 }

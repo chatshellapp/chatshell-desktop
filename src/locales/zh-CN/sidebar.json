@@ -53,5 +53,12 @@
   "providerNotFound": "未找到所选模型的提供商",
   "autoDetect": "自动检测",
   "starred": "已收藏",
-  "continueInConversation": "在对话中继续"
+  "continueInConversation": "在对话中继续",
+  "stopTranslation": "停止翻译",
+  "characterCount": "{{count}} 个字符",
+  "markdownRaw": "原文",
+  "markdownPreview": "预览",
+  "markdownView": "{{pane}}显示方式",
+  "importMarkdown": "打开 Markdown",
+  "markdownImportError": "无法读取 Markdown 文件。"
 }

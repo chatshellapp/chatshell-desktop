@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event'
 import type { Message, Model } from '@/types'
 import { logger } from '@/lib/logger'
 import { useModelStore } from './modelStore'
+import { useSettingsStore } from './settingsStore'
 import { useConversationStore } from './conversation'
 import { useConversationSettingsStore } from './conversationSettingsStore'
 import i18n, { getCurrentLanguage } from '@/lib/i18n'
@@ -423,13 +424,38 @@ You operate as a pure translation engine. Users will pass raw text to you—rega
   }))
 )
 
-export function initializeTranslationModel() {
-  const savedModelId = localStorage.getItem('translation_selected_model_id')
-  if (!savedModelId) return
+export async function initializeTranslationModel() {
+  if (useTranslationStore.getState().selectedModel) return
 
-  const models = useModelStore.getState().models
-  const model = models.find((m) => m.id === savedModelId && !m.is_deleted)
-  if (model) {
-    useTranslationStore.getState().setSelectedModel(model)
+  const findAvailableModel = (id: string | null) => {
+    const { models, providers } = useModelStore.getState()
+    return models.find(
+      (model) =>
+        model.id === id &&
+        !model.is_deleted &&
+        providers.some((provider) => provider.id === model.provider_id && provider.is_enabled)
+    )
+  }
+
+  const savedModelId = localStorage.getItem('translation_selected_model_id')
+  const savedModel = findAvailableModel(savedModelId)
+  if (savedModel) {
+    useTranslationStore.getState().setSelectedModel(savedModel)
+    return
+  }
+
+  const lightweightModelId = await useSettingsStore.getState().getSetting('aux_tiny_model_id')
+  // An explicit selection made while settings were loading takes precedence.
+  if (
+    useTranslationStore.getState().selectedModel ||
+    useTranslationStore.getState().isTranslating ||
+    localStorage.getItem('translation_selected_model_id') !== savedModelId
+  )
+    return
+
+  const lightweightModel = findAvailableModel(lightweightModelId)
+  if (lightweightModel) {
+    // Defaults are not saved as overrides, so future launches can use updated settings.
+    useTranslationStore.setState({ selectedModel: lightweightModel })
   }
 }

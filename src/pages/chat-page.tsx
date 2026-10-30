@@ -4,6 +4,7 @@ import { AlertTriangle, X } from 'lucide-react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
+import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
 import {
@@ -28,6 +29,8 @@ import { useUpdaterStore } from '@/stores/updaterStore'
 
 export function ChatPage() {
   const { t } = useTranslation()
+  const [activeSection, setActiveSection] = useState('conversations')
+  const isTranslation = activeSection === 'translation'
   // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError, keychainAvailable } = useAppInit()
   const [showKeychainWarning, setShowKeychainWarning] = useState(true)
@@ -103,6 +106,15 @@ export function ChatPage() {
 
   const currentConversation = useConversationStore((state) => state.currentConversation)
 
+  // Search and translation continuation can select a conversation outside the sidebar.
+  useEffect(() => {
+    return useConversationStore.subscribe((state, previous) => {
+      if (state.currentConversation?.id !== previous.currentConversation?.id) {
+        setActiveSection((section) => (section === 'translation' ? 'conversations' : section))
+      }
+    })
+  }, [])
+
   // Show loading screen while initializing
   if (!isInitialized) {
     return (
@@ -141,24 +153,38 @@ export function ChatPage() {
           } as React.CSSProperties
         }
       >
-        <AppSidebar />
-        <SidebarInset className="flex flex-col h-screen overflow-hidden">
-          <header className="bg-background flex shrink-0 items-center gap-2 border-b p-4">
-            <SidebarTrigger className="-ml-1" />
+        <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+        <SidebarInset className="flex min-w-0 flex-col h-screen overflow-hidden">
+          <header
+            className={
+              isTranslation
+                ? 'flex shrink-0 items-center gap-2 border-b px-4 py-3 md:hidden'
+                : 'bg-background flex shrink-0 items-center gap-2 border-b p-4'
+            }
+          >
+            <SidebarTrigger className={isTranslation ? '-ml-1 md:hidden' : '-ml-1'} />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">{t('sidebar:conversations')}</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>
-                    {currentConversation
-                      ? currentConversation.title || t('sidebar:newConversation')
-                      : t('chat:selectConversation')}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
+                {isTranslation ? (
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{t('sidebar:translation')}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                ) : (
+                  <>
+                    <BreadcrumbItem className="hidden md:block">
+                      <BreadcrumbLink href="#">{t('sidebar:conversations')}</BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator className="hidden md:block" />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>
+                        {currentConversation
+                          ? currentConversation.title || t('sidebar:newConversation')
+                          : t('chat:selectConversation')}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
               </BreadcrumbList>
             </Breadcrumb>
           </header>
@@ -178,7 +204,7 @@ export function ChatPage() {
               </button>
             </div>
           )}
-          <ChatView />
+          {isTranslation ? <TranslationContent /> : <ChatView />}
         </SidebarInset>
       </SidebarProvider>
       <Toaster position="top-center" />

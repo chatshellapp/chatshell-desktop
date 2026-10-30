@@ -621,40 +621,112 @@ describe('useTranslationStore', () => {
   })
 
   describe('initializeTranslationModel', () => {
-    it('does nothing when no model id was persisted', () => {
+    beforeEach(() => {
+      modelStoreState.providers = [createMockProvider()]
+    })
+    it('does nothing when no model id was persisted', async () => {
       modelStoreState.models = [createMockModel()]
 
-      initializeTranslationModel()
+      await initializeTranslationModel()
 
       expect(useTranslationStore.getState().selectedModel).toBeNull()
     })
 
-    it('restores the persisted model when it is still available', () => {
+    it('restores the persisted model when it is still available', async () => {
       const model = createMockModel()
       modelStoreState.models = [model]
       localStorage.setItem('translation_selected_model_id', 'model-1')
 
-      initializeTranslationModel()
+      await initializeTranslationModel()
 
       expect(useTranslationStore.getState().selectedModel).toEqual(model)
     })
 
-    it('does not restore a model that has been deleted', () => {
+    it('does not restore a model that has been deleted', async () => {
       modelStoreState.models = [createMockModel({ is_deleted: true })]
       localStorage.setItem('translation_selected_model_id', 'model-1')
 
-      initializeTranslationModel()
+      await initializeTranslationModel()
 
       expect(useTranslationStore.getState().selectedModel).toBeNull()
     })
 
-    it('does not restore a model id that no longer exists', () => {
+    it('does not restore a model id that no longer exists', async () => {
       modelStoreState.models = []
       localStorage.setItem('translation_selected_model_id', 'gone-model')
 
-      initializeTranslationModel()
+      await initializeTranslationModel()
 
       expect(useTranslationStore.getState().selectedModel).toBeNull()
+    })
+
+    it('defaults to the configured lightweight model without persisting an override', async () => {
+      const model = createMockModel()
+      modelStoreState.models = [model]
+      invokeMock.mockResolvedValueOnce(model.id)
+
+      await initializeTranslationModel()
+
+      expect(invokeMock).toHaveBeenCalledWith('get_setting', { key: 'aux_tiny_model_id' })
+      expect(useTranslationStore.getState().selectedModel).toEqual(model)
+      expect(localStorage.getItem('translation_selected_model_id')).toBeNull()
+    })
+
+    it('prefers the saved translation selection over the lightweight model', async () => {
+      const model = createMockModel()
+      modelStoreState.models = [model]
+      localStorage.setItem('translation_selected_model_id', model.id)
+
+      await initializeTranslationModel()
+
+      expect(useTranslationStore.getState().selectedModel).toEqual(model)
+      expect(invokeMock).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the lightweight model when the saved selection is unavailable', async () => {
+      const model = createMockModel()
+      modelStoreState.models = [model]
+      localStorage.setItem('translation_selected_model_id', 'missing-model')
+      invokeMock.mockResolvedValueOnce(model.id)
+
+      await initializeTranslationModel()
+
+      expect(useTranslationStore.getState().selectedModel).toEqual(model)
+      expect(localStorage.getItem('translation_selected_model_id')).toBe('missing-model')
+    })
+
+    it.each(['deleted', 'missing', 'disabled-provider', 'missing-provider'])(
+      'does not select an unavailable lightweight model: %s',
+      async (reason) => {
+        modelStoreState.models =
+          reason === 'missing' ? [] : [createMockModel({ is_deleted: reason === 'deleted' })]
+        if (reason === 'disabled-provider')
+          modelStoreState.providers = [createMockProvider({ is_enabled: false })]
+        if (reason === 'missing-provider') modelStoreState.providers = []
+        invokeMock.mockResolvedValueOnce('model-1')
+
+        await initializeTranslationModel()
+
+        expect(useTranslationStore.getState().selectedModel).toBeNull()
+      }
+    )
+
+    it('does not replace a manual selection made while loading the default', async () => {
+      let resolveSetting!: (value: string) => void
+      invokeMock.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSetting = resolve
+          })
+      )
+      const initialization = initializeTranslationModel()
+      const manualModel = createMockModel({ id: 'manual-model' })
+      useTranslationStore.getState().setSelectedModel(manualModel)
+      resolveSetting('model-1')
+
+      await initialization
+
+      expect(useTranslationStore.getState().selectedModel).toEqual(manualModel)
     })
   })
 })

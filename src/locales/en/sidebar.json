@@ -53,5 +53,13 @@
   "providerNotFound": "Provider not found for selected model",
   "autoDetect": "Auto Detect",
   "starred": "Starred",
-  "continueInConversation": "Continue in conversation"
+  "continueInConversation": "Continue in conversation",
+  "stopTranslation": "Stop translation",
+  "characterCount_one": "{{count}} character",
+  "characterCount_other": "{{count}} characters",
+  "markdownRaw": "Raw",
+  "markdownPreview": "Preview",
+  "markdownView": "{{pane}} display",
+  "importMarkdown": "Open Markdown",
+  "markdownImportError": "Could not read the Markdown file."
 }
