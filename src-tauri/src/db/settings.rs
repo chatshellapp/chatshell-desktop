@@ -23,7 +23,7 @@ impl Database {
             .ok()
             .flatten()
             .and_then(|id| SearchProvider::from_id(&id))
-            .unwrap_or_default()
+            .unwrap_or_else(SearchProvider::region_default)
     }
 
     pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
@@ -70,9 +70,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_provider_defaults_to_duckduckgo_when_unset() {
+    async fn search_provider_defaults_to_region_default_when_unset() {
         let (db, _dir) = test_db().await;
-        assert_eq!(db.get_search_provider().await, SearchProvider::DuckDuckGo);
+        // Policy: no stored choice -> the timezone-based default (Baidu in
+        // mainland-China timezones, DuckDuckGo elsewhere).
+        assert_eq!(
+            db.get_search_provider().await,
+            SearchProvider::region_default()
+        );
     }
 
     #[tokio::test]
@@ -94,6 +99,9 @@ mod tests {
         db.set_setting("search_provider", "altavista")
             .await
             .unwrap();
-        assert_eq!(db.get_search_provider().await, SearchProvider::DuckDuckGo);
+        assert_eq!(
+            db.get_search_provider().await,
+            SearchProvider::region_default()
+        );
     }
 }

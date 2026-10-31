@@ -157,7 +157,12 @@ export const useSettingsStore = create<SettingsStore>()(
 
     getSearchProvider: async () => {
       const value = await get().getSetting('search_provider')
-      return (value as SearchProviderId) || 'duckduckgo'
+      if (value) return value as SearchProviderId
+      // No stored choice: mirror the backend's region default (Baidu in
+      // mainland-China timezones, DuckDuckGo elsewhere).
+      return (
+        (get().searchProviders.find((p) => p.is_default)?.id as SearchProviderId) || 'duckduckgo'
+      )
     },
 
     setSearchProvider: async (providerId: SearchProviderId) => {

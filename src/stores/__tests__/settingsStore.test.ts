@@ -190,8 +190,9 @@ describe('useSettingsStore', () => {
   describe('loadSearchProviders', () => {
     it('should load search providers', async () => {
       const mockProviders: SearchProvider[] = [
-        { id: 'duckduckgo', name: 'DuckDuckGo' },
-        { id: 'yahoo', name: 'Yahoo' },
+        { id: 'duckduckgo', name: 'DuckDuckGo', is_default: true },
+        { id: 'yahoo', name: 'Yahoo', is_default: false },
+        { id: 'baidu', name: 'Baidu', is_default: false },
       ]
       mockInvoke.mockResolvedValue(mockProviders)
 
@@ -211,12 +212,21 @@ describe('useSettingsStore', () => {
       expect(provider).toBe('yahoo')
     })
 
-    it('should return duckduckgo as default', async () => {
+    it('should fall back to the region default when no setting is saved', async () => {
       mockInvoke.mockResolvedValue(null)
+      useSettingsStore.setState({ searchProviders: [] })
 
-      const provider = await useSettingsStore.getState().getSearchProvider()
+      // Providers not loaded yet: the legacy global default applies.
+      expect(await useSettingsStore.getState().getSearchProvider()).toBe('duckduckgo')
 
-      expect(provider).toBe('duckduckgo')
+      // Once the backend flags a region default, it wins over the hardcode.
+      useSettingsStore.setState({
+        searchProviders: [
+          { id: 'duckduckgo', name: 'DuckDuckGo', is_default: false },
+          { id: 'baidu', name: 'Baidu', is_default: true },
+        ],
+      })
+      expect(await useSettingsStore.getState().getSearchProvider()).toBe('baidu')
     })
   })
 

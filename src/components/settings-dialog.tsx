@@ -425,6 +425,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         const searchProviderValue = await getSetting('search_provider')
         if (searchProviderValue) {
           setSearchProviderId(searchProviderValue as SearchProviderId)
+        } else {
+          // No stored choice: show the region-aware default engine.
+          if (useSettingsStore.getState().searchProviders.length === 0) {
+            await loadSearchProviders()
+          }
+          const fallback = useSettingsStore.getState().searchProviders.find((p) => p.is_default)
+          if (fallback) setSearchProviderId(fallback.id as SearchProviderId)
         }
 
         // Load web fetch settings

@@ -30,7 +30,7 @@ ChatShell can use its built-in search and fetch tools to gather information and 
 
 ## Why ChatShell?
 
-- **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search uses DuckDuckGo by default, with Yahoo or Baidu available in Settings, so there is no search API key to get. MCP servers are optional.
+- **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search defaults to DuckDuckGo, or Baidu on first launch in a mainland-China timezone, with all engines switchable in Settings, so there is no search API key to get. MCP servers are optional.
 - **Bring any model:** Connect cloud providers with your own API key, or run local models through Ollama or LM Studio. You pay your provider directly, per use.
 - **You decide what runs:** New conversations start in Yolo mode, which runs every tool without asking. In Ask mode, file changes and shell commands wait for your approval; searching and reading still run on their own. Catastrophic commands such as `rm -rf /` are blocked in both modes.
 - **History stays on your device:** Conversations are stored in SQLite locally. Cloud providers receive what you send them; optional iCloud sync uploads encrypted copies.

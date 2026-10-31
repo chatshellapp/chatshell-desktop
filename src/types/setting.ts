@@ -5,7 +5,7 @@ export type { Setting } from './generated/Setting'
 export type { SearchProviderInfo as SearchProvider } from './generated/SearchProviderInfo'
 
 // Known search provider IDs
-export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu'
+export type SearchProviderId = 'duckduckgo' | 'yahoo' | 'baidu' | 'bing'
 
 // Web Fetch types
 export type WebFetchMode = 'local' | 'api'

@@ -14,7 +14,7 @@ pub async fn perform_web_search(
     let search_provider = provider
         .as_deref()
         .and_then(SearchProvider::from_id)
-        .unwrap_or_default();
+        .unwrap_or_else(SearchProvider::region_default);
 
     tracing::info!(
         "🔍 [perform_web_search] Searching for: {} (max {}, provider: {})",
@@ -37,11 +37,13 @@ pub async fn extract_search_keywords(user_input: String) -> Result<String, Strin
 /// Get the list of available search providers
 #[tauri::command]
 pub async fn get_search_providers() -> Result<Vec<SearchProviderInfo>, String> {
+    let default = SearchProvider::region_default();
     Ok(SearchProvider::all()
         .into_iter()
         .map(|p| SearchProviderInfo {
             id: p.id().to_string(),
             name: p.display_name().to_string(),
+            is_default: p == default,
         })
         .collect())
 }
@@ -52,4 +54,7 @@ pub async fn get_search_providers() -> Result<Vec<SearchProviderInfo>, String> {
 pub struct SearchProviderInfo {
     pub id: String,
     pub name: String,
+    /// True on the engine used when the user has not chosen one (region
+    /// default: Baidu in mainland-China timezones, DuckDuckGo elsewhere).
+    pub is_default: bool,
 }

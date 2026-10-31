@@ -19,6 +19,8 @@
 //!   extracted text must be non-empty (example.com also asserts content)
 //! - `CHATSHELL_WEB_E2E_QUERY`      enables the search test; at least one
 //!   result with an http(s) URL must come back
+//! - `CHATSHELL_WEB_E2E_PROVIDER`   optional engine id (e.g. `bing`) to pin
+//!   the search test to one provider instead of the fallback chain
 
 #[cfg(test)]
 mod tests {
@@ -88,6 +90,11 @@ mod tests {
             return;
         };
         println!("web_search E2E query: {query}");
+        let provider = std::env::var("CHATSHELL_WEB_E2E_PROVIDER").ok();
+        println!(
+            "web_search E2E provider: {}",
+            provider.as_deref().unwrap_or("<fallback chain>")
+        );
 
         let tool = WebSearchTool::new();
         let mut context = ToolContext::new();
@@ -98,7 +105,7 @@ mod tests {
                 WebSearchArgs {
                     query,
                     max_results: 5,
-                    provider: None,
+                    provider,
                 },
             ),
         )

@@ -11,7 +11,19 @@ pub enum SearchProvider {
     DuckDuckGo,
     Yahoo,
     Baidu,
+    Bing,
 }
+
+/// Mainland-China timezones, including the legacy IANA aliases Apple
+/// platforms still report (Chongqing/Harbin/Kashgar). DuckDuckGo and Yahoo
+/// are unreachable from the mainland, so these users get Baidu by default.
+pub const CN_TIMEZONES: &[&str] = &[
+    "Asia/Shanghai",
+    "Asia/Urumqi",
+    "Asia/Chongqing",
+    "Asia/Harbin",
+    "Asia/Kashgar",
+];
 
 impl SearchProvider {
     /// Get all available providers
@@ -20,6 +32,7 @@ impl SearchProvider {
             SearchProvider::DuckDuckGo,
             SearchProvider::Yahoo,
             SearchProvider::Baidu,
+            SearchProvider::Bing,
         ]
     }
 
@@ -29,6 +42,7 @@ impl SearchProvider {
             SearchProvider::DuckDuckGo => "DuckDuckGo",
             SearchProvider::Yahoo => "Yahoo",
             SearchProvider::Baidu => "Baidu",
+            SearchProvider::Bing => "Bing",
         }
     }
 
@@ -38,6 +52,7 @@ impl SearchProvider {
             SearchProvider::DuckDuckGo => "duckduckgo",
             SearchProvider::Yahoo => "yahoo",
             SearchProvider::Baidu => "baidu",
+            SearchProvider::Bing => "bing",
         }
     }
 
@@ -47,8 +62,31 @@ impl SearchProvider {
             "duckduckgo" => Some(SearchProvider::DuckDuckGo),
             "yahoo" => Some(SearchProvider::Yahoo),
             "baidu" => Some(SearchProvider::Baidu),
+            "bing" => Some(SearchProvider::Bing),
             _ => None,
         }
+    }
+
+    /// Map an IANA timezone to the engine used when the user has not chosen
+    /// one: Baidu in mainland-China timezones, the global default elsewhere.
+    pub fn for_timezone(tz: &str) -> SearchProvider {
+        if CN_TIMEZONES.contains(&tz) {
+            SearchProvider::Baidu
+        } else {
+            SearchProvider::DuckDuckGo
+        }
+    }
+
+    /// The engine used when the user has not chosen one, resolved from the
+    /// system timezone (`iana-time-zone` normalizes every platform to IANA
+    /// ids, mapping Windows' "China Standard Time" to "Asia/Shanghai").
+    /// Resolved per call and never persisted, so the user's explicit choice
+    /// stays the only stored preference. Falls back to the global default
+    /// when the platform timezone cannot be read.
+    pub fn region_default() -> SearchProvider {
+        iana_time_zone::get_timezone()
+            .map(|tz| SearchProvider::for_timezone(&tz))
+            .unwrap_or_default()
     }
 }
 
@@ -114,12 +152,12 @@ mod tests {
     #[test]
     fn all_lists_every_provider_once() {
         let all = SearchProvider::all();
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
         let mut ids: Vec<_> = all.iter().map(|p| p.id()).collect();
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), all.len(), "duplicate provider id");
-        for expected in ["duckduckgo", "yahoo", "baidu"] {
+        for expected in ["duckduckgo", "yahoo", "baidu", "bing"] {
             assert!(ids.contains(&expected), "missing id {expected}");
         }
     }
@@ -132,6 +170,8 @@ mod tests {
         assert_eq!(SearchProvider::DuckDuckGo.id(), "duckduckgo");
         assert_eq!(SearchProvider::Yahoo.id(), "yahoo");
         assert_eq!(SearchProvider::Baidu.id(), "baidu");
+        assert_eq!(SearchProvider::Bing.display_name(), "Bing");
+        assert_eq!(SearchProvider::Bing.id(), "bing");
     }
 
     #[test]
@@ -139,6 +179,7 @@ mod tests {
         assert_eq!(SearchProvider::DuckDuckGo.to_string(), "duckduckgo");
         assert_eq!(SearchProvider::Yahoo.to_string(), "yahoo");
         assert_eq!(SearchProvider::Baidu.to_string(), "baidu");
+        assert_eq!(SearchProvider::Bing.to_string(), "bing");
     }
 
     #[test]
@@ -155,6 +196,7 @@ mod tests {
             SearchProvider::from_id("Baidu"),
             Some(SearchProvider::Baidu)
         );
+        assert_eq!(SearchProvider::from_id("BING"), Some(SearchProvider::Bing));
     }
 
     #[test]
@@ -170,6 +212,40 @@ mod tests {
         assert_eq!(SearchProvider::default(), SearchProvider::DuckDuckGo);
     }
 
+    // ---- region-aware default ----
+
+    #[test]
+    fn for_timezone_maps_cn_zones_to_baidu() {
+        for tz in CN_TIMEZONES {
+            assert_eq!(
+                SearchProvider::for_timezone(tz),
+                SearchProvider::Baidu,
+                "{tz}"
+            );
+        }
+    }
+
+    #[test]
+    fn for_timezone_keeps_global_default_elsewhere() {
+        // Greater-China regions where DuckDuckGo is reachable stay global,
+        // as does everything unrecognized.
+        for tz in [
+            "Asia/Hong_Kong",
+            "Asia/Macau",
+            "Asia/Taipei",
+            "America/Los_Angeles",
+            "Europe/Berlin",
+            "",
+            "not-a-zone",
+        ] {
+            assert_eq!(
+                SearchProvider::for_timezone(tz),
+                SearchProvider::DuckDuckGo,
+                "{tz}"
+            );
+        }
+    }
+
     // ---- SearchProvider serde ----
 
     #[test]
@@ -178,6 +254,7 @@ mod tests {
             (SearchProvider::DuckDuckGo, "duckduckgo"),
             (SearchProvider::Yahoo, "yahoo"),
             (SearchProvider::Baidu, "baidu"),
+            (SearchProvider::Bing, "bing"),
         ] {
             let json = serde_json::to_string(&provider).unwrap();
             assert_eq!(json, format!("\"{name}\""));

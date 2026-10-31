@@ -5,6 +5,7 @@
 //! - DuckDuckGo (default)
 //! - Yahoo
 //! - Baidu
+//! - Bing
 //!
 //! Providers scrape result pages through a fetch tier chain: plain HTTP
 //! first, then Obscura when the binary is installed (see
@@ -12,6 +13,7 @@
 //! Chrome.
 
 mod baidu;
+mod bing;
 mod decision;
 mod duckduckgo;
 mod types;
@@ -29,6 +31,7 @@ pub use utils::extract_search_keywords;
 
 // Re-export individual search functions
 pub use baidu::search_baidu;
+pub use bing::search_bing;
 pub use duckduckgo::search_duckduckgo;
 pub use yahoo::search_yahoo;
 
@@ -53,6 +56,7 @@ pub async fn search(
         }
         SearchProvider::Yahoo => search_yahoo(query, max_results).await,
         SearchProvider::Baidu => search_baidu(query, max_results).await,
+        SearchProvider::Bing => search_bing(query, max_results).await,
     }
 }
 
@@ -134,13 +138,14 @@ mod tests {
 
     #[test]
     fn provider_order_keeps_preferred_when_it_is_last_in_all() {
-        let order = provider_order(SearchProvider::Baidu);
+        let order = provider_order(SearchProvider::Bing);
         assert_eq!(
             order,
             vec![
-                SearchProvider::Baidu,
+                SearchProvider::Bing,
                 SearchProvider::DuckDuckGo,
-                SearchProvider::Yahoo
+                SearchProvider::Yahoo,
+                SearchProvider::Baidu
             ]
         );
     }
@@ -152,7 +157,8 @@ mod tests {
             vec![
                 SearchProvider::DuckDuckGo,
                 SearchProvider::Yahoo,
-                SearchProvider::Baidu
+                SearchProvider::Baidu,
+                SearchProvider::Bing
             ]
         );
     }
@@ -164,7 +170,8 @@ mod tests {
             vec![
                 SearchProvider::Yahoo,
                 SearchProvider::DuckDuckGo,
-                SearchProvider::Baidu
+                SearchProvider::Baidu,
+                SearchProvider::Bing
             ]
         );
     }

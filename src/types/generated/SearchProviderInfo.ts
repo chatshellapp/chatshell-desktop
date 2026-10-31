@@ -3,4 +3,9 @@
 /**
  * Search provider information for frontend
  */
-export type SearchProviderInfo = { id: string, name: string, };
+export type SearchProviderInfo = { id: string, name: string, 
+/**
+ * True on the engine used when the user has not chosen one (region
+ * default: Baidu in mainland-China timezones, DuckDuckGo elsewhere).
+ */
+is_default: boolean, };
