@@ -4,6 +4,8 @@ Give any AI model, cloud or local, web search, file access, and a shell on your 
 
 **Status:** In active development. Features and behavior may change between releases.
 
+[![Latest release](https://img.shields.io/github/v/release/chatshellapp/chatshell-desktop)](https://github.com/chatshellapp/chatshell-desktop/releases/latest) [![Release date](https://img.shields.io/github/release-date/chatshellapp/chatshell-desktop)](https://github.com/chatshellapp/chatshell-desktop/releases/latest)
+
 Connect a cloud AI provider or a local model, then use it to research topics, work with files, and run commands. Built-in tools work without plugins or MCP servers; additional integrations are optional.
 
 Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
@@ -15,22 +17,22 @@ Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
 ## Quick Start
 
 1. [Download and install ChatShell](https://github.com/chatshellapp/chatshell-desktop/releases/latest) for your platform. The Windows installer is not code-signed yet, so SmartScreen may warn on first run: choose **More info**, then **Run anyway**.
-2. Connect an AI provider with your API key, or configure a local model through Ollama or LM Studio.
+2. Connect an AI provider with your API key (a ChatGPT or Claude subscription cannot be used here), or configure a local model through Ollama or LM Studio.
 3. Select a model that supports tool use, then send:
 
 ```text
 Find things to do in Kyoto on a rainy day and group them by neighborhood.
 ```
 
-ChatShell can use its built-in search and fetch tools to gather information and return a summary. In Ask mode, searching and reading run on their own; file changes and shell commands wait for your approval.
+ChatShell can use its built-in search and fetch tools to gather information and return a summary. New conversations start in Yolo mode, which runs tools without asking. Switch to Ask in the chat input toolbar to approve file changes and shell commands first.
 
 ---
 
 ## Why ChatShell?
 
-- **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search runs through DuckDuckGo, Yahoo, or Baidu, so there is no search API key to get. MCP servers are optional.
+- **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search uses DuckDuckGo by default, with Yahoo or Baidu available in Settings, so there is no search API key to get. MCP servers are optional.
 - **Bring any model:** Connect cloud providers with your own API key, or run local models through Ollama or LM Studio. You pay your provider directly, per use.
-- **You decide what runs:** In Ask mode, searching and reading happen on their own; file changes and shell commands wait for your approval. Yolo mode runs everything without asking. Dangerous shell commands are blocked in both.
+- **You decide what runs:** New conversations start in Yolo mode, which runs every tool without asking. In Ask mode, file changes and shell commands wait for your approval; searching and reading still run on their own. Catastrophic commands such as `rm -rf /` are blocked in both modes.
 - **History stays on your device:** Conversations are stored in SQLite locally. Cloud providers receive what you send them; optional iCloud sync uploads encrypted copies.
 
 **When to use something else:** If you would rather not manage API keys, the official ChatGPT or Claude desktop apps give you their models on a flat subscription, with vendor features such as memory and voice. If you want a longer-established client with a larger community, try Cherry Studio, Msty, or Chatbox.
