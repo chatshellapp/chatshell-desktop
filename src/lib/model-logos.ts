@@ -82,6 +82,7 @@ export function getModelLogoById(modelId: string): string | undefined {
     '(doubao|seedream|ep-202)': doubaoAvatar,
     '(ernie|wenxin|tao-)': wenxinAvatar,
     hunyuan: hunyuanAvatar,
+    '\\bhy[0-9]': hunyuanAvatar,
     '(sparkdesk|generalv|spark)': sparkAvatar,
     'yi-': yiAvatar,
     '(cohere|command-r)': cohereAvatar,

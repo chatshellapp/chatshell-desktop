@@ -21,17 +21,18 @@ import cerebrasLogo from '@/assets/avatars/providers/cerebras.png'
 import zhipuLogo from '@/assets/avatars/providers/zhipu.png'
 import yiLogo from '@/assets/avatars/providers/yi.png'
 import baichuanLogo from '@/assets/avatars/providers/baichuan.png'
-import alibabaLogo from '@/assets/avatars/providers/alibaba.png'
+import bailianLogo from '@/assets/avatars/providers/bailian.png'
 import stepfunLogo from '@/assets/avatars/providers/stepfun.png'
-import doubaoLogo from '@/assets/avatars/providers/doubao.png'
-import hunyuanLogo from '@/assets/avatars/providers/hunyuan.png'
-import tencentLogo from '@/assets/avatars/providers/tencent.png'
-import baiduLogo from '@/assets/avatars/providers/baidu.png'
+import tencentCloudLogo from '@/assets/avatars/providers/tencentcloud.png'
+import baiduCloudLogo from '@/assets/avatars/providers/baiducloud.png'
 import siliconflowLogo from '@/assets/avatars/providers/siliconflow.png'
 import modelscopeLogo from '@/assets/avatars/providers/modelscope.png'
 import mimoLogo from '@/assets/avatars/providers/mimo.png'
 import ollamaLogo from '@/assets/avatars/providers/ollama.png'
 import lmstudioLogo from '@/assets/avatars/providers/lmstudio.png'
+import zaiLogo from '@/assets/avatars/providers/zai.png'
+import volcengineLogo from '@/assets/avatars/providers/volcengine.png'
+import zenmuxLogo from '@/assets/avatars/providers/zenmux.png'
 
 const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -55,15 +56,16 @@ const PROVIDER_LOGOS: Record<string, string> = {
   nvidia: nvidiaLogo,
   huggingface: huggingfaceLogo,
   cerebras: cerebrasLogo,
+  zenmux: zenmuxLogo,
+  zai: zaiLogo,
   zhipu: zhipuLogo,
   yi: yiLogo,
   baichuan: baichuanLogo,
-  dashscope: alibabaLogo,
+  dashscope: bailianLogo,
   stepfun: stepfunLogo,
-  doubao: doubaoLogo,
-  hunyuan: hunyuanLogo,
-  tencent_cloud_ti: tencentLogo,
-  baidu_cloud: baiduLogo,
+  doubao: volcengineLogo,
+  tokenhub: tencentCloudLogo,
+  baidu_cloud: baiduCloudLogo,
   siliconflow: siliconflowLogo,
   modelscope: modelscopeLogo,
   mimo: mimoLogo,
@@ -100,18 +102,18 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   nvidia: 'NVIDIA NIM',
   huggingface: 'Hugging Face',
   cerebras: 'Cerebras',
+  zenmux: 'ZenMux',
   lmstudio: 'LM Studio',
   gpustack: 'GPUStack',
   ovms: 'OVMS',
   // Chinese AI
+  zai: 'Z.ai',
   zhipu: 'Zhipu AI',
   yi: '01.AI',
   baichuan: 'Baichuan',
-  dashscope: 'Alibaba Qwen',
+  dashscope: 'Alibaba Cloud Bailian',
   stepfun: 'StepFun',
-  doubao: 'Doubao',
-  hunyuan: 'Tencent Hunyuan',
-  tencent_cloud_ti: 'Tencent Cloud TI',
+  doubao: 'Volcengine',
   baidu_cloud: 'Baidu Cloud',
   siliconflow: 'SiliconFlow',
   modelscope: 'ModelScope',
