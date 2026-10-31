@@ -46,12 +46,12 @@ describe('SiblingNavigator', () => {
 
     expect(screen.getByText('2/2')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Previous variant' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Previous version' }))
     expect(setActiveBranch).toHaveBeenCalledWith(CONV, 'u1')
 
     // At the tail of the group (the mocked switch does not move the
     // window), Previous stays enabled and Next is disabled.
-    expect(screen.getByRole('button', { name: 'Previous variant' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Next variant' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Previous version' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Next version' })).toBeDisabled()
   })
 })

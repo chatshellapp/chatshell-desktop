@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GitBranch } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMessageStore } from '@/stores/message'
 import { logger } from '@/lib/logger'
 import { requestTranscriptScroll } from '@/lib/transcript-scroll'
@@ -12,7 +13,8 @@ interface SiblingNavigatorProps {
 
 /**
  * `‹ i/N ›` branch switcher for message-tree sibling variants
- * (resend/regenerate alternates). Subscribes to the message store directly
+ * (resend/regenerate alternates). Hovering the counter explains what the
+ * versions are. Subscribes to the message store directly
  * so the surrounding memoized message rows do not re-render on branch
  * changes — only the navigators do.
  *
@@ -64,9 +66,25 @@ function SiblingNavigator({ conversationId, messageId }: SiblingNavigatorProps) 
       >
         <ChevronLeft className="h-3 w-3" />
       </Button>
-      <span className="tabular-nums">
-        {index + 1}/{siblings.length}
-      </span>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="flex items-center gap-1 tabular-nums cursor-default"
+              aria-label={t('versionOf', { current: index + 1, total: siblings.length })}
+            >
+              <GitBranch className="h-3 w-3" />
+              {index + 1}/{siblings.length}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">
+            <p className="font-medium">
+              {t('versionOf', { current: index + 1, total: siblings.length })}
+            </p>
+            <p className="opacity-80">{t('versionsHint')}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <Button
         variant="ghost"
         size="sm"
