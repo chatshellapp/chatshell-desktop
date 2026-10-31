@@ -4,6 +4,7 @@ import { Clock } from 'lucide-react'
 import { ChatInput } from '@/components/chat-input'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { PendingMessageItem } from './PendingMessageItem'
+import { WelcomeState } from './WelcomeState'
 import { MessageList } from './MessageList'
 import { PermissionApprovalDialog } from './PermissionApprovalDialog'
 import { useSearchStore } from '@/stores/searchStore'
@@ -213,9 +214,7 @@ export function ChatView() {
                 <p className="text-sm animate-pulse">{t('loadingMessages')}</p>
               </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                <p>{t('noMessagesStart')}</p>
-              </div>
+              <WelcomeState canChat={!!selectedModel || !!selectedAssistant} />
             )
           ) : (
             <MessageList

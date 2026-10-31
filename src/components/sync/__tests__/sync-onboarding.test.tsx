@@ -122,9 +122,9 @@ describe('onboarding flow: provider stage -> embedded sync step', () => {
     renderDialogs()
 
     // Detected + auto-imported: acknowledge, but keep the provider stage
-    // visible ("Add More Providers") instead of silently skipping it.
+    // visible ("Connect another service") instead of silently skipping it.
     expect(await screen.findByText('Ollama is ready')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add more providers/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /connect another service/i })).toBeInTheDocument()
     expect(useOnboardingStore.getState().step).toBe('local-ready')
     expect(screen.queryByText('Sync your chats across devices')).toBeNull()
 
@@ -143,7 +143,7 @@ describe('onboarding flow: provider stage -> embedded sync step', () => {
 
     renderDialogs()
 
-    expect(await screen.findByText('Configure a provider to get started')).toBeInTheDocument()
+    expect(await screen.findByText('Connect an AI model to get started')).toBeInTheDocument()
     expect(useOnboardingStore.getState().step).toBe('no-provider')
     expect(screen.queryByText('Sync your chats across devices')).toBeNull()
   })

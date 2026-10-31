@@ -118,11 +118,21 @@ export function InputToolbar({
     <InputGroupAddon align="block-end">
       {/* Add attachment dropdown */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <InputGroupButton variant="outline" className="rounded-full" size="icon-xs">
-            <Plus />
-          </InputGroupButton>
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <InputGroupButton
+                variant="outline"
+                className="rounded-full"
+                size="icon-xs"
+                aria-label={t('addToMessage')}
+              >
+                <Plus />
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t('addToMessage')}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem]">
           <DropdownMenuItem onClick={onUserPromptSelect} className="gap-2">
             <Sparkles className="size-4" />
@@ -160,11 +170,21 @@ export function InputToolbar({
 
       {/* Settings dropdown */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <InputGroupButton variant="outline" className="rounded-full" size="icon-xs">
-            <Settings2 />
-          </InputGroupButton>
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <InputGroupButton
+                variant="outline"
+                className="rounded-full"
+                size="icon-xs"
+                aria-label={t('conversationOptions')}
+              >
+                <Settings2 />
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t('conversationOptions')}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent side="top" align="start" className="[--radius:0.95rem] min-w-[200px]">
           {/* <DropdownMenuItem className="gap-2 justify-between" onSelect={(e) => e.preventDefault()}>
             <div className="flex items-center gap-2">

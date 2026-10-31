@@ -2,11 +2,11 @@
   "welcome": "Welcome to ChatShell",
   "settingUp": "Setting up ChatShell...",
   "checkingForModels": "Checking for available models",
-  "setupProvider": "Setup your LLM provider",
-  "configureProvider": "Configure a provider to get started",
-  "configureProviderDesc": "To start chatting, you'll need to configure an AI provider. Choose from local options like Ollama or cloud services like OpenAI and OpenRouter.",
+  "setupProvider": "Connect a model",
+  "configureProvider": "Connect an AI model to get started",
+  "configureProviderDesc": "ChatShell works with the AI service you choose. Paste an API key from OpenAI, Anthropic, or OpenRouter, or use a free model running on your own computer with Ollama.",
   "ollamaReady": "Ollama is ready",
-  "ollamaFoundModels": "Found {{count}} local model(s), imported automatically. Your AI runs on your machine - fast and private. You can add more providers anytime.",
-  "addMoreProviders": "Add More Providers",
+  "ollamaFoundModels": "Found {{count}} model(s) running on this computer and added them for you. They are private and work offline. You can connect other services anytime.",
+  "addMoreProviders": "Connect another service",
   "continue": "Continue"
 }

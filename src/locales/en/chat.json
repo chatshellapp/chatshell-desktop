@@ -4,7 +4,7 @@
   "stopGenerating": "Stop generating",
   "stop": "Stop",
   "send": "Send",
-  "typeMessage": "Type a message...",
+  "typeMessage": "Ask anything...",
   "attachFiles": "Attach files",
   "dragDropFiles": "Drag & drop files here",
   "orClickToUpload": "or click to upload",
@@ -34,6 +34,8 @@
   "attachFile": "File",
   "attachImage": "Image",
   "attachWebPage": "Web Page",
+  "addToMessage": "Add files, images, or a prompt",
+  "conversationOptions": "Conversation options",
   "parameters": "Parameters",
   "context": "Context",
   "toolsAndMcp": "Tools & MCP",
@@ -80,7 +82,6 @@
   "builtinSkills": "Built-in Skills",
   "preset": "Preset",
   "systemPromptDisabledTooltip": "System prompt can only be changed when the conversation is empty",
-  "noMessagesStart": "No messages yet. Start a conversation!",
   "loadingEarlierMessages": "Loading earlier messages…",
   "loadingMessages": "Loading messages…",
   "dragToResize": "Drag to resize",
@@ -163,5 +164,32 @@
     "steps_other": "{{count}} steps",
     "failedTools_one": "{{count}} tool failed",
     "failedTools_other": "{{count}} tools failed"
+  },
+  "welcome": {
+    "title": "What can I help with?",
+    "subtitle": "Ask anything. ChatShell can search the web, read your files, and get things done on your computer.",
+    "pickModelTitle": "Choose a model to start",
+    "pickModelBody": "Pick a model from the menu at the bottom of the message box.",
+    "noModelTitle": "Connect an AI model to start",
+    "noModelBody": "Add an API key from a service like OpenAI or OpenRouter, or use a model running on your own computer with Ollama.",
+    "connectModel": "Connect a model",
+    "starters": {
+      "search": {
+        "title": "Search the web",
+        "prompt": "What are the most important news stories today? Summarize the top 5 and include the sources."
+      },
+      "files": {
+        "title": "Tidy up a folder",
+        "prompt": "Look through my Downloads folder and suggest a simple way to organize it. Don't move or delete anything yet."
+      },
+      "write": {
+        "title": "Help me write",
+        "prompt": "Help me write a short, friendly email to my team about moving our weekly meeting to Thursday."
+      },
+      "explain": {
+        "title": "Explain something",
+        "prompt": "Explain how compound interest works in simple terms, with a small example."
+      }
+    }
   }
 }

@@ -7,14 +7,6 @@ import { ChatView } from '@/components/chat-view'
 import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
@@ -164,29 +156,13 @@ export function ChatPage() {
           >
             <SidebarTrigger className={isTranslation ? '-ml-1 md:hidden' : '-ml-1'} />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                {isTranslation ? (
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>{t('sidebar:translation')}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                ) : (
-                  <>
-                    <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#">{t('sidebar:conversations')}</BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator className="hidden md:block" />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>
-                        {currentConversation
-                          ? currentConversation.title || t('sidebar:newConversation')
-                          : t('chat:selectConversation')}
-                      </BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </>
-                )}
-              </BreadcrumbList>
-            </Breadcrumb>
+            <h1 className="min-w-0 truncate text-sm font-medium">
+              {isTranslation
+                ? t('sidebar:translation')
+                : currentConversation
+                  ? currentConversation.title || t('sidebar:newConversation')
+                  : t('chat:selectConversation')}
+            </h1>
           </header>
           <SyncLockedBanner />
           {!keychainAvailable && showKeychainWarning && (

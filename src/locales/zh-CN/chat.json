@@ -4,7 +4,7 @@
   "stopGenerating": "停止生成",
   "stop": "停止",
   "send": "发送",
-  "typeMessage": "输入消息...",
+  "typeMessage": "问点什么...",
   "attachFiles": "附加文件",
   "dragDropFiles": "拖拽文件到这里",
   "orClickToUpload": "或点击上传",
@@ -34,6 +34,8 @@
   "attachFile": "文件",
   "attachImage": "图片",
   "attachWebPage": "网页",
+  "addToMessage": "添加文件、图片或提示词",
+  "conversationOptions": "对话选项",
   "parameters": "参数",
   "context": "上下文",
   "toolsAndMcp": "工具和 MCP",
@@ -80,7 +82,6 @@
   "builtinSkills": "内置技能",
   "preset": "预设",
   "systemPromptDisabledTooltip": "对话有消息后无法修改系统提示词",
-  "noMessagesStart": "暂无消息，开始对话吧！",
   "loadingEarlierMessages": "正在加载更早的消息…",
   "loadingMessages": "正在加载消息…",
   "dragToResize": "拖动以调整大小",
@@ -161,5 +162,32 @@
     "stopped": "已停止",
     "steps_other": "{{count}} 个步骤",
     "failedTools_other": "{{count}} 个工具失败"
+  },
+  "welcome": {
+    "title": "有什么可以帮你？",
+    "subtitle": "随便问。ChatShell 可以搜索网页、读取你的文件，并在电脑上帮你完成任务。",
+    "pickModelTitle": "选择一个模型即可开始",
+    "pickModelBody": "在输入框底部的菜单中选择一个模型。",
+    "noModelTitle": "连接一个 AI 模型即可开始",
+    "noModelBody": "添加 OpenAI、OpenRouter 等服务的 API 密钥，或使用通过 Ollama 在本机运行的模型。",
+    "connectModel": "连接模型",
+    "starters": {
+      "search": {
+        "title": "搜索网页",
+        "prompt": "今天最重要的新闻有哪些？请总结前 5 条并附上来源。"
+      },
+      "files": {
+        "title": "整理文件夹",
+        "prompt": "查看我的下载文件夹，并建议一个简单的整理方法。暂时不要移动或删除任何文件。"
+      },
+      "write": {
+        "title": "帮我写作",
+        "prompt": "帮我写一封简短友好的邮件，通知团队每周例会改到周四。"
+      },
+      "explain": {
+        "title": "解释概念",
+        "prompt": "用简单的话解释复利是怎么回事，并举一个小例子。"
+      }
+    }
   }
 }
