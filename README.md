@@ -1,6 +1,6 @@
 # ChatShell
 
-A desktop AI agent with built-in web search, file editing, and shell tools.
+Give any AI model, cloud or local, web search, file access, and a shell on your desktop, with nothing extra to set up.
 
 **Status:** In active development. Features and behavior may change between releases.
 
@@ -14,7 +14,7 @@ Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
 
 ## Quick Start
 
-1. [Download and install ChatShell](https://github.com/chatshellapp/chatshell-desktop/releases/latest) for your platform.
+1. [Download and install ChatShell](https://github.com/chatshellapp/chatshell-desktop/releases/latest) for your platform. The Windows installer is not code-signed yet, so SmartScreen may warn on first run: choose **More info**, then **Run anyway**.
 2. Connect an AI provider with your API key, or configure a local model through Ollama or LM Studio.
 3. Select a model that supports tool use, then send:
 
@@ -22,7 +22,29 @@ Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
 Find things to do in Kyoto on a rainy day and group them by neighborhood.
 ```
 
-ChatShell can use its built-in search and fetch tools to gather information and return a summary. In Ask mode, review and approve tool calls before they run.
+ChatShell can use its built-in search and fetch tools to gather information and return a summary. In Ask mode, searching and reading run on their own; file changes and shell commands wait for your approval.
+
+---
+
+## Why ChatShell?
+
+- **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search runs through DuckDuckGo, Yahoo, or Baidu, so there is no search API key to get. MCP servers are optional.
+- **Bring any model:** Connect cloud providers with your own API key, or run local models through Ollama or LM Studio. You pay your provider directly, per use.
+- **You decide what runs:** In Ask mode, searching and reading happen on their own; file changes and shell commands wait for your approval. Yolo mode runs everything without asking. Dangerous shell commands are blocked in both.
+- **History stays on your device:** Conversations are stored in SQLite locally. Cloud providers receive what you send them; optional iCloud sync uploads encrypted copies.
+
+**When to use something else:** If you would rather not manage API keys, the official ChatGPT or Claude desktop apps give you their models on a flat subscription, with vendor features such as memory and voice. If you want a longer-established client with a larger community, try Cherry Studio, Msty, or Chatbox.
+
+---
+
+## Security and Data
+
+- **No telemetry:** ChatShell sends no usage data. Update checks go to `dl.chatshell.app`, with GitHub Releases as a fallback.
+- **Where data goes:** Conversations stay in local SQLite. Cloud providers receive only what you send them. Optional iCloud sync uploads encrypted copies.
+- **Secrets:** API keys and MCP tokens are encrypted with AES-256-GCM; the master key is held in the OS credential store.
+- **Builds:** macOS builds are signed and notarized by Seedvector LLC. Updates are signature-verified before install. Windows builds are not yet code-signed.
+- **Support:** ChatShell is maintained by Seedvector LLC. [GitHub issues](https://github.com/chatshellapp/chatshell-desktop/issues) get a first response within a week.
+- **Reporting vulnerabilities:** See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -56,25 +78,13 @@ See [more example tasks](docs/example-tasks.md) for research, coding, automation
 
 ---
 
-## Why ChatShell?
-
-- **Tools included:** Search the web, read and edit files, and run shell commands without installing plugins or configuring external tool servers.
-- **Cloud or local models:** Connect your preferred provider or use a local model through Ollama or LM Studio.
-- **Reusable assistants:** Save model, prompt, tool, and skill selections for different tasks.
-- **Local history:** Conversations are stored in SQLite on your device. Cloud providers receive the content you send them; optional iCloud sync uploads encrypted copies.
-- **Optional extensions:** Add reusable instructions through skills, or connect external tools through the Model Context Protocol (MCP).
-
-ChatShell provides the desktop interface and tools; you supply the model connection. Available capabilities depend on the selected model.
-
----
-
 ## More Features
 
 - **Keep conversations useful:** Search past messages, branch a conversation, and export replies as Markdown or images.
 - **Work with attachments:** Add documents, images, and web pages. Image understanding and generation require compatible models.
-- **Translate text:** Use the sidebar translator, then continue in a conversation for follow-up questions.
+- **Translate text:** Translate in a full-page view with source and result side by side, then continue in a conversation for follow-up questions.
 - **Reuse your setup:** Save prompts and assistants for tasks you do regularly.
-- **Choose tool permissions:** Review tool calls in Ask mode or allow autonomous execution in YOLO mode.
+- **Extend it:** Add reusable instructions through skills, or connect external tools through the Model Context Protocol (MCP).
 - **Sync optionally:** Sync encrypted conversation history and attachments through iCloud Drive on supported macOS and iOS builds.
 
 See the [feature guide](docs/features.md) for tool details, provider configuration, skills, integrations, and storage behavior.
@@ -86,6 +96,6 @@ See the [feature guide](docs/features.md) for tool details, provider configurati
 - [Documentation](https://chatshell.app/docs)
 - [Development and contributing](CONTRIBUTING.md)
 - [Report a bug](https://github.com/chatshellapp/chatshell-desktop/issues)
-- [Report a security vulnerability](https://github.com/chatshellapp/chatshell-desktop/security/advisories)
+- [Report a security vulnerability](SECURITY.md)
 - [Apache 2.0 license](LICENSE)
 - [Acknowledgements](docs/acknowledgements.md)
