@@ -129,7 +129,7 @@ export function ChatPage() {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-lg text-red-500">{t('common:failedToInitialize')}</p>
+          <p className="text-lg text-destructive">{t('common:failedToInitialize')}</p>
           <p className="text-sm text-muted-foreground">{initError}</p>
         </div>
       </div>
@@ -166,14 +166,14 @@ export function ChatPage() {
           </header>
           <SyncLockedBanner />
           {!keychainAvailable && showKeychainWarning && (
-            <div className="flex items-center justify-between gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
+            <div className="flex items-center justify-between gap-2 bg-warning/10 border-b border-warning/20 px-4 py-2 text-sm text-warning">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>{t('common:keychainWarning')}</span>
               </div>
               <button
                 onClick={() => setShowKeychainWarning(false)}
-                className="p-1 hover:bg-amber-500/20 rounded transition-colors"
+                className="p-1 hover:bg-warning/15 rounded transition-colors"
                 aria-label="Dismiss warning"
               >
                 <X className="h-4 w-4" />

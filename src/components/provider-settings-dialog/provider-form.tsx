@@ -271,7 +271,7 @@ export function ProviderForm({
           </div>
         )}
         {checkStatus === 'success' && (
-          <p className="text-xs text-green-600 dark:text-green-400">{t('connectionSuccessful')}</p>
+          <p className="text-xs text-success">{t('connectionSuccessful')}</p>
         )}
         {checkStatus !== 'failed' && checkStatus !== 'success' && (
           <p className="text-xs text-muted-foreground">{t('yourApiKeyWillBeStored')}</p>

@@ -117,8 +117,8 @@ export function OnboardingDialog() {
       case 'no-provider':
         return (
           <div className="flex flex-col items-center justify-center py-8 space-y-6">
-            <div className="rounded-full bg-cyan-500/10 p-4">
-              <BotIcon className="size-12 text-cyan-500" />
+            <div className="rounded-2xl bg-muted p-4">
+              <BotIcon className="size-10 text-foreground" />
             </div>
             <div className="text-center space-y-2">
               <h3 className="text-xl font-semibold">{t('configureProvider')}</h3>
@@ -135,8 +135,8 @@ export function OnboardingDialog() {
       case 'local-ready':
         return (
           <div className="flex flex-col items-center justify-center py-8 space-y-6">
-            <div className="rounded-full bg-green-500/10 p-4">
-              <CheckCircle2 className="size-12 text-green-500" />
+            <div className="rounded-2xl bg-success/10 p-4">
+              <CheckCircle2 className="size-10 text-success" />
             </div>
             <div className="text-center space-y-2">
               <h3 className="text-xl font-semibold">{t('ollamaReady')}</h3>

@@ -131,7 +131,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
             onKeyDown={(e) => e.key === 'Enter' && joinPassphrase && handleJoin()}
             placeholder={t('locked.placeholder')}
           />
-          {errorText && <p className="text-sm text-red-500">{errorText}</p>}
+          {errorText && <p className="text-sm text-destructive">{errorText}</p>}
         </div>
       ) : passphrase === null ? (
         <div className="space-y-4">
@@ -171,9 +171,7 @@ export function SyncOnboardingCard({ onDone }: { onDone?: () => void }) {
             <Checkbox checked={saved} onCheckedChange={(v) => setSaved(v === true)} />
             <span className="text-muted-foreground">{t('onboarding.confirmSaved')}</span>
           </label>
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            {t('onboarding.recoveryEducation')}
-          </p>
+          <p className="text-xs text-warning">{t('onboarding.recoveryEducation')}</p>
         </div>
       )}
 

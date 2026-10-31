@@ -241,7 +241,7 @@ export function SearchResultPreview({
                 className="w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/30"
               >
                 <p className="text-xs text-foreground truncate">{item.title}</p>
-                <p className="text-[11px] text-muted-foreground/70 truncate">{item.url}</p>
+                <p className="text-2xs text-muted-foreground/70 truncate">{item.url}</p>
                 {item.snippet && (
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
                     {item.snippet}
@@ -283,9 +283,9 @@ export function SearchDecisionPreview({ decision }: { decision: SearchDecision }
         className="flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors cursor-pointer"
       >
         {decision.search_needed ? (
-          <CheckCircle2 className="h-3.5 w-3.5 text-green-500/80 flex-shrink-0" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-success flex-shrink-0" />
         ) : (
-          <XCircle className="h-3.5 w-3.5 text-yellow-500/80 flex-shrink-0" />
+          <XCircle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
         )}
 
         <span className="text-xs text-muted-foreground truncate">

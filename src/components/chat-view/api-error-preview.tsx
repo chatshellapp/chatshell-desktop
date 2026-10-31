@@ -142,10 +142,10 @@ function StatusBadge({
   const label = text || getStatusLabel(code, t)
   const colorClass =
     code >= 500
-      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+      ? 'bg-destructive/10 text-destructive'
       : code >= 400
-        ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
-        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+        ? 'bg-warning/10 text-warning'
+        : 'bg-muted text-muted-foreground'
 
   return (
     <span

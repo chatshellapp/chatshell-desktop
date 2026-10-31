@@ -89,7 +89,7 @@ export function SidebarNavigation({
       <SidebarFooter className="gap-2">
         <button
           onClick={onNewConversation}
-          className="mx-auto flex size-8 items-center justify-center rounded-full bg-black text-white hover:bg-black/80 transition-colors dark:bg-white dark:text-black dark:hover:bg-white/80"
+          className="mx-auto flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/85 transition-colors"
           title={t('sidebar:newConversation')}
         >
           <MessageSquarePlus className="size-4" />

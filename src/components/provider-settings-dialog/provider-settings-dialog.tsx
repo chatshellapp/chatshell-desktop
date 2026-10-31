@@ -291,7 +291,7 @@ export function ProviderSettingsDialog({
             </div>
             <DialogFooter className="shrink-0 border-t p-4 sm:justify-end items-center gap-3">
               {savedWithoutModels && (
-                <p className="mr-auto text-sm text-amber-600">{t('addModelsBeforeChatting')}</p>
+                <p className="mr-auto text-sm text-warning">{t('addModelsBeforeChatting')}</p>
               )}
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
                 {t('common:cancel')}

@@ -294,8 +294,8 @@ export function ModelSelectorDropdown({
     } else {
       return (
         <>
-          {needsSetup && <AlertCircle className="size-3 text-amber-600" />}
-          <span className={cn('text-xs', needsSetup && 'text-amber-600')}>
+          {needsSetup && <AlertCircle className="size-3 text-warning" />}
+          <span className={cn('text-xs', needsSetup && 'text-warning')}>
             {getSelectionDisplay()}
           </span>
         </>
@@ -364,7 +364,7 @@ export function ModelSelectorDropdown({
               <div className="px-2 py-3 text-center">
                 <p className="text-xs text-muted-foreground">{t('noModelsAvailable')}</p>
                 <DropdownMenuItem
-                  className="mt-2 justify-center text-xs text-amber-600"
+                  className="mt-2 justify-center text-xs text-warning"
                   onSelect={openSetup}
                 >
                   <AlertCircle className="size-3.5" />

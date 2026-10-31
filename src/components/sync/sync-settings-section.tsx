@@ -151,13 +151,11 @@ export function SyncSettingsSection() {
         <p className="text-sm">
           {enabled ? t('settings.statusEnabled') : t('settings.statusDisabled')}
           {enabled && needsPassphrase && (
-            <span className="ml-2 text-amber-600 dark:text-amber-400">
-              {t('settings.statusLocked')}
-            </span>
+            <span className="ml-2 text-warning">{t('settings.statusLocked')}</span>
           )}
         </p>
         {enabled && lastError && (
-          <p className="text-sm text-red-500 max-w-md">
+          <p className="text-sm text-destructive max-w-md">
             {t('settings.lastErrorPrefix')} {lastError}
           </p>
         )}
@@ -233,7 +231,7 @@ export function SyncSettingsSection() {
             }}
             placeholder={t('locked.placeholder')}
           />
-          {errorText && <p className="text-sm text-red-500">{errorText}</p>}
+          {errorText && <p className="text-sm text-destructive">{errorText}</p>}
           <DialogFooter>
             <Button onClick={handleUnlock} disabled={!passphrase || busy}>
               {t('locked.unlock')}

@@ -168,7 +168,7 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
         {/* Footer with Save Button */}
         <div className="shrink-0 border-t p-4 flex items-center justify-end gap-2">
           {savedWithoutModels && (
-            <p className="mr-auto text-sm text-amber-600">{t('addModelsBeforeChatting')}</p>
+            <p className="mr-auto text-sm text-warning">{t('addModelsBeforeChatting')}</p>
           )}
           <Button
             onClick={handleSave}

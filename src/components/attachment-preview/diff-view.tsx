@@ -11,13 +11,13 @@ interface DiffViewProps {
 const ROW_CLASSES: Record<DiffRow['type'], string> = {
   hunk: 'bg-muted/50 text-muted-foreground/60',
   context: 'text-foreground/80',
-  add: 'bg-green-500/10 text-green-700 dark:text-green-400',
-  remove: 'bg-red-500/10 text-red-700 dark:text-red-400',
+  add: 'bg-success/10 text-success',
+  remove: 'bg-destructive/10 text-destructive',
 }
 
 const SEGMENT_CLASSES = {
-  add: 'bg-green-500/30 rounded-[2px]',
-  remove: 'bg-red-500/30 rounded-[2px]',
+  add: 'bg-success/25 rounded-[2px]',
+  remove: 'bg-destructive/25 rounded-[2px]',
 }
 
 function rowMarker(type: DiffRow['type']): string {
@@ -129,22 +129,22 @@ export function DiffStatsBadge({ additions, deletions }: { additions: number; de
       title={`+${additions} -${deletions}`}
       data-testid="diff-stats"
     >
-      <span className="text-[10px] font-mono text-green-600 dark:text-green-400">+{additions}</span>
+      <span className="text-2xs font-mono text-success">+{additions}</span>
       <span className="flex gap-[2px] items-center">
         {blocks.map((block, i) => (
           <span
             key={i}
             className={`h-2 w-2 rounded-[2px] ${
               block === 'add'
-                ? 'bg-green-500/70'
+                ? 'bg-success/70'
                 : block === 'remove'
-                  ? 'bg-red-500/70'
+                  ? 'bg-destructive/70'
                   : 'bg-muted'
             }`}
           />
         ))}
       </span>
-      <span className="text-[10px] font-mono text-red-600 dark:text-red-400">-{deletions}</span>
+      <span className="text-2xs font-mono text-destructive">-{deletions}</span>
     </span>
   )
 }

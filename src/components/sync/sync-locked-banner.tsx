@@ -46,7 +46,7 @@ export function SyncLockedBanner() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
+      <div className="flex items-center justify-between gap-2 bg-warning/10 border-b border-warning/20 px-4 py-2 text-sm text-warning">
         <div className="flex items-center gap-2">
           <Lock className="h-4 w-4 shrink-0" />
           <span>{t('locked.banner')}</span>
@@ -69,7 +69,7 @@ export function SyncLockedBanner() {
             onKeyDown={(e) => e.key === 'Enter' && passphrase && handleUnlock()}
             placeholder={t('locked.placeholder')}
           />
-          {errorText && <p className="text-sm text-red-500">{errorText}</p>}
+          {errorText && <p className="text-sm text-destructive">{errorText}</p>}
           <DialogFooter>
             <Button onClick={handleUnlock} disabled={!passphrase || busy}>
               {t('locked.unlock')}

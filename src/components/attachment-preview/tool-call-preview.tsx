@@ -78,7 +78,7 @@ function StatusIcon({
     return <Ban className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
   }
   if (status === 'error') {
-    return <XCircle className="h-3.5 w-3.5 text-red-500/80 flex-shrink-0" />
+    return <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />
   }
   if (status === 'success') {
     const Icon = getToolIcon(parsed)
@@ -109,17 +109,17 @@ function ErrorBlock({ error }: { error: string }) {
   const isHumanized = message !== error
   return (
     <div className="space-y-1" data-testid="tool-error">
-      <p className="text-xs text-red-500/80 uppercase tracking-wider">
+      <p className="text-xs text-destructive uppercase tracking-wider">
         {t('toolCallPreview.error')}
       </p>
-      <div className="text-xs text-red-400/90 leading-relaxed bg-red-500/10 rounded p-2">
+      <div className="text-xs text-destructive leading-relaxed bg-destructive/10 rounded-md p-2">
         <p className="whitespace-pre-wrap break-words">{message}</p>
         {isHumanized && (
           <details className="mt-1">
-            <summary className="text-[10px] text-muted-foreground/60 cursor-pointer select-none">
+            <summary className="text-2xs text-muted-foreground/60 cursor-pointer select-none">
               {t('toolCallPreview.rawErrorDetail')}
             </summary>
-            <pre className="mt-1 text-xs text-red-400/70 whitespace-pre-wrap break-words overflow-x-auto">
+            <pre className="mt-1 text-xs text-destructive/80 whitespace-pre-wrap break-words overflow-x-auto">
               {error}
             </pre>
           </details>

@@ -23,7 +23,7 @@ describe('DiffView', () => {
 
   it('renders word-level highlight spans on changed lines', () => {
     render(<DiffView oldText={'const x = 1\n'} newText={'const x = 2\n'} />)
-    const highlighted = document.querySelectorAll('.bg-red-500\\/30, .bg-green-500\\/30')
+    const highlighted = document.querySelectorAll('.bg-destructive\\/25, .bg-success\\/25')
     expect(highlighted.length).toBeGreaterThanOrEqual(2)
     expect([...highlighted].map((el) => el.textContent)).toContain('1')
     expect([...highlighted].map((el) => el.textContent)).toContain('2')
@@ -60,14 +60,14 @@ describe('DiffStatsBadge', () => {
     // 5 blocks: 3-4 green, rest red, none empty-only
     const blocks = badge.querySelectorAll('.h-2')
     expect(blocks).toHaveLength(5)
-    expect(badge.querySelectorAll('.bg-green-500\\/70').length).toBeGreaterThanOrEqual(3)
+    expect(badge.querySelectorAll('.bg-success\\/70').length).toBeGreaterThanOrEqual(3)
   })
 
   it('renders only green blocks for pure additions', () => {
     render(<DiffStatsBadge additions={10} deletions={0} />)
     const badge = screen.getByTestId('diff-stats')
-    expect(badge.querySelectorAll('.bg-green-500\\/70')).toHaveLength(5)
-    expect(badge.querySelectorAll('.bg-red-500\\/70')).toHaveLength(0)
+    expect(badge.querySelectorAll('.bg-success\\/70')).toHaveLength(5)
+    expect(badge.querySelectorAll('.bg-destructive\\/70')).toHaveLength(0)
   })
 
   it('renders nothing when there are no changes', () => {

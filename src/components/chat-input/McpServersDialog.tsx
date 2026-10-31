@@ -148,16 +148,16 @@ export function McpServersDialog({
                   if (status === 'connecting')
                     return (
                       <span
-                        className={`${dotClass} bg-yellow-500 animate-pulse`}
+                        className={`${dotClass} bg-warning animate-pulse`}
                         title={t('connecting')}
                       />
                     )
                   if (status === 'connected')
-                    return <span className={`${dotClass} bg-green-500`} title={t('connected')} />
+                    return <span className={`${dotClass} bg-success`} title={t('connected')} />
                   if (status === 'needs_auth')
                     return (
                       <span
-                        className={`${dotClass} bg-yellow-500`}
+                        className={`${dotClass} bg-warning`}
                         title={t('authorizationRequired')}
                       />
                     )
@@ -165,7 +165,7 @@ export function McpServersDialog({
                     return (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={`${dotClass} bg-red-500 cursor-help`} />
+                          <span className={`${dotClass} bg-destructive cursor-help`} />
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[250px]">
                           {error || 'Connection failed'}
@@ -300,7 +300,7 @@ export function McpServersDialog({
         </DialogHeader>
 
         {modelSupportsToolUse === false && (
-          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
             <Info className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{t('toolsUnsupportedByModelBanner')}</span>
           </div>

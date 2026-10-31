@@ -27,7 +27,7 @@ export function CodeBlock({ language, code, flat = false }: CodeBlockProps) {
         <span
           className={
             flat
-              ? 'text-[10px] text-muted-foreground font-mono'
+              ? 'text-2xs text-muted-foreground font-mono'
               : 'text-xs text-muted-foreground font-mono'
           }
         >
@@ -35,18 +35,18 @@ export function CodeBlock({ language, code, flat = false }: CodeBlockProps) {
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
           aria-label={copied ? t('attachments:copied') : t('attachments:copyCode')}
         >
           {copied ? (
             <>
               <Check className="h-3 w-3" />
-              <span className="text-[10px]">{t('attachments:copied')}</span>
+              <span className="text-2xs">{t('attachments:copied')}</span>
             </>
           ) : (
             <>
               <Copy className="h-3 w-3" />
-              <span className="text-[10px]">{t('attachments:copy')}</span>
+              <span className="text-2xs">{t('attachments:copy')}</span>
             </>
           )}
         </button>

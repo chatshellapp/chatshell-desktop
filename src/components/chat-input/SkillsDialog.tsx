@@ -170,7 +170,7 @@ export function SkillsDialog({
         </DialogHeader>
 
         {modelSupportsToolUse === false && (
-          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-700 dark:text-yellow-400">
+          <div className="mx-6 mt-1 flex items-start gap-2 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
             <Info className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{t('toolsUnsupportedByModelBanner')}</span>
           </div>

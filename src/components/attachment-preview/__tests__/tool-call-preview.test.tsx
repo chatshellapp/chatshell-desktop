@@ -148,7 +148,7 @@ describe('ToolCallPreview collapsed header stats', () => {
       />
     )
     expect(screen.getByTestId('diff-stats').textContent).toMatch(/\+3/)
-    expect(screen.getByTestId('diff-stats').querySelectorAll('.bg-green-500\\/70')).toHaveLength(5)
+    expect(screen.getByTestId('diff-stats').querySelectorAll('.bg-success\\/70')).toHaveLength(5)
     unmount()
 
     render(

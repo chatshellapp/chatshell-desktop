@@ -115,14 +115,14 @@ function ProviderStatus({ count }: { count: number }) {
   if (count === 0) {
     return (
       <span className="ml-auto" title={t('needsModels')}>
-        <AlertTriangle className="size-3 text-amber-600" />
+        <AlertTriangle className="size-3 text-warning" />
         <span className="sr-only">{t('needsModels')}</span>
       </span>
     )
   }
 
   return (
-    <span className="ml-auto text-[10px] text-muted-foreground" title={t('modelCount', { count })}>
+    <span className="ml-auto text-2xs text-muted-foreground" title={t('modelCount', { count })}>
       {count}
     </span>
   )

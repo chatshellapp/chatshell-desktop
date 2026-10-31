@@ -734,28 +734,28 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               if (status === 'connecting')
                                 return (
                                   <span
-                                    className={`${dotClass} bg-yellow-500 animate-pulse`}
+                                    className={`${dotClass} bg-warning animate-pulse`}
                                     title={t('connecting')}
                                   />
                                 )
                               if (status === 'connected')
                                 return (
                                   <span
-                                    className={`${dotClass} bg-green-500`}
+                                    className={`${dotClass} bg-success`}
                                     title={t('connected')}
                                   />
                                 )
                               if (status === 'needs_auth')
                                 return (
                                   <span
-                                    className={`${dotClass} bg-yellow-500`}
+                                    className={`${dotClass} bg-warning`}
                                     title={t('authorizationRequired')}
                                   />
                                 )
                               if (status === 'error')
                                 return (
                                   <span
-                                    className={`${dotClass} bg-red-500`}
+                                    className={`${dotClass} bg-destructive`}
                                     title={t('connectionFailed')}
                                   />
                                 )
@@ -837,7 +837,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                       {/* OAuth discovery info */}
                       {isNeedsAuth && probe?.status === 'needs_oauth' && (
-                        <p className="text-xs text-muted-foreground bg-yellow-500/10 rounded px-2 py-1.5">
+                        <p className="text-xs text-muted-foreground bg-warning/10 rounded-md px-2 py-1.5">
                           {t('serverRequiresOauth')}
                           {probe.scopes_supported?.length
                             ? t('scopes', { scopes: probe.scopes_supported.join(', ') })
