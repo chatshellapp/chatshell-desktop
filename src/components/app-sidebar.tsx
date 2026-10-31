@@ -289,7 +289,6 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         onSettingsClick={() => setSettingsDialogOpen(true)}
         onNewConversation={() => {
           onSectionChange('conversations')
-          setOpen(true)
           handlers.handleNewConversation()
         }}
         user={SIDEBAR_DATA.user}

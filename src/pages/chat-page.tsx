@@ -139,6 +139,7 @@ export function ChatPage() {
   return (
     <>
       <SidebarProvider
+        defaultOpen={false}
         style={
           {
             '--sidebar-width': '350px',
