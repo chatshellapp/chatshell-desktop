@@ -920,7 +920,10 @@ mod tests {
     async fn window_pagination_covers_full_history_exactly_once() {
         let (db, _dir) = test_db().await;
         let conv = db
-            .create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
+            .create_conversation(crate::models::CreateConversationRequest {
+                id: None,
+                title: "t".into(),
+            })
             .await
             .unwrap();
         let conv_id = conv.id.as_str();
@@ -1001,10 +1004,13 @@ mod tests {
     }
 
     async fn conv(db: &Database) -> String {
-        db.create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
-            .await
-            .unwrap()
-            .id
+        db.create_conversation(crate::models::CreateConversationRequest {
+            id: None,
+            title: "t".into(),
+        })
+        .await
+        .unwrap()
+        .id
     }
 
     async fn send(db: &Database, conv_id: &str, content: &str) -> Message {

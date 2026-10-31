@@ -432,6 +432,7 @@ mod tests {
             .await
             .expect("db init");
         db.create_conversation(crate::models::CreateConversationRequest {
+            id: None,
             title: title.to_string(),
         })
         .await
@@ -567,6 +568,7 @@ mod tests {
 
         // Write through the sqlx pool (another connection) -> dirty.
         db.create_conversation(crate::models::CreateConversationRequest {
+            id: None,
             title: "second".to_string(),
         })
         .await
@@ -739,6 +741,7 @@ mod tests {
 
         // Same-session write through the app pool (a second connection).
         db.create_conversation(crate::models::CreateConversationRequest {
+            id: None,
             title: "second".to_string(),
         })
         .await

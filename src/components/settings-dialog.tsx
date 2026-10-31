@@ -313,9 +313,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         return
       }
       const conversationStore = useConversationStore.getState()
-      const conversation = await conversationStore.createConversation('')
       conversationStore.setPendingInput(t('logDiagnosisPrompt', { paths: paths.join('\n') }))
-      await conversationStore.selectConversation(conversation.id)
+      await conversationStore.openDraftConversation()
       onOpenChange(false)
     } catch (error) {
       logger.error('Failed to start log diagnosis:', error)

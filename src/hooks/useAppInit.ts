@@ -19,8 +19,7 @@ export function useAppInit() {
   const [error, setError] = useState<string | null>(null)
   const [keychainAvailable, setKeychainAvailable] = useState(true)
 
-  // Use selectors only for reactive state (conversations/models)
-  const conversations = useConversationStore((state) => state.conversations)
+  // Use selectors only for reactive state (current conversation/models)
   const currentConversation = useConversationStore((state) => state.currentConversation)
   const models = useModelStore((state) => state.models)
 
@@ -163,38 +162,16 @@ export function useAppInit() {
     }
   }, [])
 
-  // Once conversations are loaded, handle initial model/assistant selection
+  // Land on a new draft conversation (the welcome screen) at launch and
+  // whenever the current one goes away, e.g. after it is deleted. The model is
+  // the last used one or is picked by the default-model effect below.
   useEffect(() => {
-    const conversationStore = useConversationStore.getState()
-    const modelStore = useModelStore.getState()
-
-    if (conversations.length > 0 && !conversationStore.currentConversation) {
-      // Case 1: Has conversation history - select the most recent conversation
-      // The conversation's last joined model/assistant will be auto-selected by selectConversation
-      logger.info(
-        `[useAppInit] Found ${conversations.length} conversations, selecting most recent...`
-      )
-      const mostRecentConv = conversations[0] // Already sorted by updated_at DESC
-      useConversationStore.getState().selectConversation(mostRecentConv.id)
-      logger.info(
-        '[useAppInit] Selected most recent conversation, last joined model/assistant will be used'
-      )
-    } else if (conversations.length === 0) {
-      // No conversation history - determine default model selection
-      logger.info('[useAppInit] No conversation history, determining default model...')
-      const defaultModel = pickDefaultModel(modelStore.models)
-
-      if (!defaultModel) {
-        // Case 4: No models at all - don't select anything
-        logger.info('[useAppInit] No models available, no selection')
-      } else {
-        logger.info('[useAppInit] Selecting default model:', defaultModel.name)
-        conversationStore.setSelectedModel(defaultModel)
-        // Mark as initialized since we've set a default
-        useConversationStore.setState({ isFirstConversationSinceStartup: false })
-      }
-    }
-  }, [conversations])
+    if (!isInitialized || error || currentConversation) return
+    useConversationStore
+      .getState()
+      .openDraftConversation()
+      .catch((err) => logger.error('[useAppInit] Failed to open a draft conversation:', err))
+  }, [isInitialized, error, currentConversation])
 
   // Models can appear after initialization (a provider was configured in
   // Settings). Without this the composer stayed on "Select model or

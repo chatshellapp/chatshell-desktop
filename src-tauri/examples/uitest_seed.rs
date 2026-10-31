@@ -39,6 +39,7 @@ impl Seeder {
         let conv = self
             .db
             .create_conversation(CreateConversationRequest {
+                id: None,
                 title: title.into(),
             })
             .await

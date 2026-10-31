@@ -9,6 +9,37 @@ import type {
 } from '@/types'
 import type { ImmerSet, StoreGet, ConversationStoreActions } from './types'
 import { logger } from '@/lib/logger'
+import { uuidv7 } from '@/lib/uuid'
+
+// Shared in-flight save so a double send cannot insert the draft twice
+let savingDraft: Promise<void> | null = null
+
+// A conversation without its own model/assistant participant continues with
+// whatever was used last
+function selectLastUsed(set: ImmerSet, get: StoreGet) {
+  const state = get()
+  // Only use lastUsedModel if it's not soft-deleted
+  if (state.lastUsedModel && !state.lastUsedModel.is_deleted) {
+    get().setSelectedModel(state.lastUsedModel)
+    logger.info(
+      '[conversationStore] No participant found, using lastUsedModel:',
+      state.lastUsedModel.name
+    )
+  } else if (state.lastUsedAssistant) {
+    get().setSelectedAssistant(state.lastUsedAssistant)
+    logger.info(
+      '[conversationStore] No participant found, using lastUsedAssistant:',
+      state.lastUsedAssistant.name
+    )
+  } else {
+    // Only clear if we have no lastUsed either
+    set((draft) => {
+      draft.selectedModel = null
+      draft.selectedAssistant = null
+    })
+    logger.info('[conversationStore] No model/assistant found, cleared selection')
+  }
+}
 
 export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreActions => ({
   loadConversations: async () => {
@@ -116,7 +147,68 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
     }
   },
 
+  openDraftConversation: async () => {
+    const existing = get().draftConversation
+    if (existing && get().currentConversation?.id === existing.id) {
+      return existing
+    }
+
+    const now = new Date().toISOString()
+    const draftConversation: Conversation = {
+      id: uuidv7(),
+      title: '',
+      created_at: now,
+      updated_at: now,
+    }
+    const previousDraftId = existing?.id
+    set((draft) => {
+      draft.draftConversation = draftConversation
+      draft.currentConversation = draftConversation
+      draft.currentParticipants = []
+    })
+    selectLastUsed(set, get)
+
+    const { useConversationSettingsStore } = await import('../conversationSettingsStore')
+    const settingsStore = useConversationSettingsStore.getState()
+    if (previousDraftId) {
+      settingsStore.removeSettings(previousDraftId)
+    }
+    await settingsStore.startDraft(draftConversation.id)
+    logger.info('[conversationStore] Opened draft conversation:', draftConversation.id)
+    return draftConversation
+  },
+
+  saveDraftConversation: async (id: string) => {
+    const draftConversation = get().draftConversation
+    if (draftConversation?.id === id && !savingDraft) {
+      savingDraft = (async () => {
+        const req: CreateConversationRequest = { id, title: draftConversation.title }
+        const conversation = await invoke<Conversation>('create_conversation', { req })
+        logger.info('[conversationStore] Saved draft conversation:', conversation.id)
+        set((draft) => {
+          draft.draftConversation = null
+          draft.conversations.unshift(conversation)
+          if (draft.currentConversation?.id === id) {
+            draft.currentConversation = conversation
+          }
+        })
+      })().finally(() => {
+        savingDraft = null
+      })
+    }
+    if (savingDraft) {
+      await savingDraft
+    }
+
+    // Separate from the insert so a failed settings write is retried on the next send
+    const { useConversationSettingsStore } = await import('../conversationSettingsStore')
+    await useConversationSettingsStore.getState().persistDraft(id)
+  },
+
   selectConversation: async (id: string) => {
+    // A draft has no database row to load; it is already in memory
+    if (id === get().draftConversation?.id) return
+
     try {
       // Don't cleanup here - preserve streaming state across conversation switches
       // The streaming state is now tracked per conversation ID
@@ -125,14 +217,19 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       logger.info('[conversationStore] Selected conversation:', conversation)
 
       if (conversation) {
+        const abandonedDraftId = get().draftConversation?.id
         set((draft) => {
           draft.currentConversation = conversation
+          draft.draftConversation = null
         })
         // Load participants for this conversation
         await get().loadParticipants(id)
 
         // Load conversation settings from database
         const { useConversationSettingsStore } = await import('../conversationSettingsStore')
+        if (abandonedDraftId) {
+          useConversationSettingsStore.getState().removeSettings(abandonedDraftId)
+        }
         await useConversationSettingsStore.getState().loadSettings(id)
 
         // Set selected model/assistant based on conversation participants (select the LAST joined one)
@@ -187,28 +284,7 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
           }
         } else {
           // No participants yet - use lastUsed model/assistant to maintain continuity
-          const state = get()
-          // Only use lastUsedModel if it's not soft-deleted
-          if (state.lastUsedModel && !state.lastUsedModel.is_deleted) {
-            get().setSelectedModel(state.lastUsedModel)
-            logger.info(
-              '[conversationStore] No participant found, using lastUsedModel:',
-              state.lastUsedModel.name
-            )
-          } else if (state.lastUsedAssistant) {
-            get().setSelectedAssistant(state.lastUsedAssistant)
-            logger.info(
-              '[conversationStore] No participant found, using lastUsedAssistant:',
-              state.lastUsedAssistant.name
-            )
-          } else {
-            // Only clear if we have no lastUsed either
-            set((draft) => {
-              draft.selectedModel = null
-              draft.selectedAssistant = null
-            })
-            logger.info('[conversationStore] No model/assistant found, cleared selection')
-          }
+          selectLastUsed(set, get)
         }
 
         // When no model/assistant is selected, reset tools/skills to global defaults
@@ -337,14 +413,18 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
   bumpConversation: (id: string, lastMessage?: string) => {
     set((draft) => {
       const index = draft.conversations.findIndex((c: Conversation) => c.id === id)
-      if (index <= 0) return
-      const [conversation] = draft.conversations.splice(index, 1)
-      const now = new Date().toISOString()
-      conversation.updated_at = now
+      if (index < 0) return
+      // Update even when already on top: the first message is what makes a
+      // blank conversation appear in the sidebar list
+      const conversation = draft.conversations[index]
+      conversation.updated_at = new Date().toISOString()
       if (lastMessage !== undefined) {
         conversation.last_message = lastMessage
       }
-      draft.conversations.unshift(conversation)
+      if (index > 0) {
+        draft.conversations.splice(index, 1)
+        draft.conversations.unshift(conversation)
+      }
     })
   },
 })

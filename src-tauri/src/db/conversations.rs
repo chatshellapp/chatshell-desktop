@@ -15,7 +15,18 @@ impl Database {
         &self,
         req: CreateConversationRequest,
     ) -> Result<Conversation> {
-        let id = Uuid::now_v7().to_string();
+        let id = match req.id {
+            Some(id) => {
+                let parsed = Uuid::parse_str(&id)
+                    .map_err(|e| anyhow::anyhow!("Invalid conversation id {id}: {e}"))?;
+                anyhow::ensure!(
+                    parsed.get_version_num() == 7,
+                    "Conversation id {id} is not a UUID v7"
+                );
+                parsed.to_string()
+            }
+            None => Uuid::now_v7().to_string(),
+        };
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
@@ -373,6 +384,7 @@ impl Database {
 
         let new_conv = self
             .create_conversation(CreateConversationRequest {
+                id: None,
                 title: source.title.clone(),
             })
             .await?;
@@ -744,6 +756,7 @@ mod tests {
 
     async fn new_conversation(db: &Database, title: &str) -> Conversation {
         db.create_conversation(CreateConversationRequest {
+            id: None,
             title: title.to_string(),
         })
         .await
@@ -818,6 +831,38 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn create_conversation_keeps_a_client_uuid_v7() {
+        let (db, _dir) = test_db().await;
+        let id = Uuid::now_v7().to_string();
+
+        let created = db
+            .create_conversation(CreateConversationRequest {
+                id: Some(id.clone()),
+                title: String::new(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(created.id, id);
+    }
+
+    #[tokio::test]
+    async fn create_conversation_rejects_ids_that_are_not_uuid_v7() {
+        let (db, _dir) = test_db().await;
+
+        // The second is a valid UUID, but version 4
+        for id in ["not-a-uuid", "9b2e4c1a-3f6d-4a8b-9c0d-1e2f3a4b5c6d"] {
+            let result = db
+                .create_conversation(CreateConversationRequest {
+                    id: Some(id.to_string()),
+                    title: String::new(),
+                })
+                .await;
+            assert!(result.is_err(), "accepted {id}");
+        }
     }
 
     #[tokio::test]

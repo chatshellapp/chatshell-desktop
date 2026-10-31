@@ -2474,7 +2474,10 @@ mod tests {
             .await
             .unwrap();
         let conv = db
-            .create_conversation(CreateConversationRequest { title: "t".into() })
+            .create_conversation(CreateConversationRequest {
+                id: None,
+                title: "t".into(),
+            })
             .await
             .unwrap();
 

@@ -59,6 +59,7 @@ let loadPrompts: Mock
 let loadConversations: Mock
 let loadServers: Mock
 let selectConversation: Mock
+let openDraftConversation: Mock
 let refreshAfterMerge: Mock
 let unlisten: Mock
 let syncMergedHandler: ((event: { payload: number }) => void) | undefined
@@ -88,6 +89,12 @@ function setupStores() {
     callOrder.push('loadServers')
   })
   selectConversation = vi.fn().mockResolvedValue(undefined)
+  // Mirrors the real action: the draft conversation becomes current
+  openDraftConversation = vi.fn(async () => {
+    const draft = makeConversation('conv-draft')
+    useConversationStore.setState({ currentConversation: draft })
+    return draft
+  })
   refreshAfterMerge = vi.fn().mockResolvedValue(false)
   unlisten = vi.fn()
   syncMergedHandler = undefined
@@ -151,6 +158,7 @@ function setupStores() {
     pendingInput: null,
     loadConversations,
     selectConversation,
+    openDraftConversation,
   })
   useMcpStore.setState({ loadServers })
   useOnboardingStore.setState({ step: 'checking', isDialogOpen: false, flowOwnsSyncOffer: false })
@@ -350,15 +358,16 @@ describe('useAppInit', () => {
   })
 
   describe('initial selection', () => {
-    it('selects the most recent conversation once history is loaded', async () => {
+    it('opens a draft conversation at launch instead of reopening history', async () => {
       useConversationStore.setState({
         conversations: [makeConversation('conv-latest'), makeConversation('conv-older')],
       })
 
       await renderInitialized()
 
-      expect(selectConversation).toHaveBeenCalledWith('conv-latest')
-      expect(useConversationStore.getState().isFirstConversationSinceStartup).toBe(true)
+      await waitFor(() => expect(openDraftConversation).toHaveBeenCalledTimes(1))
+      expect(selectConversation).not.toHaveBeenCalled()
+      expect(useConversationStore.getState().currentConversation?.id).toBe('conv-draft')
     })
 
     it('keeps the existing selection when a conversation is already open', async () => {
@@ -370,10 +379,42 @@ describe('useAppInit', () => {
 
       await renderInitialized()
 
-      expect(selectConversation).not.toHaveBeenCalled()
+      expect(openDraftConversation).not.toHaveBeenCalled()
     })
 
-    it('defaults to the last starred model when there is no history', async () => {
+    it('opens a draft conversation again when the current one goes away', async () => {
+      await renderInitialized()
+      await waitFor(() => expect(openDraftConversation).toHaveBeenCalledTimes(1))
+
+      await act(async () => {
+        useConversationStore.setState({ currentConversation: null })
+      })
+
+      await waitFor(() => expect(openDraftConversation).toHaveBeenCalledTimes(2))
+    })
+
+    it('skips the draft conversation when initialization failed', async () => {
+      loadSettings.mockRejectedValue(new Error('boom'))
+
+      await renderInitialized()
+
+      expect(openDraftConversation).not.toHaveBeenCalled()
+    })
+
+    it('logs when the draft conversation cannot be opened', async () => {
+      openDraftConversation.mockRejectedValue(new Error('boom'))
+
+      await renderInitialized()
+
+      await waitFor(() =>
+        expect(logger.error).toHaveBeenCalledWith(
+          '[useAppInit] Failed to open a draft conversation:',
+          expect.any(Error)
+        )
+      )
+    })
+
+    it('defaults to the last starred model on the draft conversation', async () => {
       useModelStore.setState({
         models: [
           makeModel('model-a', false),
@@ -384,7 +425,9 @@ describe('useAppInit', () => {
 
       await renderInitialized()
 
-      expect(useConversationStore.getState().selectedModel?.id).toBe('model-c')
+      await waitFor(() => {
+        expect(useConversationStore.getState().selectedModel?.id).toBe('model-c')
+      })
       expect(useConversationStore.getState().isFirstConversationSinceStartup).toBe(false)
     })
 
@@ -393,16 +436,17 @@ describe('useAppInit', () => {
 
       await renderInitialized()
 
-      expect(useConversationStore.getState().selectedModel?.id).toBe('model-b')
-      expect(useConversationStore.getState().isFirstConversationSinceStartup).toBe(false)
+      await waitFor(() => {
+        expect(useConversationStore.getState().selectedModel?.id).toBe('model-b')
+      })
     })
 
     it('makes no selection when no models exist', async () => {
       await renderInitialized()
+      await waitFor(() => expect(openDraftConversation).toHaveBeenCalled())
 
       expect(useConversationStore.getState().selectedModel).toBeNull()
       expect(useConversationStore.getState().isFirstConversationSinceStartup).toBe(true)
-      expect(selectConversation).not.toHaveBeenCalled()
     })
 
     it('selects a default model when models appear after initialization', async () => {

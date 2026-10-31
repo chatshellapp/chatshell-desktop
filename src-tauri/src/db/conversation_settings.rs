@@ -282,6 +282,7 @@ mod tests {
 
     async fn new_conversation(db: &Database) -> String {
         db.create_conversation(CreateConversationRequest {
+            id: None,
             title: "Test conversation".to_string(),
         })
         .await

@@ -11,6 +11,7 @@ export const useConversationStore = create<ConversationStore>()(
     // Initial state
     conversations: [],
     currentConversation: null,
+    draftConversation: null,
     currentParticipants: [],
     selectedModel: null,
     selectedAssistant: null,

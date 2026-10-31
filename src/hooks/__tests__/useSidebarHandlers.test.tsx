@@ -13,7 +13,7 @@ import { useSkillStore } from '@/stores/skillStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
-import type { Assistant, Conversation, Message, Model, Prompt } from '@/types'
+import type { Assistant, Conversation, Model, Prompt } from '@/types'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -73,21 +73,16 @@ const conversation: Conversation = {
   title: 'Existing chat',
   created_at: NOW,
   updated_at: NOW,
+  last_message: 'hello',
 }
+
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 const createdConversation: Conversation = {
   id: 'conv-new',
   title: '',
   created_at: NOW,
   updated_at: NOW,
-}
-
-const message: Message = {
-  id: 'msg-1',
-  conversation_id: 'conv-1',
-  sender_type: 'user',
-  content: 'hello',
-  created_at: NOW,
 }
 
 const modelItem: ModelListItem = {
@@ -112,6 +107,7 @@ let deletePrompt: Mock
 let resetToolsAndSkillsToGlobal: Mock
 let initSettingsFromAssistant: Mock
 let scanSkills: Mock
+let startDraft: Mock
 
 function setupStores() {
   createConversation = vi.fn().mockResolvedValue(createdConversation)
@@ -126,10 +122,12 @@ function setupStores() {
   resetToolsAndSkillsToGlobal = vi.fn().mockResolvedValue(undefined)
   initSettingsFromAssistant = vi.fn().mockResolvedValue(undefined)
   scanSkills = vi.fn().mockResolvedValue(undefined)
+  startDraft = vi.fn().mockResolvedValue(undefined)
 
   useConversationStore.setState({
     conversations: [],
     currentConversation: null,
+    draftConversation: null,
     currentParticipants: [],
     selectedModel: null,
     selectedAssistant: null,
@@ -170,18 +168,19 @@ function setupStores() {
   useConversationSettingsStore.setState({
     resetToolsAndSkillsToGlobal,
     initSettingsFromAssistant,
+    startDraft,
+    removeSettings: vi.fn(),
   })
   useSkillStore.setState({ scanSkills })
 }
 
-// Lists the latest message page for a conversation; null means the backend call fails
-function mockLatestMessages(messages: Message[] | null) {
-  if (messages === null) {
+// Answers backend commands; failing makes every command reject
+function mockBackend(failing = false) {
+  if (failing) {
     vi.mocked(invoke).mockRejectedValue(new Error('boom'))
     return
   }
   vi.mocked(invoke).mockImplementation((async (cmd: string) => {
-    if (cmd === 'list_messages_by_conversation') return messages
     if (cmd === 'generate_conversation_title_manually') return 'Generated Title'
     return undefined
   }) as typeof invoke)
@@ -192,7 +191,7 @@ describe('useSidebarHandlers', () => {
     vi.clearAllMocks()
     vi.mocked(invoke).mockReset()
     setupStores()
-    mockLatestMessages([])
+    mockBackend()
   })
 
   describe('handleModelClick', () => {
@@ -204,12 +203,11 @@ describe('useSidebarHandlers', () => {
       })
 
       expect(logger.error).toHaveBeenCalledWith('Model not found:', 'missing-model')
-      expect(selectConversation).not.toHaveBeenCalled()
-      expect(createConversation).not.toHaveBeenCalled()
+      expect(startDraft).not.toHaveBeenCalled()
       expect(toast.error).not.toHaveBeenCalled()
     })
 
-    it('reuses the latest conversation when it has no messages', async () => {
+    it('opens an unsaved draft conversation with the model', async () => {
       useConversationStore.setState({ conversations: [conversation] })
       const { result } = renderHook(() => useSidebarHandlers())
 
@@ -217,61 +215,49 @@ describe('useSidebarHandlers', () => {
         await result.current.handleModelClick(modelItem)
       })
 
-      expect(invoke).toHaveBeenCalledWith('list_messages_by_conversation', {
-        conversationId: 'conv-1',
-        limit: 1,
-      })
-      expect(createConversation).not.toHaveBeenCalled()
-      expect(selectConversation).toHaveBeenCalledWith('conv-1')
       const state = useConversationStore.getState()
+      expect(state.currentConversation?.id).toMatch(UUID_V7)
+      expect(state.draftConversation).toBe(state.currentConversation)
+      expect(state.conversations).toEqual([conversation])
+      expect(startDraft).toHaveBeenCalledWith(state.currentConversation?.id)
+      expect(createConversation).not.toHaveBeenCalled()
+      expect(selectConversation).not.toHaveBeenCalled()
       expect(state.selectedModel?.id).toBe('model-1')
       expect(state.selectedAssistant).toBeNull()
       expect(resetToolsAndSkillsToGlobal).not.toHaveBeenCalled()
     })
 
+    it('reuses the open draft', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handleModelClick(modelItem)
+      })
+      const draftId = useConversationStore.getState().currentConversation?.id
+      await act(async () => {
+        await result.current.handleModelClick(modelItem)
+      })
+
+      expect(useConversationStore.getState().currentConversation?.id).toBe(draftId)
+      expect(startDraft).toHaveBeenCalledTimes(1)
+    })
+
     it('resets tools and skills when switching away from an assistant', async () => {
-      useConversationStore.setState({ conversations: [conversation], selectedAssistant: assistant })
+      useConversationStore.getState().setSelectedAssistant(assistant)
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {
         await result.current.handleModelClick(modelItem)
       })
 
-      expect(resetToolsAndSkillsToGlobal).toHaveBeenCalledWith('conv-1')
       const state = useConversationStore.getState()
+      expect(resetToolsAndSkillsToGlobal).toHaveBeenCalledWith(state.currentConversation?.id)
       expect(state.selectedModel?.id).toBe('model-1')
       expect(state.selectedAssistant).toBeNull()
     })
 
-    it('creates a new conversation when the latest one has messages', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages([message])
-      const { result } = renderHook(() => useSidebarHandlers())
-
-      await act(async () => {
-        await result.current.handleModelClick(modelItem)
-      })
-
-      expect(createConversation).toHaveBeenCalledWith('')
-      expect(selectConversation).toHaveBeenCalledWith('conv-new')
-      expect(selectConversation).not.toHaveBeenCalledWith('conv-1')
-    })
-
-    it('creates a new conversation when no conversations exist', async () => {
-      const { result } = renderHook(() => useSidebarHandlers())
-
-      await act(async () => {
-        await result.current.handleModelClick(modelItem)
-      })
-
-      expect(invoke).not.toHaveBeenCalled()
-      expect(createConversation).toHaveBeenCalledWith('')
-      expect(selectConversation).toHaveBeenCalledWith('conv-new')
-    })
-
     it('toasts when selecting the model fails', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages(null)
+      startDraft.mockRejectedValue(new Error('boom'))
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {
@@ -280,7 +266,6 @@ describe('useSidebarHandlers', () => {
 
       expect(toast.error).toHaveBeenCalledWith('failedToSelectModel', { description: 'boom' })
       expect(logger.error).toHaveBeenCalledWith('Failed to handle model click:', expect.any(Error))
-      expect(useConversationStore.getState().selectedModel).toBeNull()
     })
   })
 
@@ -293,41 +278,31 @@ describe('useSidebarHandlers', () => {
       })
 
       expect(logger.error).toHaveBeenCalledWith('Assistant not found:', 'missing')
-      expect(selectConversation).not.toHaveBeenCalled()
+      expect(startDraft).not.toHaveBeenCalled()
       expect(toast.error).not.toHaveBeenCalled()
     })
 
-    it('selects the assistant and seeds settings from its tools and skills', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
+    it('selects the assistant on a draft and seeds settings from its tools and skills', async () => {
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {
         await result.current.handleAssistantClick(assistantItem)
       })
 
-      expect(selectConversation).toHaveBeenCalledWith('conv-1')
-      expect(initSettingsFromAssistant).toHaveBeenCalledWith('conv-1', ['tool-1'], ['skill-1'])
       const state = useConversationStore.getState()
+      expect(state.draftConversation?.id).toMatch(UUID_V7)
+      expect(initSettingsFromAssistant).toHaveBeenCalledWith(
+        state.draftConversation?.id,
+        ['tool-1'],
+        ['skill-1']
+      )
+      expect(createConversation).not.toHaveBeenCalled()
       expect(state.selectedAssistant?.id).toBe('assistant-1')
       expect(state.selectedModel).toBeNull()
     })
 
-    it('creates a fresh conversation when the latest one is not empty', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages([message])
-      const { result } = renderHook(() => useSidebarHandlers())
-
-      await act(async () => {
-        await result.current.handleAssistantClick(assistantItem)
-      })
-
-      expect(createConversation).toHaveBeenCalledWith('')
-      expect(initSettingsFromAssistant).toHaveBeenCalledWith('conv-new', ['tool-1'], ['skill-1'])
-    })
-
     it('toasts when selecting the assistant fails', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages(null)
+      startDraft.mockRejectedValue(new Error('boom'))
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {
@@ -557,7 +532,7 @@ describe('useSidebarHandlers', () => {
   })
 
   describe('handleNewConversation', () => {
-    it('rescans skills and navigates to the latest conversation when it is empty', async () => {
+    it('rescans skills and opens an unsaved draft', async () => {
       useConversationStore.setState({ conversations: [conversation] })
       const { result } = renderHook(() => useSidebarHandlers())
 
@@ -565,39 +540,30 @@ describe('useSidebarHandlers', () => {
         await result.current.handleNewConversation()
       })
 
+      const state = useConversationStore.getState()
       expect(scanSkills).toHaveBeenCalledTimes(1)
+      expect(state.currentConversation?.id).toMatch(UUID_V7)
+      expect(state.conversations).toEqual([conversation])
       expect(createConversation).not.toHaveBeenCalled()
-      expect(selectConversation).toHaveBeenCalledWith('conv-1')
-    })
-
-    it('creates and selects a new conversation when the latest has messages', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages([message])
-      const { result } = renderHook(() => useSidebarHandlers())
-
-      await act(async () => {
-        await result.current.handleNewConversation()
-      })
-
-      expect(createConversation).toHaveBeenCalledWith('')
-      expect(selectConversation).toHaveBeenCalledWith('conv-new')
-    })
-
-    it('creates a conversation when none exist yet', async () => {
-      const { result } = renderHook(() => useSidebarHandlers())
-
-      await act(async () => {
-        await result.current.handleNewConversation()
-      })
-
       expect(invoke).not.toHaveBeenCalled()
-      expect(createConversation).toHaveBeenCalledWith('')
-      expect(selectConversation).toHaveBeenCalledWith('conv-new')
     })
 
-    it('toasts when creating a conversation fails', async () => {
-      useConversationStore.setState({ conversations: [conversation] })
-      mockLatestMessages(null)
+    it('stays on the draft that is already open', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handleNewConversation()
+      })
+      const draftId = useConversationStore.getState().currentConversation?.id
+      await act(async () => {
+        await result.current.handleNewConversation()
+      })
+
+      expect(useConversationStore.getState().currentConversation?.id).toBe(draftId)
+    })
+
+    it('toasts when opening the draft fails', async () => {
+      startDraft.mockRejectedValue(new Error('boom'))
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {
@@ -625,7 +591,7 @@ describe('useSidebarHandlers', () => {
     })
 
     it('toasts when generation fails', async () => {
-      mockLatestMessages(null)
+      mockBackend(true)
       const { result } = renderHook(() => useSidebarHandlers())
 
       await act(async () => {

@@ -10,13 +10,11 @@ import { usePromptStore } from '@/stores/promptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
-import type { Message } from '@/types'
 import { logger } from '@/lib/logger'
 
 export function useSidebarHandlers() {
   const { t } = useTranslation('messages')
-  const conversations = useConversationStore((state) => state.conversations)
-  const createConversation = useConversationStore((state) => state.createConversation)
+  const openDraftConversation = useConversationStore((state) => state.openDraftConversation)
   const selectConversation = useConversationStore((state) => state.selectConversation)
   const updateConversation = useConversationStore((state) => state.updateConversation)
   const deleteConversation = useConversationStore((state) => state.deleteConversation)
@@ -40,26 +38,8 @@ export function useSidebarHandlers() {
       }
 
       try {
-        let targetConversation = null
-
-        if (conversations.length > 0) {
-          const latestConversation = conversations[0]
-          const messages = await invoke<Message[]>('list_messages_by_conversation', {
-            conversationId: latestConversation.id,
-            limit: 1,
-          })
-
-          if (messages.length === 0) {
-            targetConversation = latestConversation
-          }
-        }
-
-        if (!targetConversation) {
-          targetConversation = await createConversation('')
-        }
-
-        // Use selectConversation to ensure settings are loaded
-        await selectConversation(targetConversation.id)
+        // The draft's settings are in place before they are adjusted below
+        const targetConversation = await openDraftConversation()
 
         const wasPreviouslyAssistant = !!useConversationStore.getState().selectedAssistant
         setSelectedModel(realModel)
@@ -77,7 +57,7 @@ export function useSidebarHandlers() {
         })
       }
     },
-    [conversations, getModelById, createConversation, setSelectedModel, selectConversation]
+    [getModelById, openDraftConversation, setSelectedModel]
   )
 
   const handleAssistantClick = useCallback(
@@ -89,26 +69,8 @@ export function useSidebarHandlers() {
       }
 
       try {
-        let targetConversation = null
-
-        if (conversations.length > 0) {
-          const latestConversation = conversations[0]
-          const messages = await invoke<Message[]>('list_messages_by_conversation', {
-            conversationId: latestConversation.id,
-            limit: 1,
-          })
-
-          if (messages.length === 0) {
-            targetConversation = latestConversation
-          }
-        }
-
-        if (!targetConversation) {
-          targetConversation = await createConversation('')
-        }
-
-        // Use selectConversation to ensure settings are loaded
-        await selectConversation(targetConversation.id)
+        // The draft's settings are in place before they are adjusted below
+        const targetConversation = await openDraftConversation()
         setSelectedAssistant(realAssistant)
 
         // Initialize conversation settings with the assistant's tools and skills
@@ -126,7 +88,7 @@ export function useSidebarHandlers() {
         })
       }
     },
-    [conversations, assistants, createConversation, setSelectedAssistant, selectConversation]
+    [assistants, openDraftConversation, setSelectedAssistant]
   )
 
   const handleModelStarToggle = useCallback(
@@ -249,32 +211,15 @@ export function useSidebarHandlers() {
       const { useSkillStore } = await import('@/stores/skillStore')
       await useSkillStore.getState().scanSkills()
 
-      // Check if the latest conversation is empty
-      if (conversations.length > 0) {
-        const latestConversation = conversations[0]
-        const messages = await invoke<Message[]>('list_messages_by_conversation', {
-          conversationId: latestConversation.id,
-          limit: 1,
-        })
-
-        if (messages.length === 0) {
-          // Latest conversation is empty, navigate to it using selectConversation
-          // This ensures proper loading and triggers useEffect for focus
-          await selectConversation(latestConversation.id)
-          return
-        }
-      }
-
-      // Create a new conversation and select it (which loads settings)
-      const newConversation = await createConversation('')
-      await selectConversation(newConversation.id)
+      // A new draft becomes current, which triggers the composer focus effect
+      await openDraftConversation()
     } catch (error) {
       logger.error('Failed to create new conversation:', error)
       toast.error(t('failedToCreateConversation'), {
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [conversations, createConversation, selectConversation])
+  }, [openDraftConversation])
 
   const handleGenerateTitle = useCallback(
     async (conversationId: string) => {

@@ -587,6 +587,133 @@ describe('useConversationStore participants and selection', () => {
     })
   })
 
+  describe('draft conversations', () => {
+    const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+    /** Backend for a draft: settings reads return defaults, inserts echo the request */
+    function draftMocks() {
+      mockInvoke.mockImplementation(((cmd: string, args?: Record<string, unknown>) => {
+        const req = args?.req as { id: string; title: string } | undefined
+        switch (cmd) {
+          case 'get_conversation_settings':
+          case 'update_conversation_settings':
+            return Promise.resolve(createBackendSettingsResponse(args?.conversationId as string))
+          case 'create_conversation':
+            return Promise.resolve(createMockConversation(req!.id, req!.title))
+          case 'get_conversation':
+            return Promise.resolve(createMockConversation(args?.id as string, 'Saved'))
+          case 'list_conversation_participants':
+            return Promise.resolve([])
+          default:
+            return Promise.reject(new Error(`unexpected command ${cmd}`))
+        }
+      }) as never)
+    }
+
+    const writes = () =>
+      mockInvoke.mock.calls
+        .map(([cmd]) => cmd)
+        .filter((cmd) => cmd === 'create_conversation' || cmd === 'update_conversation_settings')
+
+    beforeEach(() => {
+      useConversationStore.setState({ draftConversation: null })
+      useConversationSettingsStore.setState({ drafts: {} })
+      draftMocks()
+    })
+
+    it('opens a draft in memory without writing to the database', async () => {
+      const saved = createMockConversation('conv-saved', 'Saved')
+      const model = createMockModel('model-1', 'GPT')
+      useConversationStore.setState({ conversations: [saved], lastUsedModel: model })
+
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      const state = useConversationStore.getState()
+      expect(draft.id).toMatch(UUID_V7)
+      expect(draft.title).toBe('')
+      expect(state.currentConversation).toEqual(draft)
+      expect(state.draftConversation).toEqual(draft)
+      expect(state.conversations).toEqual([saved])
+      expect(state.selectedModel?.id).toBe('model-1')
+      expect(useConversationSettingsStore.getState().drafts[draft.id]).toBe(true)
+      expect(writes()).toEqual([])
+    })
+
+    it('keeps the open draft instead of starting another', async () => {
+      const { openDraftConversation } = useConversationStore.getState()
+      const first = await openDraftConversation()
+      const second = await openDraftConversation()
+
+      expect(second.id).toBe(first.id)
+    })
+
+    it('keeps draft settings changes in memory', async () => {
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      await useConversationSettingsStore.getState().setPermissionMode(draft.id, 'ask')
+
+      expect(useConversationSettingsStore.getState().settings[draft.id].permissionMode).toBe('ask')
+      expect(writes()).toEqual([])
+    })
+
+    it('saves the draft with its id and settings, then lists it', async () => {
+      const saved = createMockConversation('conv-saved', 'Saved')
+      useConversationStore.setState({ conversations: [saved] })
+      const draft = await useConversationStore.getState().openDraftConversation()
+      await useConversationSettingsStore.getState().setPermissionMode(draft.id, 'ask')
+
+      await useConversationStore.getState().saveDraftConversation(draft.id)
+
+      expect(mockInvoke).toHaveBeenCalledWith('create_conversation', {
+        req: { id: draft.id, title: '' },
+      })
+      expect(mockInvoke).toHaveBeenCalledWith('update_conversation_settings', {
+        conversationId: draft.id,
+        req: expect.objectContaining({ permission_mode: 'ask' }),
+      })
+      const state = useConversationStore.getState()
+      expect(state.draftConversation).toBeNull()
+      expect(state.currentConversation?.id).toBe(draft.id)
+      expect(state.conversations.map((c) => c.id)).toEqual([draft.id, 'conv-saved'])
+      expect(useConversationSettingsStore.getState().drafts[draft.id]).toBeUndefined()
+    })
+
+    it('inserts the draft once when two sends race', async () => {
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      const { saveDraftConversation } = useConversationStore.getState()
+      await Promise.all([saveDraftConversation(draft.id), saveDraftConversation(draft.id)])
+
+      expect(writes().filter((cmd) => cmd === 'create_conversation')).toHaveLength(1)
+    })
+
+    it('does nothing when saving a conversation that is already saved', async () => {
+      await useConversationStore.getState().saveDraftConversation('conv-saved')
+
+      expect(writes()).toEqual([])
+    })
+
+    it('drops the draft when another conversation is selected', async () => {
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      await useConversationStore.getState().selectConversation('conv-saved')
+
+      expect(useConversationStore.getState().draftConversation).toBeNull()
+      expect(useConversationStore.getState().currentConversation?.id).toBe('conv-saved')
+      expect(useConversationSettingsStore.getState().settings[draft.id]).toBeUndefined()
+      expect(writes()).toEqual([])
+    })
+
+    it('ignores selecting the draft itself', async () => {
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      await useConversationStore.getState().selectConversation(draft.id)
+
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_conversation', expect.anything())
+      expect(useConversationStore.getState().currentConversation?.id).toBe(draft.id)
+    })
+  })
+
   describe('bumpConversation', () => {
     it('moves an inactive conversation to the top and stamps it', () => {
       const top = createMockConversation('conv-top', 'Top')
@@ -608,10 +735,10 @@ describe('useConversationStore participants and selection', () => {
 
       useConversationStore.getState().bumpConversation('conv-top', 'message')
 
-      expect(useConversationStore.getState().conversations.map((c) => c.id)).toEqual([
-        'conv-top',
-        'conv-other',
-      ])
+      const conversations = useConversationStore.getState().conversations
+      expect(conversations.map((c) => c.id)).toEqual(['conv-top', 'conv-other'])
+      // The first message is what makes a blank conversation listable
+      expect(conversations[0].last_message).toBe('message')
     })
 
     it('does nothing for an unknown conversation id', () => {

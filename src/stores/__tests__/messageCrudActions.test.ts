@@ -26,14 +26,16 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
-// crudActions dynamically imports the conversation store to bump the sidebar
+// crudActions dynamically imports the conversation store to save a draft
+// before the first send and to bump the sidebar afterwards
 const conversationMocks = vi.hoisted(() => ({
   bumpConversation: vi.fn(),
+  saveDraftConversation: vi.fn(),
 }))
 
 vi.mock('../conversation', () => ({
   useConversationStore: {
-    getState: () => ({ bumpConversation: conversationMocks.bumpConversation }),
+    getState: () => conversationMocks,
   },
 }))
 
@@ -109,6 +111,10 @@ describe('message store crudActions', () => {
       // Sending flag flips on synchronously before the backend call resolves
       expect(useMessageStore.getState().isSending).toBe(true)
 
+      // send_message goes out after the draft check
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith('send_message', expect.anything())
+      )
       resolveSend(userMessage)
       await pending
 
@@ -126,6 +132,7 @@ describe('message store crudActions', () => {
       // Still waiting for the assistant message delivered via the chat-complete event
       expect(cs.isStreaming).toBe(true)
       expect(cs.isWaitingForAI).toBe(true)
+      expect(conversationMocks.saveDraftConversation).toHaveBeenCalledWith('conv-1')
       expect(conversationMocks.bumpConversation).toHaveBeenCalledWith('conv-1', 'hello')
 
       const [cmd, args] = invokeMock.mock.calls[0]
@@ -241,6 +248,17 @@ describe('message store crudActions', () => {
       expect(state.error).toBe('Error: create failed')
       expect(state.isSending).toBe(false)
       expect(conversationMocks.bumpConversation).not.toHaveBeenCalled()
+    })
+
+    it('does not send when saving the draft conversation fails', async () => {
+      conversationMocks.saveDraftConversation.mockRejectedValueOnce(new Error('save failed'))
+
+      await expect(
+        useMessageStore.getState().sendMessage('hi', 'conv-draft', 'openai', 'gpt-4')
+      ).rejects.toThrow('save failed')
+
+      expect(invokeMock).not.toHaveBeenCalledWith('send_message', expect.anything())
+      expect(useMessageStore.getState().isSending).toBe(false)
     })
   })
 

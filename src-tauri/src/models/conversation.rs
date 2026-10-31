@@ -23,6 +23,11 @@ pub struct Conversation {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateConversationRequest {
+    /// Client-generated UUID v7 for a conversation drafted in the UI before
+    /// its first message; the backend generates one when absent.
+    #[serde(default)]
+    #[ts(optional)]
+    pub id: Option<String>,
     pub title: String,
 }
 

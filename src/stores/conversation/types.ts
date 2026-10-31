@@ -5,6 +5,8 @@ import type { Draft } from 'immer'
 export interface ConversationStoreState {
   conversations: Conversation[]
   currentConversation: Conversation | null
+  // New conversation shown in the UI but not saved until its first message
+  draftConversation: Conversation | null
   currentParticipants: ConversationParticipant[]
 
   // User can select EITHER a model OR an assistant (not both)
@@ -38,6 +40,10 @@ export interface ConversationStoreActions {
   updateConversation: (id: string, title: string) => Promise<Conversation>
   deleteConversation: (id: string) => Promise<void>
   selectConversation: (id: string) => Promise<void>
+  // Show a new, unsaved conversation (reusing the current draft if one is open)
+  openDraftConversation: () => Promise<Conversation>
+  // Save the draft with this id to the database; no-op for saved conversations
+  saveDraftConversation: (id: string) => Promise<void>
   setCurrentConversation: (conversation: Conversation | null) => void
   setPendingInput: (input: string | null) => void
 

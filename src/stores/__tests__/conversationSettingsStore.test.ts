@@ -79,7 +79,7 @@ const seedSettings = (conversationId: string, overrides: Partial<ConversationSet
 describe('useConversationSettingsStore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useConversationSettingsStore.setState({ settings: {}, loading: {}, error: null })
+    useConversationSettingsStore.setState({ settings: {}, loading: {}, error: null, drafts: {} })
     useMcpStore.setState({ servers: [], isLoading: false, error: null })
     useSkillStore.setState({
       skills: [],
@@ -96,6 +96,7 @@ describe('useConversationSettingsStore', () => {
       expect(state.settings).toEqual({})
       expect(state.loading).toEqual({})
       expect(state.error).toBeNull()
+      expect(state.drafts).toEqual({})
     })
   })
 
@@ -740,6 +741,118 @@ describe('useConversationSettingsStore', () => {
 
       expect(useConversationSettingsStore.getState().settings['conv-1']).toEqual(untouched)
       expect(logger.error).toHaveBeenCalled()
+    })
+  })
+
+  describe('draft conversations', () => {
+    const startDraft = async () => {
+      mockInvoke.mockResolvedValue(
+        backendResponse({
+          conversation_id: 'draft-1',
+          enabled_mcp_server_ids: ['g1'],
+          enabled_skill_ids: ['g2'],
+        })
+      )
+      await useConversationSettingsStore.getState().startDraft('draft-1')
+      mockInvoke.mockClear()
+    }
+
+    it('seeds a draft with the backend defaults from a read', async () => {
+      await startDraft()
+
+      const state = useConversationSettingsStore.getState()
+      expect(state.drafts['draft-1']).toBe(true)
+      expect(state.settings['draft-1'].enabledMcpServerIds).toEqual(['g1'])
+    })
+
+    it('merges changes in memory and keeps them across reloads', async () => {
+      await startDraft()
+      const store = useConversationSettingsStore.getState()
+
+      await store.setWorkingDirectory('draft-1', '/projects/x')
+      await store.setContextMessageCount('draft-1', 10)
+      const reloaded = await store.loadSettings('draft-1')
+
+      expect(mockInvoke).not.toHaveBeenCalled()
+      expect(reloaded.workingDirectory).toBe('/projects/x')
+      expect(reloaded.contextMessageCount).toBe(10)
+      expect(reloaded.enabledSkillIds).toEqual(['g2'])
+    })
+
+    it('resets tools and skills to the defaults without writing', async () => {
+      await startDraft()
+      await useConversationSettingsStore
+        .getState()
+        .initSettingsFromAssistant('draft-1', ['assistant-tool'], [])
+      mockInvoke.mockResolvedValue(
+        backendResponse({ conversation_id: 'draft-1', enabled_mcp_server_ids: ['g1'] })
+      )
+
+      await useConversationSettingsStore.getState().resetToolsAndSkillsToGlobal('draft-1')
+
+      expect(mockInvoke).toHaveBeenCalledWith('get_conversation_settings', {
+        conversationId: 'draft-1',
+      })
+      expect(mockInvoke).not.toHaveBeenCalledWith(
+        'reset_conversation_tools_to_global',
+        expect.anything()
+      )
+      expect(
+        useConversationSettingsStore.getState().settings['draft-1'].enabledMcpServerIds
+      ).toEqual(['g1'])
+    })
+
+    it('resets a draft without deleting anything in the backend', async () => {
+      await startDraft()
+
+      await useConversationSettingsStore.getState().resetSettings('draft-1')
+
+      expect(mockInvoke).not.toHaveBeenCalled()
+    })
+
+    it('writes every field once the draft is saved', async () => {
+      await startDraft()
+      await useConversationSettingsStore.getState().setPermissionMode('draft-1', 'ask')
+      mockInvoke.mockResolvedValue(
+        backendResponse({ conversation_id: 'draft-1', permission_mode: 'ask' })
+      )
+
+      await useConversationSettingsStore.getState().persistDraft('draft-1')
+
+      expect(mockInvoke).toHaveBeenCalledWith('update_conversation_settings', {
+        conversationId: 'draft-1',
+        req: expect.objectContaining({
+          permission_mode: 'ask',
+          enabled_mcp_server_ids: ['g1'],
+          enabled_skill_ids: ['g2'],
+        }),
+      })
+      expect(useConversationSettingsStore.getState().drafts['draft-1']).toBeUndefined()
+    })
+
+    it('stays a draft when the write fails so the next send retries', async () => {
+      await startDraft()
+      mockInvoke.mockRejectedValue(new Error('db locked'))
+
+      await expect(useConversationSettingsStore.getState().persistDraft('draft-1')).rejects.toThrow(
+        'db locked'
+      )
+
+      expect(useConversationSettingsStore.getState().drafts['draft-1']).toBe(true)
+    })
+
+    it('ignores saved conversations', async () => {
+      await useConversationSettingsStore.getState().persistDraft('conv-1')
+
+      expect(mockInvoke).not.toHaveBeenCalled()
+    })
+
+    it('forgets the draft flag when its settings are removed', async () => {
+      await startDraft()
+
+      useConversationSettingsStore.getState().removeSettings('draft-1')
+
+      expect(useConversationSettingsStore.getState().drafts['draft-1']).toBeUndefined()
     })
   })
 })

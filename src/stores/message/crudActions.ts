@@ -195,6 +195,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         }
       }
 
+      // A conversation drafted in the UI gets its database row on the first send
+      const { useConversationStore } = await import('../conversation')
+      await useConversationStore.getState().saveDraftConversation(targetId)
+
       // Set waiting state for this conversation and clear previous streaming content
       get().getConversationState(targetId) // Ensure state exists
       set((draft) => {
@@ -275,7 +279,6 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       })
 
       // Bump the conversation to the top of the sidebar list
-      const { useConversationStore } = await import('../conversation')
       useConversationStore.getState().bumpConversation(targetId, content)
 
       logger.info('[messageStore] User message added to store, waiting for assistant response...')

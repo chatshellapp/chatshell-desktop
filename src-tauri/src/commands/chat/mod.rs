@@ -768,7 +768,10 @@ mod tests {
             .await
             .unwrap();
         let conv = db
-            .create_conversation(crate::models::CreateConversationRequest { title: "t".into() })
+            .create_conversation(crate::models::CreateConversationRequest {
+                id: None,
+                title: "t".into(),
+            })
             .await
             .unwrap();
         let state = crate::AppState {
