@@ -184,7 +184,7 @@ jobs:
           if [[ "$HAS_UPDATER_KEY" == "true" ]]; then
             UPDATER_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
           fi
-          pnpm tauri build --target universal-apple-darwin --bundles dmg "${UPDATER_ARGS[@]}"
+          pnpm tauri build --target universal-apple-darwin --bundles app,dmg "${UPDATER_ARGS[@]}"
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -214,13 +214,29 @@ jobs:
         if: always()
         run: rm -f api_key.p8
 
+      - name: Stage artifacts
+        # The macOS updater archive (.app.tar.gz + .sig) is produced by the
+        # `app` bundle target — `dmg` alone is not updater-enabled. Flatten
+        # dmg/ and macos/ outputs into one directory; upload-artifact would
+        # otherwise nest them under their least common ancestor.
+        run: |
+          mkdir -p staging
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg staging/
+          if [ "$HAS_UPDATER_KEY" = "true" ]; then
+            cp src-tauri/target/universal-apple-darwin/release/bundle/macos/ChatShell.app.tar.gz* staging/
+            if [ ! -f staging/ChatShell.app.tar.gz ] || [ ! -f staging/ChatShell.app.tar.gz.sig ]; then
+              echo "::error::updater artifacts missing; expected ChatShell.app.tar.gz(.sig) from the app bundle target"
+              exit 1
+            fi
+          fi
+          ls -la staging
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: chatshell-macos
-          path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz*
+          path: staging/*
+          if-no-files-found: error
 
   build-linux:
     name: Build Linux
