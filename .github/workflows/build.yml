@@ -419,13 +419,14 @@ jobs:
           repository: ${{ secrets.WEBSITE_REPO }}
           token: ${{ secrets.GH_PAT || github.token }}
 
-      - name: Update version in download page and docs
+      - name: Update version in site data and docs
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Updating download links to v${VERSION}..."
 
-          sed -i "s/const version = '.*'/const version = '${VERSION}'/" src/pages/download.astro
-          grep "const version" src/pages/download.astro
+          # The website builds every download URL from this one constant.
+          sed -i "s/export const VERSION = '.*'/export const VERSION = '${VERSION}'/" src/data/site.ts
+          grep "export const VERSION = '${VERSION}'" src/data/site.ts
 
           sed -i "s|dl\.chatshell\.app/v[0-9]\+\.[0-9]\+\.[0-9]\+/|dl.chatshell.app/v${VERSION}/|g" src/content/docs/docs/getting-started/index.md
           sed -i "s/ChatShell_[0-9]\+\.[0-9]\+\.[0-9]\+_/ChatShell_${VERSION}_/g" src/content/docs/docs/getting-started/index.md
