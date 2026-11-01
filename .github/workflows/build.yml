@@ -355,9 +355,29 @@ jobs:
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Resolve release version
+        # A manual dispatch from a branch would otherwise publish to v<branch>/
+        # on R2 and push that name into the website's download links.
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "tag" ] || ! [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Releases must run from a vX.Y.Z tag, got ${GITHUB_REF_TYPE} '${GITHUB_REF_NAME}'. Re-run the workflow with a tag selected."
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP_VERSION="$(jq -r .version src-tauri/tauri.conf.json)"
+          if [ "${VERSION}" != "${APP_VERSION}" ]; then
+            echo "::error::Tag v${VERSION} does not match src-tauri/tauri.conf.json version ${APP_VERSION}; artifact names would not match the download URLs."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Releasing v${VERSION}"
 
       - name: Download Artifacts
         uses: actions/download-artifact@v4
@@ -395,8 +415,8 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
           R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           echo "Uploading artifacts for v${VERSION} to R2..."
           rclone copy release/chatshell-macos/ "r2:${R2_BUCKET}/v${VERSION}/darwin/universal/" --include "*.dmg" --include "*.app.tar.gz*" -v
           rclone copy release/chatshell-windows/ "r2:${R2_BUCKET}/v${VERSION}/windows/x86_64/" --include "*.msi" --include "*.msi.sig" -v
@@ -420,8 +440,9 @@ jobs:
           token: ${{ secrets.GH_PAT || github.token }}
 
       - name: Update version in site data and docs
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           echo "Updating download links to v${VERSION}..."
 
           # The website builds every download URL from this one constant.
@@ -433,8 +454,9 @@ jobs:
           grep "dl.chatshell.app" src/content/docs/docs/getting-started/index.md
 
       - name: Commit and push
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
