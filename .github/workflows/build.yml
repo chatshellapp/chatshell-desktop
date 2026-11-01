@@ -3,7 +3,12 @@
 #   Build & Release:
 #     APPLE_CERTIFICATE            - Base64-encoded .p12 certificate (macOS signing)
 #     APPLE_CERTIFICATE_PASSWORD   - .p12 password
-#     APPLE_TEAM_ID                - Apple Developer Team ID
+#     APPLE_TEAM_ID                - Apple Developer Team ID (also compiled in as
+#                                    CHATSHELL_TEAM_ID for the shared keychain group)
+#     APPLE_PROVISIONING_PROFILE   - Base64-encoded Developer ID provisioning profile
+#                                    for app.chatshell.desktop (iCloud container +
+#                                    keychain groups); must be issued for the same
+#                                    certificate as APPLE_CERTIFICATE
 #     APPLE_API_KEY_CONTENT        - Base64-encoded .p8 API key (notarization)
 #     APPLE_API_KEY                - API Key ID
 #     APPLE_API_ISSUER             - API Issuer ID
@@ -178,19 +183,70 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
+      - name: Prepare provisioning profile and entitlements
+        # iCloud container and keychain-access-groups entitlements are only
+        # honored when an embedded provisioning profile grants them; without
+        # this the app reads the iCloud container with EPERM (os error 1).
+        # Generated files live under target/ (gitignored).
+        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
+        env:
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_PROVISIONING_PROFILE" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::error::APPLE_PROVISIONING_PROFILE and APPLE_TEAM_ID are required for a signed macOS build (sync needs the iCloud entitlements)"
+            exit 1
+          fi
+          OUT="$GITHUB_WORKSPACE/src-tauri/target/macos-signing"
+          mkdir -p "$OUT"
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 -d > "$OUT/embedded.provisionprofile"
+          security cms -D -i "$OUT/embedded.provisionprofile" > "$OUT/profile.plist"
+          PROFILE_APP_ID=$(plutil -extract Entitlements.com\\.apple\\.application-identifier raw -o - "$OUT/profile.plist")
+          if [ "$PROFILE_APP_ID" != "${APPLE_TEAM_ID}.app.chatshell.desktop" ]; then
+            echo "::error::provisioning profile is for '$PROFILE_APP_ID', expected <team>.app.chatshell.desktop"
+            exit 1
+          fi
+          sed "s/__TEAM_ID__/${APPLE_TEAM_ID}/g" \
+            "$GITHUB_WORKSPACE/src-tauri/Entitlements-Release.plist.template" \
+            > "$OUT/Entitlements.plist"
+          plutil -lint "$OUT/Entitlements.plist"
+          echo "MACOS_SIGNING_DIR=$OUT" >> "$GITHUB_ENV"
+
       - name: Build Universal App
         run: |
           UPDATER_ARGS=()
           if [[ "$HAS_UPDATER_KEY" == "true" ]]; then
             UPDATER_ARGS=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
           fi
-          pnpm tauri build --target universal-apple-darwin --bundles app,dmg "${UPDATER_ARGS[@]}"
+          SIGNING_ARGS=()
+          if [[ -n "${MACOS_SIGNING_DIR:-}" ]]; then
+            SIGNING_ARGS=(--config "{\"bundle\":{\"macOS\":{\"entitlements\":\"${MACOS_SIGNING_DIR}/Entitlements.plist\",\"files\":{\"embedded.provisionprofile\":\"${MACOS_SIGNING_DIR}/embedded.provisionprofile\"}}}}")
+          fi
+          pnpm tauri build --target universal-apple-darwin --bundles app,dmg "${UPDATER_ARGS[@]}" "${SIGNING_ARGS[@]}"
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Compiled in via option_env! (src/sync_keychain.rs) to form the
+          # shared <team>.app.chatshell.sync keychain group.
+          CHATSHELL_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify signature, entitlements and embedded profile
+        if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/ChatShell.app
+          cmp "$APP/Contents/embedded.provisionprofile" "$MACOS_SIGNING_DIR/embedded.provisionprofile"
+          codesign --verify --strict --deep --verbose=2 "$APP"
+          codesign -d --entitlements - --xml "$APP" > "$MACOS_SIGNING_DIR/signed-entitlements.plist"
+          E="$MACOS_SIGNING_DIR/signed-entitlements.plist"
+          test "$(plutil -extract com\\.apple\\.application-identifier raw -o - "$E")" = "${APPLE_TEAM_ID}.app.chatshell.desktop"
+          test "$(plutil -extract com\\.apple\\.developer\\.ubiquity-container-identifiers.0 raw -o - "$E")" = "iCloud.app.chatshell"
+          test "$(plutil -extract keychain-access-groups.0 raw -o - "$E")" = "${APPLE_TEAM_ID}.app.chatshell.sync"
+          echo "Entitlements and embedded profile verified"
       - name: Setup API Key for Notarization
         if: ${{ env.HAS_APPLE_API_KEY == 'true' }}
         run: |
