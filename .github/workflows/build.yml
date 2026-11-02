@@ -64,6 +64,12 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Verify changelog entry for the release tag
+        # Fail before the platform builds rather than after: every release
+        # needs a dated CHANGELOG.md section (scripts/changelog-section.mjs).
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/changelog-section.mjs --version "${GITHUB_REF_NAME}" > /dev/null
+
       - name: Type Check & Lint
         run: pnpm check
 
@@ -379,6 +385,16 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing v${VERSION}"
 
+      - name: Extract release notes from CHANGELOG.md
+        # One source for the GitHub release body and the updater feed notes.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p notes
+          node scripts/changelog-section.mjs --version "${VERSION}" --github --output notes/github.md
+          node scripts/changelog-section.mjs --version "${VERSION}" --output notes/updater.md
+          cat notes/github.md
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -389,7 +405,7 @@ jobs:
         # Tauri updater feed. URLs point at the first-party dl.chatshell.app
         # mirror; the same feed is attached to the GitHub release as fallback.
         if: env.HAS_UPDATER_KEY == 'true'
-        run: node scripts/finalize-latest-json.mjs --release-dir release
+        run: node scripts/finalize-latest-json.mjs --release-dir release --notes "$(cat notes/updater.md)"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -401,7 +417,7 @@ jobs:
             release/chatshell-linux/*.AppImage
             release/chatshell-linux/*.AppImage.sig
             release/latest.json
-          generate_release_notes: true
+          body_path: notes/github.md
 
       - name: Install rclone
         run: sudo apt-get update && sudo apt-get install -y rclone
@@ -432,12 +448,27 @@ jobs:
     needs: release
     runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: website
     steps:
       - name: Checkout website repo
         uses: actions/checkout@v7
         with:
           repository: ${{ secrets.WEBSITE_REPO }}
           token: ${{ secrets.GH_PAT || github.token }}
+          path: website
+
+      - name: Checkout CHANGELOG.md
+        uses: actions/checkout@v7
+        with:
+          path: desktop
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
+      - name: Copy changelog into the website
+        # Rendered at chatshell.app/changelog/ (src/content.config.ts).
+        run: cp ../desktop/CHANGELOG.md src/data/changelog.md
 
       - name: Update version in site data and docs
         env:
@@ -461,5 +492,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --staged --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: update download links to v${VERSION}"
+          git commit -m "chore: update download links and changelog to v${VERSION}"
           git push
