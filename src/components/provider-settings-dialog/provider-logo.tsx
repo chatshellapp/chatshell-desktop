@@ -33,6 +33,11 @@ import lmstudioLogo from '@/assets/avatars/providers/lmstudio.png'
 import zaiLogo from '@/assets/avatars/providers/zai.png'
 import volcengineLogo from '@/assets/avatars/providers/volcengine.png'
 import zenmuxLogo from '@/assets/avatars/providers/zenmux.png'
+import galadrielLogo from '@/assets/avatars/providers/galadriel.png'
+import miraLogo from '@/assets/avatars/providers/mira.png'
+import gpustackLogo from '@/assets/avatars/providers/gpustack.png'
+import ovmsLogo from '@/assets/avatars/providers/ovms.png'
+import stateCloudLogo from '@/assets/avatars/providers/statecloud.png'
 
 const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -49,6 +54,8 @@ const PROVIDER_LOGOS: Record<string, string> = {
   cohere: cohereLogo,
   moonshot: moonshotLogo,
   hyperbolic: hyperbolicLogo,
+  galadriel: galadrielLogo,
+  mira: miraLogo,
   minimax: minimaxLogo,
   minimax_cn: minimaxLogo,
   github_models: githubLogo,
@@ -68,9 +75,12 @@ const PROVIDER_LOGOS: Record<string, string> = {
   baidu_cloud: baiduCloudLogo,
   siliconflow: siliconflowLogo,
   modelscope: modelscopeLogo,
+  xirang: stateCloudLogo,
   mimo: mimoLogo,
   ollama: ollamaLogo,
   lmstudio: lmstudioLogo,
+  gpustack: gpustackLogo,
+  ovms: ovmsLogo,
 }
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
