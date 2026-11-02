@@ -172,6 +172,18 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Select Xcode 26
+        # actool needs Xcode 26+ to compile the Icon Composer app icon
+        # (scripts/build-macos-icon.mjs); the runner default is older.
+        run: |
+          XCODE=$( (ls -d /Applications/Xcode_26*.app 2>/dev/null || true) | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "::error::Xcode 26 is not installed on this runner"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
