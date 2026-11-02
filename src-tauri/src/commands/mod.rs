@@ -21,6 +21,7 @@ mod search;
 mod settings;
 mod skills;
 mod steps;
+mod svg_figure;
 mod sync;
 mod users;
 
@@ -96,5 +97,6 @@ pub use search::*;
 pub use settings::*;
 pub use skills::*;
 pub use steps::*;
+pub use svg_figure::*;
 pub use sync::*;
 pub use users::*;

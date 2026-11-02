@@ -38,5 +38,12 @@ export const MarkdownContent = memo(function MarkdownContent({
 // Re-export components and types
 export { CodeBlock } from './code-block'
 export { MermaidBlock } from './mermaid-block'
+export { SvgFigureBlock } from './svg-figure-block'
+export { MarkdownStreamingContext, useMarkdownStreaming } from './streaming-context'
 export { useMarkdownComponents } from './markdown-components'
-export type { MarkdownContentProps, CodeBlockProps, MermaidBlockProps } from './types'
+export type {
+  MarkdownContentProps,
+  CodeBlockProps,
+  MermaidBlockProps,
+  SvgFigureBlockProps,
+} from './types'

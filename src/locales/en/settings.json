@@ -148,5 +148,7 @@
   "updateSkipVersion": "Skip this version",
   "updateChangelogLink": "Full changelog",
   "updateAutoCheckLabel": "Check for updates automatically",
-  "updateAutoCheckDescription": "Checks dl.chatshell.app once shortly after launch. No usage data is sent."
+  "updateAutoCheckDescription": "Checks dl.chatshell.app once shortly after launch. No usage data is sent.",
+  "renderSvgFiguresLabel": "Render SVG figures",
+  "renderSvgFiguresDescription": "Let the assistant draw diagrams, mockups, and animations as inline SVG. Off: SVG blocks show as code and the assistant is not invited to draw."
 }

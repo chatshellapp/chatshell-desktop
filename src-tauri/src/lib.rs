@@ -441,6 +441,7 @@ pub fn run() {
             commands::extract_office_text_from_base64,
             // Settings commands
             commands::get_setting,
+            commands::prepare_svg_figure,
             commands::set_setting,
             commands::is_obscura_available,
             commands::is_chrome_available,
