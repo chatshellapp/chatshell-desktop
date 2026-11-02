@@ -238,6 +238,11 @@ jobs:
           CHATSHELL_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The bundler passes --skip-jenkins to bundle_dmg.sh whenever CI=true,
+          # which skips the Finder AppleScript that writes the DMG window
+          # layout (.DS_Store): icon size, positions, window bounds. Without
+          # it the installer window shows tiny icons in the top-left corner.
+          TAURI_BUNDLER_DMG_IGNORE_CI: "true"
 
       - name: Verify signature, entitlements and embedded profile
         if: ${{ env.HAS_APPLE_CERTIFICATE == 'true' }}
