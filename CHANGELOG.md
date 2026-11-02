@@ -8,6 +8,10 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+### Added
+
+- When an update is available, Settings shows what's new in it, with a link to the full changelog.
+
 ## [0.9.1] - 2026-11-01
 
 ### Fixed

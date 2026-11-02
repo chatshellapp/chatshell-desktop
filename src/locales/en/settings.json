@@ -146,6 +146,7 @@
   "updateReadyToast": "Update downloaded and ready to install",
   "updateInstalling": "Installing…",
   "updateSkipVersion": "Skip this version",
+  "updateChangelogLink": "Full changelog",
   "updateAutoCheckLabel": "Check for updates automatically",
   "updateAutoCheckDescription": "Checks dl.chatshell.app once shortly after launch. No usage data is sent."
 }
