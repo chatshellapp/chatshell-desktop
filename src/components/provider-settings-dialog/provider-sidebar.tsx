@@ -20,12 +20,15 @@ import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER } from './constants'
 import { ProviderLogo } from './provider-logo'
 import { useModelStore } from '@/stores/modelStore'
 import { modelCountsByProvider } from '@/lib/model-setup'
+import { cn } from '@/lib/utils'
 
 interface ProviderSidebarProps {
   selectedProvider: LLMProvider
   onSelectProvider: (provider: LLMProvider) => void
   storeProviders: Provider[]
   editingCustomProviderId?: string | null
+  /** Overrides the default fixed height, e.g. to fill an embedding container. */
+  className?: string
 }
 
 export function ProviderSidebar({
@@ -33,6 +36,7 @@ export function ProviderSidebar({
   onSelectProvider,
   storeProviders,
   editingCustomProviderId,
+  className,
 }: ProviderSidebarProps) {
   const { t } = useTranslation('providers')
   const models = useModelStore((state) => state.models)
@@ -40,7 +44,7 @@ export function ProviderSidebar({
   const customStoreProviders = storeProviders.filter((p) => isCustomProviderType(p.provider_type))
 
   return (
-    <Sidebar collapsible="none" className="hidden md:flex h-[600px]">
+    <Sidebar collapsible="none" className={cn('hidden md:flex h-[600px]', className)}>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>

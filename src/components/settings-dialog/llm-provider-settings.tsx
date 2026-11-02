@@ -108,8 +108,9 @@ export function LLMProviderSettings({ open }: LLMProviderSettingsProps) {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex min-h-0 flex-1">
       <ProviderSidebar
+        className="h-auto min-h-0"
         selectedProvider={selectedProvider}
         onSelectProvider={handleSelectProvider}
         storeProviders={storeProviders}
