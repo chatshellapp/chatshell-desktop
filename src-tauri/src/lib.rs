@@ -15,6 +15,7 @@ pub mod sync;
 pub mod sync_crypto_state;
 #[cfg(target_os = "macos")]
 pub mod sync_keychain;
+pub mod sync_scheduler;
 mod thinking_parser;
 mod tokenizer;
 #[cfg(debug_assertions)]
@@ -62,6 +63,23 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .on_window_event(|window, event| {
+            // Focus pulls (throttled); a sustained blur ships pending writes
+            // (step-away pass). Only the main window counts: auxiliary
+            // windows must not read as the user leaving the app.
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::Focused(focused) = event
+                && let Some(triggers) = window.try_state::<sync_scheduler::SyncTriggers>()
+            {
+                triggers.send(if *focused {
+                    sync_scheduler::SyncTrigger::WindowFocused
+                } else {
+                    sync_scheduler::SyncTrigger::WindowBlurred
+                });
+            }
+        })
         .setup(|app| {
             // The system-WebView fetch tier needs the app handle to create
             // hidden fetch webviews at runtime.
@@ -289,47 +307,19 @@ pub fn run() {
                 permission_grants: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
             };
 
-            // Pull remote changes shortly after startup, then keep ticking
-            // on an interval so mid-session changes converge without waiting
-            // for the next relaunch. Idle passes are near-free (header-only
-            // compare + dirty detection), and each tick re-runs the content
-            // key ladder before the pass — the ADR 04 backoff.
+            // Snapshot sync scheduling: a startup pass, the 5-minute
+            // backstop tick, and event triggers (remote artifact change,
+            // window focus/blur, system sleep/wake) — see `sync_scheduler`.
             {
-                let engine = app_state.sync_engine.clone();
-                let db = app_state.db.clone();
-                let handle = app.handle().clone();
-                let wiring = sync_wiring.clone();
-                tauri::async_runtime::spawn(async move {
-                    // The content-key ladder does blocking I/O: Keychain
-                    // reads plus the iCloud artifact header, whose first
-                    // read can trigger a dataless-file download measured
-                    // in seconds. It must never run on the main thread —
-                    // doing so from setup stalled app launch until the
-                    // download finished (first-launch hang, 2026-10-13).
-                    // The helper runs it on the blocking pool at the same
-                    // t=0 so the engine install and the sync-locked banner
-                    // keep their timing.
-                    sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
-                    if let Err(err) =
-                        sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false).await
-                    {
-                        tracing::warn!("Sync pass failed: {err:?}");
-                    }
-                    let mut ticker = tokio::time::interval(sync::SYNC_TICK_INTERVAL);
-                    ticker.tick().await; // consume the immediate first tick
-                    loop {
-                        ticker.tick().await;
-                        sync::ensure_engine_off_worker(&wiring, &handle, &engine).await;
-                        if let Err(err) =
-                            sync::run_sync_pass(engine.clone(), db.clone(), handle.clone(), false)
-                                .await
-                        {
-                            tracing::warn!("Sync pass failed: {err:?}");
-                        }
-                    }
-                });
+                let triggers = sync_scheduler::spawn(
+                    sync_wiring,
+                    app.handle().clone(),
+                    app_state.sync_engine.clone(),
+                    app_state.db.clone(),
+                );
+                #[cfg(target_os = "macos")]
+                sync_scheduler::install_power_observers(triggers.clone());
+                app.manage(triggers);
             }
             // Grab handle before app_state is moved into managed state
             let manager_for_sweep = app_state.bash_session_manager.clone();
@@ -536,38 +526,15 @@ pub fn run() {
                 tracing::info!("Application exiting, cleaning up bash sessions");
                 let state: tauri::State<'_, AppState> = app_handle.state();
                 state.bash_session_manager.kill_all_sync();
-                // Best-effort final snapshot publish so other devices see
-                // the latest local state. New attachment bytes go first:
-                // blobs-before-snapshots keeps peer references dangling-free.
-                if let Ok(mut guard) = state.sync_engine.lock() {
-                    let (cloud_dir, keys) = match guard.as_ref() {
-                        Some(engine) => (
-                            Some(engine.cloud_dir().to_path_buf()),
-                            engine.crypto().map(|c| *c.current_key()),
-                        ),
-                        None => (None, None),
-                    };
-                    if let (Some(dir), Some(keys)) = (cloud_dir, keys)
-                        && let Ok(attach_dir) = crate::storage::get_attachments_dir(app_handle)
-                    {
-                        let db = state.db.clone();
-                        if let Err(err) = tauri::async_runtime::block_on(
-                            blob_sync::ensure_referenced_blobs_uploaded(
-                                &db,
-                                &dir,
-                                &attach_dir,
-                                &keys,
-                            ),
-                        ) {
-                            tracing::warn!("Final blob upload failed: {err:#}");
-                        }
-                    }
-                    if let Some(engine) = guard.as_mut()
-                        && let Err(err) = engine.publish()
-                    {
-                        tracing::warn!("Final snapshot publish failed: {err}");
-                    }
-                }
+                // Final sync pass so other devices see the latest local
+                // state: pull first (a blind publish could overwrite a newer
+                // peer snapshot), blobs before the snapshot, unthrottled
+                // flush, bounded so quitting never hangs.
+                sync_scheduler::run_exit_pass(
+                    state.sync_engine.clone(),
+                    state.db.clone(),
+                    app_handle.clone(),
+                );
             }
         });
 }

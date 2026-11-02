@@ -102,8 +102,10 @@ core-foundation = "0.10"
 # WebView fetch delivery: WKScriptMessageHandler registration (same
 # version tree as wry 0.53.5; no added compile units).
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSNotification", "NSOperation", "block2"] }
+# Block-based NSWorkspace sleep/wake observers (sync scheduler).
+block2 = "0.6"
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKScriptMessage", "WKScriptMessageHandler", "WKUserContentController", "WKWebView", "WKWebViewConfiguration"] }
 
 [dev-dependencies]
