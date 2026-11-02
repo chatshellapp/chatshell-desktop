@@ -38,6 +38,8 @@ import {
   useTranslationStore,
   initializeTranslationLanguages,
   initializeTranslationModel,
+  getDetectedLanguage,
+  resolveMainSlot,
   type TargetSlot,
 } from '@/stores/translationStore'
 import { useModelStore } from '@/stores/modelStore'
@@ -68,16 +70,8 @@ const SHORTCUTS = {
 
 type Shortcut = (typeof SHORTCUTS)[keyof typeof SHORTCUTS]
 
-/** The button Enter presses: the last one used, if it still exists. */
-function resolveMainSlot(
-  lastTarget: TargetSlot,
-  secondaryLanguage: string | null,
-  otherLanguage: string | null
-): TargetSlot {
-  if (lastTarget === 'secondary' && secondaryLanguage) return 'secondary'
-  if (lastTarget === 'other' && otherLanguage) return 'other'
-  return 'primary'
-}
+/** Delay before detecting the input language while the user types. */
+export const DETECTION_DEBOUNCE_MS = 300
 
 function useUiLocale(): string {
   const { i18n } = useTranslation('sidebar')
@@ -88,11 +82,10 @@ export function TranslationContent() {
   const { t } = useTranslation('sidebar')
   const uiLocale = useUiLocale()
 
+  const translationState = useTranslationStore()
   const {
     sourceLanguage,
     secondaryLanguage,
-    otherLanguage,
-    lastTarget,
     inputText,
     outputText,
     isTranslating,
@@ -100,7 +93,7 @@ export function TranslationContent() {
     error,
     selectedModel,
     canContinue,
-  } = useTranslationStore()
+  } = translationState
 
   const setSourceLanguage = useTranslationStore((s) => s.setSourceLanguage)
   const setInputText = useTranslationStore((s) => s.setInputText)
@@ -111,6 +104,7 @@ export function TranslationContent() {
   const moveOutputToInput = useTranslationStore((s) => s.moveOutputToInput)
   const continueInConversation = useTranslationStore((s) => s.continueInConversation)
   const clear = useTranslationStore((s) => s.clear)
+  const detectInputLanguage = useTranslationStore((s) => s.detectInputLanguage)
 
   const models = useModelStore((s) => s.models.filter((m) => !m.is_deleted))
   const getProviderById = useModelStore((s) => s.getProviderById)
@@ -149,7 +143,16 @@ export function TranslationContent() {
     }
   }, [])
 
-  const mainSlot = resolveMainSlot(lastTarget, secondaryLanguage, otherLanguage)
+  useEffect(() => {
+    const timer = setTimeout(() => detectInputLanguage(), DETECTION_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [inputText, detectInputLanguage])
+
+  const detectedLanguage = getDetectedLanguage(translationState)
+  const detectedLabel = detectedLanguage
+    ? t('detectedLanguage', { language: getDisplayName(detectedLanguage, uiLocale) })
+    : null
+  const mainSlot = resolveMainSlot(translationState)
   const alternateSlot: TargetSlot | null =
     mainSlot === 'primary' ? (secondaryLanguage ? 'secondary' : null) : 'primary'
   const canTranslate = !!inputText.trim() && !!selectedModel && !isImporting && !isTranslating
@@ -261,14 +264,20 @@ export function TranslationContent() {
           label={t('sourceLanguage')}
           className="border-b sm:border-r sm:border-b-0"
           toolbar={
-            <LanguageSelect
-              value={sourceLanguage}
-              onChange={setSourceLanguage}
-              includeAuto
-              disabled={isTranslating}
-              ariaLabel={t('sourceLanguage')}
-              uiLocale={uiLocale}
-            />
+            <>
+              <LanguageSelect
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+                includeAuto
+                autoLabel={detectedLabel ?? t('autoDetect')}
+                disabled={isTranslating}
+                ariaLabel={t('sourceLanguage')}
+                uiLocale={uiLocale}
+              />
+              <span className="sr-only" aria-live="polite">
+                {sourceLanguage === AUTO_LANGUAGE ? (detectedLabel ?? '') : ''}
+              </span>
+            </>
           }
           footer={
             <>
@@ -457,12 +466,15 @@ function TranslationActionBar({
     languagesLoaded,
     languagesSetByUser,
     defaultsHintDismissed,
+    primarySuggestion,
   } = useTranslationStore()
   const translateToSlot = useTranslationStore((s) => s.translateToSlot)
   const translateToOther = useTranslationStore((s) => s.translateToOther)
   const setSecondaryLanguage = useTranslationStore((s) => s.setSecondaryLanguage)
   const closeOtherLanguage = useTranslationStore((s) => s.closeOtherLanguage)
   const dismissDefaultsHint = useTranslationStore((s) => s.dismissDefaultsHint)
+  const acceptPrimarySuggestion = useTranslationStore((s) => s.acceptPrimarySuggestion)
+  const dismissPrimarySuggestion = useTranslationStore((s) => s.dismissPrimarySuggestion)
   const [menuOpen, setMenuOpen] = useState(false)
   const [chooseOpen, setChooseOpen] = useState(false)
 
@@ -614,6 +626,28 @@ function TranslationActionBar({
             onClick={onOpenModelPicker}
           >
             {t('selectModelToTranslate')}
+          </Button>
+        </p>
+      )}
+      {primarySuggestion && !isTranslating && (
+        <p role="status" className="mt-2 text-center text-xs text-muted-foreground">
+          {t('primarySuggestion', { language: getDisplayName(primarySuggestion, uiLocale) })}{' '}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={acceptPrimarySuggestion}
+          >
+            {t('makePrimary')}
+          </Button>
+          {' · '}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={dismissPrimarySuggestion}
+          >
+            {t('notNow')}
           </Button>
         </p>
       )}
@@ -1005,11 +1039,14 @@ function LanguageSelect({
   disabled = false,
   variant = 'ghost',
   placeholder,
+  autoLabel,
 }: {
   value: string | null
   onChange: (code: string) => void
   ariaLabel: string
   uiLocale: string
+  /** Trigger text while the value is `auto`, e.g. the detected language. */
+  autoLabel?: string
   includeAuto?: boolean
   disabled?: boolean
   variant?: 'ghost' | 'outline'
@@ -1019,7 +1056,7 @@ function LanguageSelect({
   const { t } = useTranslation('sidebar')
   const label =
     value === AUTO_LANGUAGE
-      ? t('autoDetect')
+      ? (autoLabel ?? t('autoDetect'))
       : value
         ? getDisplayName(value, uiLocale)
         : (placeholder ?? t('selectLanguage'))

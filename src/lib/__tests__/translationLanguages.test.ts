@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   TRANSLATION_LANGUAGES,
   getDisplayName,
@@ -37,6 +37,18 @@ describe('names', () => {
   it('localizes display names to the UI locale', () => {
     expect(getDisplayName('ja', 'en')).toBe('Japanese')
     expect(getDisplayName('fr', 'fr')).toBe('français')
+    expect(getDisplayName('zh-Hant', 'en')).toBe('Chinese (Traditional)')
+  })
+
+  it('normalizes the list-style variant names WebKit returns', () => {
+    const of = vi.spyOn(Intl.DisplayNames.prototype, 'of').mockReturnValue('Chinese, Simplified')
+    try {
+      expect(getDisplayName('zh-Hans', 'en-x-webkit')).toBe('Chinese (Simplified)')
+      // Base languages keep commas that are part of the name.
+      expect(getDisplayName('ja', 'en-x-webkit')).toBe('Chinese, Simplified')
+    } finally {
+      of.mockRestore()
+    }
   })
 
   it('builds compact codes for narrow layouts', () => {

@@ -59,7 +59,11 @@ function getDisplayNames(locale: string): Intl.DisplayNames | null {
   if (!displayNamesCache.has(locale)) {
     let names: Intl.DisplayNames | null = null
     try {
-      names = new Intl.DisplayNames([locale], { type: 'language', fallback: 'none' })
+      names = new Intl.DisplayNames([locale], {
+        type: 'language',
+        fallback: 'none',
+        languageDisplay: 'standard',
+      })
     } catch {
       names = null
     }
@@ -68,10 +72,22 @@ function getDisplayNames(locale: string): Intl.DisplayNames | null {
   return displayNamesCache.get(locale) ?? null
 }
 
+/**
+ * WebKit's locale data names script variants in list form ("Chinese,
+ * Simplified") even with `languageDisplay: 'standard'`, while V8 returns
+ * "Chinese (Simplified)". Normalize variants to the parenthesized form.
+ */
+function normalizeVariantName(code: string, name: string): string {
+  if (!code.includes('-')) return name
+  const match = /^([^,]+), (.+)$/.exec(name)
+  return match ? `${match[1]} (${match[2]})` : name
+}
+
 /** Name of `code` in `uiLocale`, falling back to the English name. */
 export function getDisplayName(code: string, uiLocale: string): string {
   try {
-    return getDisplayNames(uiLocale)?.of(code) ?? getEnglishName(code)
+    const name = getDisplayNames(uiLocale)?.of(code)
+    return name ? normalizeVariantName(code, name) : getEnglishName(code)
   } catch {
     return getEnglishName(code)
   }

@@ -6,6 +6,10 @@ import {
   initializeTranslationLanguages,
   initializeTranslationModel,
   TRANSLATION_SETTING_KEYS,
+  getDetectedLanguage,
+  resolveDetectedLanguage,
+  resolveMainSlot,
+  type LanguageDetection,
 } from '../translationStore'
 import { logger } from '@/lib/logger'
 import type { Model, Provider } from '@/types'
@@ -164,6 +168,10 @@ describe('useTranslationStore', () => {
       unlistenFns: [],
       canContinue: false,
       lastTranslationContext: null,
+      detection: null,
+      primarySuggestion: null,
+      suggestionStreak: null,
+      dismissedPrimarySuggestions: [],
     })
   })
 
@@ -461,6 +469,7 @@ describe('useTranslationStore', () => {
         [TRANSLATION_SETTING_KEYS.recent]: JSON.stringify(['fr', 'bogus', 'de']),
         [TRANSLATION_SETTING_KEYS.lastTarget]: 'secondary',
         [TRANSLATION_SETTING_KEYS.hintDismissed]: 'true',
+        [TRANSLATION_SETTING_KEYS.dismissedSuggestions]: JSON.stringify(['ko', 'nope']),
       })
 
       await initializeTranslationLanguages()
@@ -472,6 +481,7 @@ describe('useTranslationStore', () => {
       expect(state.lastTarget).toBe('secondary')
       expect(state.languagesSetByUser).toBe(true)
       expect(state.defaultsHintDismissed).toBe(true)
+      expect(state.dismissedPrimarySuggestions).toEqual(['ko'])
       expect(invokeMock).not.toHaveBeenCalledWith('get_system_locales')
     })
 
@@ -532,6 +542,218 @@ describe('useTranslationStore', () => {
       await initializeTranslationLanguages()
 
       expect(invokeMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('language detection', () => {
+    const reliable = (language: string | null): LanguageDetection => ({
+      language,
+      confidence: 0.9,
+      reliable: true,
+    })
+    const detect = (text: string, result: LanguageDetection = reliable('fr')) =>
+      useTranslationStore.setState({ inputText: text, detection: { text, result } })
+
+    it('detectInputLanguage stores the result for the current text', async () => {
+      invokeMock.mockResolvedValueOnce(reliable('ja'))
+      useTranslationStore.getState().setInputText('text')
+
+      await useTranslationStore.getState().detectInputLanguage()
+
+      expect(invokeMock).toHaveBeenCalledWith('detect_language', { text: 'text' })
+      expect(useTranslationStore.getState().detection).toEqual({
+        text: 'text',
+        result: reliable('ja'),
+      })
+    })
+
+    it('drops results for text that changed while detecting', async () => {
+      let resolve!: (value: LanguageDetection) => void
+      invokeMock.mockImplementationOnce(() => new Promise((r) => (resolve = r)))
+      useTranslationStore.getState().setInputText('old')
+      const pending = useTranslationStore.getState().detectInputLanguage()
+      useTranslationStore.getState().setInputText('new')
+      resolve(reliable('ja'))
+
+      await pending
+
+      expect(useTranslationStore.getState().detection).toBeNull()
+    })
+
+    it('clears detection for empty input without calling the backend', async () => {
+      detect('x')
+      useTranslationStore.setState({ inputText: '  ' })
+
+      await useTranslationStore.getState().detectInputLanguage()
+
+      expect(invokeMock).not.toHaveBeenCalled()
+      expect(useTranslationStore.getState().detection).toBeNull()
+    })
+
+    it('clears detection when the command fails', async () => {
+      detect('x')
+      invokeMock.mockRejectedValueOnce(new Error('boom'))
+
+      await useTranslationStore.getState().detectInputLanguage()
+
+      expect(useTranslationStore.getState().detection).toBeNull()
+      expect(logger.warn).toHaveBeenCalled()
+    })
+
+    it('getDetectedLanguage ignores stale, uncertain and unsupported results', () => {
+      detect('bonjour')
+      expect(getDetectedLanguage(useTranslationStore.getState())).toBe('fr')
+
+      useTranslationStore.setState({ inputText: 'changed' })
+      expect(getDetectedLanguage(useTranslationStore.getState())).toBeNull()
+
+      detect('salut', { language: 'fr', confidence: 0.1, reliable: false })
+      expect(getDetectedLanguage(useTranslationStore.getState())).toBeNull()
+
+      detect('?', reliable(null))
+      expect(getDetectedLanguage(useTranslationStore.getState())).toBeNull()
+    })
+
+    it('resolves Portuguese to the variant the user works with', () => {
+      expect(resolveDetectedLanguage('pt', ['en', 'pt-PT'])).toBe('pt-PT')
+      expect(resolveDetectedLanguage('pt', ['en', null])).toBe('pt-BR')
+      expect(resolveDetectedLanguage('zh-Hant', [])).toBe('zh-Hant')
+      expect(resolveDetectedLanguage('xx', [])).toBeNull()
+    })
+
+    it('names the detected source in the prompt and the attempt', async () => {
+      setupTranslate()
+      detect('hello', reliable('fr'))
+
+      await useTranslationStore.getState().translate('en')
+
+      expect(useTranslationStore.getState().lastAttempt).toEqual({
+        sourceLanguage: 'fr',
+        targetLanguage: 'en',
+      })
+      expect(invokeMock).toHaveBeenCalledWith(
+        'send_message',
+        expect.objectContaining({ systemPrompt: expect.stringContaining('from French to English') })
+      )
+    })
+
+    it('prefers a manual source over detection', async () => {
+      setupTranslate()
+      detect('hello', reliable('fr'))
+      useTranslationStore.getState().setSourceLanguage('de')
+
+      await useTranslationStore.getState().translate('en')
+
+      expect(useTranslationStore.getState().lastAttempt?.sourceLanguage).toBe('de')
+    })
+
+    it('resets a manual source when the input is emptied', () => {
+      useTranslationStore.getState().setInputText('hallo')
+      useTranslationStore.getState().setSourceLanguage('de')
+      useTranslationStore.getState().setInputText('hallo welt')
+      expect(useTranslationStore.getState().sourceLanguage).toBe('de')
+
+      useTranslationStore.getState().setInputText('')
+      expect(useTranslationStore.getState().sourceLanguage).toBe('auto')
+    })
+  })
+
+  describe('resolveMainSlot', () => {
+    const slotFor = (overrides: Record<string, unknown>) => {
+      useTranslationStore.setState({ inputText: 't', ...overrides })
+      return resolveMainSlot(useTranslationStore.getState())
+    }
+    const detected = (language: string, reliable = true) => ({
+      detection: { text: 't', result: { language, confidence: 0.9, reliable } },
+    })
+
+    it('sends primary-language text to the secondary language', () => {
+      expect(slotFor(detected('en'))).toBe('secondary')
+    })
+
+    it('sends any other language to the primary language, even after using another button', () => {
+      expect(slotFor({ ...detected('ja'), lastTarget: 'secondary' })).toBe('primary')
+      expect(slotFor({ ...detected('fr'), lastTarget: 'other', otherLanguage: 'de' })).toBe(
+        'primary'
+      )
+    })
+
+    it('uses a manual source like a detection', () => {
+      expect(slotFor({ sourceLanguage: 'en' })).toBe('secondary')
+    })
+
+    it('falls back to the last button when uncertain or without a secondary', () => {
+      expect(slotFor({ ...detected('en', false), lastTarget: 'secondary' })).toBe('secondary')
+      expect(slotFor({ ...detected('en'), secondaryLanguage: null })).toBe('primary')
+      expect(slotFor({ lastTarget: 'other', otherLanguage: 'de' })).toBe('other')
+      expect(slotFor({ lastTarget: 'other', otherLanguage: null })).toBe('primary')
+    })
+  })
+
+  describe('primary language suggestion', () => {
+    // Primary is English; the user keeps translating French text into Korean.
+    const translateForeignTo = async (target: string, source = 'fr') => {
+      useTranslationStore.setState({
+        inputText: `${source}-text`,
+        detection: {
+          text: `${source}-text`,
+          result: { language: source, confidence: 0.9, reliable: true },
+        },
+      })
+      await useTranslationStore.getState().translateToOther(target)
+      // Finish the request so the next press is not ignored as overlapping.
+      if (useTranslationStore.getState().isTranslating) {
+        fire('chat-complete', { conversation_id: 'conv-1', message: {} })
+      }
+    }
+
+    beforeEach(() => {
+      setupTranslate()
+    })
+
+    it('offers the language after three foreign translations in a row', async () => {
+      await translateForeignTo('ko')
+      await translateForeignTo('ko')
+      expect(useTranslationStore.getState().primarySuggestion).toBeNull()
+
+      await translateForeignTo('ko')
+      expect(useTranslationStore.getState().primarySuggestion).toBe('ko')
+    })
+
+    it('restarts the streak for a different target or non-foreign text', async () => {
+      await translateForeignTo('ko')
+      await translateForeignTo('ko')
+      await translateForeignTo('de')
+      await translateForeignTo('ko')
+      expect(useTranslationStore.getState().suggestionStreak).toEqual({ language: 'ko', count: 1 })
+
+      await translateForeignTo('ko', 'en')
+      expect(useTranslationStore.getState().suggestionStreak).toBeNull()
+    })
+
+    it('accepting makes it the primary language', async () => {
+      for (let i = 0; i < 3; i++) await translateForeignTo('ko')
+
+      useTranslationStore.getState().acceptPrimarySuggestion()
+
+      const state = useTranslationStore.getState()
+      expect(state.primaryLanguage).toBe('ko')
+      expect(state.primarySuggestion).toBeNull()
+      expect(state.languagesSetByUser).toBe(true)
+    })
+
+    it('dismissing persists and suppresses that language', async () => {
+      for (let i = 0; i < 3; i++) await translateForeignTo('ko')
+
+      useTranslationStore.getState().dismissPrimarySuggestion()
+      for (let i = 0; i < 3; i++) await translateForeignTo('ko')
+
+      expect(useTranslationStore.getState().primarySuggestion).toBeNull()
+      expect(useTranslationStore.getState().primaryLanguage).toBe('en')
+      expect(invokeMock).toHaveBeenCalledWith('set_setting', {
+        key: TRANSLATION_SETTING_KEYS.dismissedSuggestions,
+        value: JSON.stringify(['ko']),
+      })
     })
   })
 
@@ -759,7 +981,7 @@ describe('useTranslationStore', () => {
   })
 
   describe('clear', () => {
-    it('resets texts, error and continue state but keeps languages', () => {
+    it('resets texts, error, continue state and the manual source but keeps languages', () => {
       useTranslationStore.setState({
         sourceLanguage: 'en',
         inputText: 'hello',
@@ -783,7 +1005,8 @@ describe('useTranslationStore', () => {
       expect(state.error).toBeNull()
       expect(state.canContinue).toBe(false)
       expect(state.lastTranslationContext).toBeNull()
-      expect(state.sourceLanguage).toBe('en')
+      expect(state.sourceLanguage).toBe('auto')
+      expect(state.primaryLanguage).toBe('en')
       expect(state.lastAttempt).toBeNull()
     })
   })

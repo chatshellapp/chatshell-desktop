@@ -81,5 +81,9 @@
   "useAsInput": "用作输入",
   "selectModelToTranslate": "选择一个模型以开始翻译",
   "longInputHint": "文本较长，使用上下文更大的模型效果可能更好。",
-  "translationDirection": "{{source}} → {{target}}"
+  "translationDirection": "{{source}} → {{target}}",
+  "detectedLanguage": "检测到：{{language}}",
+  "primarySuggestion": "将{{language}}设为你的第一语言？",
+  "makePrimary": "设为第一语言",
+  "notNow": "暂不"
 }

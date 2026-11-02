@@ -82,5 +82,9 @@
   "useAsInput": "Use as input",
   "selectModelToTranslate": "Select a model to translate",
   "longInputHint": "Long text. A model with a larger context may work better.",
-  "translationDirection": "{{source}} → {{target}}"
+  "translationDirection": "{{source}} → {{target}}",
+  "detectedLanguage": "Detected: {{language}}",
+  "primarySuggestion": "Make {{language}} your primary language?",
+  "makePrimary": "Make primary",
+  "notNow": "Not now"
 }

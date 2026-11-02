@@ -30,9 +30,12 @@ export const TRANSLATION_SETTING_KEYS = {
   lastTarget: 'translation_last_target',
   setByUser: 'translation_languages_set_by_user',
   hintDismissed: 'translation_defaults_hint_dismissed',
+  dismissedSuggestions: 'translation_dismissed_primary_suggestions',
 } as const
 
 export const MAX_RECENT_LANGUAGES = 5
+/** Consecutive "To X" presses on foreign text before suggesting X as primary. */
+export const PRIMARY_SUGGESTION_STREAK = 3
 const MAX_CACHE_ENTRIES = 50
 
 /** Which action-bar button a translation targets. */
@@ -49,6 +52,13 @@ interface TranslationContext {
 export interface TranslationAttempt {
   sourceLanguage: string
   targetLanguage: string
+}
+
+/** Result of the on-device `detect_language` command. */
+export interface LanguageDetection {
+  language: string | null
+  confidence: number
+  reliable: boolean
 }
 
 interface TranslateOptions {
@@ -80,6 +90,12 @@ interface TranslationState {
   canContinue: boolean
   lastTranslationContext: TranslationContext | null
   resultCache: Record<string, string>
+  /** Detection result and the exact input it was computed for. */
+  detection: { text: string; result: LanguageDetection } | null
+  /** Language offered as the new primary, if the suggestion is showing. */
+  primarySuggestion: string | null
+  suggestionStreak: { language: string; count: number } | null
+  dismissedPrimarySuggestions: string[]
 }
 
 interface TranslationActions {
@@ -101,6 +117,9 @@ interface TranslationActions {
   clear: () => void
   cleanup: () => void
   continueInConversation: () => Promise<void>
+  detectInputLanguage: () => Promise<void>
+  acceptPrimarySuggestion: () => void
+  dismissPrimarySuggestion: () => void
 }
 
 type TranslationStore = TranslationState & TranslationActions
@@ -114,6 +133,65 @@ function persist(key: string, value: string) {
     .getState()
     .saveSetting(key, value)
     .catch((error) => logger.error(`[translationStore] Failed to save ${key}:`, error))
+}
+
+/**
+ * Maps a detected code onto the catalog. whatlang reports Portuguese without a
+ * region, so prefer the variant the user already works with.
+ */
+export function resolveDetectedLanguage(
+  code: string | null,
+  userLanguages: Array<string | null>
+): string | null {
+  if (!code) return null
+  if (code === 'pt') {
+    return userLanguages.find((l): l is string => !!l && l.startsWith('pt-')) ?? 'pt-BR'
+  }
+  return isTranslationLanguage(code) ? code : null
+}
+
+type DetectionState = Pick<
+  TranslationState,
+  | 'detection'
+  | 'inputText'
+  | 'sourceLanguage'
+  | 'primaryLanguage'
+  | 'secondaryLanguage'
+  | 'recentLanguages'
+>
+
+/** Reliable detection for the current input, or null when stale or uncertain. */
+export function getDetectedLanguage(state: DetectionState): string | null {
+  const { detection } = state
+  if (!detection || detection.text !== state.inputText || !detection.result.reliable) return null
+  return resolveDetectedLanguage(detection.result.language, [
+    state.primaryLanguage,
+    state.secondaryLanguage,
+    ...state.recentLanguages,
+  ])
+}
+
+/** The source language as far as it is known: a manual pick, else detection. */
+export function getKnownSourceLanguage(state: DetectionState): string | null {
+  return state.sourceLanguage !== AUTO_LANGUAGE ? state.sourceLanguage : getDetectedLanguage(state)
+}
+
+/**
+ * The button Enter presses. With a known source: primary-language text goes to
+ * the secondary language, anything else to the primary language. Otherwise the
+ * last button used, if it still exists.
+ */
+export function resolveMainSlot(
+  state: DetectionState & Pick<TranslationState, 'lastTarget' | 'otherLanguage'>
+): TargetSlot {
+  const source = getKnownSourceLanguage(state)
+  if (source) {
+    if (source !== state.primaryLanguage) return 'primary'
+    if (state.secondaryLanguage) return 'secondary'
+  }
+  if (state.lastTarget === 'secondary' && state.secondaryLanguage) return 'secondary'
+  if (state.lastTarget === 'other' && state.otherLanguage) return 'other'
+  return 'primary'
 }
 
 function initialDefaults() {
@@ -184,6 +262,37 @@ export const useTranslationStore = create<TranslationStore>()(
       if (slot !== 'other') persist(TRANSLATION_SETTING_KEYS.lastTarget, slot)
     }
 
+    /**
+     * Counts consecutive translations of foreign text (neither the primary nor
+     * the target language) into the same non-primary language. A streak hints
+     * that the user reads that language best.
+     */
+    const trackPrimarySuggestion = (target: string) => {
+      const state = get()
+      const source = getKnownSourceLanguage(state)
+      const counts =
+        target !== state.primaryLanguage &&
+        !!source &&
+        source !== state.primaryLanguage &&
+        source !== target
+      set((draft) => {
+        if (!counts) {
+          draft.suggestionStreak = null
+          draft.primarySuggestion = null
+          return
+        }
+        const count =
+          draft.suggestionStreak?.language === target ? draft.suggestionStreak.count + 1 : 1
+        draft.suggestionStreak = { language: target, count }
+        if (
+          count >= PRIMARY_SUGGESTION_STREAK &&
+          !draft.dismissedPrimarySuggestions.includes(target)
+        ) {
+          draft.primarySuggestion = target
+        }
+      })
+    }
+
     return {
       sourceLanguage: AUTO_LANGUAGE,
       primaryLanguage: defaults.primary,
@@ -206,6 +315,10 @@ export const useTranslationStore = create<TranslationStore>()(
       canContinue: false,
       lastTranslationContext: null,
       resultCache: {},
+      detection: null,
+      primarySuggestion: null,
+      suggestionStreak: null,
+      dismissedPrimarySuggestions: [],
 
       setSourceLanguage: (language: string) => {
         set((draft) => {
@@ -216,6 +329,8 @@ export const useTranslationStore = create<TranslationStore>()(
       setInputText: (text: string) => {
         set((draft) => {
           draft.inputText = text
+          // A manual source correction applies to the current text only.
+          if (!text) draft.sourceLanguage = AUTO_LANGUAGE
         })
       },
 
@@ -281,7 +396,8 @@ export const useTranslationStore = create<TranslationStore>()(
       },
 
       translate: async (targetLanguage: string, options: TranslateOptions = {}) => {
-        const { inputText, sourceLanguage, selectedModel, isTranslating } = get()
+        const { inputText, selectedModel, isTranslating } = get()
+        const sourceLanguage = getKnownSourceLanguage(get()) ?? AUTO_LANGUAGE
 
         if (isTranslating || !inputText.trim()) return
         set((draft) => {
@@ -431,6 +547,7 @@ export const useTranslationStore = create<TranslationStore>()(
         const target = get().getSlotLanguage(slot)
         if (!target || get().isTranslating) return
         setLastTarget(slot)
+        trackPrimarySuggestion(target)
         await get().translate(target)
       },
 
@@ -494,6 +611,8 @@ export const useTranslationStore = create<TranslationStore>()(
 
       clear: () => {
         set((draft) => {
+          draft.sourceLanguage = AUTO_LANGUAGE
+          draft.detection = null
           draft.inputText = ''
           draft.outputText = ''
           draft.error = null
@@ -501,6 +620,55 @@ export const useTranslationStore = create<TranslationStore>()(
           draft.lastTranslationContext = null
           draft.lastAttempt = null
         })
+      },
+
+      detectInputLanguage: async () => {
+        const text = get().inputText
+        if (!text.trim()) {
+          set((draft) => {
+            draft.detection = null
+          })
+          return
+        }
+        try {
+          const result = await invoke<LanguageDetection>('detect_language', { text })
+          // Ignore results for text that has since changed.
+          if (get().inputText !== text || !result) return
+          set((draft) => {
+            draft.detection = { text, result }
+          })
+        } catch (error) {
+          logger.warn('[translationStore] Language detection failed:', error)
+          set((draft) => {
+            draft.detection = null
+          })
+        }
+      },
+
+      acceptPrimarySuggestion: () => {
+        const { primarySuggestion } = get()
+        if (!primarySuggestion) return
+        set((draft) => {
+          draft.primarySuggestion = null
+          draft.suggestionStreak = null
+        })
+        get().setPrimaryLanguage(primarySuggestion)
+      },
+
+      dismissPrimarySuggestion: () => {
+        const { primarySuggestion } = get()
+        if (!primarySuggestion) return
+        set((draft) => {
+          draft.primarySuggestion = null
+          draft.suggestionStreak = null
+          if (!draft.dismissedPrimarySuggestions.includes(primarySuggestion)) {
+            draft.dismissedPrimarySuggestions.push(primarySuggestion)
+          }
+        })
+        persist(
+          TRANSLATION_SETTING_KEYS.dismissedSuggestions,
+          JSON.stringify(get().dismissedPrimarySuggestions)
+        )
       },
 
       cleanup: () => {
@@ -598,6 +766,16 @@ export const useTranslationStore = create<TranslationStore>()(
   })
 )
 
+/** Parses a saved JSON array of language codes, dropping unknown entries. */
+function parseLanguageList(value: string | null): string[] {
+  try {
+    const parsed: unknown = value ? JSON.parse(value) : []
+    return Array.isArray(parsed) ? parsed.filter(isTranslationLanguage) : []
+  } catch {
+    return []
+  }
+}
+
 /**
  * Loads saved translation languages. Until the user sets languages explicitly,
  * defaults are recomputed from the OS preferred-language list on each launch.
@@ -606,15 +784,23 @@ export async function initializeTranslationLanguages() {
   if (useTranslationStore.getState().languagesLoaded) return
 
   const { getSetting } = useSettingsStore.getState()
-  const [setByUser, savedPrimary, savedSecondary, savedRecent, savedLastTarget, hintDismissed] =
-    await Promise.all([
-      getSetting(TRANSLATION_SETTING_KEYS.setByUser),
-      getSetting(TRANSLATION_SETTING_KEYS.primary),
-      getSetting(TRANSLATION_SETTING_KEYS.secondary),
-      getSetting(TRANSLATION_SETTING_KEYS.recent),
-      getSetting(TRANSLATION_SETTING_KEYS.lastTarget),
-      getSetting(TRANSLATION_SETTING_KEYS.hintDismissed),
-    ])
+  const [
+    setByUser,
+    savedPrimary,
+    savedSecondary,
+    savedRecent,
+    savedLastTarget,
+    hintDismissed,
+    savedDismissedSuggestions,
+  ] = await Promise.all([
+    getSetting(TRANSLATION_SETTING_KEYS.setByUser),
+    getSetting(TRANSLATION_SETTING_KEYS.primary),
+    getSetting(TRANSLATION_SETTING_KEYS.secondary),
+    getSetting(TRANSLATION_SETTING_KEYS.recent),
+    getSetting(TRANSLATION_SETTING_KEYS.lastTarget),
+    getSetting(TRANSLATION_SETTING_KEYS.hintDismissed),
+    getSetting(TRANSLATION_SETTING_KEYS.dismissedSuggestions),
+  ])
 
   const useSaved = setByUser === 'true' && isTranslationLanguage(savedPrimary)
   let primary: string
@@ -637,15 +823,8 @@ export async function initializeTranslationLanguages() {
     secondary = resolved.secondary
   }
 
-  let recent: string[] = []
-  try {
-    const parsed: unknown = savedRecent ? JSON.parse(savedRecent) : []
-    if (Array.isArray(parsed)) {
-      recent = parsed.filter(isTranslationLanguage).slice(0, MAX_RECENT_LANGUAGES)
-    }
-  } catch {
-    recent = []
-  }
+  const recent = parseLanguageList(savedRecent).slice(0, MAX_RECENT_LANGUAGES)
+  const dismissedSuggestions = parseLanguageList(savedDismissedSuggestions)
 
   useTranslationStore.setState((state) => {
     // A choice made while settings were loading takes precedence.
@@ -655,6 +834,7 @@ export async function initializeTranslationLanguages() {
       state.languagesSetByUser = useSaved
     }
     state.recentLanguages = recent
+    state.dismissedPrimarySuggestions = dismissedSuggestions
     state.lastTarget =
       savedLastTarget === 'secondary' && state.secondaryLanguage ? 'secondary' : 'primary'
     state.defaultsHintDismissed = state.defaultsHintDismissed || hintDismissed === 'true'

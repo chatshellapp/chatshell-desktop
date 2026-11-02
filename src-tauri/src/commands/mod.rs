@@ -22,6 +22,7 @@ mod settings;
 mod skills;
 mod steps;
 mod sync;
+mod translation;
 mod users;
 
 use crate::db::Database;
@@ -97,4 +98,5 @@ pub use settings::*;
 pub use skills::*;
 pub use steps::*;
 pub use sync::*;
+pub use translation::*;
 pub use users::*;

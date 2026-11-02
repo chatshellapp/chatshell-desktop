@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { LONG_INPUT_CHARS, TranslationContent } from '../translation-content'
+import { DETECTION_DEBOUNCE_MS, LONG_INPUT_CHARS, TranslationContent } from '../translation-content'
 import { useTranslationStore } from '@/stores/translationStore'
 import type { Model } from '@/types'
 
@@ -42,6 +42,7 @@ const translateToSlot = vi.fn()
 const translateToOther = vi.fn()
 const retranslate = vi.fn()
 const stopTranslation = vi.fn()
+const detectInputLanguage = vi.fn()
 
 const primaryButton = () =>
   screen.getByRole('button', { name: 'translateToWithShortcut(English|Enter)' })
@@ -73,6 +74,9 @@ beforeEach(() => {
     translateToOther,
     retranslate,
     stopTranslation,
+    detectInputLanguage,
+    detection: null,
+    primarySuggestion: null,
   })
 })
 
@@ -232,6 +236,64 @@ describe('TranslationContent', () => {
     expect(await screen.findByText('yourLanguages')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'primaryLanguage' })).toHaveTextContent('English')
     expect(screen.getByRole('combobox', { name: 'secondaryLanguage' })).toHaveTextContent('French')
+  })
+
+  it('shows the detected language and moves Enter to the other language', () => {
+    useTranslationStore.setState({
+      detection: { text: 'Hello', result: { language: 'en', confidence: 0.9, reliable: true } },
+    })
+    render(<TranslationContent />)
+    expect(screen.getByRole('combobox', { name: 'sourceLanguage' })).toHaveTextContent(
+      'detectedLanguage(English)'
+    )
+    expect(
+      screen.getByRole('button', { name: 'translateToWithShortcut(French|Enter)' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'translateToWithShortcut(English|Alt+Enter)' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows Auto while detection is uncertain', () => {
+    useTranslationStore.setState({
+      detection: { text: 'Hello', result: { language: 'en', confidence: 0.1, reliable: false } },
+    })
+    render(<TranslationContent />)
+    expect(screen.getByRole('combobox', { name: 'sourceLanguage' })).toHaveTextContent('autoDetect')
+    expect(primaryButton()).toBeInTheDocument()
+  })
+
+  it('detects the input language after typing pauses', () => {
+    vi.useFakeTimers()
+    try {
+      render(<TranslationContent />)
+      detectInputLanguage.mockClear()
+      fireEvent.change(screen.getByRole('textbox', { name: 'translationInputPlaceholder' }), {
+        target: { value: 'Bonjour tout le monde' },
+      })
+      act(() => vi.advanceTimersByTime(DETECTION_DEBOUNCE_MS - 1))
+      expect(detectInputLanguage).not.toHaveBeenCalled()
+      act(() => vi.advanceTimersByTime(1))
+      expect(detectInputLanguage).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('offers to change the primary language after a usage streak', () => {
+    const acceptPrimarySuggestion = vi.fn()
+    const dismissPrimarySuggestion = vi.fn()
+    useTranslationStore.setState({
+      primarySuggestion: 'ko',
+      acceptPrimarySuggestion,
+      dismissPrimarySuggestion,
+    })
+    render(<TranslationContent />)
+    expect(screen.getByRole('status')).toHaveTextContent('primarySuggestion(Korean)')
+    fireEvent.click(screen.getByRole('button', { name: 'makePrimary' }))
+    expect(acceptPrimarySuggestion).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'notNow' }))
+    expect(dismissPrimarySuggestion).toHaveBeenCalledOnce()
   })
 
   it('flags very long input without blocking translation', () => {
