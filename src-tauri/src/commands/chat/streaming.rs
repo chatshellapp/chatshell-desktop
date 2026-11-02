@@ -583,6 +583,13 @@ pub(crate) async fn handle_agent_streaming(
         (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
     };
 
+    // Invite inline SVG figures (skipped for tool-less modes like translation,
+    // whose output is never rendered as a chat answer).
+    if !disable_tools && crate::commands::svg_figures_enabled(&state_clone.db).await {
+        effective_system_prompt.push_str("\n\n");
+        effective_system_prompt.push_str(&crate::commands::svg_figure_instructions());
+    }
+
     // Inject workflow instructions for skills and MCP tools
     if !skill_entries.is_empty() {
         effective_system_prompt.push_str("\n\n");

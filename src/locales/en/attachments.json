@@ -60,5 +60,15 @@
   "attachmentUnavailable": "Attachment unavailable",
   "downloadingAttachment": "Downloading...",
   "binaryDocumentNoPreview": "No text preview for this document",
-  "binaryDocumentHint": "Send it and ask the assistant to read it with the read tool"
+  "binaryDocumentHint": "Send it and ask the assistant to read it with the read tool",
+  "svgFigureAlt": "Figure",
+  "svgFigureFailed": "Could not render this figure",
+  "svgDrawing": "Drawing figure...",
+  "svgShowSource": "Show source",
+  "svgShowFigure": "Show figure",
+  "svgPause": "Pause animation",
+  "svgPlay": "Play animation",
+  "svgOpenViewer": "Open full size",
+  "svgZoomIn": "Zoom in",
+  "svgZoomOut": "Zoom out"
 }

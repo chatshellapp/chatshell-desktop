@@ -17,3 +17,8 @@ export interface MermaidBlockProps {
   code: string
   flat?: boolean
 }
+
+export interface SvgFigureBlockProps {
+  code: string
+  flat?: boolean
+}

@@ -7,6 +7,7 @@ import type { FailedTurn as FailedTurnState, RunOutcome } from '@/stores/message
 import { FailedTurn } from './FailedTurn'
 import { MessageItem } from './MessageItem'
 import { StreamingMessage } from './StreamingMessage'
+import { MarkdownStreamingContext } from '@/components/markdown-content/streaming-context'
 import type { DisplayInfo } from './hooks'
 
 /** Rows in the first mounted chunk (app start, or the frame after a
@@ -151,17 +152,19 @@ export function MessageList({
       ))}
       {showStreamingMessage && (
         <div data-streaming-message="true">
-          <StreamingMessage
-            conversationId={conversationId}
-            lastUserMessage={lastUserMessage}
-            messageResources={messageResources}
-            urlStatuses={urlStatuses}
-            getDisplayInfo={getDisplayInfo}
-            onCopy={onCopy}
-            onExportAll={onExportAll}
-            onExportConversation={onExportStreamingConversation}
-            onExportMessage={() => {}}
-          />
+          <MarkdownStreamingContext.Provider value={true}>
+            <StreamingMessage
+              conversationId={conversationId}
+              lastUserMessage={lastUserMessage}
+              messageResources={messageResources}
+              urlStatuses={urlStatuses}
+              getDisplayInfo={getDisplayInfo}
+              onCopy={onCopy}
+              onExportAll={onExportAll}
+              onExportConversation={onExportStreamingConversation}
+              onExportMessage={() => {}}
+            />
+          </MarkdownStreamingContext.Provider>
         </div>
       )}
       {failedTurn && !showStreamingMessage && (

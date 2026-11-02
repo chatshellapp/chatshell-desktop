@@ -1,6 +1,9 @@
 import { useMemo, type ReactNode, type ComponentProps } from 'react'
 import { MermaidBlock } from './mermaid-block'
 import { CodeBlock } from './code-block'
+import { SvgFigureBlock } from './svg-figure-block'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { RENDER_SVG_FIGURES_SETTING } from '@/lib/svg-figure'
 
 interface UseMarkdownComponentsOptions {
   compact?: boolean
@@ -20,6 +23,9 @@ export function useMarkdownComponents({
   compact = false,
   flat = false,
 }: UseMarkdownComponentsOptions) {
+  const svgFigures = useSettingsStore(
+    (state) => state.settings[RENDER_SVG_FIGURES_SETTING] !== 'false'
+  )
   return useMemo(() => {
     const components = {
       code(props: CodeProps) {
@@ -34,6 +40,10 @@ export function useMarkdownComponents({
 
           if (language === 'mermaid') {
             return <MermaidBlock code={codeContent} flat={flat} />
+          }
+
+          if (language === 'svg' && svgFigures) {
+            return <SvgFigureBlock code={codeContent} flat={flat} />
           }
 
           return <CodeBlock language={language} code={codeContent} flat={flat} />
@@ -235,5 +245,5 @@ export function useMarkdownComponents({
       },
     }
     return components
-  }, [compact, flat])
+  }, [compact, flat, svgFigures])
 }
