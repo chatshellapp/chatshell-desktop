@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/lib/i18n'
 import { ProviderSettingsDialog } from '../provider-settings-dialog'
+import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import { useModelStore } from '@/stores/modelStore'
 import type { Model, Provider } from '@/types'
 
@@ -41,9 +43,9 @@ function mockBackend({ models, providers }: { models: Model[]; providers: Provid
   mockedInvoke.mockImplementation((async (cmd: string) => {
     switch (cmd) {
       case 'list_all_models':
-        return models
+        return [...models]
       case 'list_providers':
-        return providers
+        return [...providers]
       case 'fetch_provider_models':
         return [{ id: 'acme-1', name: 'Acme One' }]
       case 'is_keychain_available':
@@ -142,5 +144,71 @@ describe('ProviderSettingsDialog deep link', () => {
     await waitFor(() => {
       expect(save).toBeEnabled()
     })
+  })
+})
+
+describe.each(['dialog', 'settings'] as const)('Add Provider in %s', (entryPoint) => {
+  function renderSettings() {
+    if (entryPoint === 'dialog') return renderDialog()
+    return render(
+      <SidebarProvider>
+        <LLMProviderSettings open />
+      </SidebarProvider>
+    )
+  }
+
+  function expectEmptyForm() {
+    expect(screen.getByLabelText('Provider Name')).toHaveValue('')
+    expect(screen.getByLabelText('API Key')).toHaveValue('')
+    expect(screen.getByLabelText(/^API Base URL/)).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Save Configuration' })).toBeDisabled()
+    expect(screen.queryByText(model.name)).not.toBeInTheDocument()
+  }
+
+  it('starts a fresh form after editing a custom provider', async () => {
+    mockBackend({ models: [model], providers: [provider] })
+    renderSettings()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Acme/ }))
+    await waitFor(() => expect(screen.getByLabelText('API Key')).toHaveValue(provider.api_key))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Provider' }))
+
+    await waitFor(expectEmptyForm)
+  })
+
+  it('starts a fresh form after saving a new custom provider', async () => {
+    const providers: Provider[] = []
+    mockBackend({ models: [], providers })
+    const backend = mockedInvoke.getMockImplementation()!
+    mockedInvoke.mockImplementation((async (cmd: string, args: unknown) => {
+      if (cmd === 'create_provider') {
+        const saved = {
+          ...provider,
+          ...(args as { req: Partial<Provider> }).req,
+        }
+        providers.push(saved)
+        return saved
+      }
+      return backend(cmd, args as never)
+    }) as never)
+    renderSettings()
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith('list_providers'))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Provider' }))
+    fireEvent.change(screen.getByLabelText('Provider Name'), { target: { value: provider.name } })
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: provider.api_key } })
+    fireEvent.change(screen.getByLabelText(/^API Base URL/), {
+      target: { value: provider.base_url },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Anthropic Compatible' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Configuration' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument())
+    expect(mockedInvoke).toHaveBeenCalledWith('create_provider', expect.anything())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Provider' }))
+
+    await waitFor(expectEmptyForm)
   })
 })

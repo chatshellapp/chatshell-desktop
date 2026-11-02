@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import type { UseProviderSettingsReturn, ModelItem } from './types'
-import { isCustomProviderType } from './types'
 import { useProviderFormState } from './useProviderFormState'
 import { useProviderData } from './useProviderData'
 import { useModelList } from './useModelList'
@@ -26,7 +25,9 @@ export function useProviderSettings(
   // Wrap setSelectedProvider to handle custom provider editing
   const handleSelectProvider = React.useCallback(
     (provider: typeof formState.selectedProvider) => {
-      if (isCustomProviderType(provider.id) && !provider.isCustom) {
+      // The Add Provider template starts a new provider, even after a save
+      // leaves selectedProvider pointing at the same template object.
+      if (provider.id === 'custom') {
         formState.setEditingCustomProviderId(null)
       }
       formState.setSelectedProvider(provider)
