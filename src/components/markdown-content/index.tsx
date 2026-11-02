@@ -4,9 +4,11 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize from 'rehype-sanitize'
 import 'katex/dist/katex.min.css'
 
 import { useMarkdownComponents } from './markdown-components'
+import { markdownSanitizeSchema } from './sanitize-schema'
 import type { MarkdownContentProps } from './types'
 import type { Components } from 'react-markdown'
 
@@ -26,7 +28,9 @@ export const MarkdownContent = memo(function MarkdownContent({
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, rehypeKatex]}
+        // Sanitize right after raw HTML becomes elements, and before KaTeX
+        // renders math, so only Markdown/HTML from the message is filtered.
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], rehypeKatex]}
         components={markdownComponents}
       >
         {content}

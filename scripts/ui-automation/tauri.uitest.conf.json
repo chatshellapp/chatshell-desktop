@@ -1,3 +1,13 @@
 {
-  "identifier": "app.chatshell.desktop.uitest"
+  "identifier": "app.chatshell.desktop.uitest",
+  "app": {
+    "security": {
+      "csp": {
+        "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:*"
+      },
+      "devCsp": {
+        "connect-src": "'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420 http://127.0.0.1:*"
+      }
+    }
+  }
 }

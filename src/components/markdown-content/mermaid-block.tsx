@@ -15,7 +15,9 @@ function initializeMermaid() {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'default',
-    securityLevel: 'loose',
+    // `strict`: labels are HTML-escaped and click callbacks are disabled; the
+    // diagram source comes from model output, so it is untrusted.
+    securityLevel: 'strict',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     // Enable all diagram types explicitly
     flowchart: { useMaxWidth: true },
