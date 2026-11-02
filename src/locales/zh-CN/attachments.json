@@ -60,5 +60,15 @@
   "attachmentUnavailable": "附件不可用",
   "downloadingAttachment": "正在下载...",
   "binaryDocumentNoPreview": "此文档没有文本预览",
-  "binaryDocumentHint": "发送后可让助手用 read 工具读取全文"
+  "binaryDocumentHint": "发送后可让助手用 read 工具读取全文",
+  "svgFigureAlt": "图示",
+  "svgFigureFailed": "无法渲染此图示",
+  "svgDrawing": "正在绘制图示...",
+  "svgShowSource": "显示源码",
+  "svgShowFigure": "显示图示",
+  "svgPause": "暂停动画",
+  "svgPlay": "播放动画",
+  "svgOpenViewer": "查看大图",
+  "svgZoomIn": "放大",
+  "svgZoomOut": "缩小"
 }

@@ -147,5 +147,7 @@
   "updateInstalling": "安装中…",
   "updateSkipVersion": "跳过此版本",
   "updateAutoCheckLabel": "自动检查更新",
-  "updateAutoCheckDescription": "启动后不久访问一次 dl.chatshell.app 检查更新，不会发送任何使用数据。"
+  "updateAutoCheckDescription": "启动后不久访问一次 dl.chatshell.app 检查更新，不会发送任何使用数据。",
+  "renderSvgFiguresLabel": "渲染 SVG 图示",
+  "renderSvgFiguresDescription": "允许助手以内联 SVG 绘制图表、原型和动画。关闭后，SVG 代码块将以代码显示，且不会邀请助手绘图。"
 }
