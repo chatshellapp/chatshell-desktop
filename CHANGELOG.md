@@ -8,9 +8,27 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-02
+
 ### Added
 
 - When an update is available, Settings shows what's new in it, with a link to the full changelog.
+- Inline SVG figures in assistant replies, with animation controls, zoom, source view, copy, and save.
+- On-device language detection for translation, with Enter choosing the target language based on your input.
+
+### Changed
+
+- Translation has primary and secondary language buttons, defaults based on your system languages, and shortcuts for translating and copying results.
+- Cross-device sync responds to cloud changes, window focus, and system wake, and sends pending changes when the app loses focus, sleeps, or quits.
+- A new macOS app icon designed for macOS 26, with a fallback for earlier versions.
+
+### Fixed
+
+- Markdown HTML is sanitized, Mermaid uses strict security, and a content security policy restricts scripts and embedded content.
+- Adding a provider no longer retains the custom provider you were editing.
+- The provider list in Settings scrolls fully, keeping Add Provider accessible.
+- Provider and model avatars keep their original brand colors and fit inside circular frames.
+- The macOS installer window uses the intended icon sizes and layout in release builds.
 
 ## [0.9.1] - 2026-11-01
 
@@ -335,7 +353,8 @@ Each release section is published as the GitHub release notes, the in-app update
 - Markdown rendering with syntax highlighting and Mermaid diagrams.
 - API keys encrypted at rest.
 
-[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.8.2...v0.8.3
