@@ -23,6 +23,7 @@ mod skills;
 mod steps;
 mod svg_figure;
 mod sync;
+mod translation;
 mod users;
 
 use crate::db::Database;
@@ -99,4 +100,5 @@ pub use skills::*;
 pub use steps::*;
 pub use svg_figure::*;
 pub use sync::*;
+pub use translation::*;
 pub use users::*;

@@ -94,6 +94,8 @@ async-stream = "0.3.6"
 http = "1"
 ts-rs = { version = "12", features = ["serde-json-impl"] }
 iana-time-zone = "0.1.65"
+sys-locale = "0.3.2"
+whatlang = "0.18.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7.0"

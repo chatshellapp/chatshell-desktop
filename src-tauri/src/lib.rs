@@ -3,6 +3,7 @@ pub mod commands;
 mod crypto;
 pub mod db;
 mod keychain;
+mod language_detect;
 mod llm;
 mod logger;
 pub mod mcp;
@@ -445,6 +446,8 @@ pub fn run() {
             commands::set_setting,
             commands::is_obscura_available,
             commands::is_chrome_available,
+            commands::get_system_locales,
+            commands::detect_language,
             commands::set_log_level,
             commands::get_log_storage_info,
             commands::open_logs_directory,
