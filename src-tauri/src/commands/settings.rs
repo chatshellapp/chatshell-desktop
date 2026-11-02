@@ -35,6 +35,14 @@ pub fn is_obscura_available() -> bool {
     crate::web_fetch::obscura_is_configured()
 }
 
+/// The OS preferred-language list, most preferred first, as BCP 47 tags.
+/// Used to derive default translation languages independently of the UI
+/// language. Empty when the platform reports nothing.
+#[tauri::command]
+pub fn get_system_locales() -> Vec<String> {
+    sys_locale::get_locales().collect()
+}
+
 /// Whether a Chromium-family browser (Chrome/Chromium/Edge) is installed.
 /// Gates the "Always use Chrome" fetch-strategy option in settings.
 #[tauri::command]

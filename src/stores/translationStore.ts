@@ -10,6 +10,12 @@ import { useConversationStore } from './conversation'
 import { useConversationSettingsStore } from './conversationSettingsStore'
 import i18n, { getCurrentLanguage } from '@/lib/i18n'
 import { parseThinkingContent } from '@/lib/utils'
+import {
+  AUTO_LANGUAGE,
+  getEnglishName,
+  isTranslationLanguage,
+  resolveDefaultLanguages,
+} from '@/lib/translationLanguages'
 
 function stripReasoningTags(text: string): string {
   // Operate on the full accumulated text (not per-chunk) so tags split across
@@ -17,55 +23,20 @@ function stripReasoningTags(text: string): string {
   return parseThinkingContent(text).content
 }
 
-function getDefaultTargetLanguage(): string {
-  const appLang = getCurrentLanguage()
-  const LANG_CODES = LANGUAGES.map((l) => l.code)
+export const TRANSLATION_SETTING_KEYS = {
+  primary: 'translation_primary_language',
+  secondary: 'translation_secondary_language',
+  recent: 'translation_recent_languages',
+  lastTarget: 'translation_last_target',
+  setByUser: 'translation_languages_set_by_user',
+  hintDismissed: 'translation_defaults_hint_dismissed',
+} as const
 
-  const base = appLang.split('-')[0].toLowerCase()
-  if (LANG_CODES.includes(base)) return base
+export const MAX_RECENT_LANGUAGES = 5
+const MAX_CACHE_ENTRIES = 50
 
-  return 'en'
-}
-
-export interface Language {
-  code: string
-  name: string
-}
-
-export const LANGUAGES: Language[] = [
-  { code: 'auto', name: 'Auto Detect' },
-  { code: 'ar', name: 'Arabic' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'cs', name: 'Czech' },
-  { code: 'da', name: 'Danish' },
-  { code: 'nl', name: 'Dutch' },
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'id', name: 'Indonesian' },
-  { code: 'it', name: 'Italian' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'ko', name: 'Korean' },
-  { code: 'pl', name: 'Polish' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'sv', name: 'Swedish' },
-  { code: 'th', name: 'Thai' },
-  { code: 'tr', name: 'Turkish' },
-  { code: 'uk', name: 'Ukrainian' },
-  { code: 'vi', name: 'Vietnamese' },
-]
-
-const LANGUAGE_NAME_MAP: Record<string, string> = Object.fromEntries(
-  LANGUAGES.map((l) => [l.code, l.name])
-)
-
-function getLanguageName(code: string): string {
-  return LANGUAGE_NAME_MAP[code] || code
-}
+/** Which action-bar button a translation targets. */
+export type TargetSlot = 'primary' | 'secondary' | 'other'
 
 interface TranslationContext {
   sourceLanguage: string
@@ -75,28 +46,58 @@ interface TranslationContext {
   selectedModel: Model
 }
 
-interface TranslationState {
+export interface TranslationAttempt {
   sourceLanguage: string
   targetLanguage: string
+}
+
+interface TranslateOptions {
+  bypassCache?: boolean
+}
+
+interface TranslationState {
+  sourceLanguage: string
+  primaryLanguage: string
+  secondaryLanguage: string | null
+  recentLanguages: string[]
+  /** Session-only extra target shown as a temporary button. */
+  otherLanguage: string | null
+  lastTarget: TargetSlot
+  languagesSetByUser: boolean
+  languagesLoaded: boolean
+  defaultsHintDismissed: boolean
   inputText: string
   outputText: string
   isTranslating: boolean
+  /** Target of the translation currently streaming, if any. */
+  activeTargetLanguage: string | null
+  /** Most recent translation request, used for the direction label and retry. */
+  lastAttempt: TranslationAttempt | null
   error: string | null
   conversationId: string | null
   selectedModel: Model | null
   unlistenFns: Array<() => void>
   canContinue: boolean
   lastTranslationContext: TranslationContext | null
+  resultCache: Record<string, string>
 }
 
 interface TranslationActions {
   setSourceLanguage: (language: string) => void
-  setTargetLanguage: (language: string) => void
   setInputText: (text: string) => void
   setSelectedModel: (model: Model | null) => void
-  translate: () => Promise<void>
+  setPrimaryLanguage: (language: string) => void
+  setSecondaryLanguage: (language: string) => void
+  swapPrimaryAndSecondary: () => void
+  dismissDefaultsHint: () => void
+  getSlotLanguage: (slot: TargetSlot) => string | null
+  translate: (targetLanguage: string, options?: TranslateOptions) => Promise<void>
+  translateToSlot: (slot: TargetSlot) => Promise<void>
+  translateToOther: (language: string) => Promise<void>
+  closeOtherLanguage: () => void
+  retranslate: () => Promise<void>
+  moveOutputToInput: () => void
   stopTranslation: () => void
-  swapLanguages: () => void
   clear: () => void
   cleanup: () => void
   continueInConversation: () => Promise<void>
@@ -104,101 +105,27 @@ interface TranslationActions {
 
 type TranslationStore = TranslationState & TranslationActions
 
-export const useTranslationStore = create<TranslationStore>()(
-  immer((set, get) => ({
-    sourceLanguage: 'auto',
-    targetLanguage: getDefaultTargetLanguage(),
-    inputText: '',
-    outputText: '',
-    isTranslating: false,
-    error: null,
-    conversationId: null,
-    selectedModel: null,
-    unlistenFns: [],
-    canContinue: false,
-    lastTranslationContext: null,
+function cacheKey(input: string, source: string, target: string, modelId: string): string {
+  return JSON.stringify([input, source, target, modelId])
+}
 
-    setSourceLanguage: (language: string) => {
-      set((draft) => {
-        draft.sourceLanguage = language
-      })
-    },
+function persist(key: string, value: string) {
+  useSettingsStore
+    .getState()
+    .saveSetting(key, value)
+    .catch((error) => logger.error(`[translationStore] Failed to save ${key}:`, error))
+}
 
-    setTargetLanguage: (language: string) => {
-      set((draft) => {
-        draft.targetLanguage = language
-      })
-    },
+function initialDefaults() {
+  const browserLocales = typeof navigator !== 'undefined' ? [...(navigator.languages ?? [])] : []
+  return resolveDefaultLanguages(browserLocales, getCurrentLanguage() ?? 'en')
+}
 
-    setInputText: (text: string) => {
-      set((draft) => {
-        draft.inputText = text
-      })
-    },
-
-    setSelectedModel: (model: Model | null) => {
-      set((draft) => {
-        draft.selectedModel = model
-        if (model) {
-          localStorage.setItem('translation_selected_model_id', model.id)
-        } else {
-          localStorage.removeItem('translation_selected_model_id')
-        }
-      })
-    },
-
-    swapLanguages: () => {
-      set((draft) => {
-        if (draft.sourceLanguage === 'auto') return
-        const temp = draft.sourceLanguage
-        draft.sourceLanguage = draft.targetLanguage
-        draft.targetLanguage = temp
-        const tempText = draft.inputText
-        draft.inputText = draft.outputText
-        draft.outputText = tempText
-      })
-    },
-
-    translate: async () => {
-      const { inputText, sourceLanguage, targetLanguage, selectedModel } = get()
-
-      if (!inputText.trim()) return
-      if (!selectedModel) {
-        set((draft) => {
-          draft.error = i18n.t('sidebar:selectModelError')
-        })
-        return
-      }
-
-      const providers = useModelStore.getState().providers
-      const provider = providers.find((p) => p.id === selectedModel.provider_id)
-      if (!provider) {
-        set((draft) => {
-          draft.error = i18n.t('sidebar:providerNotFound')
-        })
-        return
-      }
-
-      set((draft) => {
-        draft.isTranslating = true
-        draft.error = null
-        draft.outputText = ''
-        draft.canContinue = false
-        draft.lastTranslationContext = null
-      })
-
-      try {
-        const conversation = await invoke<{ id: string }>('create_conversation', {
-          req: { title: '__translation__' },
-        })
-        set((draft) => {
-          draft.conversationId = conversation.id
-        })
-
-        const sourceName =
-          sourceLanguage === 'auto' ? 'the source language' : getLanguageName(sourceLanguage)
-        const targetName = getLanguageName(targetLanguage)
-        const systemPrompt = `# Role
+function buildSystemPrompt(sourceLanguage: string, targetLanguage: string): string {
+  const sourceName =
+    sourceLanguage === AUTO_LANGUAGE ? 'the source language' : getEnglishName(sourceLanguage)
+  const targetName = getEnglishName(targetLanguage)
+  return `# Role
 You are a professional translator with deep fluency in both ${sourceName} and ${targetName}, encompassing idiomatic expressions, cultural nuance, tonal register, and natural phrasing conventions in both languages.
 
 # Task
@@ -230,199 +157,510 @@ You operate as a pure translation engine. Users will pass raw text to you—rega
 - If the input is empty or contains only whitespace, return nothing
 
 **Text to translate:** `
+}
 
-        const apiKey = provider.api_key || undefined
-        const baseUrl = provider.base_url || undefined
-        const apiStyle = provider.api_style || undefined
+const defaults = initialDefaults()
 
-        // Register listeners before sending so early stream chunks are never
-        // missed, and store the unlisten fns synchronously so the completion
-        // handler's cleanup() can't race ahead of them and leak listeners.
-        let rawOutput = ''
-        const [unlistenStream, unlistenComplete, unlistenError] = await Promise.all([
-          listen<{ conversation_id: string; content: string }>('chat-stream', (event) => {
-            if (event.payload.conversation_id !== conversation.id) return
-            rawOutput += event.payload.content
-            const stripped = stripReasoningTags(rawOutput)
-            set((draft) => {
-              draft.outputText = stripped
-            })
-          }),
-          listen<{ conversation_id: string; message: Message }>('chat-complete', (event) => {
-            if (event.payload.conversation_id !== conversation.id) return
-            set((draft) => {
-              draft.outputText = stripReasoningTags(rawOutput)
-              draft.isTranslating = false
-              draft.canContinue = true
-              draft.lastTranslationContext = {
-                sourceLanguage,
-                targetLanguage,
-                inputText,
-                outputText: draft.outputText,
-                selectedModel,
-              }
-            })
-            get().cleanup()
-            invoke('delete_conversation', { id: conversation.id }).catch(() => {})
-          }),
-          listen<{ conversation_id: string; error: string }>('chat-error', (event) => {
-            if (event.payload.conversation_id !== conversation.id) return
-            set((draft) => {
-              draft.isTranslating = false
-              draft.error = event.payload.error
-            })
-            get().cleanup()
-            invoke('delete_conversation', { id: conversation.id }).catch(() => {})
-          }),
-        ])
+export const useTranslationStore = create<TranslationStore>()(
+  immer((set, get) => {
+    /** Persists both languages and marks them as an explicit user choice. */
+    const saveLanguages = () => {
+      const { primaryLanguage, secondaryLanguage } = get()
+      set((draft) => {
+        draft.languagesSetByUser = true
+        draft.defaultsHintDismissed = true
+      })
+      persist(TRANSLATION_SETTING_KEYS.primary, primaryLanguage)
+      persist(TRANSLATION_SETTING_KEYS.secondary, secondaryLanguage ?? '')
+      persist(TRANSLATION_SETTING_KEYS.setByUser, 'true')
+      persist(TRANSLATION_SETTING_KEYS.hintDismissed, 'true')
+    }
+
+    const setLastTarget = (slot: TargetSlot) => {
+      set((draft) => {
+        draft.lastTarget = slot
+      })
+      // The temporary button is session-only, so only fixed slots persist.
+      if (slot !== 'other') persist(TRANSLATION_SETTING_KEYS.lastTarget, slot)
+    }
+
+    return {
+      sourceLanguage: AUTO_LANGUAGE,
+      primaryLanguage: defaults.primary,
+      secondaryLanguage: defaults.secondary,
+      recentLanguages: [],
+      otherLanguage: null,
+      lastTarget: 'primary',
+      languagesSetByUser: false,
+      languagesLoaded: false,
+      defaultsHintDismissed: false,
+      inputText: '',
+      outputText: '',
+      isTranslating: false,
+      activeTargetLanguage: null,
+      lastAttempt: null,
+      error: null,
+      conversationId: null,
+      selectedModel: null,
+      unlistenFns: [],
+      canContinue: false,
+      lastTranslationContext: null,
+      resultCache: {},
+
+      setSourceLanguage: (language: string) => {
         set((draft) => {
-          draft.unlistenFns = [unlistenStream, unlistenComplete, unlistenError]
+          draft.sourceLanguage = language
+        })
+      },
+
+      setInputText: (text: string) => {
+        set((draft) => {
+          draft.inputText = text
+        })
+      },
+
+      setSelectedModel: (model: Model | null) => {
+        set((draft) => {
+          draft.selectedModel = model
+          if (model) {
+            localStorage.setItem('translation_selected_model_id', model.id)
+          } else {
+            localStorage.removeItem('translation_selected_model_id')
+          }
+        })
+      },
+
+      setPrimaryLanguage: (language: string) => {
+        if (!isTranslationLanguage(language)) return
+        set((draft) => {
+          // Picking the current secondary swaps the two instead of duplicating.
+          if (draft.secondaryLanguage === language) draft.secondaryLanguage = draft.primaryLanguage
+          draft.primaryLanguage = language
+        })
+        saveLanguages()
+      },
+
+      setSecondaryLanguage: (language: string) => {
+        if (!isTranslationLanguage(language)) return
+        const { primaryLanguage, secondaryLanguage } = get()
+        if (language === primaryLanguage) {
+          if (!secondaryLanguage) return
+          set((draft) => {
+            draft.primaryLanguage = secondaryLanguage
+          })
+        }
+        set((draft) => {
+          draft.secondaryLanguage = language
+        })
+        saveLanguages()
+      },
+
+      swapPrimaryAndSecondary: () => {
+        const { primaryLanguage, secondaryLanguage } = get()
+        if (!secondaryLanguage) return
+        set((draft) => {
+          draft.primaryLanguage = secondaryLanguage
+          draft.secondaryLanguage = primaryLanguage
+        })
+        saveLanguages()
+      },
+
+      dismissDefaultsHint: () => {
+        if (get().defaultsHintDismissed) return
+        set((draft) => {
+          draft.defaultsHintDismissed = true
+        })
+        persist(TRANSLATION_SETTING_KEYS.hintDismissed, 'true')
+      },
+
+      getSlotLanguage: (slot: TargetSlot) => {
+        const { primaryLanguage, secondaryLanguage, otherLanguage } = get()
+        if (slot === 'primary') return primaryLanguage
+        if (slot === 'secondary') return secondaryLanguage
+        return otherLanguage
+      },
+
+      translate: async (targetLanguage: string, options: TranslateOptions = {}) => {
+        const { inputText, sourceLanguage, selectedModel, isTranslating } = get()
+
+        if (isTranslating || !inputText.trim()) return
+        set((draft) => {
+          draft.lastAttempt = { sourceLanguage, targetLanguage }
+        })
+        if (!selectedModel) {
+          set((draft) => {
+            draft.error = i18n.t('sidebar:selectModelError')
+          })
+          return
+        }
+
+        const providers = useModelStore.getState().providers
+        const provider = providers.find((p) => p.id === selectedModel.provider_id)
+        if (!provider) {
+          set((draft) => {
+            draft.error = i18n.t('sidebar:providerNotFound')
+          })
+          return
+        }
+
+        get().dismissDefaultsHint()
+
+        const key = cacheKey(inputText, sourceLanguage, targetLanguage, selectedModel.id)
+        const cached = get().resultCache[key]
+        if (cached !== undefined && !options.bypassCache) {
+          set((draft) => {
+            draft.outputText = cached
+            draft.error = null
+            draft.canContinue = true
+            draft.lastTranslationContext = {
+              sourceLanguage,
+              targetLanguage,
+              inputText,
+              outputText: cached,
+              selectedModel,
+            }
+          })
+          return
+        }
+
+        set((draft) => {
+          draft.isTranslating = true
+          draft.activeTargetLanguage = targetLanguage
+          draft.error = null
+          draft.outputText = ''
+          draft.canContinue = false
+          draft.lastTranslationContext = null
         })
 
-        await invoke<Message>('send_message', {
-          conversationId: conversation.id,
-          content: inputText,
-          provider: provider.provider_type,
-          model: selectedModel.model_id,
-          apiKey,
-          baseUrl,
-          apiStyle,
-          includeHistory: false,
-          systemPrompt,
-          modelDbId: selectedModel.id,
-          searchEnabled: false,
-          useProviderDefaults: true,
-          disableTools: true,
+        try {
+          const conversation = await invoke<{ id: string }>('create_conversation', {
+            req: { title: '__translation__' },
+          })
+          set((draft) => {
+            draft.conversationId = conversation.id
+          })
+
+          const systemPrompt = buildSystemPrompt(sourceLanguage, targetLanguage)
+          const apiKey = provider.api_key || undefined
+          const baseUrl = provider.base_url || undefined
+          const apiStyle = provider.api_style || undefined
+
+          // Register listeners before sending so early stream chunks are never
+          // missed, and store the unlisten fns synchronously so the completion
+          // handler's cleanup() can't race ahead of them and leak listeners.
+          let rawOutput = ''
+          const [unlistenStream, unlistenComplete, unlistenError] = await Promise.all([
+            listen<{ conversation_id: string; content: string }>('chat-stream', (event) => {
+              if (event.payload.conversation_id !== conversation.id) return
+              rawOutput += event.payload.content
+              const stripped = stripReasoningTags(rawOutput)
+              set((draft) => {
+                draft.outputText = stripped
+              })
+            }),
+            listen<{ conversation_id: string; message: Message }>('chat-complete', (event) => {
+              if (event.payload.conversation_id !== conversation.id) return
+              const finalOutput = stripReasoningTags(rawOutput)
+              set((draft) => {
+                draft.outputText = finalOutput
+                draft.isTranslating = false
+                draft.activeTargetLanguage = null
+                draft.canContinue = true
+                draft.lastTranslationContext = {
+                  sourceLanguage,
+                  targetLanguage,
+                  inputText,
+                  outputText: finalOutput,
+                  selectedModel,
+                }
+                draft.resultCache[key] = finalOutput
+                const keys = Object.keys(draft.resultCache)
+                for (const stale of keys.slice(0, Math.max(0, keys.length - MAX_CACHE_ENTRIES))) {
+                  delete draft.resultCache[stale]
+                }
+              })
+              get().cleanup()
+              invoke('delete_conversation', { id: conversation.id }).catch(() => {})
+            }),
+            listen<{ conversation_id: string; error: string }>('chat-error', (event) => {
+              if (event.payload.conversation_id !== conversation.id) return
+              set((draft) => {
+                draft.isTranslating = false
+                draft.activeTargetLanguage = null
+                draft.error = event.payload.error
+              })
+              get().cleanup()
+              invoke('delete_conversation', { id: conversation.id }).catch(() => {})
+            }),
+          ])
+          set((draft) => {
+            draft.unlistenFns = [unlistenStream, unlistenComplete, unlistenError]
+          })
+
+          await invoke<Message>('send_message', {
+            conversationId: conversation.id,
+            content: inputText,
+            provider: provider.provider_type,
+            model: selectedModel.model_id,
+            apiKey,
+            baseUrl,
+            apiStyle,
+            includeHistory: false,
+            systemPrompt,
+            modelDbId: selectedModel.id,
+            searchEnabled: false,
+            useProviderDefaults: true,
+            disableTools: true,
+          })
+        } catch (error) {
+          logger.error('[translationStore] Translation failed:', error)
+          const convId = get().conversationId
+          get().cleanup()
+          set((draft) => {
+            draft.isTranslating = false
+            draft.activeTargetLanguage = null
+            draft.error = String(error)
+          })
+          if (convId) {
+            invoke('delete_conversation', { id: convId }).catch(() => {})
+          }
+        }
+      },
+
+      translateToSlot: async (slot: TargetSlot) => {
+        const target = get().getSlotLanguage(slot)
+        if (!target || get().isTranslating) return
+        setLastTarget(slot)
+        await get().translate(target)
+      },
+
+      translateToOther: async (language: string) => {
+        if (!isTranslationLanguage(language)) return
+        const { primaryLanguage, secondaryLanguage } = get()
+        if (language === primaryLanguage) return get().translateToSlot('primary')
+        if (language === secondaryLanguage) return get().translateToSlot('secondary')
+
+        set((draft) => {
+          draft.otherLanguage = language
+          draft.recentLanguages = [
+            language,
+            ...draft.recentLanguages.filter((code) => code !== language),
+          ].slice(0, MAX_RECENT_LANGUAGES)
         })
-      } catch (error) {
-        logger.error('[translationStore] Translation failed:', error)
-        const convId = get().conversationId
-        get().cleanup()
+        persist(TRANSLATION_SETTING_KEYS.recent, JSON.stringify(get().recentLanguages))
+        await get().translateToSlot('other')
+      },
+
+      closeOtherLanguage: () => {
+        set((draft) => {
+          draft.otherLanguage = null
+          if (draft.lastTarget === 'other') draft.lastTarget = 'primary'
+        })
+      },
+
+      retranslate: async () => {
+        const { lastAttempt } = get()
+        if (!lastAttempt) return
+        await get().translate(lastAttempt.targetLanguage, { bypassCache: true })
+      },
+
+      moveOutputToInput: () => {
+        set((draft) => {
+          if (!draft.outputText || draft.isTranslating) return
+          draft.inputText = draft.outputText
+          draft.outputText = ''
+          draft.sourceLanguage = AUTO_LANGUAGE
+          draft.error = null
+          draft.canContinue = false
+          draft.lastTranslationContext = null
+          draft.lastAttempt = null
+        })
+      },
+
+      stopTranslation: () => {
+        const { conversationId } = get()
+        if (conversationId) {
+          invoke('stop_generation', { conversationId }).catch(() => {})
+        }
         set((draft) => {
           draft.isTranslating = false
-          draft.error = String(error)
+          draft.activeTargetLanguage = null
         })
-        if (convId) {
-          invoke('delete_conversation', { id: convId }).catch(() => {})
+        get().cleanup()
+        if (conversationId) {
+          invoke('delete_conversation', { id: conversationId }).catch(() => {})
         }
-      }
-    },
+      },
 
-    stopTranslation: () => {
-      const { conversationId } = get()
-      if (conversationId) {
-        invoke('stop_generation', { conversationId }).catch(() => {})
-      }
-      set((draft) => {
-        draft.isTranslating = false
-      })
-      get().cleanup()
-      if (conversationId) {
-        invoke('delete_conversation', { id: conversationId }).catch(() => {})
-      }
-    },
-
-    clear: () => {
-      set((draft) => {
-        draft.inputText = ''
-        draft.outputText = ''
-        draft.error = null
-        draft.canContinue = false
-        draft.lastTranslationContext = null
-      })
-    },
-
-    cleanup: () => {
-      const { unlistenFns } = get()
-      unlistenFns.forEach((fn) => fn())
-      set((draft) => {
-        draft.unlistenFns = []
-        draft.conversationId = null
-      })
-    },
-
-    continueInConversation: async () => {
-      const { lastTranslationContext } = get()
-      if (!lastTranslationContext) return
-
-      const { sourceLanguage, targetLanguage, inputText, outputText, selectedModel } =
-        lastTranslationContext
-
-      set((draft) => {
-        draft.canContinue = false
-      })
-
-      try {
-        const sourceName = sourceLanguage === 'auto' ? 'Auto' : getLanguageName(sourceLanguage)
-        const targetName = getLanguageName(targetLanguage)
-        const titleChars = Array.from(inputText)
-        const titleSnippet = titleChars.slice(0, 30).join('')
-        const title = `${sourceName} → ${targetName}: ${titleSnippet}${titleChars.length > 30 ? '...' : ''}`
-
-        const conversation = await invoke<{ id: string }>('create_conversation', {
-          req: { title },
-        })
-
-        const systemPrompt =
-          `You are a multilingual language assistant continuing a translation conversation. ` +
-          `The user originally submitted text for translation from **${sourceName}** to **${targetName}**, ` +
-          `and you have full context of both the source text and its translation.\n\n` +
-          `Your role is to help the user naturally with whatever comes next — whether that's refining word choices, ` +
-          `explaining nuances, adjusting tone or register, re-translating a specific phrase, answering grammar questions, ` +
-          `or handling any related language task. Treat this as a seamless continuation of the translation session, ` +
-          `not a new conversation.\n\n` +
-          `When responding:\n` +
-          `- Draw directly on the source and translated text you already have in context\n` +
-          `- Match the formality and style of the original translation unless the user asks you to change it\n` +
-          `- If the user asks for alternatives, offer options with brief explanations of the differences\n` +
-          `- If a question touches on cultural nuance, idiomatic usage, or ambiguity in either language, surface that clearly\n\n` +
-          `Respond naturally and conversationally — the user doesn't need preamble or reminders about the translation context. ` +
-          `Just help them.`
-
-        await useConversationSettingsStore
-          .getState()
-          .setSystemPrompt(conversation.id, 'custom', null, systemPrompt)
-
-        await invoke('add_conversation_participant', {
-          req: {
-            conversation_id: conversation.id,
-            participant_type: 'model',
-            participant_id: selectedModel.id,
-            display_name: selectedModel.name,
-          },
-        })
-
-        await invoke('create_message', {
-          req: {
-            conversation_id: conversation.id,
-            sender_type: 'user',
-            content: inputText,
-          },
-        })
-
-        await invoke('create_message', {
-          req: {
-            conversation_id: conversation.id,
-            sender_type: 'model',
-            sender_id: selectedModel.id,
-            content: outputText,
-          },
-        })
-
-        await useConversationStore.getState().selectConversation(conversation.id)
-
+      clear: () => {
         set((draft) => {
           draft.inputText = ''
           draft.outputText = ''
           draft.error = null
+          draft.canContinue = false
           draft.lastTranslationContext = null
+          draft.lastAttempt = null
         })
-      } catch (error) {
-        logger.error('[translationStore] Failed to continue in conversation:', error)
-      }
-    },
-  }))
+      },
+
+      cleanup: () => {
+        const { unlistenFns } = get()
+        unlistenFns.forEach((fn) => fn())
+        set((draft) => {
+          draft.unlistenFns = []
+          draft.conversationId = null
+        })
+      },
+
+      continueInConversation: async () => {
+        const { lastTranslationContext } = get()
+        if (!lastTranslationContext) return
+
+        const { sourceLanguage, targetLanguage, inputText, outputText, selectedModel } =
+          lastTranslationContext
+
+        set((draft) => {
+          draft.canContinue = false
+        })
+
+        try {
+          const sourceName =
+            sourceLanguage === AUTO_LANGUAGE ? 'Auto' : getEnglishName(sourceLanguage)
+          const targetName = getEnglishName(targetLanguage)
+          const titleChars = Array.from(inputText)
+          const titleSnippet = titleChars.slice(0, 30).join('')
+          const title = `${sourceName} → ${targetName}: ${titleSnippet}${titleChars.length > 30 ? '...' : ''}`
+
+          const conversation = await invoke<{ id: string }>('create_conversation', {
+            req: { title },
+          })
+
+          const systemPrompt =
+            `You are a multilingual language assistant continuing a translation conversation. ` +
+            `The user originally submitted text for translation from **${sourceName}** to **${targetName}**, ` +
+            `and you have full context of both the source text and its translation.\n\n` +
+            `Your role is to help the user naturally with whatever comes next — whether that's refining word choices, ` +
+            `explaining nuances, adjusting tone or register, re-translating a specific phrase, answering grammar questions, ` +
+            `or handling any related language task. Treat this as a seamless continuation of the translation session, ` +
+            `not a new conversation.\n\n` +
+            `When responding:\n` +
+            `- Draw directly on the source and translated text you already have in context\n` +
+            `- Match the formality and style of the original translation unless the user asks you to change it\n` +
+            `- If the user asks for alternatives, offer options with brief explanations of the differences\n` +
+            `- If a question touches on cultural nuance, idiomatic usage, or ambiguity in either language, surface that clearly\n\n` +
+            `Respond naturally and conversationally — the user doesn't need preamble or reminders about the translation context. ` +
+            `Just help them.`
+
+          await useConversationSettingsStore
+            .getState()
+            .setSystemPrompt(conversation.id, 'custom', null, systemPrompt)
+
+          await invoke('add_conversation_participant', {
+            req: {
+              conversation_id: conversation.id,
+              participant_type: 'model',
+              participant_id: selectedModel.id,
+              display_name: selectedModel.name,
+            },
+          })
+
+          await invoke('create_message', {
+            req: {
+              conversation_id: conversation.id,
+              sender_type: 'user',
+              content: inputText,
+            },
+          })
+
+          await invoke('create_message', {
+            req: {
+              conversation_id: conversation.id,
+              sender_type: 'model',
+              sender_id: selectedModel.id,
+              content: outputText,
+            },
+          })
+
+          await useConversationStore.getState().selectConversation(conversation.id)
+
+          set((draft) => {
+            draft.inputText = ''
+            draft.outputText = ''
+            draft.error = null
+            draft.lastTranslationContext = null
+            draft.lastAttempt = null
+          })
+        } catch (error) {
+          logger.error('[translationStore] Failed to continue in conversation:', error)
+        }
+      },
+    }
+  })
 )
+
+/**
+ * Loads saved translation languages. Until the user sets languages explicitly,
+ * defaults are recomputed from the OS preferred-language list on each launch.
+ */
+export async function initializeTranslationLanguages() {
+  if (useTranslationStore.getState().languagesLoaded) return
+
+  const { getSetting } = useSettingsStore.getState()
+  const [setByUser, savedPrimary, savedSecondary, savedRecent, savedLastTarget, hintDismissed] =
+    await Promise.all([
+      getSetting(TRANSLATION_SETTING_KEYS.setByUser),
+      getSetting(TRANSLATION_SETTING_KEYS.primary),
+      getSetting(TRANSLATION_SETTING_KEYS.secondary),
+      getSetting(TRANSLATION_SETTING_KEYS.recent),
+      getSetting(TRANSLATION_SETTING_KEYS.lastTarget),
+      getSetting(TRANSLATION_SETTING_KEYS.hintDismissed),
+    ])
+
+  const useSaved = setByUser === 'true' && isTranslationLanguage(savedPrimary)
+  let primary: string
+  let secondary: string | null
+  if (useSaved) {
+    primary = savedPrimary
+    secondary =
+      isTranslationLanguage(savedSecondary) && savedSecondary !== savedPrimary
+        ? savedSecondary
+        : null
+  } else {
+    let systemLocales: string[] = []
+    try {
+      systemLocales = (await invoke<string[]>('get_system_locales')) ?? []
+    } catch (error) {
+      logger.warn('[translationStore] Failed to read system locales:', error)
+    }
+    const resolved = resolveDefaultLanguages(systemLocales, getCurrentLanguage() ?? 'en')
+    primary = resolved.primary
+    secondary = resolved.secondary
+  }
+
+  let recent: string[] = []
+  try {
+    const parsed: unknown = savedRecent ? JSON.parse(savedRecent) : []
+    if (Array.isArray(parsed)) {
+      recent = parsed.filter(isTranslationLanguage).slice(0, MAX_RECENT_LANGUAGES)
+    }
+  } catch {
+    recent = []
+  }
+
+  useTranslationStore.setState((state) => {
+    // A choice made while settings were loading takes precedence.
+    if (!state.languagesSetByUser) {
+      state.primaryLanguage = primary
+      state.secondaryLanguage = secondary
+      state.languagesSetByUser = useSaved
+    }
+    state.recentLanguages = recent
+    state.lastTarget =
+      savedLastTarget === 'secondary' && state.secondaryLanguage ? 'secondary' : 'primary'
+    state.defaultsHintDismissed = state.defaultsHintDismissed || hintDismissed === 'true'
+    state.languagesLoaded = true
+  })
+}
 
 export async function initializeTranslationModel() {
   if (useTranslationStore.getState().selectedModel) return
