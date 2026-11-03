@@ -1734,7 +1734,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
 
             {updaterUpdate && updaterStatus === 'idle' && (
-              <div className="grid gap-1 max-w-md">
+              <div className="grid gap-2 max-w-md">
                 <p className="text-xs text-muted-foreground">
                   {t('updateAvailableLine', {
                     version: updaterUpdate.version,
