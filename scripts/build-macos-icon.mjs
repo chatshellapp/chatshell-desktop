@@ -5,7 +5,8 @@
 // referenced by CFBundleIconName / CFBundleIconFile in src-tauri/Info.plist.
 //
 // Runs as Tauri's beforeBundleCommand. No-op on non-macOS hosts.
-// Requires Xcode 26+ (actool must understand the .icon format).
+// Requires Xcode 26+ on a macOS 26+ host: actool's asset agent renders the
+// .icon with OS frameworks that older macOS versions lack.
 
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs'
@@ -55,10 +56,12 @@ try {
       '--platform',
       'macosx',
     ],
-    { stdio: 'inherit' },
+    { stdio: 'inherit' }
   )
 } catch (err) {
-  console.error('actool failed to compile AppIcon.icon. Xcode 26 or newer is required.')
+  console.error(
+    'actool failed to compile AppIcon.icon. It requires Xcode 26+ running on a macOS 26+ host.'
+  )
   throw err
 }
 

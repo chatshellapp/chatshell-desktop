@@ -151,7 +151,10 @@ jobs:
   build-macos:
     name: Build macOS
     needs: check
-    runs-on: macos-15
+    # macos-26: actool's AssetCatalogAgent renders the Icon Composer icon with
+    # host CoreMedia/MediaToolbox symbols that only exist on macOS 26; on a
+    # macos-15 host it crashes even with Xcode 26 selected.
+    runs-on: macos-26
     permissions:
       contents: read
     env:
@@ -174,7 +177,8 @@ jobs:
 
       - name: Select Xcode 26
         # actool needs Xcode 26+ to compile the Icon Composer app icon
-        # (scripts/build-macos-icon.mjs); the runner default is older.
+        # (scripts/build-macos-icon.mjs). Pin explicitly rather than rely on
+        # the image default.
         run: |
           XCODE=$( (ls -d /Applications/Xcode_26*.app 2>/dev/null || true) | sort -V | tail -1)
           if [ -z "$XCODE" ]; then
