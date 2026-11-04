@@ -9,6 +9,8 @@ import type {
   ModelParameterOverrides,
   UpdateConversationSettingsRequest,
 } from '@/types'
+import { defaultPermissionMode } from '@/lib/permission-mode'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { fromBackendSettings, toBackendRequest, createDefaultConversationSettings } from '@/types'
 import { useMcpStore } from './mcpStore'
 import { useSkillStore } from './skillStore'
@@ -137,7 +139,8 @@ function createDefaultSettings(conversationId: string): ConversationSettings {
   return createDefaultConversationSettings(
     conversationId,
     getGlobalEnabledMcpServerIds(),
-    getGlobalEnabledSkillIds()
+    getGlobalEnabledSkillIds(),
+    defaultPermissionMode(useSettingsStore.getState().settings)
   )
 }
 

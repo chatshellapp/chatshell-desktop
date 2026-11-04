@@ -101,7 +101,7 @@ export function fromBackendSettings(response: ConversationSettingsResponse): Con
     enabledMcpServerIds: response.enabled_mcp_server_ids ?? [],
     enabledSkillIds: response.enabled_skill_ids ?? [],
     workingDirectory: response.working_directory ?? null,
-    permissionMode: response.permission_mode ?? 'yolo',
+    permissionMode: response.permission_mode,
   }
 }
 
@@ -134,7 +134,8 @@ export function toBackendRequest(req: UpdateConversationSettingsRequest): Record
 export const createDefaultConversationSettings = (
   conversationId: string,
   enabledMcpServerIds: string[] = [],
-  enabledSkillIds: string[] = []
+  enabledSkillIds: string[] = [],
+  permissionMode: PermissionMode = 'ask'
 ): ConversationSettings => ({
   conversationId,
   useProviderDefaults: true, // Default: use provider's default settings
@@ -152,7 +153,7 @@ export const createDefaultConversationSettings = (
   enabledMcpServerIds,
   enabledSkillIds,
   workingDirectory: null,
-  permissionMode: 'yolo',
+  permissionMode,
 })
 
 // Parameter limits for validation

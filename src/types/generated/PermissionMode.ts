@@ -3,6 +3,9 @@
 /**
  * Permission mode for the tool approval gate. Mirrors
  * `chatshell_agent_core::permission::PermissionMode`; keep the wire
- * values (`ask` / `yolo`) in sync with it.
+ * values (`ask` / `auto` / `yolo`) in sync with it.
+ *
+ * No `Default`: a conversation without a stored mode follows the
+ * `default_permission_mode` setting (see `Database::default_permission_mode`).
  */
-export type PermissionMode = "ask" | "yolo";
+export type PermissionMode = "ask" | "auto" | "yolo";

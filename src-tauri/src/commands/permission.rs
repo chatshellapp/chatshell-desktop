@@ -111,3 +111,25 @@ pub async fn set_bash_environment(passthrough: Vec<String>) -> Result<BashEnviro
     let saved = store.save(&passthrough).map_err(|e| format!("{e:#}"))?;
     Ok(bash_environment_view(saved.passthrough))
 }
+
+/// Whether this machine can run bash inside the OS sandbox (`auto` mode
+/// is offered only when it can).
+#[derive(Debug, serde::Serialize)]
+pub struct SandboxStatus {
+    pub available: bool,
+    /// `seatbelt` or `bubblewrap`, when available.
+    pub backend: Option<&'static str>,
+}
+
+#[tauri::command]
+pub async fn get_sandbox_status() -> Result<SandboxStatus, String> {
+    use chatshell_agent_core::sandbox::{SandboxBackend, detect_backend};
+    let backend = detect_backend().map(|backend| match backend {
+        SandboxBackend::Seatbelt => "seatbelt",
+        SandboxBackend::Bubblewrap(_) => "bubblewrap",
+    });
+    Ok(SandboxStatus {
+        available: backend.is_some(),
+        backend,
+    })
+}

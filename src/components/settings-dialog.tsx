@@ -96,6 +96,7 @@ import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-s
 import { ObscuraInstallHint } from '@/components/settings-dialog/obscura-install-hint'
 import { ReleaseNotes } from '@/components/settings-dialog/release-notes'
 import { BashEnvironment } from '@/components/settings-dialog/bash-environment'
+import { DefaultPermissionMode } from '@/components/settings-dialog/default-permission-mode'
 import { RememberedApprovals } from '@/components/settings-dialog/remembered-approvals'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
@@ -685,6 +686,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
           )}
 
+          <DefaultPermissionMode />
           <BashEnvironment />
           <RememberedApprovals />
         </div>

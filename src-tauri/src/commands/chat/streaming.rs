@@ -464,26 +464,67 @@ pub(crate) async fn handle_agent_streaming(
     // Permission gate: per-conversation mode, conversation-scoped session
     // grants, and the app-wide approval registry. Attached in every mode;
     // yolo is pass-through apart from the bash blocklist pre-check.
-    let permission_mode = conv_settings
-        .as_ref()
-        .map(|settings| settings.permission_mode)
-        .unwrap_or_default();
-    tracing::info!(
-        "🛡️ [agent_streaming] Permission mode: {}",
-        permission_mode.as_str()
+    //
+    // A conversation that never chose a mode follows the device default
+    // (`default_permission_mode`); its first turn pins that mode, so later
+    // default changes only affect conversations that have not run yet.
+    let permission_mode = match &conv_settings {
+        Some(settings) => settings.permission_mode,
+        None => state_clone.db.default_permission_mode().await,
+    };
+    match state_clone
+        .db
+        .stored_permission_mode(&conversation_id_clone)
+        .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let pin = crate::models::UpdateConversationSettingsRequest {
+                permission_mode: Some(permission_mode),
+                ..Default::default()
+            };
+            if let Err(e) = state_clone
+                .db
+                .update_conversation_settings(&conversation_id_clone, pin)
+                .await
+            {
+                tracing::warn!("⚠️ [agent_streaming] Could not pin permission mode: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("⚠️ [agent_streaming] Stored permission mode unreadable: {e}"),
+    }
+    let requested_mode = chatshell_agent_core::permission::PermissionMode::from(permission_mode);
+    let core_mode = crate::llm::permission::effective_mode(
+        requested_mode,
+        crate::llm::permission::sandbox_available(),
     );
+    if core_mode != requested_mode {
+        tracing::warn!("🛡️ [agent_streaming] auto mode without a sandbox backend; running as ask");
+    }
+    tracing::info!("🛡️ [agent_streaming] Permission mode: {:?}", core_mode);
     let app_for_permissions = app.clone();
     let permission_emitter: crate::llm::permission::PermissionEmitter =
         Arc::new(move |event, payload| {
             let _ = app_for_permissions.emit(event, payload);
         });
-    let core_mode = chatshell_agent_core::permission::PermissionMode::from(permission_mode);
-    let gate = crate::llm::permission::PermissionGate::new(
+    let sandboxed = crate::llm::permission::sandbox_enabled_for(core_mode) && bash_enabled;
+    let network_flag = state_clone
+        .bash_session_manager
+        .network_flag(&conversation_id_clone);
+    let gate = crate::llm::permission::PermissionGate::with_environment(
         conversation_id_clone.clone(),
         core_mode,
         state_clone.permission_grants.clone(),
         state_clone.approval_registry.clone(),
         permission_emitter,
+        crate::llm::permission::GateEnvironment {
+            workspace: conv_settings
+                .as_ref()
+                .and_then(|settings| settings.working_directory.as_ref())
+                .map(PathBuf::from),
+            sandbox_available: sandboxed,
+            network_flag: Some(network_flag.clone()),
+        },
     );
 
     if bash_enabled {
@@ -500,7 +541,7 @@ pub(crate) async fn handle_agent_streaming(
             .unwrap_or_default();
         config = config.with_bash_env_passthrough(passthrough);
 
-        if crate::llm::permission::sandbox_enabled_for(core_mode) {
+        if sandboxed {
             let scratch_dir = app
                 .path()
                 .app_cache_dir()
@@ -520,9 +561,7 @@ pub(crate) async fn handle_agent_streaming(
                 config.with_bash_sandbox(chatshell_agent_core::tools::bash_sandbox::BashSandbox {
                     backend,
                     scratch_dir,
-                    network_allowed: state_clone
-                        .bash_session_manager
-                        .network_flag(&conversation_id_clone),
+                    network_allowed: network_flag,
                     escalator: Some(Arc::new(crate::llm::permission::GateEscalator(
                         gate.clone(),
                     ))),

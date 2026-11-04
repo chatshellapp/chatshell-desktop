@@ -8,6 +8,10 @@ use crate::models::{
     UpdateConversationSettingsRequest,
 };
 
+/// Settings key holding the default permission mode for conversations
+/// that never chose one.
+pub const DEFAULT_PERMISSION_MODE_KEY: &str = "default_permission_mode";
+
 impl Database {
     /// Get settings for a conversation. Returns default settings if none exist.
     pub async fn get_conversation_settings(
@@ -26,9 +30,10 @@ impl Database {
         .bind(conversation_id)
         .fetch_optional(self.pool.as_ref())
         .await?;
+        let default_mode = self.default_permission_mode().await;
 
         match row {
-            Some(row) => Ok(self.row_to_conversation_settings(&row)),
+            Some(row) => Ok(self.row_to_conversation_settings(&row, default_mode)),
             None => {
                 // Return default settings if none exist, inheriting globally enabled tools
                 // This includes both MCP servers and builtin tools
@@ -66,7 +71,7 @@ impl Database {
                     enabled_mcp_server_ids: enabled_tool_ids,
                     enabled_skill_ids,
                     working_directory: None,
-                    permission_mode: PermissionMode::default(),
+                    permission_mode: default_mode,
                 })
             }
         }
@@ -222,7 +227,39 @@ impl Database {
         Ok(())
     }
 
-    fn row_to_conversation_settings(&self, row: &sqlx::sqlite::SqliteRow) -> ConversationSettings {
+    /// The mode new conversations start in: the `default_permission_mode`
+    /// setting, or [`PermissionMode::FAIL_SAFE`] when unset or unreadable.
+    pub async fn default_permission_mode(&self) -> PermissionMode {
+        match self.get_setting(DEFAULT_PERMISSION_MODE_KEY).await {
+            Ok(Some(value)) => PermissionMode::parse(&value).unwrap_or(PermissionMode::FAIL_SAFE),
+            Ok(None) => PermissionMode::FAIL_SAFE,
+            Err(e) => {
+                tracing::warn!("default_permission_mode unreadable: {e}");
+                PermissionMode::FAIL_SAFE
+            }
+        }
+    }
+
+    /// The mode stored for this conversation, if one was ever chosen.
+    pub async fn stored_permission_mode(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<PermissionMode>> {
+        let stored: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT permission_mode FROM conversation_settings
+             WHERE conversation_id = ? AND deleted_at IS NULL",
+        )
+        .bind(conversation_id)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        Ok(stored.flatten().as_deref().and_then(PermissionMode::parse))
+    }
+
+    fn row_to_conversation_settings(
+        &self,
+        row: &sqlx::sqlite::SqliteRow,
+        default_mode: PermissionMode,
+    ) -> ConversationSettings {
         let use_provider_defaults: i32 = row.get("use_provider_defaults");
         let use_custom_parameters: i32 = row.get("use_custom_parameters");
         let parameter_overrides_json: Option<String> = row.get("parameter_overrides");
@@ -259,10 +296,11 @@ impl Database {
             enabled_mcp_server_ids,
             enabled_skill_ids,
             working_directory: row.get("working_directory"),
-            permission_mode: PermissionMode::parse(
-                &row.get::<Option<String>, _>("permission_mode")
-                    .unwrap_or_default(),
-            ),
+            permission_mode: row
+                .get::<Option<String>, _>("permission_mode")
+                .as_deref()
+                .and_then(PermissionMode::parse)
+                .unwrap_or(default_mode),
         }
     }
 }
@@ -622,5 +660,69 @@ mod tests {
         db.delete_conversation_settings(&conversation_id)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_conversations_follow_the_default_mode_setting() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+        // Fresh install: no setting -> ask.
+        assert_eq!(db.default_permission_mode().await, PermissionMode::Ask);
+        assert_eq!(
+            db.get_conversation_settings(&conversation_id)
+                .await
+                .unwrap()
+                .permission_mode,
+            PermissionMode::Ask
+        );
+        assert_eq!(
+            db.stored_permission_mode(&conversation_id).await.unwrap(),
+            None
+        );
+        // The setting drives conversations that never chose a mode.
+        db.set_setting(DEFAULT_PERMISSION_MODE_KEY, "auto")
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_conversation_settings(&conversation_id)
+                .await
+                .unwrap()
+                .permission_mode,
+            PermissionMode::Auto
+        );
+        // Unknown values fail safe to ask.
+        db.set_setting(DEFAULT_PERMISSION_MODE_KEY, "bogus")
+            .await
+            .unwrap();
+        assert_eq!(db.default_permission_mode().await, PermissionMode::Ask);
+    }
+
+    #[tokio::test]
+    async fn a_pinned_mode_ignores_later_default_changes() {
+        let (db, _dir) = test_db().await;
+        let conversation_id = new_conversation(&db).await;
+        db.update_conversation_settings(
+            &conversation_id,
+            UpdateConversationSettingsRequest {
+                permission_mode: Some(PermissionMode::Ask),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            db.stored_permission_mode(&conversation_id).await.unwrap(),
+            Some(PermissionMode::Ask)
+        );
+        db.set_setting(DEFAULT_PERMISSION_MODE_KEY, "yolo")
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_conversation_settings(&conversation_id)
+                .await
+                .unwrap()
+                .permission_mode,
+            PermissionMode::Ask
+        );
     }
 }

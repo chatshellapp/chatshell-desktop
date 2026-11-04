@@ -409,6 +409,7 @@ pub fn run() {
             commands::clear_permission_grants,
             commands::get_bash_environment,
             commands::set_bash_environment,
+            commands::get_sandbox_status,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

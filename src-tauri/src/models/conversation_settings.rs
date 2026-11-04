@@ -37,24 +37,39 @@ impl From<PromptMode> for String {
 
 /// Permission mode for the tool approval gate. Mirrors
 /// `chatshell_agent_core::permission::PermissionMode`; keep the wire
-/// values (`ask` / `yolo`) in sync with it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, TS)]
+/// values (`ask` / `auto` / `yolo`) in sync with it.
+///
+/// No `Default`: a conversation without a stored mode follows the
+/// `default_permission_mode` setting (see `Database::default_permission_mode`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionMode {
     /// Prompt before write- and exec-tier tool calls
     Ask,
+    /// Bash runs inside the OS sandbox; prompts only at sandbox escapes,
+    /// out-of-workspace writes, MCP, and classifier signals
+    Auto,
     /// Run tool calls without prompts (blocklist still enforced)
-    #[default]
     Yolo,
 }
 
 impl PermissionMode {
-    /// Parse a stored/DB value; unknown values fall back to the default.
-    pub fn parse(value: &str) -> Self {
+    /// The strictest mode, used when nothing else is known (an unset or
+    /// unreadable setting).
+    pub const FAIL_SAFE: Self = Self::Ask;
+
+    fn fail_safe() -> Self {
+        Self::FAIL_SAFE
+    }
+
+    /// Parse a stored value; `None` for unset or unknown values.
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
-            "ask" => Self::Ask,
-            _ => Self::Yolo,
+            "ask" => Some(Self::Ask),
+            "auto" => Some(Self::Auto),
+            "yolo" => Some(Self::Yolo),
+            _ => None,
         }
     }
 
@@ -62,6 +77,7 @@ impl PermissionMode {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Ask => "ask",
+            Self::Auto => "auto",
             Self::Yolo => "yolo",
         }
     }
@@ -71,6 +87,7 @@ impl From<PermissionMode> for chatshell_agent_core::permission::PermissionMode {
     fn from(mode: PermissionMode) -> Self {
         match mode {
             PermissionMode::Ask => Self::Ask,
+            PermissionMode::Auto => Self::Auto,
             PermissionMode::Yolo => Self::Yolo,
         }
     }
@@ -165,7 +182,7 @@ pub struct ConversationSettings {
     pub working_directory: Option<String>,
 
     /// Tool permission mode for the approval gate
-    #[serde(default)]
+    #[serde(default = "PermissionMode::fail_safe")]
     pub permission_mode: PermissionMode,
 }
 
@@ -188,7 +205,7 @@ impl ConversationSettings {
             enabled_mcp_server_ids: Vec::new(),
             enabled_skill_ids: Vec::new(),
             working_directory: None,
-            permission_mode: PermissionMode::default(),
+            permission_mode: PermissionMode::FAIL_SAFE,
         }
     }
 }

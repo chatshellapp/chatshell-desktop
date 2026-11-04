@@ -14,6 +14,7 @@ import {
   Zap,
   FolderOpen,
   Shield,
+  ShieldCheck,
   ShieldOff,
   Check,
 } from 'lucide-react'
@@ -69,13 +70,29 @@ interface InputToolbarProps {
   skillsLabel: string
   // Working Directory
   onWorkingDirectorySelect: () => void
-  // Permission mode (ask / yolo)
+  // Permission mode (ask / auto / yolo)
   permissionMode: PermissionMode
   onPermissionModeSelect: (mode: PermissionMode) => void
+  /** Offer `auto` (this machine has an OS sandbox). */
+  autoAvailable: boolean
   // Model capability flags
   toolsDisabled?: boolean
   skillsDisabled?: boolean
   imageAttachDisabled?: boolean
+}
+
+/** Modes in escalation order; only crossing into `yolo` asks to confirm. */
+const PERMISSION_MODES: PermissionMode[] = ['ask', 'auto', 'yolo']
+
+function PermissionModeIcon({ mode, className }: { mode: PermissionMode; className?: string }) {
+  switch (mode) {
+    case 'ask':
+      return <Shield className={className} />
+    case 'auto':
+      return <ShieldCheck className={className} />
+    case 'yolo':
+      return <ShieldOff className={className} />
+  }
 }
 
 export function InputToolbar({
@@ -109,6 +126,7 @@ export function InputToolbar({
   onWorkingDirectorySelect,
   permissionMode,
   onPermissionModeSelect,
+  autoAvailable,
   toolsDisabled = false,
   skillsDisabled = false,
   imageAttachDisabled = false,
@@ -305,47 +323,29 @@ export function InputToolbar({
             className="rounded-full h-7 px-2.5 gap-1.5"
             title={t('permission.title')}
           >
-            {permissionMode === 'ask' ? (
-              <Shield className="size-3.5" />
-            ) : (
-              <ShieldOff className="size-3.5" />
-            )}
-            <span className="text-xs">
-              {permissionMode === 'ask' ? t('permission.mode.ask') : t('permission.mode.yolo')}
-            </span>
+            <PermissionModeIcon mode={permissionMode} className="size-3.5" />
+            <span className="text-xs">{t(`permission.mode.${permissionMode}`)}</span>
           </InputGroupButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="min-w-[220px]">
-          <DropdownMenuItem
-            className="gap-2 justify-between"
-            onClick={() => onPermissionModeSelect('ask')}
-          >
-            <div className="flex items-center gap-2">
-              <Shield className="size-4" />
-              <div className="flex flex-col">
-                <span>{t('permission.mode.ask')}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t('permission.mode.askHint')}
-                </span>
+        <DropdownMenuContent side="top" align="start" className="min-w-[240px]">
+          {PERMISSION_MODES.filter((mode) => mode !== 'auto' || autoAvailable).map((mode) => (
+            <DropdownMenuItem
+              key={mode}
+              className="gap-2 justify-between"
+              onClick={() => onPermissionModeSelect(mode)}
+            >
+              <div className="flex items-center gap-2">
+                <PermissionModeIcon mode={mode} className="size-4" />
+                <div className="flex flex-col">
+                  <span>{t(`permission.mode.${mode}`)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t(`permission.mode.${mode}Hint`)}
+                  </span>
+                </div>
               </div>
-            </div>
-            {permissionMode === 'ask' && <Check className="size-4" />}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2 justify-between"
-            onClick={() => onPermissionModeSelect('yolo')}
-          >
-            <div className="flex items-center gap-2">
-              <ShieldOff className="size-4" />
-              <div className="flex flex-col">
-                <span>{t('permission.mode.yolo')}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t('permission.mode.yoloHint')}
-                </span>
-              </div>
-            </div>
-            {permissionMode === 'yolo' && <Check className="size-4" />}
-          </DropdownMenuItem>
+              {permissionMode === mode && <Check className="size-4" />}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 

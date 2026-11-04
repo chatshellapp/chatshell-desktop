@@ -33,6 +33,7 @@ import { useInputHistoryStore } from '@/stores/inputHistoryStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { useModelStore } from '@/stores/modelStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { getContextCountOptions } from '@/types'
@@ -48,6 +49,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { logger } from '@/lib/logger'
+import {
+  defaultPermissionMode,
+  displayedPermissionMode,
+  useSandboxAvailable,
+} from '@/lib/permission-mode'
 
 // interface ChatInputProps {}
 
@@ -316,13 +322,20 @@ export function ChatInput(/* _props: ChatInputProps */) {
     }
   }
 
-  // Permission mode; switching ask -> yolo is an escalation and asks
-  // for explicit confirmation first (WorkBuddy-style).
-  const permissionMode: PermissionMode = conversationSettings?.permissionMode ?? 'yolo'
+  // Permission mode, an escalation ladder ask -> auto -> yolo: only
+  // crossing into yolo asks for explicit confirmation. A conversation that
+  // has not loaded its settings shows the device default; `auto` without
+  // a sandbox runs (and shows) as `ask`.
+  const sandboxAvailable = useSandboxAvailable()
+  const appSettings = useSettingsStore((state) => state.settings)
+  const permissionMode: PermissionMode = displayedPermissionMode(
+    conversationSettings?.permissionMode ?? defaultPermissionMode(appSettings),
+    sandboxAvailable
+  )
   const [isYoloConfirmOpen, setIsYoloConfirmOpen] = useState(false)
   const handlePermissionModeSelect = (mode: PermissionMode) => {
     if (!currentConversation) return
-    if (mode === 'yolo' && permissionMode === 'ask') {
+    if (mode === 'yolo' && permissionMode !== 'yolo') {
       setIsYoloConfirmOpen(true)
       return
     }
@@ -641,6 +654,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
             onWorkingDirectorySelect={handleWorkingDirectorySelect}
             permissionMode={permissionMode}
             onPermissionModeSelect={handlePermissionModeSelect}
+            autoAvailable={sandboxAvailable}
             toolsDisabled={toolsDisabled}
             skillsDisabled={toolsDisabled}
             imageAttachDisabled={visionDisabled}
@@ -732,7 +746,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
         modelSupportsToolUse={capabilities.supports_tool_use}
       />
 
-      {/* Permission escalation confirm (ask -> yolo) */}
+      {/* Permission escalation confirm (any mode -> yolo) */}
       <AlertDialog open={isYoloConfirmOpen} onOpenChange={setIsYoloConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

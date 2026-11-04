@@ -9,8 +9,8 @@
 //! the model receives the reason as the tool result and can adapt.
 
 use chatshell_agent_core::permission::{
-    ForcedPrompt, GateDecision, GrantScope, PermissionMode, PermissionTier, SessionGrants,
-    grant_scope, remember_scope, resolve,
+    ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, PermissionMode,
+    PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in,
 };
 use chatshell_agent_core::permission_store::PersistentGrantStore;
 use chatshell_agent_core::shell_env::BashEnvStore;
@@ -21,7 +21,9 @@ use rig::agent::{AgentHook, HookContext, ToolCall, ToolCallAction};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -74,13 +76,39 @@ pub fn bash_env_store() -> Option<&'static BashEnvStore> {
     BASH_ENV.get()
 }
 
-/// Dev flag enabling the OS sandbox for `ask` sessions until the
-/// sandbox-backed `auto` mode ships (requirements FR-17, Phase 2).
-pub const SANDBOX_ASK_FLAG: &str = "CHATSHELL_SANDBOX_ASK";
-
-/// Whether bash runs inside the OS sandbox under `mode`.
+/// Whether bash runs inside the OS sandbox under `mode`. Only `auto`
+/// relies on the sandbox; `ask` prompts per command and `yolo` is the
+/// explicit opt-in to unconfined execution.
 pub fn sandbox_enabled_for(mode: PermissionMode) -> bool {
-    mode == PermissionMode::Ask && std::env::var(SANDBOX_ASK_FLAG).is_ok_and(|value| value == "1")
+    mode == PermissionMode::Auto
+}
+
+/// Whether this machine has a sandbox backend (`auto` is offered only
+/// where this is true).
+pub fn sandbox_available() -> bool {
+    chatshell_agent_core::sandbox::detect_backend().is_some()
+}
+
+/// The mode a turn actually runs in: `auto` without a sandbox backend
+/// degrades to `ask` (a synced `auto` default on a machine without a
+/// sandbox, e.g. Windows), never to unconfined execution.
+pub fn effective_mode(mode: PermissionMode, sandbox_available: bool) -> PermissionMode {
+    if mode == PermissionMode::Auto && !sandbox_available {
+        PermissionMode::Ask
+    } else {
+        mode
+    }
+}
+
+/// Facts about the turn the gate resolves against.
+#[derive(Clone, Default)]
+pub struct GateEnvironment {
+    /// Conversation working directory.
+    pub workspace: Option<PathBuf>,
+    /// Bash runs inside the OS sandbox this turn.
+    pub sandbox_available: bool,
+    /// The conversation's "allow network this session" flag.
+    pub network_flag: Option<Arc<AtomicBool>>,
 }
 
 /// The device's remembered-grant store, if initialized.
@@ -217,10 +245,12 @@ pub struct PermissionGate {
     registry: Arc<ApprovalRegistry>,
     emitter: PermissionEmitter,
     timeout: Duration,
+    environment: GateEnvironment,
 }
 
 impl PermissionGate {
-    #[allow(clippy::too_many_arguments)]
+    /// A gate with no workspace, sandbox, or network context (tests).
+    #[cfg(test)]
     pub fn new(
         conversation_id: String,
         mode: PermissionMode,
@@ -228,14 +258,36 @@ impl PermissionGate {
         registry: Arc<ApprovalRegistry>,
         emitter: PermissionEmitter,
     ) -> Arc<Self> {
-        Arc::new(Self::with_timeout(
+        Self::with_environment(
+            conversation_id,
+            mode,
+            grants,
+            registry,
+            emitter,
+            GateEnvironment::default(),
+        )
+    }
+
+    /// A gate that also knows the workspace, sandbox, and network state
+    /// (needed by `auto`).
+    pub fn with_environment(
+        conversation_id: String,
+        mode: PermissionMode,
+        grants: GrantStore,
+        registry: Arc<ApprovalRegistry>,
+        emitter: PermissionEmitter,
+        environment: GateEnvironment,
+    ) -> Arc<Self> {
+        let mut gate = Self::with_timeout(
             conversation_id,
             mode,
             grants,
             registry,
             emitter,
             APPROVAL_TIMEOUT,
-        ))
+        );
+        gate.environment = environment;
+        Arc::new(gate)
     }
 
     fn with_timeout(
@@ -254,6 +306,19 @@ impl PermissionGate {
             registry,
             emitter,
             timeout,
+            environment: GateEnvironment::default(),
+        }
+    }
+
+    fn context(&self) -> GateContext {
+        GateContext {
+            workspace: self.environment.workspace.clone(),
+            sandbox_available: self.environment.sandbox_available,
+            network_allowed: self
+                .environment
+                .network_flag
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::SeqCst)),
         }
     }
 
@@ -307,13 +372,58 @@ impl PermissionGate {
 
     /// Gate one tool call; Prompt decisions round-trip through the UI.
     pub async fn check(&self, tool_name: &str, args: &Value) -> CheckOutcome {
-        let decision = resolve(self.mode, tool_name, args, &self.grants_snapshot());
+        let decision = resolve_in(
+            self.mode,
+            &self.context(),
+            tool_name,
+            args,
+            &self.grants_snapshot(),
+        );
         match decision {
             GateDecision::Allow => CheckOutcome::Allow,
             GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
+            // Sandboxed auto: detected egress goes straight to the network
+            // escalation card, so one network call yields one prompt.
+            GateDecision::Prompt {
+                subject,
+                forced:
+                    Some(ForcedPrompt {
+                        kind: ForcedPromptKind::Network,
+                        detail,
+                    }),
+            } if self.mode == PermissionMode::Auto && self.environment.sandbox_available => {
+                self.network_before_execution(subject, detail).await
+            }
             GateDecision::Prompt { subject, forced } => {
                 self.prompt(tool_name, args, subject, forced).await
             }
+        }
+    }
+
+    /// Pre-execution network escalation (auto + egress detection).
+    async fn network_before_execution(&self, command: String, detail: String) -> CheckOutcome {
+        let decision = self
+            .escalation_card(
+                EscalationRequest {
+                    command,
+                    kind: EscalationKind::Network,
+                    detail,
+                },
+                false,
+            )
+            .await;
+        match decision {
+            EscalationDecision::AllowNetworkSession => {
+                if let Some(flag) = &self.environment.network_flag {
+                    flag.store(true, Ordering::SeqCst);
+                }
+                CheckOutcome::Allow
+            }
+            _ => CheckOutcome::Deny(
+                "User did not allow network access for this command. Do not retry it; \
+                 ask the user how to proceed."
+                    .to_string(),
+            ),
         }
     }
 
@@ -404,6 +514,16 @@ impl PermissionGate {
     /// Timeout, cancellation, and any non-escalation answer resolve to
     /// `Deny` (fail closed).
     pub async fn escalate(&self, request: EscalationRequest) -> EscalationDecision {
+        self.escalation_card(request, true).await
+    }
+
+    /// Show an escalation card. `retry_option` offers "run once outside
+    /// the sandbox" (only meaningful after a sandboxed run failed).
+    async fn escalation_card(
+        &self,
+        request: EscalationRequest,
+        retry_option: bool,
+    ) -> EscalationDecision {
         let (request_id, receiver) = self.registry.register(&self.conversation_id);
         let network = request.kind == EscalationKind::Network;
         (self.emitter)(
@@ -420,7 +540,7 @@ impl PermissionGate {
                 },
                 "grant": Value::Null,
                 "remember": Value::Null,
-                "escalation": { "network_option": network },
+                "escalation": { "network_option": network, "retry_option": retry_option },
             }),
         );
         tracing::info!(
@@ -430,7 +550,9 @@ impl PermissionGate {
         );
         match tokio::time::timeout(self.timeout, receiver).await {
             Ok(Ok(answer)) => match answer.decision {
-                ApprovalDecision::RetryUnsandboxed => EscalationDecision::RetryUnsandboxed,
+                ApprovalDecision::RetryUnsandboxed if retry_option => {
+                    EscalationDecision::RetryUnsandboxed
+                }
                 ApprovalDecision::AllowNetworkSession if network => {
                     EscalationDecision::AllowNetworkSession
                 }
@@ -518,6 +640,7 @@ fn to_action(outcome: CheckOutcome) -> ToolCallAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chatshell_agent_core::permission::resolve;
 
     /// Captured (event, payload) pairs.
     type Capture = Arc<Mutex<Vec<(String, Value)>>>;
@@ -1084,12 +1207,108 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_flag_only_applies_to_ask() {
-        // The flag is read from the process environment; without it the
-        // sandbox stays off in every mode.
-        if std::env::var(SANDBOX_ASK_FLAG).is_err() {
-            assert!(!sandbox_enabled_for(PermissionMode::Ask));
-        }
+    fn only_auto_uses_the_sandbox() {
+        assert!(sandbox_enabled_for(PermissionMode::Auto));
+        assert!(!sandbox_enabled_for(PermissionMode::Ask));
         assert!(!sandbox_enabled_for(PermissionMode::Yolo));
+    }
+
+    #[test]
+    fn auto_without_sandbox_runs_as_ask() {
+        assert_eq!(
+            effective_mode(PermissionMode::Auto, false),
+            PermissionMode::Ask
+        );
+        assert_eq!(
+            effective_mode(PermissionMode::Auto, true),
+            PermissionMode::Auto
+        );
+        assert_eq!(
+            effective_mode(PermissionMode::Yolo, false),
+            PermissionMode::Yolo
+        );
+    }
+
+    fn auto_fixture(network: Arc<AtomicBool>) -> Fixture {
+        let registry = ApprovalRegistry::new();
+        let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
+        let (emitter, captured) = test_emitter();
+        let gate = PermissionGate::with_environment(
+            "conv-1".to_string(),
+            PermissionMode::Auto,
+            grants.clone(),
+            registry.clone(),
+            emitter,
+            GateEnvironment {
+                workspace: Some(std::env::temp_dir()),
+                sandbox_available: true,
+                network_flag: Some(network),
+            },
+        );
+        Fixture {
+            gate,
+            registry,
+            grants,
+            captured,
+        }
+    }
+
+    #[tokio::test]
+    async fn auto_egress_asks_once_with_the_network_card() {
+        let network = Arc::new(AtomicBool::new(false));
+        let f = auto_fixture(network.clone());
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("curl https://example.com")).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::AllowNetworkSession,
+            0,
+        )
+        .await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["warning"]["kind"], json!("sandbox_network"));
+        assert_eq!(payload["escalation"]["retry_option"], json!(false));
+        assert!(network.load(Ordering::SeqCst));
+        // Granted: the next network command runs without a prompt.
+        assert_eq!(
+            f.gate
+                .check("bash", &bash("curl https://example.org"))
+                .await,
+            CheckOutcome::Allow
+        );
+        assert_eq!(requested_payloads(&f.captured).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn auto_runs_plain_commands_silently() {
+        let f = auto_fixture(Arc::new(AtomicBool::new(false)));
+        assert_eq!(
+            f.gate.check("bash", &bash("cargo build")).await,
+            CheckOutcome::Allow
+        );
+        assert!(requested_payloads(&f.captured).is_empty());
+    }
+
+    #[tokio::test]
+    async fn retry_answer_is_rejected_on_a_pre_execution_card() {
+        let network = Arc::new(AtomicBool::new(false));
+        let f = auto_fixture(network.clone());
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("curl https://example.com")).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::RetryUnsandboxed,
+            0,
+        )
+        .await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        assert!(!network.load(Ordering::SeqCst));
     }
 }
