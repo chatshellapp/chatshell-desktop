@@ -32,24 +32,50 @@ export function displayedPermissionMode(
   return mode === 'auto' && !sandboxAvailable ? 'ask' : mode
 }
 
-let sandboxStatus: Promise<boolean> | null = null
+/** OS sandbox backend of this machine, as reported by the backend. */
+export interface SandboxStatus {
+  available: boolean
+  backend: 'seatbelt' | 'bubblewrap' | null
+}
 
-/** Whether this machine has an OS sandbox (asked once per app run). */
-export function loadSandboxAvailable(): Promise<boolean> {
+const UNAVAILABLE: SandboxStatus = { available: false, backend: null }
+
+let sandboxStatus: Promise<SandboxStatus> | null = null
+
+/** This machine's sandbox status (asked once per app run). */
+export function loadSandboxStatus(): Promise<SandboxStatus> {
   if (!sandboxStatus) {
-    sandboxStatus = invoke<{ available: boolean }>('get_sandbox_status')
-      .then((status) => status.available)
-      .catch((error) => {
-        logger.error('[permission-mode] get_sandbox_status failed:', error)
-        return false
-      })
+    sandboxStatus = invoke<SandboxStatus>('get_sandbox_status').catch((error) => {
+      logger.error('[permission-mode] get_sandbox_status failed:', error)
+      return UNAVAILABLE
+    })
   }
   return sandboxStatus
+}
+
+/** Whether this machine has an OS sandbox. */
+export function loadSandboxAvailable(): Promise<boolean> {
+  return loadSandboxStatus().then((status) => status.available)
 }
 
 /** Test hook: forget the cached sandbox status. */
 export function resetSandboxStatusForTests(): void {
   sandboxStatus = null
+}
+
+/** React hook: full sandbox status (`null` until known). */
+export function useSandboxStatus(): SandboxStatus | null {
+  const [status, setStatus] = useState<SandboxStatus | null>(null)
+  useEffect(() => {
+    let active = true
+    void loadSandboxStatus().then((value) => {
+      if (active) setStatus(value)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+  return status
 }
 
 /** React hook: sandbox availability (false until known). */

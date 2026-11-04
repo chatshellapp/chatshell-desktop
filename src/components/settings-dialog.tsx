@@ -26,6 +26,7 @@ import {
   Stethoscope,
   Trash2,
   Wrench,
+  Shield,
   Zap,
   FolderOpen,
   ToggleLeft,
@@ -94,10 +95,8 @@ import {
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { ObscuraInstallHint } from '@/components/settings-dialog/obscura-install-hint'
+import { PermissionsSettings } from '@/components/settings-dialog/permissions-settings'
 import { ReleaseNotes } from '@/components/settings-dialog/release-notes'
-import { BashEnvironment } from '@/components/settings-dialog/bash-environment'
-import { DefaultPermissionMode } from '@/components/settings-dialog/default-permission-mode'
-import { RememberedApprovals } from '@/components/settings-dialog/remembered-approvals'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { logger } from '@/lib/logger'
@@ -130,6 +129,7 @@ const data = {
     { name: 'auxModels', icon: Sparkles },
     { name: 'builtInTools', icon: Wrench },
     { name: 'mcpServers', icon: Plug },
+    { name: 'permissions', icon: Shield },
     { name: 'skills', icon: Zap },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
@@ -685,18 +685,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {mcpLoading ? t('loadingBuiltInTools') : t('noBuiltInToolsAvailable')}
             </div>
           )}
-
-          <div className="grid gap-4 border-t pt-6">
-            <div className="grid gap-1">
-              <h3 className="text-sm font-semibold">{t('permissionsSection')}</h3>
-              <p className="text-sm text-muted-foreground">{t('permissionsSectionDescription')}</p>
-            </div>
-            <DefaultPermissionMode />
-            <BashEnvironment />
-            <RememberedApprovals />
-          </div>
         </div>
       )
+    }
+
+    if (activeSection === 'permissions') {
+      return <PermissionsSettings />
     }
 
     if (activeSection === 'mcpServers') {
