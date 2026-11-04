@@ -98,9 +98,9 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)
                 .expect("FATAL: Failed to create app data directory");
 
-            // Remembered tool approvals live in their own per-device file,
-            // outside the synced database.
-            crate::llm::permission::init_persistent_grants(&app_data_dir);
+            // Remembered tool approvals and the bash environment settings
+            // live in their own per-device files, outside the synced database.
+            crate::llm::permission::init_device_stores(&app_data_dir);
 
             // Initialize logger first
             let log_dir = app_data_dir.join("logs");
@@ -407,6 +407,8 @@ pub fn run() {
             commands::resolve_permission,
             commands::count_permission_grants,
             commands::clear_permission_grants,
+            commands::get_bash_environment,
+            commands::set_bash_environment,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

@@ -13,9 +13,15 @@ use chatshell_agent_core::permission::{
     grant_scope, remember_scope, resolve,
 };
 use chatshell_agent_core::permission_store::PersistentGrantStore;
+use chatshell_agent_core::shell_env::BashEnvStore;
+use chatshell_agent_core::tools::bash_sandbox::{
+    EscalationDecision, EscalationKind, EscalationRequest, SandboxEscalator,
+};
 use rig::agent::{AgentHook, HookContext, ToolCall, ToolCallAction};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -48,12 +54,33 @@ pub type GrantStore = Arc<Mutex<HashMap<String, SessionGrants>>>;
 /// directory is only known inside Tauri's setup hook).
 static PERSISTENT_GRANTS: OnceLock<PersistentGrantStore> = OnceLock::new();
 
-/// Point remembered grants at `<app data>/permission_grants.db`. Called
-/// once from setup; later calls are ignored.
-pub fn init_persistent_grants(app_data_dir: &std::path::Path) {
+/// The device's bash environment settings (passthrough variables).
+static BASH_ENV: OnceLock<BashEnvStore> = OnceLock::new();
+
+/// Point the device-local stores (remembered grants, bash environment)
+/// at files in the app data directory. Called once from setup; later
+/// calls are ignored. Neither file is part of the synced database.
+pub fn init_device_stores(app_data_dir: &std::path::Path) {
     let _ = PERSISTENT_GRANTS.set(PersistentGrantStore::new(
         app_data_dir.join(chatshell_agent_core::permission_store::STORE_FILE_NAME),
     ));
+    let _ = BASH_ENV.set(BashEnvStore::new(
+        app_data_dir.join(chatshell_agent_core::shell_env::CONFIG_FILE_NAME),
+    ));
+}
+
+/// The device's bash environment store, if initialized.
+pub fn bash_env_store() -> Option<&'static BashEnvStore> {
+    BASH_ENV.get()
+}
+
+/// Dev flag enabling the OS sandbox for `ask` sessions until the
+/// sandbox-backed `auto` mode ships (requirements FR-17, Phase 2).
+pub const SANDBOX_ASK_FLAG: &str = "CHATSHELL_SANDBOX_ASK";
+
+/// Whether bash runs inside the OS sandbox under `mode`.
+pub fn sandbox_enabled_for(mode: PermissionMode) -> bool {
+    mode == PermissionMode::Ask && std::env::var(SANDBOX_ASK_FLAG).is_ok_and(|value| value == "1")
 }
 
 /// The device's remembered-grant store, if initialized.
@@ -73,6 +100,10 @@ pub enum ApprovalDecision {
     AllowOnce,
     AllowSession,
     Deny,
+    /// Sandbox escalation: run the command once outside the sandbox.
+    RetryUnsandboxed,
+    /// Sandbox escalation: allow network for the rest of the session.
+    AllowNetworkSession,
 }
 
 impl ApprovalDecision {
@@ -82,6 +113,8 @@ impl ApprovalDecision {
             "allow-once" => Some(ApprovalDecision::AllowOnce),
             "allow-session" => Some(ApprovalDecision::AllowSession),
             "deny" => Some(ApprovalDecision::Deny),
+            "retry-unsandboxed" => Some(ApprovalDecision::RetryUnsandboxed),
+            "allow-network-session" => Some(ApprovalDecision::AllowNetworkSession),
             _ => None,
         }
     }
@@ -345,9 +378,13 @@ impl PermissionGate {
                 }
                 CheckOutcome::Allow
             }
-            Ok(Ok(ApprovalDecision::Deny)) => {
-                CheckOutcome::Deny("User denied this tool call".to_string())
-            }
+            // Escalation answers never apply to a pre-execution prompt;
+            // treat a mismatched answer as a denial (fail closed).
+            Ok(Ok(
+                ApprovalDecision::Deny
+                | ApprovalDecision::RetryUnsandboxed
+                | ApprovalDecision::AllowNetworkSession,
+            )) => CheckOutcome::Deny("User denied this tool call".to_string()),
             Ok(Err(_dropped)) => {
                 // The awaiting hook future was dropped (stream cancelled).
                 self.emit_resolved(&request_id);
@@ -359,6 +396,68 @@ impl PermissionGate {
                 CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string())
             }
         }
+    }
+}
+
+impl PermissionGate {
+    /// Ask the user how to handle a command the OS sandbox blocked.
+    /// Timeout, cancellation, and any non-escalation answer resolve to
+    /// `Deny` (fail closed).
+    pub async fn escalate(&self, request: EscalationRequest) -> EscalationDecision {
+        let (request_id, receiver) = self.registry.register(&self.conversation_id);
+        let network = request.kind == EscalationKind::Network;
+        (self.emitter)(
+            PERMISSION_REQUESTED_EVENT,
+            json!({
+                "conversation_id": self.conversation_id,
+                "request_id": request_id,
+                "tool_name": "bash",
+                "subject": request.command,
+                "tier": "exec",
+                "warning": {
+                    "kind": if network { "sandbox_network" } else { "sandbox" },
+                    "detail": request.detail,
+                },
+                "grant": Value::Null,
+                "remember": Value::Null,
+                "escalation": { "network_option": network },
+            }),
+        );
+        tracing::info!(
+            "🛡️ [permission] Sandbox escalation for {} (request {})",
+            request.command,
+            request_id
+        );
+        match tokio::time::timeout(self.timeout, receiver).await {
+            Ok(Ok(answer)) => match answer.decision {
+                ApprovalDecision::RetryUnsandboxed => EscalationDecision::RetryUnsandboxed,
+                ApprovalDecision::AllowNetworkSession if network => {
+                    EscalationDecision::AllowNetworkSession
+                }
+                _ => EscalationDecision::Deny,
+            },
+            Ok(Err(_dropped)) => {
+                self.emit_resolved(&request_id);
+                EscalationDecision::Deny
+            }
+            Err(_elapsed) => {
+                self.registry.resolve(&request_id, ApprovalDecision::Deny);
+                self.emit_resolved(&request_id);
+                EscalationDecision::Deny
+            }
+        }
+    }
+}
+
+/// [`SandboxEscalator`] backed by the conversation's approval gate.
+pub struct GateEscalator(pub Arc<PermissionGate>);
+
+impl SandboxEscalator for GateEscalator {
+    fn escalate<'a>(
+        &'a self,
+        request: EscalationRequest,
+    ) -> Pin<Box<dyn Future<Output = EscalationDecision> + Send + 'a>> {
+        Box::pin(self.0.escalate(request))
     }
 }
 
@@ -696,6 +795,14 @@ mod tests {
             ApprovalDecision::parse("deny"),
             Some(ApprovalDecision::Deny)
         );
+        assert_eq!(
+            ApprovalDecision::parse("retry-unsandboxed"),
+            Some(ApprovalDecision::RetryUnsandboxed)
+        );
+        assert_eq!(
+            ApprovalDecision::parse("allow-network-session"),
+            Some(ApprovalDecision::AllowNetworkSession)
+        );
         assert_eq!(ApprovalDecision::parse("bogus"), None);
     }
 
@@ -892,5 +999,97 @@ mod tests {
                 .await,
             CheckOutcome::Allow
         );
+    }
+
+    fn escalation(kind: EscalationKind) -> EscalationRequest {
+        EscalationRequest {
+            command: "curl https://example.com".to_string(),
+            kind,
+            detail: "curl: (6) Could not resolve host: example.com".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn escalation_prompt_carries_options_and_maps_answers() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.escalate(escalation(EscalationKind::Network)).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::AllowNetworkSession,
+            0,
+        )
+        .await;
+        assert_eq!(task.await.unwrap(), EscalationDecision::AllowNetworkSession);
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["warning"]["kind"], json!("sandbox_network"));
+        assert_eq!(payload["escalation"]["network_option"], json!(true));
+        assert_eq!(payload["grant"], Value::Null);
+        assert_eq!(payload["remember"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn network_answer_to_filesystem_escalation_is_denied() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.escalate(escalation(EscalationKind::Filesystem)).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::AllowNetworkSession,
+            0,
+        )
+        .await;
+        assert_eq!(task.await.unwrap(), EscalationDecision::Deny);
+        assert_eq!(
+            requested_payloads(&f.captured)[0]["escalation"]["network_option"],
+            json!(false)
+        );
+    }
+
+    #[tokio::test]
+    async fn escalation_answers_to_ordinary_prompts_deny() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("cargo test")).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::RetryUnsandboxed,
+            0,
+        )
+        .await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+    }
+
+    #[tokio::test]
+    async fn cancelled_escalation_denies() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.escalate(escalation(EscalationKind::Filesystem)).await }
+        });
+        while requested_payloads(&f.captured).is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        f.registry.cancel_conversation("conv-1");
+        assert_eq!(task.await.unwrap(), EscalationDecision::Deny);
+    }
+
+    #[test]
+    fn sandbox_flag_only_applies_to_ask() {
+        // The flag is read from the process environment; without it the
+        // sandbox stays off in every mode.
+        if std::env::var(SANDBOX_ASK_FLAG).is_err() {
+            assert!(!sandbox_enabled_for(PermissionMode::Ask));
+        }
+        assert!(!sandbox_enabled_for(PermissionMode::Yolo));
     }
 }

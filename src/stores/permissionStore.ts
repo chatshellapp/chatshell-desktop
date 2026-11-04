@@ -19,7 +19,13 @@ export type PermissionGrant =
 
 /** Why a prompt was forced past session grants; mirrors the backend
  * ForcedPromptKind. Forced prompts never carry a grant. */
-export type PermissionWarningKind = 'security' | 'unparsed' | 'network' | 'private_network'
+export type PermissionWarningKind =
+  | 'security'
+  | 'unparsed'
+  | 'network'
+  | 'private_network'
+  | 'sandbox'
+  | 'sandbox_network'
 
 export interface PermissionWarning {
   kind: PermissionWarningKind
@@ -37,6 +43,15 @@ export interface PermissionRequest {
   /** Scope persisted by "remember on this device"; null when the prompt
    * cannot be remembered (forced prompts, relative paths). */
   remember?: PermissionGrant | null
+  /** Set when the OS sandbox blocked an already-approved command and the
+   * card asks whether to escape it. */
+  escalation?: PermissionEscalation | null
+}
+
+/** Options of a sandbox escalation card. */
+export interface PermissionEscalation {
+  /** Offer "allow network this session" (network denials only). */
+  network_option: boolean
 }
 
 interface PermissionState {

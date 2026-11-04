@@ -89,6 +89,11 @@ pub struct AgentConfig {
     pub bash_abort_notify: Option<Arc<tokio::sync::Notify>>,
     /// Shared temp file tracker for bash output truncation cleanup
     pub bash_temp_files: Option<TempFileList>,
+    /// Extra app variables passed to bash; `Some` minimizes the bash
+    /// environment to the allowlist plus these.
+    pub bash_env_passthrough: Option<Vec<String>>,
+    /// OS sandbox for the bash session.
+    pub bash_sandbox: Option<chatshell_agent_core::tools::bash_sandbox::BashSandbox>,
     /// MCP schema lookup tool with embedded catalog
     pub mcp_schema_tool: Option<McpSchemaTool>,
     /// MCP tool execution tool
@@ -276,6 +281,21 @@ impl AgentConfig {
     /// Set a shared temp file tracker for bash output truncation cleanup
     pub fn with_bash_temp_files(mut self, files: TempFileList) -> Self {
         self.bash_temp_files = Some(files);
+        self
+    }
+
+    /// Minimize the bash environment to the allowlist plus `passthrough`.
+    pub fn with_bash_env_passthrough(mut self, passthrough: Vec<String>) -> Self {
+        self.bash_env_passthrough = Some(passthrough);
+        self
+    }
+
+    /// Run the bash session inside the OS sandbox.
+    pub fn with_bash_sandbox(
+        mut self,
+        sandbox: chatshell_agent_core::tools::bash_sandbox::BashSandbox,
+    ) -> Self {
+        self.bash_sandbox = Some(sandbox);
         self
     }
 
@@ -555,6 +575,12 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         }
         if let Some(ref root) = config.project_root {
             tool = tool.with_project_root(root.clone());
+        }
+        if let Some(ref passthrough) = config.bash_env_passthrough {
+            tool = tool.with_env_passthrough(passthrough.clone());
+        }
+        if let Some(ref sandbox) = config.bash_sandbox {
+            tool = tool.with_sandbox(sandbox.clone());
         }
         tool
     };

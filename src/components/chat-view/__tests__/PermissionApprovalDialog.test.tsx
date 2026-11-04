@@ -216,4 +216,53 @@ describe('PermissionApprovalDialog', () => {
     render(<PermissionApprovalDialog />)
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
+
+  it('renders a network escalation with both escape options', async () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-e',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'curl https://example.com',
+      tier: 'exec',
+      grant: null,
+      warning: { kind: 'sandbox_network', detail: 'Could not resolve host: example.com' },
+      escalation: { network_option: true },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByText('Command blocked by the sandbox')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /allow once/i })).not.toBeInTheDocument()
+    const network = screen.getByRole('button', { name: /allow network this session/i })
+    await waitFor(() => expect(network).toBeEnabled())
+    network.click()
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('resolve_permission', {
+        request: { requestId: 'req-e', decision: 'allow-network-session', remember: false },
+      })
+    )
+  })
+
+  it('offers only retry outside the sandbox for filesystem escalations', async () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-f',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'echo hi > ~/outside.txt',
+      tier: 'exec',
+      grant: null,
+      warning: { kind: 'sandbox', detail: 'Operation not permitted' },
+      escalation: { network_option: false },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(
+      screen.queryByRole('button', { name: /allow network this session/i })
+    ).not.toBeInTheDocument()
+    const retry = screen.getByRole('button', { name: /run once outside sandbox/i })
+    await waitFor(() => expect(retry).toBeEnabled())
+    retry.click()
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('resolve_permission', {
+        request: { requestId: 'req-f', decision: 'retry-unsandboxed', remember: false },
+      })
+    )
+  })
 })

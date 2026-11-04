@@ -150,7 +150,15 @@
       "security": "Security check flagged this command. Session approvals do not cover it.",
       "unparsed": "This command could not be fully analyzed. Review it carefully.",
       "network": "This command contacts a remote host over the network.",
-      "privateNetwork": "This fetch targets your local machine or a private network."
+      "privateNetwork": "This fetch targets your local machine or a private network.",
+      "sandbox": "The sandbox blocked this command: it touched files outside the workspace or a protected path.",
+      "sandboxNetwork": "The sandbox blocked this command's network access."
+    },
+    "escalation": {
+      "title": "Command blocked by the sandbox",
+      "body": "You approved this command, but the OS sandbox stopped part of it. Choose whether to let it escape the sandbox.",
+      "retryOutside": "Run once outside sandbox",
+      "allowNetwork": "Allow network this session"
     },
     "escalateTitle": "Allow full access?",
     "escalateBody": "Tool calls (file writes, terminal commands, MCP) will run without confirmation. Dangerous commands are still blocked by the built-in blocklist.",

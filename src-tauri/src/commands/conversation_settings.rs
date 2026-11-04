@@ -63,6 +63,8 @@ pub async fn update_conversation_settings(
             .lock()
             .unwrap()
             .remove(&conversation_id);
+        // A sandbox network escalation is a grant too.
+        state.bash_session_manager.reset_network(&conversation_id);
     }
     result
 }

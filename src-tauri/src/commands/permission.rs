@@ -63,3 +63,51 @@ pub async fn clear_permission_grants() -> Result<usize, String> {
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("{e:#}"))
 }
+
+/// Bash environment settings for the Settings UI.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BashEnvironmentView {
+    /// Variables every bash session receives.
+    pub allowlist: Vec<String>,
+    /// Extra variables the user passes through on this device.
+    pub passthrough: Vec<String>,
+    /// Suggested variables set in the app environment, not yet passed.
+    pub suggestions: Vec<String>,
+}
+
+fn bash_environment_view(passthrough: Vec<String>) -> BashEnvironmentView {
+    use chatshell_agent_core::shell_env;
+    let suggestions = shell_env::suggestions(|name| std::env::var(name).ok())
+        .into_iter()
+        .filter(|name| !passthrough.contains(name))
+        .collect();
+    BashEnvironmentView {
+        allowlist: shell_env::BASE_ALLOWLIST
+            .iter()
+            .map(|name| name.to_string())
+            .collect(),
+        passthrough,
+        suggestions,
+    }
+}
+
+/// Current bash environment settings of this device.
+#[tauri::command]
+pub async fn get_bash_environment() -> Result<BashEnvironmentView, String> {
+    let passthrough = match crate::llm::permission::bash_env_store() {
+        Some(store) => store.load().map_err(|e| format!("{e:#}"))?.passthrough,
+        None => Vec::new(),
+    };
+    Ok(bash_environment_view(passthrough))
+}
+
+/// Replace this device's passthrough list. Takes effect on the next bash
+/// command (the session restarts with the new environment).
+#[tauri::command]
+pub async fn set_bash_environment(passthrough: Vec<String>) -> Result<BashEnvironmentView, String> {
+    let store = crate::llm::permission::bash_env_store()
+        .ok_or_else(|| "Bash environment store is not initialized".to_string())?;
+    let saved = store.save(&passthrough).map_err(|e| format!("{e:#}"))?;
+    Ok(bash_environment_view(saved.passthrough))
+}

@@ -1,4 +1,8 @@
-import type { PermissionGrant, PermissionWarning } from '@/stores/permissionStore'
+import type {
+  PermissionEscalation,
+  PermissionGrant,
+  PermissionWarning,
+} from '@/stores/permissionStore'
 
 // Local event types not exported from @/types
 
@@ -53,6 +57,8 @@ export interface PermissionRequestedEvent {
   warning?: PermissionWarning | null
   /** Scope "remember on this device" would persist; null when not offered. */
   remember?: PermissionGrant | null
+  /** Set for sandbox escalation cards. */
+  escalation?: PermissionEscalation | null
 }
 
 export interface PermissionResolvedEvent {

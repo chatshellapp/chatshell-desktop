@@ -82,8 +82,19 @@ function warningText(t: TFunction, kind: PermissionWarningKind): string {
       return t('permission.warning.network')
     case 'private_network':
       return t('permission.warning.privateNetwork')
+    case 'sandbox':
+      return t('permission.warning.sandbox')
+    case 'sandbox_network':
+      return t('permission.warning.sandboxNetwork')
   }
 }
+
+type Decision =
+  | 'allow-once'
+  | 'allow-session'
+  | 'deny'
+  | 'retry-unsandboxed'
+  | 'allow-network-session'
 
 export function PermissionApprovalDialog() {
   const { t } = useTranslation('chat')
@@ -103,7 +114,9 @@ export function PermissionApprovalDialog() {
 
   if (!pending) return null
 
-  const answer = async (decision: 'allow-once' | 'allow-session' | 'deny') => {
+  const escalation = pending.escalation ?? null
+
+  const answer = async (decision: Decision) => {
     const requestId = pending.requestId
     remove(requestId)
     try {
@@ -111,7 +124,10 @@ export function PermissionApprovalDialog() {
         request: {
           requestId,
           decision,
-          remember: remember && decision !== 'deny' && Boolean(pending.remember),
+          remember:
+            remember &&
+            (decision === 'allow-once' || decision === 'allow-session') &&
+            Boolean(pending.remember),
         },
       })
     } catch (error) {
@@ -125,13 +141,15 @@ export function PermissionApprovalDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldQuestion className="size-5 text-destructive" />
-            {t('permission.title')}
+            {escalation ? t('permission.escalation.title') : t('permission.title')}
           </DialogTitle>
           <DialogDescription className="text-left">
-            {t('permission.body', {
-              tool: pending.toolName,
-              subject: pending.subject,
-            })}
+            {escalation
+              ? t('permission.escalation.body')
+              : t('permission.body', {
+                  tool: pending.toolName,
+                  subject: pending.subject,
+                })}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-md bg-muted px-3 py-2 font-mono text-xs break-all">
@@ -176,16 +194,37 @@ export function PermissionApprovalDialog() {
           <Button variant="outline" disabled={!armed} onClick={() => answer('deny')}>
             {t('permission.deny')}
           </Button>
-          <div className="flex gap-2">
-            {pending.grant && (
-              <Button variant="secondary" disabled={!armed} onClick={() => answer('allow-session')}>
-                {t('permission.allowSession')}
+          {escalation ? (
+            <div className="flex gap-2">
+              {escalation.network_option && (
+                <Button
+                  variant="secondary"
+                  disabled={!armed}
+                  onClick={() => answer('allow-network-session')}
+                >
+                  {t('permission.escalation.allowNetwork')}
+                </Button>
+              )}
+              <Button disabled={!armed} onClick={() => answer('retry-unsandboxed')}>
+                {t('permission.escalation.retryOutside')}
               </Button>
-            )}
-            <Button disabled={!armed} onClick={() => answer('allow-once')}>
-              {t('permission.allowOnce')}
-            </Button>
-          </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              {pending.grant && (
+                <Button
+                  variant="secondary"
+                  disabled={!armed}
+                  onClick={() => answer('allow-session')}
+                >
+                  {t('permission.allowSession')}
+                </Button>
+              )}
+              <Button disabled={!armed} onClick={() => answer('allow-once')}>
+                {t('permission.allowOnce')}
+              </Button>
+            </div>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

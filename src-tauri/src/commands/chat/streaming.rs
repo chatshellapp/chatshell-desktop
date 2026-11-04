@@ -477,13 +477,58 @@ pub(crate) async fn handle_agent_streaming(
         Arc::new(move |event, payload| {
             let _ = app_for_permissions.emit(event, payload);
         });
+    let core_mode = chatshell_agent_core::permission::PermissionMode::from(permission_mode);
     let gate = crate::llm::permission::PermissionGate::new(
         conversation_id_clone.clone(),
-        chatshell_agent_core::permission::PermissionMode::from(permission_mode),
+        core_mode,
         state_clone.permission_grants.clone(),
         state_clone.approval_registry.clone(),
         permission_emitter,
     );
+
+    if bash_enabled {
+        // Bash never inherits the full app environment: allowlist plus the
+        // device's passthrough list (requirements FR-20).
+        let passthrough = crate::llm::permission::bash_env_store()
+            .and_then(|store| match store.load() {
+                Ok(config) => Some(config.passthrough),
+                Err(e) => {
+                    tracing::warn!("⚠️ [agent_streaming] Bash environment unreadable: {e:#}");
+                    None
+                }
+            })
+            .unwrap_or_default();
+        config = config.with_bash_env_passthrough(passthrough);
+
+        if crate::llm::permission::sandbox_enabled_for(core_mode) {
+            let scratch_dir = app
+                .path()
+                .app_cache_dir()
+                .map(|dir| dir.join("sandbox-scratch").join(&conversation_id_clone))
+                .unwrap_or_else(|_| {
+                    std::env::temp_dir()
+                        .join("chatshell-sandbox-scratch")
+                        .join(&conversation_id_clone)
+                });
+            let backend = chatshell_agent_core::sandbox::detect_backend();
+            tracing::info!(
+                "🛡️ [agent_streaming] Bash sandbox enabled (backend {:?}, scratch {})",
+                backend,
+                scratch_dir.display()
+            );
+            config =
+                config.with_bash_sandbox(chatshell_agent_core::tools::bash_sandbox::BashSandbox {
+                    backend,
+                    scratch_dir,
+                    network_allowed: state_clone
+                        .bash_session_manager
+                        .network_flag(&conversation_id_clone),
+                    escalator: Some(Arc::new(crate::llm::permission::GateEscalator(
+                        gate.clone(),
+                    ))),
+                });
+        }
+    }
     config = config.with_permission_gate(gate);
 
     // Collect MCP server IDs (non-builtin tools)
