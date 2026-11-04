@@ -9,7 +9,8 @@
 //! the model receives the reason as the tool result and can adapt.
 
 use chatshell_agent_core::permission::{
-    GateDecision, GrantScope, PermissionMode, PermissionTier, SessionGrants, grant_scope, resolve,
+    ForcedPrompt, GateDecision, GrantScope, PermissionMode, PermissionTier, SessionGrants,
+    grant_scope, resolve,
 };
 use rig::agent::{AgentHook, HookContext, ToolCall, ToolCallAction};
 use serde_json::{Value, json};
@@ -41,6 +42,12 @@ pub type PermissionEmitter = Arc<dyn Fn(&str, Value) + Send + Sync>;
 /// `AppState`, so grants survive across turns within a run of the app
 /// and never touch disk or the sync snapshot.
 pub type GrantStore = Arc<Mutex<HashMap<String, SessionGrants>>>;
+
+/// Remove every session grant held for `conversation_id` (conversation
+/// deleted). Returns whether any grants were held.
+pub fn forget_conversation_grants(grants: &GrantStore, conversation_id: &str) -> bool {
+    grants.lock().unwrap().remove(conversation_id).is_some()
+}
 
 /// The user's answer to an approval request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,12 +221,25 @@ impl PermissionGate {
         match decision {
             GateDecision::Allow => CheckOutcome::Allow,
             GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
-            GateDecision::Prompt { subject } => self.prompt(tool_name, args, subject).await,
+            GateDecision::Prompt { subject, forced } => {
+                self.prompt(tool_name, args, subject, forced).await
+            }
         }
     }
 
-    async fn prompt(&self, tool_name: &str, args: &Value, subject: String) -> CheckOutcome {
-        let scope = grant_scope(tool_name, args);
+    async fn prompt(
+        &self,
+        tool_name: &str,
+        args: &Value,
+        subject: String,
+        forced: Option<ForcedPrompt>,
+    ) -> CheckOutcome {
+        // Forced prompts are about this specific call: never offer a
+        // session grant for them.
+        let scope = match forced {
+            Some(_) => None,
+            None => grant_scope(tool_name, args),
+        };
         let (request_id, receiver) = self.registry.register(&self.conversation_id);
         let tier = serde_json::to_value(PermissionTier::for_tool(tool_name))
             .unwrap_or(Value::String("exec".into()));
@@ -231,6 +251,10 @@ impl PermissionGate {
                 "tool_name": tool_name,
                 "subject": subject,
                 "tier": tier,
+                "warning": match &forced {
+                    None => Value::Null,
+                    Some(forced) => json!({ "kind": forced.kind, "detail": forced.detail }),
+                },
                 "grant": match &scope {
                     None => Value::Null,
                     Some(GrantScope::BashCommands(bases)) => {
@@ -590,5 +614,70 @@ mod tests {
         assert!(
             matches!(to_action(CheckOutcome::Deny("nope".into())), ToolCallAction::Skip(reason) if reason == "Permission denied: nope")
         );
+    }
+
+    #[tokio::test]
+    async fn forced_prompt_carries_warning_and_offers_no_grant() {
+        let f = fixture(PermissionMode::Ask);
+        f.grants
+            .lock()
+            .unwrap()
+            .entry("conv-1".to_string())
+            .or_default()
+            .grant_bash_commands(&["curl"]);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("curl https://example.com")).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payload = f
+            .captured
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+            .map(|(_, payload)| payload.clone())
+            .expect("permission-requested emitted");
+        assert_eq!(payload["warning"]["kind"], json!("network"));
+        assert!(
+            payload["warning"]["detail"]
+                .as_str()
+                .unwrap()
+                .contains("example.com")
+        );
+        assert_eq!(payload["grant"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn unforced_prompt_has_null_warning() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("cargo test")).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        task.await.unwrap();
+        let payload = f.captured.lock().unwrap()[0].1.clone();
+        assert_eq!(payload["warning"], Value::Null);
+        assert_eq!(
+            payload["grant"],
+            json!({ "kind": "bash", "bases": ["cargo"] })
+        );
+    }
+
+    #[test]
+    fn forget_conversation_grants_removes_only_that_conversation() {
+        let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut store = grants.lock().unwrap();
+            store.entry("a".into()).or_default().grant_tool("edit");
+            store.entry("b".into()).or_default().grant_tool("edit");
+        }
+        assert!(forget_conversation_grants(&grants, "a"));
+        assert!(!forget_conversation_grants(&grants, "a"));
+        let store = grants.lock().unwrap();
+        assert!(!store.contains_key("a"));
+        assert!(store.contains_key("b"));
     }
 }

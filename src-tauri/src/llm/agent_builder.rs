@@ -1103,10 +1103,7 @@ mod tests {
     }
 
     fn empty_mcp_tool_use() -> McpToolUseTool {
-        McpToolUseTool::new(
-            Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            HashMap::new(),
-        )
+        McpToolUseTool::new(Arc::new(tokio::sync::RwLock::new(HashMap::new())))
     }
 
     fn empty_schema_tool() -> McpSchemaTool {

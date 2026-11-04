@@ -195,8 +195,9 @@ export function useChatEvents(conversationId: string | null) {
       'generation-stopped',
       (event) => {
         logger.info('[useChatEvents] Received generation-stopped event:', event.payload)
-        // Any approval for the stopped conversation is closed backend-side.
-        usePermissionStore.getState().clear()
+        // Approvals of the stopped conversation are closed backend-side;
+        // other conversations' pending approvals must stay answerable.
+        usePermissionStore.getState().clearConversation(event.payload.conversation_id)
         handleGenerationStopped(event.payload.conversation_id)
       }
     )

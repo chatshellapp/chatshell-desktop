@@ -16,7 +16,7 @@ use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
 use crate::models::{
     CreateContentBlockRequest, CreateFileAttachmentRequest, CreateMessageRequest,
-    CreateThinkingStepRequest, CreateToolCallRequest, McpTransportType, ModelParameters,
+    CreateThinkingStepRequest, CreateToolCallRequest, ModelParameters,
 };
 use crate::prompts;
 use rig::agent::Agent;
@@ -567,10 +567,7 @@ pub(crate) async fn handle_agent_streaming(
                         server_catalogs,
                         mcp_tools_dir.to_string_lossy().to_string(),
                     ))
-                    .with_mcp_tool_use(McpToolUseTool::new(
-                        Arc::new(RwLock::new(client_map)),
-                        loaded.tool_name_to_transport.clone(),
-                    ));
+                    .with_mcp_tool_use(McpToolUseTool::new(Arc::new(RwLock::new(client_map))));
             }
             (
                 Arc::new(loaded.tool_name_to_server_id),
@@ -1582,8 +1579,6 @@ struct LoadedMcpTools {
     tool_name_to_server_id: HashMap<String, String>,
     /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
     tool_name_to_server_name: HashMap<String, String>,
-    /// Maps "server_name/tool_name" key to transport type (used for security scanning).
-    tool_name_to_transport: HashMap<String, McpTransportType>,
     /// Server IDs that failed to connect due to auth errors (401/Unauthorized).
     auth_failed_server_ids: Vec<String>,
 }
@@ -1647,16 +1642,13 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
 
     let mut tool_name_to_server_id = HashMap::new();
     let mut tool_name_to_server_name = HashMap::new();
-    let mut tool_name_to_transport: HashMap<String, McpTransportType> = HashMap::new();
     let mut server_tools = Vec::new();
 
     for (conn, tools) in result.connections {
-        let transport = conn.tool.get_transport_type();
         for t in &tools {
             let key = format!("{}/{}", conn.tool.name, t.name);
             tool_name_to_server_id.insert(key.clone(), conn.tool.id.clone());
-            tool_name_to_server_name.insert(key.clone(), conn.tool.name.clone());
-            tool_name_to_transport.insert(key, transport);
+            tool_name_to_server_name.insert(key, conn.tool.name.clone());
             // Also insert raw key so non-lazy path (direct rmcp_tools) auth lookup still works
             tool_name_to_server_id.insert(t.name.to_string(), conn.tool.id.clone());
             tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
@@ -1668,7 +1660,6 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
         server_tools,
         tool_name_to_server_id,
         tool_name_to_server_name,
-        tool_name_to_transport,
         auth_failed_server_ids,
     })
 }

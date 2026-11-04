@@ -23,7 +23,7 @@ function seedPending(grant: PermissionGrant | null = { kind: 'bash', bases: ['ca
 describe('PermissionApprovalDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    usePermissionStore.getState().clear()
+    usePermissionStore.getState().reset()
     invoke.mockResolvedValue(true)
   })
 
@@ -129,5 +129,32 @@ describe('PermissionApprovalDialog', () => {
         request: { requestId: 'req-1', decision: 'deny' },
       })
     )
+  })
+
+  it('shows the warning line for a forced prompt and offers no session grant', async () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-w',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'curl https://example.com',
+      tier: 'exec',
+      grant: null,
+      warning: { kind: 'network', detail: 'curl -> example.com' },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This command contacts a remote host over the network.'
+    )
+    expect(screen.getByText('curl -> example.com')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /allow once/i })).toBeEnabled())
+    expect(
+      screen.queryByRole('button', { name: /allow for this session/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders no warning line for an ordinary prompt', () => {
+    seedPending()
+    render(<PermissionApprovalDialog />)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

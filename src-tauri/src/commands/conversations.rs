@@ -65,7 +65,12 @@ pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Resu
         .db
         .delete_conversation(&id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Drop the conversation's session grants so they do not linger in RAM
+    // for the rest of the app's lifetime.
+    crate::llm::permission::forget_conversation_grants(&state.permission_grants, &id);
+    Ok(())
 }
 
 // Conversation Participant commands

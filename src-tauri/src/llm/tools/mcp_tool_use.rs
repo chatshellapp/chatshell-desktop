@@ -20,8 +20,6 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
 
-use crate::models::McpTransportType;
-
 use super::bash_security::{self, SecurityContext, SecurityVerdict};
 use super::path_policy;
 
@@ -49,20 +47,16 @@ pub type McpClientMap = Arc<RwLock<HashMap<String, (String, Peer<RoleClient>)>>>
 #[derive(Clone)]
 pub struct McpToolUseTool {
     clients: McpClientMap,
-    transport_types: HashMap<String, McpTransportType>,
 }
 
 impl McpToolUseTool {
-    pub fn new(clients: McpClientMap, transport_types: HashMap<String, McpTransportType>) -> Self {
-        Self {
-            clients,
-            transport_types,
-        }
+    pub fn new(clients: McpClientMap) -> Self {
+        Self { clients }
     }
 }
 
 // ---------------------------------------------------------------------------
-// STDIO argument scanning
+// Argument scanning
 // ---------------------------------------------------------------------------
 
 const COMMAND_LIKE_TOOL_NAMES: &[&str] = &[
@@ -107,15 +101,10 @@ fn collect_string_values(value: &serde_json::Value, out: &mut Vec<String>) {
     }
 }
 
-fn scan_mcp_arguments(
-    tool_name: &str,
-    args: &serde_json::Value,
-    transport: McpTransportType,
-) -> Result<(), String> {
-    if transport == McpTransportType::Http {
-        return Ok(());
-    }
-
+/// Scan MCP tool arguments for blocked paths and dangerous commands.
+/// Applies to every transport: an HTTP server can act on its arguments
+/// just as a STDIO one can (a remote shell, a filesystem bridge).
+fn scan_mcp_arguments(tool_name: &str, args: &serde_json::Value) -> Result<(), String> {
     let context = security_context_for_tool(tool_name);
     let mut strings = Vec::new();
     collect_string_values(args, &mut strings);
@@ -130,7 +119,7 @@ fn scan_mcp_arguments(
                 return Err(format!("Blocked: {msg}"));
             }
             SecurityVerdict::Warn(msg) => {
-                tracing::warn!("🛡️ [mcp_tool_use] Security warning for STDIO argument: {msg}");
+                tracing::warn!("🛡️ [mcp_tool_use] Security warning for argument: {msg}");
             }
             SecurityVerdict::Allow => {}
         }
@@ -185,15 +174,8 @@ impl Tool for McpToolUseTool {
     ) -> Result<Self::Output, Self::Error> {
         let key = format!("{}/{}", args.server, args.tool);
 
-        // Security: scan arguments for STDIO servers
-        let transport = self
-            .transport_types
-            .get(&key)
-            .copied()
-            .unwrap_or(McpTransportType::Http);
-
-        scan_mcp_arguments(&args.tool, &args.arguments, transport)
-            .map_err(McpToolUseError::Blocked)?;
+        // Security: scan arguments (every transport)
+        scan_mcp_arguments(&args.tool, &args.arguments).map_err(McpToolUseError::Blocked)?;
 
         let clients = self.clients.read().await;
         let (_server_name, client) = clients
@@ -328,13 +310,12 @@ mod tests {
     }
 
     #[test]
-    fn scan_http_skipped() {
-        let result = scan_mcp_arguments(
-            "dangerous_tool",
-            &json!({"path": "~/.ssh/id_rsa"}),
-            McpTransportType::Http,
-        );
-        assert!(result.is_ok());
+    fn scan_blocks_dangerous_path_regardless_of_transport() {
+        // Formerly HTTP arguments skipped the scan entirely.
+        let result = scan_mcp_arguments("dangerous_tool", &json!({"path": "~/.ssh/id_rsa"}));
+        assert!(result.is_err());
+        let result = scan_mcp_arguments("run_shell", &json!({"command": "rm -rf /"}));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -342,38 +323,25 @@ mod tests {
         let result = scan_mcp_arguments(
             "write_file",
             &json!({"path": "~/.bashrc", "content": "evil"}),
-            McpTransportType::Stdio,
         );
         assert!(result.is_err());
     }
 
     #[test]
     fn scan_stdio_blocks_dangerous_command() {
-        let result = scan_mcp_arguments(
-            "run_shell",
-            &json!({"command": "rm -rf /"}),
-            McpTransportType::Stdio,
-        );
+        let result = scan_mcp_arguments("run_shell", &json!({"command": "rm -rf /"}));
         assert!(result.is_err());
     }
 
     #[test]
     fn scan_stdio_allows_safe_args() {
-        let result = scan_mcp_arguments(
-            "search",
-            &json!({"query": "hello world", "limit": 10}),
-            McpTransportType::Stdio,
-        );
+        let result = scan_mcp_arguments("search", &json!({"query": "hello world", "limit": 10}));
         assert!(result.is_ok());
     }
 
     #[test]
     fn scan_stdio_nested_dangerous_path() {
-        let result = scan_mcp_arguments(
-            "tool",
-            &json!({"config": {"output": "/etc/shadow"}}),
-            McpTransportType::Stdio,
-        );
+        let result = scan_mcp_arguments("tool", &json!({"config": {"output": "/etc/shadow"}}));
         assert!(result.is_err());
     }
 
@@ -382,7 +350,6 @@ mod tests {
         let result = scan_mcp_arguments(
             "chat",
             &json!({"message": "Tell me about the > operator in Python"}),
-            McpTransportType::Stdio,
         );
         assert!(result.is_ok());
     }

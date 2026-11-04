@@ -138,6 +138,12 @@
       "serverTool": "\"Allow for this session\" auto-approves {{subject}} for the rest of the session"
     },
     "queueCount": "{{count}} more approval request(s) waiting",
+    "warning": {
+      "security": "Security check flagged this command. Session approvals do not cover it.",
+      "unparsed": "This command could not be fully analyzed. Review it carefully.",
+      "network": "This command contacts a remote host over the network.",
+      "privateNetwork": "This fetch targets your local machine or a private network."
+    },
     "escalateTitle": "Allow full access?",
     "escalateBody": "Tool calls (file writes, terminal commands, MCP) will run without confirmation. Dangerous commands are still blocked by the built-in blocklist.",
     "escalateConfirm": "Allow full access",

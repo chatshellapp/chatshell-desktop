@@ -1,4 +1,4 @@
-import type { PermissionGrant } from '@/stores/permissionStore'
+import type { PermissionGrant, PermissionWarning } from '@/stores/permissionStore'
 
 // Local event types not exported from @/types
 
@@ -49,6 +49,8 @@ export interface PermissionRequestedEvent {
   subject: string
   tier: 'read' | 'write' | 'exec'
   grant: PermissionGrant | null
+  /** Set when a classifier signal forced this prompt past session grants. */
+  warning?: PermissionWarning | null
 }
 
 export interface PermissionResolvedEvent {

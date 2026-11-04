@@ -50,12 +50,13 @@ export function useToolCallHandlers() {
       subject: request.subject,
       tier: request.tier,
       grant: request.grant,
+      warning: request.warning ?? null,
     })
   }, [])
 
   const handlePermissionResolved = useCallback((requestId: string) => {
     logger.info('[useToolCallHandlers] Permission resolved:', requestId)
-    usePermissionStore.getState().clear(requestId)
+    usePermissionStore.getState().remove(requestId)
   }, [])
 
   return {

@@ -14,6 +14,15 @@ export type PermissionGrant =
   | { kind: 'tool'; tool: string }
   | { kind: 'server_tool'; server: string; tool: string }
 
+/** Why a prompt was forced past session grants; mirrors the backend
+ * ForcedPromptKind. Forced prompts never carry a grant. */
+export type PermissionWarningKind = 'security' | 'unparsed' | 'network' | 'private_network'
+
+export interface PermissionWarning {
+  kind: PermissionWarningKind
+  detail: string
+}
+
 export interface PermissionRequest {
   requestId: string
   conversationId: string
@@ -21,23 +30,34 @@ export interface PermissionRequest {
   subject: string
   tier: PermissionTier
   grant: PermissionGrant | null
+  warning?: PermissionWarning | null
 }
 
 interface PermissionState {
-  /** FIFO queue. rig executes tool calls concurrently, so several
-   * approvals can be pending at once; the dialog always shows queue[0]. */
+  /** FIFO queue across conversations: each stream has at most one pending
+   * approval, but several conversations can stream at once. The dialog
+   * always shows queue[0]. */
   pending: PermissionRequest[]
   show: (request: PermissionRequest) => void
-  /** Remove one request by id (stale resolves cannot close a newer
-   * prompt); with no id, clear the whole queue (generation stopped). */
-  clear: (requestId?: string) => void
+  /** Remove one request by id (stale resolves cannot close a newer prompt). */
+  remove: (requestId: string) => void
+  /** Remove every request of one conversation (its generation stopped);
+   * other conversations' pending requests stay visible and answerable. */
+  clearConversation: (conversationId: string) => void
+  /** Drop the whole queue. */
+  reset: () => void
 }
 
 export const usePermissionStore = create<PermissionState>()((set) => ({
   pending: [],
   show: (request) => set((state) => ({ pending: [...state.pending, request] })),
-  clear: (requestId) =>
+  remove: (requestId) =>
     set((state) => ({
-      pending: requestId ? state.pending.filter((request) => request.requestId !== requestId) : [],
+      pending: state.pending.filter((request) => request.requestId !== requestId),
     })),
+  clearConversation: (conversationId) =>
+    set((state) => ({
+      pending: state.pending.filter((request) => request.conversationId !== conversationId),
+    })),
+  reset: () => set({ pending: [] }),
 }))

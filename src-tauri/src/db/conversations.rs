@@ -742,8 +742,8 @@ mod tests {
     use super::*;
     use crate::models::{
         CreateFileAttachmentRequest, CreateMessageRequest, CreateModelParameterPresetRequest,
-        CreatePromptRequest, CreateUserRequest, Message, ModelParameterOverrides, PromptMode,
-        UpdateConversationSettingsRequest,
+        CreatePromptRequest, CreateUserRequest, Message, ModelParameterOverrides, PermissionMode,
+        PromptMode, UpdateConversationSettingsRequest,
     };
 
     async fn test_db() -> (Database, tempfile::TempDir) {
@@ -1444,7 +1444,9 @@ mod tests {
                     enabled_mcp_server_ids: Some(vec!["mcp-a".to_string(), "mcp-b".to_string()]),
                     enabled_skill_ids: Some(vec!["skill-1".to_string()]),
                     working_directory: Some(Some("/tmp/scratch".to_string())),
-                    permission_mode: None,
+                    // Non-default mode: the fork must inherit `ask`, not
+                    // fall back to the default.
+                    permission_mode: Some(PermissionMode::Ask),
                 },
             )
             .await
@@ -1529,10 +1531,8 @@ mod tests {
             forked_settings.working_directory,
             source_settings.working_directory
         );
-        assert_eq!(
-            forked_settings.permission_mode,
-            source_settings.permission_mode
-        );
+        assert_eq!(source_settings.permission_mode, PermissionMode::Ask);
+        assert_eq!(forked_settings.permission_mode, PermissionMode::Ask);
     }
 
     #[tokio::test]
