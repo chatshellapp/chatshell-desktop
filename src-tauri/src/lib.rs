@@ -98,6 +98,10 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)
                 .expect("FATAL: Failed to create app data directory");
 
+            // Remembered tool approvals live in their own per-device file,
+            // outside the synced database.
+            crate::llm::permission::init_persistent_grants(&app_data_dir);
+
             // Initialize logger first
             let log_dir = app_data_dir.join("logs");
             if let Err(e) = logger::init_logger(log_dir) {
@@ -401,6 +405,8 @@ pub fn run() {
             commands::delete_conversation_settings,
             // Permission gate
             commands::resolve_permission,
+            commands::count_permission_grants,
+            commands::clear_permission_grants,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

@@ -133,9 +133,17 @@
     "allowOnce": "Allow once",
     "allowSession": "Allow for this session",
     "scope": {
-      "bash": "\"Allow for this session\" auto-approves commands whose segments all begin with: {{bases}}",
+      "bash": "\"Allow for this session\" auto-approves commands made only of:",
       "tool": "\"Allow for this session\" auto-approves every {{tool}} call this session",
-      "serverTool": "\"Allow for this session\" auto-approves {{subject}} for the rest of the session"
+      "serverTool": "\"Allow for this session\" auto-approves {{subject}} for the rest of the session",
+      "directory": "\"Allow for this session\" auto-approves {{tool}} for files directly in {{dir}}"
+    },
+    "remember": "Remember on this device",
+    "rememberScope": {
+      "bash": "Future conversations on this device run these without asking:",
+      "tool": "Future conversations on this device run every {{tool}} call without asking",
+      "serverTool": "Future conversations on this device run {{subject}} without asking",
+      "directory": "Future conversations on this device may edit and write files directly in {{dir}} without asking"
     },
     "queueCount": "{{count}} more approval request(s) waiting",
     "warning": {

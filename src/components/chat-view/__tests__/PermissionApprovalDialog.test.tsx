@@ -67,7 +67,7 @@ describe('PermissionApprovalDialog', () => {
 
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('resolve_permission', {
-        request: { requestId: 'req-1', decision: 'deny' },
+        request: { requestId: 'req-1', decision: 'deny', remember: false },
       })
     )
     expect(usePermissionStore.getState().pending).toEqual([])
@@ -86,7 +86,7 @@ describe('PermissionApprovalDialog', () => {
 
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('resolve_permission', {
-        request: { requestId: 'req-1', decision: 'allow-session' },
+        request: { requestId: 'req-1', decision: 'allow-session', remember: false },
       })
     )
   })
@@ -126,7 +126,7 @@ describe('PermissionApprovalDialog', () => {
     await waitFor(() => expect(screen.getByText('/tmp/b.txt')).toBeInTheDocument())
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('resolve_permission', {
-        request: { requestId: 'req-1', decision: 'deny' },
+        request: { requestId: 'req-1', decision: 'deny', remember: false },
       })
     )
   })
@@ -156,5 +156,64 @@ describe('PermissionApprovalDialog', () => {
     seedPending()
     render(<PermissionApprovalDialog />)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('lists every granted key of a compound as chips', () => {
+    seedPending({ kind: 'bash', bases: ['cargo test', 'rm'] })
+    render(<PermissionApprovalDialog />)
+    const chips = screen.getByTestId('scope-chips')
+    expect(chips).toHaveTextContent('cargo test')
+    expect(chips).toHaveTextContent('rm')
+  })
+
+  it('sends remember when the toggle is checked and the call is allowed', async () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-r',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'cargo test',
+      tier: 'exec',
+      grant: { kind: 'bash', bases: ['cargo test'] },
+      remember: { kind: 'bash', bases: ['cargo test'] },
+    })
+    render(<PermissionApprovalDialog />)
+    const toggle = screen.getByRole('checkbox', { name: /remember on this device/i })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    act(() => toggle.click())
+    await waitFor(() => expect(toggle).toBeChecked())
+    screen.getByRole('button', { name: /allow once/i }).click()
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('resolve_permission', {
+        request: { requestId: 'req-r', decision: 'allow-once', remember: true },
+      })
+    )
+  })
+
+  it('never sends remember with a denial', async () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-d',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'cargo test',
+      tier: 'exec',
+      grant: null,
+      remember: { kind: 'bash', bases: ['cargo test'] },
+    })
+    render(<PermissionApprovalDialog />)
+    const toggle = screen.getByRole('checkbox', { name: /remember on this device/i })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    act(() => toggle.click())
+    screen.getByRole('button', { name: /deny/i }).click()
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('resolve_permission', {
+        request: { requestId: 'req-d', decision: 'deny', remember: false },
+      })
+    )
+  })
+
+  it('hides the remember toggle when the prompt cannot be remembered', () => {
+    seedPending()
+    render(<PermissionApprovalDialog />)
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 })

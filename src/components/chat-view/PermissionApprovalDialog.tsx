@@ -19,7 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   usePermissionStore,
   type PermissionGrant,
@@ -30,17 +32,44 @@ import { logger } from '@/lib/logger'
 /// Buttons stay disabled for this long after the dialog opens.
 const ARM_DELAY_MS = 500
 
-function grantScopeText(t: TFunction, grant: PermissionGrant): string {
-  switch (grant.kind) {
-    case 'bash':
-      return t('permission.scope.bash', { bases: grant.bases.join(', ') })
-    case 'tool':
-      return t('permission.scope.tool', { tool: grant.tool })
-    case 'server_tool':
-      return t('permission.scope.serverTool', {
-        subject: `${grant.server}/${grant.tool}`,
-      })
+/** Exactly what an approval covers: bash keys as chips (every segment of
+ * a compound is listed), other scopes as one line. */
+function GrantScopeView({
+  t,
+  grant,
+  label,
+}: {
+  t: TFunction
+  grant: PermissionGrant
+  label: 'scope' | 'rememberScope'
+}) {
+  if (grant.kind === 'bash') {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs text-muted-foreground">{t(`permission.${label}.bash`)}</p>
+        <div className="flex flex-wrap gap-1.5" data-testid={`${label}-chips`}>
+          {grant.bases.map((base) => (
+            <Badge key={base} variant="secondary" className="font-mono text-xs">
+              {base}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    )
   }
+  let text: string
+  switch (grant.kind) {
+    case 'tool':
+      text = t(`permission.${label}.tool`, { tool: grant.tool })
+      break
+    case 'server_tool':
+      text = t(`permission.${label}.serverTool`, { subject: `${grant.server}/${grant.tool}` })
+      break
+    case 'directory':
+      text = t(`permission.${label}.directory`, { tool: grant.tool, dir: grant.dir })
+      break
+  }
+  return <p className="text-xs text-muted-foreground break-all">{text}</p>
 }
 
 function warningText(t: TFunction, kind: PermissionWarningKind): string {
@@ -62,10 +91,12 @@ export function PermissionApprovalDialog() {
   const remove = usePermissionStore((state) => state.remove)
   const pending = queue[0]
   const [armed, setArmed] = useState(false)
+  const [remember, setRemember] = useState(false)
 
   useEffect(() => {
     if (!pending) return
     setArmed(false)
+    setRemember(false)
     const timer = setTimeout(() => setArmed(true), ARM_DELAY_MS)
     return () => clearTimeout(timer)
   }, [pending])
@@ -77,7 +108,11 @@ export function PermissionApprovalDialog() {
     remove(requestId)
     try {
       await invoke('resolve_permission', {
-        request: { requestId, decision },
+        request: {
+          requestId,
+          decision,
+          remember: remember && decision !== 'deny' && Boolean(pending.remember),
+        },
       })
     } catch (error) {
       logger.error('[PermissionApprovalDialog] resolve_permission failed:', error)
@@ -114,8 +149,23 @@ export function PermissionApprovalDialog() {
             </div>
           </div>
         )}
-        {pending.grant && (
-          <p className="text-xs text-muted-foreground">{grantScopeText(t, pending.grant)}</p>
+        {pending.grant && <GrantScopeView t={t} grant={pending.grant} label="scope" />}
+        {pending.remember && (
+          <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+            <Checkbox
+              id="permission-remember"
+              checked={remember}
+              disabled={!armed}
+              onCheckedChange={(checked) => setRemember(checked === true)}
+              className="mt-0.5"
+            />
+            <div className="space-y-1.5">
+              <label htmlFor="permission-remember" className="text-xs font-medium">
+                {t('permission.remember')}
+              </label>
+              <GrantScopeView t={t} grant={pending.remember} label="rememberScope" />
+            </div>
+          </div>
         )}
         {queue.length > 1 && (
           <p className="text-xs text-muted-foreground">

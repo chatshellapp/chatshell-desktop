@@ -51,6 +51,8 @@ export interface PermissionRequestedEvent {
   grant: PermissionGrant | null
   /** Set when a classifier signal forced this prompt past session grants. */
   warning?: PermissionWarning | null
+  /** Scope "remember on this device" would persist; null when not offered. */
+  remember?: PermissionGrant | null
 }
 
 export interface PermissionResolvedEvent {

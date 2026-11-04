@@ -7,12 +7,15 @@ import { create } from 'zustand'
 
 export type PermissionTier = 'read' | 'write' | 'exec'
 
-/** What an "allow for this session" answer covers; mirrors the backend
- * GrantScope, sent as the `grant` field of permission-requested. */
+/** What an approval covers; mirrors the backend GrantScope. Sent as the
+ * `grant` (allow for this session) and `remember` (remember on this
+ * device) fields of permission-requested. Bash `bases` are segment keys:
+ * the base command, plus its first subcommand for tools like git/npm. */
 export type PermissionGrant =
   | { kind: 'bash'; bases: string[] }
   | { kind: 'tool'; tool: string }
   | { kind: 'server_tool'; server: string; tool: string }
+  | { kind: 'directory'; tool: string; dir: string }
 
 /** Why a prompt was forced past session grants; mirrors the backend
  * ForcedPromptKind. Forced prompts never carry a grant. */
@@ -31,6 +34,9 @@ export interface PermissionRequest {
   tier: PermissionTier
   grant: PermissionGrant | null
   warning?: PermissionWarning | null
+  /** Scope persisted by "remember on this device"; null when the prompt
+   * cannot be remembered (forced prompts, relative paths). */
+  remember?: PermissionGrant | null
 }
 
 interface PermissionState {

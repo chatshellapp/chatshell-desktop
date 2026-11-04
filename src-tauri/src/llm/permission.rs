@@ -10,12 +10,13 @@
 
 use chatshell_agent_core::permission::{
     ForcedPrompt, GateDecision, GrantScope, PermissionMode, PermissionTier, SessionGrants,
-    grant_scope, resolve,
+    grant_scope, remember_scope, resolve,
 };
+use chatshell_agent_core::permission_store::PersistentGrantStore;
 use rig::agent::{AgentHook, HookContext, ToolCall, ToolCallAction};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -43,6 +44,23 @@ pub type PermissionEmitter = Arc<dyn Fn(&str, Value) + Send + Sync>;
 /// and never touch disk or the sync snapshot.
 pub type GrantStore = Arc<Mutex<HashMap<String, SessionGrants>>>;
 
+/// The device's remembered-grant store, set once at startup (the app data
+/// directory is only known inside Tauri's setup hook).
+static PERSISTENT_GRANTS: OnceLock<PersistentGrantStore> = OnceLock::new();
+
+/// Point remembered grants at `<app data>/permission_grants.db`. Called
+/// once from setup; later calls are ignored.
+pub fn init_persistent_grants(app_data_dir: &std::path::Path) {
+    let _ = PERSISTENT_GRANTS.set(PersistentGrantStore::new(
+        app_data_dir.join(chatshell_agent_core::permission_store::STORE_FILE_NAME),
+    ));
+}
+
+/// The device's remembered-grant store, if initialized.
+pub fn persistent_grants() -> Option<&'static PersistentGrantStore> {
+    PERSISTENT_GRANTS.get()
+}
+
 /// Remove every session grant held for `conversation_id` (conversation
 /// deleted). Returns whether any grants were held.
 pub fn forget_conversation_grants(grants: &GrantStore, conversation_id: &str) -> bool {
@@ -69,9 +87,16 @@ impl ApprovalDecision {
     }
 }
 
+/// A decision plus the "remember on this device" toggle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApprovalAnswer {
+    pub decision: ApprovalDecision,
+    pub remember: bool,
+}
+
 struct PendingApproval {
     conversation_id: String,
-    sender: oneshot::Sender<ApprovalDecision>,
+    sender: oneshot::Sender<ApprovalAnswer>,
 }
 
 /// Process-wide pending approvals, keyed by request id. The resolve
@@ -86,7 +111,7 @@ impl ApprovalRegistry {
         Arc::new(Self::default())
     }
 
-    fn register(&self, conversation_id: &str) -> (String, oneshot::Receiver<ApprovalDecision>) {
+    fn register(&self, conversation_id: &str) -> (String, oneshot::Receiver<ApprovalAnswer>) {
         let (sender, receiver) = oneshot::channel();
         let request_id = Uuid::now_v7().to_string();
         self.pending.lock().unwrap().insert(
@@ -102,8 +127,19 @@ impl ApprovalRegistry {
     /// Deliver a decision. Returns false when the request is unknown or
     /// already answered (the hook future may have been dropped).
     pub fn resolve(&self, request_id: &str, decision: ApprovalDecision) -> bool {
+        self.answer(
+            request_id,
+            ApprovalAnswer {
+                decision,
+                remember: false,
+            },
+        )
+    }
+
+    /// Deliver a decision with the remember toggle.
+    pub fn answer(&self, request_id: &str, answer: ApprovalAnswer) -> bool {
         match self.pending.lock().unwrap().remove(request_id) {
-            Some(approval) => approval.sender.send(decision).is_ok(),
+            Some(approval) => approval.sender.send(answer).is_ok(),
             None => false,
         }
     }
@@ -144,6 +180,7 @@ pub struct PermissionGate {
     conversation_id: String,
     mode: PermissionMode,
     grants: GrantStore,
+    persistent: Option<PersistentGrantStore>,
     registry: Arc<ApprovalRegistry>,
     emitter: PermissionEmitter,
     timeout: Duration,
@@ -180,31 +217,51 @@ impl PermissionGate {
             conversation_id,
             mode,
             grants,
+            persistent: persistent_grants().cloned(),
             registry,
             emitter,
             timeout,
         }
     }
 
+    /// Session grants of this conversation merged with the device's
+    /// remembered grants (read fresh on every check).
     fn grants_snapshot(&self) -> SessionGrants {
-        self.grants
+        let mut snapshot = self
+            .grants
             .lock()
             .unwrap()
             .get(&self.conversation_id)
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if let Some(store) = &self.persistent {
+            match store.keys() {
+                Ok(keys) => snapshot.extend_keys(keys),
+                Err(err) => tracing::warn!("🛡️ [permission] Remembered grants unreadable: {err:#}"),
+            }
+        }
+        snapshot
     }
 
     fn store_grant(&self, scope: &GrantScope) {
         let mut store = self.grants.lock().unwrap();
-        let grants = store.entry(self.conversation_id.clone()).or_default();
-        match scope {
-            GrantScope::BashCommands(bases) => {
-                let refs: Vec<&str> = bases.iter().map(String::as_str).collect();
-                grants.grant_bash_commands(&refs);
-            }
-            GrantScope::Tool(tool) => grants.grant_tool(tool),
-            GrantScope::ServerTool { server, tool } => grants.grant_server_tool(server, tool),
+        store
+            .entry(self.conversation_id.clone())
+            .or_default()
+            .grant_scope(scope);
+    }
+
+    async fn remember_grant(&self, tool_name: &str, scope: &GrantScope) {
+        let Some(store) = self.persistent.clone() else {
+            return;
+        };
+        let tool = tool_name.to_string();
+        let keys = scope.keys();
+        let result = tokio::task::spawn_blocking(move || store.record(&tool, &keys)).await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => tracing::warn!("🛡️ [permission] Could not remember grant: {err:#}"),
+            Err(err) => tracing::warn!("🛡️ [permission] Remember task failed: {err}"),
         }
     }
 
@@ -235,10 +292,15 @@ impl PermissionGate {
         forced: Option<ForcedPrompt>,
     ) -> CheckOutcome {
         // Forced prompts are about this specific call: never offer a
-        // session grant for them.
-        let scope = match forced {
-            Some(_) => None,
-            None => grant_scope(tool_name, args),
+        // session grant or remembering for them.
+        let (scope, remember) = match forced {
+            Some(_) => (None, None),
+            None => (
+                grant_scope(tool_name, args),
+                self.persistent
+                    .as_ref()
+                    .and_then(|_| remember_scope(tool_name, args)),
+            ),
         };
         let (request_id, receiver) = self.registry.register(&self.conversation_id);
         let tier = serde_json::to_value(PermissionTier::for_tool(tool_name))
@@ -255,16 +317,8 @@ impl PermissionGate {
                     None => Value::Null,
                     Some(forced) => json!({ "kind": forced.kind, "detail": forced.detail }),
                 },
-                "grant": match &scope {
-                    None => Value::Null,
-                    Some(GrantScope::BashCommands(bases)) => {
-                        json!({ "kind": "bash", "bases": bases })
-                    }
-                    Some(GrantScope::Tool(tool)) => json!({ "kind": "tool", "tool": tool }),
-                    Some(GrantScope::ServerTool { server, tool }) => {
-                        json!({ "kind": "server_tool", "server": server, "tool": tool })
-                    }
-                },
+                "grant": scope.as_ref().map_or(Value::Null, scope_payload),
+                "remember": remember.as_ref().map_or(Value::Null, scope_payload),
             }),
         );
         tracing::info!(
@@ -274,7 +328,16 @@ impl PermissionGate {
             request_id
         );
 
-        match tokio::time::timeout(self.timeout, receiver).await {
+        let answer = tokio::time::timeout(self.timeout, receiver).await;
+        if let Ok(Ok(ApprovalAnswer {
+            decision: ApprovalDecision::AllowOnce | ApprovalDecision::AllowSession,
+            remember: true,
+        })) = &answer
+            && let Some(remember) = &remember
+        {
+            self.remember_grant(tool_name, remember).await;
+        }
+        match answer.map(|received| received.map(|answer| answer.decision)) {
             Ok(Ok(ApprovalDecision::AllowOnce)) => CheckOutcome::Allow,
             Ok(Ok(ApprovalDecision::AllowSession)) => {
                 if let Some(scope) = scope {
@@ -295,6 +358,20 @@ impl PermissionGate {
                 self.emit_resolved(&request_id);
                 CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string())
             }
+        }
+    }
+}
+
+/// Wire shape of a grant scope in `permission-requested`.
+fn scope_payload(scope: &GrantScope) -> Value {
+    match scope {
+        GrantScope::BashCommands(bases) => json!({ "kind": "bash", "bases": bases }),
+        GrantScope::Tool(tool) => json!({ "kind": "tool", "tool": tool }),
+        GrantScope::ServerTool { server, tool } => {
+            json!({ "kind": "server_tool", "server": server, "tool": tool })
+        }
+        GrantScope::WriteDirectory { tool, dir } => {
+            json!({ "kind": "directory", "tool": tool, "dir": dir.display().to_string() })
         }
     }
 }
@@ -365,16 +442,23 @@ mod tests {
     }
 
     fn fixture(mode: PermissionMode) -> Fixture {
+        fixture_with_store(mode, None)
+    }
+
+    fn fixture_with_store(mode: PermissionMode, store: Option<PersistentGrantStore>) -> Fixture {
         let registry = ApprovalRegistry::new();
         let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
         let (emitter, captured) = test_emitter();
-        let gate = PermissionGate::new(
+        let mut gate = PermissionGate::with_timeout(
             "conv-1".to_string(),
             mode,
             grants.clone(),
             registry.clone(),
             emitter,
+            APPROVAL_TIMEOUT,
         );
+        gate.persistent = store;
+        let gate = Arc::new(gate);
         Fixture {
             gate,
             registry,
@@ -473,11 +557,18 @@ mod tests {
         });
         answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession, 0).await;
         assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
-        // Grant cached: covered commands run without a new prompt.
+        // Grant cached: the same subcommand runs without a new prompt.
         assert_eq!(
-            f.gate.check("bash", &bash("git push")).await,
+            f.gate.check("bash", &bash("git status --short")).await,
             CheckOutcome::Allow
         );
+        // Another subcommand of the same base prompts again.
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("git push --force")).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 1).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
     }
 
     #[tokio::test]
@@ -525,7 +616,7 @@ mod tests {
             .expect("permission-requested emitted");
         assert_eq!(
             payload["grant"],
-            json!({ "kind": "bash", "bases": ["git"] })
+            json!({ "kind": "bash", "bases": ["git push", "git status"] })
         );
     }
 
@@ -662,7 +753,7 @@ mod tests {
         assert_eq!(payload["warning"], Value::Null);
         assert_eq!(
             payload["grant"],
-            json!({ "kind": "bash", "bases": ["cargo"] })
+            json!({ "kind": "bash", "bases": ["cargo test"] })
         );
     }
 
@@ -679,5 +770,127 @@ mod tests {
         let store = grants.lock().unwrap();
         assert!(!store.contains_key("a"));
         assert!(store.contains_key("b"));
+    }
+
+    fn requested_payloads(captured: &Capture) -> Vec<Value> {
+        captured
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+            .map(|(_, payload)| payload.clone())
+            .collect()
+    }
+
+    /// Answer the `ordinal`-th request with the remember toggle on.
+    async fn answer_remembering(
+        registry: &ApprovalRegistry,
+        captured: &Capture,
+        decision: ApprovalDecision,
+        ordinal: usize,
+    ) {
+        let request_id = loop {
+            if let Some(payload) = requested_payloads(captured).get(ordinal) {
+                break payload["request_id"].as_str().unwrap().to_string();
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        };
+        assert!(registry.answer(
+            &request_id,
+            ApprovalAnswer {
+                decision,
+                remember: true
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn remembered_grant_applies_in_a_new_conversation() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PersistentGrantStore::new(dir.path().join("permission_grants.db"));
+        let f = fixture_with_store(PermissionMode::Ask, Some(store.clone()));
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("cargo test")).await }
+        });
+        answer_remembering(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        assert_eq!(
+            requested_payloads(&f.captured)[0]["remember"],
+            json!({ "kind": "bash", "bases": ["cargo test"] })
+        );
+        assert!(store.keys().unwrap().contains("bash:cargo test"));
+
+        // A fresh gate (another conversation, empty session grants) on the
+        // same device runs the remembered command without prompting.
+        let other = fixture_with_store(PermissionMode::Ask, Some(store));
+        assert_eq!(
+            other.gate.check("bash", &bash("cargo test --lib")).await,
+            CheckOutcome::Allow
+        );
+        assert!(requested_payloads(&other.captured).is_empty());
+    }
+
+    #[tokio::test]
+    async fn forced_prompt_cannot_be_remembered() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PersistentGrantStore::new(dir.path().join("permission_grants.db"));
+        let f = fixture_with_store(PermissionMode::Ask, Some(store.clone()));
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("echo $(whoami)")).await }
+        });
+        answer_remembering(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        assert_eq!(requested_payloads(&f.captured)[0]["remember"], Value::Null);
+        assert!(store.keys().unwrap().is_empty());
+        assert!(!store.path().exists(), "no grant file should be created");
+    }
+
+    #[tokio::test]
+    async fn denied_answer_never_remembers() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PersistentGrantStore::new(dir.path().join("permission_grants.db"));
+        let f = fixture_with_store(PermissionMode::Ask, Some(store.clone()));
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash("cargo test")).await }
+        });
+        answer_remembering(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        assert!(store.keys().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn file_tool_remembers_the_directory_not_the_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PersistentGrantStore::new(dir.path().join("permission_grants.db"));
+        let work = dir.path().canonicalize().unwrap().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let f = fixture_with_store(PermissionMode::Ask, Some(store.clone()));
+        let target = work.join("a.txt");
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            let path = target.to_str().unwrap().to_string();
+            async move {
+                gate.check("write", &json!({ "path": path, "content": "x" }))
+                    .await
+            }
+        });
+        answer_remembering(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        assert_eq!(
+            requested_payloads(&f.captured)[0]["remember"],
+            json!({ "kind": "directory", "tool": "write", "dir": work.display().to_string() })
+        );
+        let other = fixture_with_store(PermissionMode::Ask, Some(store));
+        let sibling = work.join("b.txt");
+        assert_eq!(
+            other
+                .gate
+                .check("edit", &json!({ "path": sibling.to_str().unwrap() }))
+                .await,
+            CheckOutcome::Allow
+        );
     }
 }

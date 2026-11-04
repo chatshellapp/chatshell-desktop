@@ -95,6 +95,7 @@ import {
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { ObscuraInstallHint } from '@/components/settings-dialog/obscura-install-hint'
 import { ReleaseNotes } from '@/components/settings-dialog/release-notes'
+import { RememberedApprovals } from '@/components/settings-dialog/remembered-approvals'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { logger } from '@/lib/logger'
@@ -682,6 +683,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {mcpLoading ? t('loadingBuiltInTools') : t('noBuiltInToolsAvailable')}
             </div>
           )}
+
+          <RememberedApprovals />
         </div>
       )
     }
