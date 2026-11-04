@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Shield, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Shield, ShieldCheck, ShieldOff, ShieldHalf } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { SettingsCard } from './settings-card'
 import { useSettingsStore } from '@/stores/settingsStore'
 import {
   DEFAULT_PERMISSION_MODE_KEY,
@@ -55,23 +56,27 @@ export function DefaultPermissionMode() {
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border p-4 max-w-lg">
-      <div className="grid gap-1">
-        <span className="font-medium">{t('defaultPermissionMode')}</span>
-        <p className="text-xs text-muted-foreground">{t('defaultPermissionModeDescription')}</p>
-      </div>
+    <SettingsCard
+      icon={ShieldHalf}
+      title={t('defaultPermissionMode')}
+      description={t('defaultPermissionModeDescription')}
+    >
       <RadioGroup value={current} onValueChange={select} className="grid gap-2">
         {modes.map((mode) => {
           const Icon = ICONS[mode]
           return (
+            // The radio (16px) is centered on the 20px first line via mt-0.5.
             <div key={mode} className="flex items-start gap-3">
-              <RadioGroupItem value={mode} id={`default-mode-${mode}`} className="mt-1" />
-              <Label htmlFor={`default-mode-${mode}`} className="grid gap-0.5 font-normal">
-                <span className="flex items-center gap-1.5 text-sm">
-                  <Icon className="size-4" />
+              <RadioGroupItem value={mode} id={`default-mode-${mode}`} className="mt-0.5" />
+              <Label
+                htmlFor={`default-mode-${mode}`}
+                className="grid cursor-pointer gap-0.5 font-normal"
+              >
+                <span className="flex items-center gap-1.5 text-sm leading-5 font-medium">
+                  <Icon className="size-4 text-muted-foreground" />
                   {tChat(`permission.mode.${mode}`)}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs leading-4 text-muted-foreground">
                   {tChat(`permission.mode.${mode}Hint`)}
                 </span>
               </Label>
@@ -96,6 +101,6 @@ export function DefaultPermissionMode() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SettingsCard>
   )
 }

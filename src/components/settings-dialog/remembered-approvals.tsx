@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logger } from '@/lib/logger'
+import { SettingsCard } from './settings-card'
 
 export function RememberedApprovals() {
   const { t } = useTranslation('settings')
@@ -43,22 +44,21 @@ export function RememberedApprovals() {
   }
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border p-4 max-w-lg">
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="h-5 w-5 text-muted-foreground mt-0.5" />
-        <div className="grid gap-1">
-          <span className="font-medium">{t('rememberedApprovals')}</span>
-          <p className="text-xs text-muted-foreground">{t('rememberedApprovalsDescription')}</p>
-          {count !== null && (
-            <p className="text-xs text-muted-foreground" data-testid="remembered-approvals-count">
-              {t('rememberedApprovalsCount', { count })}
-            </p>
-          )}
-        </div>
-      </div>
-      <Button variant="outline" size="sm" onClick={clear} disabled={clearing || count === 0}>
-        {t('rememberedApprovalsClear')}
-      </Button>
-    </div>
+    <SettingsCard
+      icon={ShieldCheck}
+      title={t('rememberedApprovals')}
+      description={t('rememberedApprovalsDescription')}
+      action={
+        <Button variant="outline" size="sm" onClick={clear} disabled={clearing || count === 0}>
+          {t('rememberedApprovalsClear')}
+        </Button>
+      }
+    >
+      {count !== null && (
+        <p className="text-xs text-muted-foreground" data-testid="remembered-approvals-count">
+          {t('rememberedApprovalsCount', { count })}
+        </p>
+      )}
+    </SettingsCard>
   )
 }

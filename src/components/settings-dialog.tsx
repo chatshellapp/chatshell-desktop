@@ -686,9 +686,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </div>
           )}
 
-          <DefaultPermissionMode />
-          <BashEnvironment />
-          <RememberedApprovals />
+          <div className="grid gap-4 border-t pt-6">
+            <div className="grid gap-1">
+              <h3 className="text-sm font-semibold">{t('permissionsSection')}</h3>
+              <p className="text-sm text-muted-foreground">{t('permissionsSectionDescription')}</p>
+            </div>
+            <DefaultPermissionMode />
+            <BashEnvironment />
+            <RememberedApprovals />
+          </div>
         </div>
       )
     }

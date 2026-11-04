@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { logger } from '@/lib/logger'
+import { SettingsCard } from './settings-card'
 
 interface BashEnvironmentView {
   allowlist: string[]
@@ -66,15 +67,11 @@ export function BashEnvironment() {
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border p-4 max-w-lg">
-      <div className="flex items-start gap-3">
-        <SquareTerminal className="h-5 w-5 text-muted-foreground mt-0.5" />
-        <div className="grid gap-1">
-          <span className="font-medium">{t('bashEnvironment')}</span>
-          <p className="text-xs text-muted-foreground">{t('bashEnvironmentDescription')}</p>
-        </div>
-      </div>
-
+    <SettingsCard
+      icon={SquareTerminal}
+      title={t('bashEnvironment')}
+      description={t('bashEnvironmentDescription')}
+    >
       <div className="grid gap-1.5">
         <p className="text-xs text-muted-foreground">{t('bashEnvironmentAlways')}</p>
         <div className="flex flex-wrap gap-1.5">
@@ -99,6 +96,7 @@ export function BashEnvironment() {
                 type="button"
                 aria-label={t('bashEnvironmentRemove', { name })}
                 onClick={() => removeName(name)}
+                className="-mr-0.5 rounded-sm opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <X className="size-3" />
               </button>
@@ -132,9 +130,9 @@ export function BashEnvironment() {
             {view.suggestions.map((name) => (
               <Button
                 key={name}
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="h-6 gap-1 px-2 font-mono text-xs"
+                className="h-6 gap-1 rounded-full border-dashed px-2 font-mono text-xs font-medium"
                 onClick={() => add(name)}
               >
                 <Plus className="size-3" />
@@ -144,6 +142,6 @@ export function BashEnvironment() {
           </div>
         </div>
       )}
-    </div>
+    </SettingsCard>
   )
 }

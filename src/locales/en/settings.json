@@ -12,6 +12,8 @@
   "languageDescription": "Choose your preferred language for the application interface.",
   "appearance": "Appearance",
   "builtinToolsDescription": "Built-in tools provide core capabilities that enhance your AI assistant. Enable the tools you want to use globally, then configure them per conversation.",
+  "permissionsSection": "Permissions & sandbox",
+  "permissionsSectionDescription": "How tool calls are approved and what the terminal can see on this device.",
   "defaultPermissionMode": "Default permission mode",
   "defaultPermissionModeDescription": "The mode new conversations start in on this device. Each conversation can still switch modes from the chat input.",
   "defaultPermissionModeYoloTitle": "Start new conversations in Yolo?",

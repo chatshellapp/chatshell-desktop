@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
-import { ShieldQuestion, TriangleAlert } from 'lucide-react'
+import { ShieldAlert, ShieldQuestion, TriangleAlert } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   usePermissionStore,
   type PermissionGrant,
@@ -140,7 +141,11 @@ export function PermissionApprovalDialog() {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ShieldQuestion className="size-5 text-destructive" />
+            {escalation ? (
+              <ShieldAlert className="size-5 shrink-0 text-destructive" />
+            ) : (
+              <ShieldQuestion className="size-5 shrink-0 text-destructive" />
+            )}
             {escalation ? t('permission.escalation.title') : t('permission.title')}
           </DialogTitle>
           <DialogDescription className="text-left">
@@ -160,7 +165,7 @@ export function PermissionApprovalDialog() {
             role="alert"
             className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs"
           >
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <TriangleAlert className="size-4 shrink-0 text-destructive" />
             <div className="space-y-1">
               <p className="font-medium">{warningText(t, pending.warning.kind)}</p>
               <p className="break-all text-muted-foreground">{pending.warning.detail}</p>
@@ -169,18 +174,21 @@ export function PermissionApprovalDialog() {
         )}
         {pending.grant && <GrantScopeView t={t} grant={pending.grant} label="scope" />}
         {pending.remember && (
-          <div className="flex items-start gap-2 rounded-md border px-3 py-2">
-            <Checkbox
-              id="permission-remember"
-              checked={remember}
-              disabled={!armed}
-              onCheckedChange={(checked) => setRemember(checked === true)}
-              className="mt-0.5"
-            />
-            <div className="space-y-1.5">
-              <label htmlFor="permission-remember" className="text-xs font-medium">
+          <div className="grid gap-1.5 rounded-md border px-3 py-2.5">
+            {/* Checkbox and label share one centered row; the scope text
+                below is indented to the label (size-4 box + gap-2). */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="permission-remember"
+                checked={remember}
+                disabled={!armed}
+                onCheckedChange={(checked) => setRemember(checked === true)}
+              />
+              <Label htmlFor="permission-remember" className="cursor-pointer">
                 {t('permission.remember')}
-              </label>
+              </Label>
+            </div>
+            <div className="pl-6">
               <GrantScopeView t={t} grant={pending.remember} label="rememberScope" />
             </div>
           </div>
@@ -190,27 +198,44 @@ export function PermissionApprovalDialog() {
             {t('permission.queueCount', { count: queue.length - 1 })}
           </p>
         )}
-        <DialogFooter className="sm:justify-between gap-2">
-          <Button variant="outline" disabled={!armed} onClick={() => answer('deny')}>
-            {t('permission.deny')}
-          </Button>
-          {escalation ? (
-            <div className="flex gap-2">
-              {escalation.network_option && (
-                <Button
-                  variant="secondary"
-                  disabled={!armed}
-                  onClick={() => answer('allow-network-session')}
-                >
-                  {t('permission.escalation.allowNetwork')}
-                </Button>
-              )}
-              <Button disabled={!armed} onClick={() => answer('retry-unsandboxed')}>
+        {escalation ? (
+          // Escalation labels are long: stack full-width actions, most
+          // likely escape first, denial last.
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            {escalation.network_option && (
+              <Button
+                className="w-full"
+                disabled={!armed}
+                onClick={() => answer('allow-network-session')}
+              >
+                {t('permission.escalation.allowNetwork')}
+              </Button>
+            )}
+            {escalation.retry_option !== false && (
+              <Button
+                className="w-full"
+                variant={escalation.network_option ? 'secondary' : 'default'}
+                disabled={!armed}
+                onClick={() => answer('retry-unsandboxed')}
+              >
                 {t('permission.escalation.retryOutside')}
               </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
+            )}
+            <Button
+              className="w-full"
+              variant="outline"
+              disabled={!armed}
+              onClick={() => answer('deny')}
+            >
+              {t('permission.deny')}
+            </Button>
+          </DialogFooter>
+        ) : (
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" disabled={!armed} onClick={() => answer('deny')}>
+              {t('permission.deny')}
+            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               {pending.grant && (
                 <Button
                   variant="secondary"
@@ -224,8 +249,8 @@ export function PermissionApprovalDialog() {
                 {t('permission.allowOnce')}
               </Button>
             </div>
-          )}
-        </DialogFooter>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -52,6 +52,9 @@ export interface PermissionRequest {
 export interface PermissionEscalation {
   /** Offer "allow network this session" (network denials only). */
   network_option: boolean
+  /** Offer "run once outside the sandbox"; absent means offered (it is
+   * withheld only on the pre-execution network card). */
+  retry_option?: boolean
 }
 
 interface PermissionState {
