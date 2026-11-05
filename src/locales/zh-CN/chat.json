@@ -218,5 +218,12 @@
         "prompt": "用简单的话解释复利是怎么回事，并举一个小例子。"
       }
     }
+  },
+  "producedFiles": {
+    "created": "已创建",
+    "modified": "已修改",
+    "more": "另外 {{count}} 个",
+    "pathCopied": "已复制路径",
+    "revealFailed": "无法显示该文件"
   }
 }

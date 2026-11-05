@@ -11,6 +11,8 @@ import {
   type ImageAttachmentData,
 } from '@/components/attachment-preview'
 import { ToolCallPreview } from '@/components/attachment-preview/tool-call-preview'
+import { ProducedFilesRow } from './ProducedFilesRow'
+import { deriveProducedFiles } from '@/lib/produced-files'
 import { MarkdownContent } from '@/components/markdown-content'
 import type { Message, ContextEnrichment, ProcessStep, UrlStatus } from '@/types'
 import { isContentBlock, isThinkingStep, isToolCall, getDisplayOrder } from '@/types/process-step'
@@ -326,9 +328,14 @@ export const MessageItem = memo(function MessageItem({
     </>
   ) : undefined
 
+  const producedFiles = isAssistantMessage
+    ? deriveProducedFiles(resources.steps.filter(isToolCall))
+    : []
+
   const footerContent =
-    assistantImageAttachments.length > 0 || runOutcome ? (
+    assistantImageAttachments.length > 0 || runOutcome || producedFiles.length > 0 ? (
       <>
+        {producedFiles.length > 0 && <ProducedFilesRow files={producedFiles} />}
         {assistantImageAttachments.length > 0 && (
           <GeneratedImageGallery attachments={assistantImageAttachments} />
         )}
