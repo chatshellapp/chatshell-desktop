@@ -95,6 +95,8 @@ pub struct AgentConfig {
     /// Extra app variables passed to bash; `Some` minimizes the bash
     /// environment to the allowlist plus these.
     pub bash_env_passthrough: Option<Vec<String>>,
+    /// Backs up files before the turn's first write/edit to them.
+    pub file_history: Option<Arc<chatshell_agent_core::file_history::FileHistory>>,
     /// Where bash output past the inline cap streams to.
     pub bash_spill_target: Option<chatshell_agent_core::tools::SpillTarget>,
     /// OS sandbox for the bash session.
@@ -632,18 +634,26 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
     };
 
     let create_edit_tool = || -> EditTool {
-        if let Some(ref root) = config.project_root {
+        let tool = if let Some(ref root) = config.project_root {
             EditTool::with_project_root(root.clone())
         } else {
             EditTool::new()
+        };
+        match &config.file_history {
+            Some(history) => tool.with_file_history(history.clone()),
+            None => tool,
         }
     };
 
     let create_write_tool = || -> WriteTool {
-        if let Some(ref root) = config.project_root {
+        let tool = if let Some(ref root) = config.project_root {
             WriteTool::with_project_root(root.clone())
         } else {
             WriteTool::new()
+        };
+        match &config.file_history {
+            Some(history) => tool.with_file_history(history.clone()),
+            None => tool,
         }
     };
 

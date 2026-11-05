@@ -335,7 +335,13 @@ export const MessageItem = memo(function MessageItem({
   const footerContent =
     assistantImageAttachments.length > 0 || runOutcome || producedFiles.length > 0 ? (
       <>
-        {producedFiles.length > 0 && <ProducedFilesRow files={producedFiles} />}
+        {producedFiles.length > 0 && (
+          <ProducedFilesRow
+            files={producedFiles}
+            conversationId={message.conversation_id ?? undefined}
+            turnId={prevUserMessage?.id}
+          />
+        )}
         {assistantImageAttachments.length > 0 && (
           <GeneratedImageGallery attachments={assistantImageAttachments} />
         )}

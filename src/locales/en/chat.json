@@ -226,7 +226,14 @@
     "modified": "Modified",
     "more": "+{{count}} more",
     "pathCopied": "Path copied",
-    "revealFailed": "Could not show the file"
+    "revealFailed": "Could not show the file",
+    "undo": "Undo file changes",
+    "undoConfirm": "Click again to undo",
+    "undoTitle": "Restore the files this turn and every later turn changed, on this device",
+    "undone": "Restored {{count}} file(s)",
+    "undoneHint": "Files made by later turns were rewound too. Bash changes and other devices are not affected.",
+    "undoPartial": "Restored {{count}} file(s); some could not be restored",
+    "undoFailed": "Could not undo file changes"
   },
   "mention": {
     "noWorkingDirectory": "Set a working directory for this conversation to mention its files with @.",

@@ -31,6 +31,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
   openPath: vi.fn(),
+  revealItemInDir: vi.fn(),
 }))
 
 // Cleanup after each test

@@ -6,6 +6,7 @@ mod contexts;
 mod conversation_settings;
 mod conversations;
 mod crypto;
+pub(crate) mod file_history;
 mod logs;
 pub mod mcp;
 mod messages;

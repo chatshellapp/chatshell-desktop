@@ -450,6 +450,15 @@ pub(crate) async fn handle_agent_streaming(
         tracing::info!("📝 [agent_streaming] Enabling write tool");
         config = config.with_write();
     }
+    // File history: the state of each file before this turn's first write
+    // or edit, restorable from the turn's assistant message.
+    if (edit_enabled || write_enabled)
+        && let Some(dir) = crate::storage::file_history_dir(&app, &conversation_id_clone)
+        && let Some(history) =
+            chatshell_agent_core::file_history::FileHistory::new(&dir, &user_message_id)
+    {
+        config.file_history = Some(Arc::new(history));
+    }
     if grep_enabled {
         tracing::info!("🔎 [agent_streaming] Enabling grep tool");
         config = config.with_grep();

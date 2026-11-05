@@ -224,7 +224,14 @@
     "modified": "已修改",
     "more": "另外 {{count}} 个",
     "pathCopied": "已复制路径",
-    "revealFailed": "无法显示该文件"
+    "revealFailed": "无法显示该文件",
+    "undo": "撤销文件更改",
+    "undoConfirm": "再次点击以撤销",
+    "undoTitle": "在此设备上恢复本轮及之后各轮更改的文件",
+    "undone": "已恢复 {{count}} 个文件",
+    "undoneHint": "之后各轮的更改也已回退。bash 所做的更改和其他设备不受影响。",
+    "undoPartial": "已恢复 {{count}} 个文件；部分文件无法恢复",
+    "undoFailed": "无法撤销文件更改"
   },
   "mention": {
     "noWorkingDirectory": "为此对话设置工作目录后，即可用 @ 引用其中的文件。",

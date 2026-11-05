@@ -233,6 +233,21 @@ pub fn run() {
                 }
             });
 
+            // Expire file-history backups.
+            {
+                let history_root = commands::file_history::root(&app_data_dir);
+                std::thread::spawn(move || {
+                    let removed = commands::file_history::sweep(
+                        &history_root,
+                        commands::file_history::FILE_HISTORY_TTL,
+                        std::time::SystemTime::now(),
+                    );
+                    if removed > 0 {
+                        tracing::info!("🧹 [file_history] Expired {removed} turn backup(s)");
+                    }
+                });
+            }
+
             // Reclaim attachments of deleted messages (rows, then blobs).
             if let Ok(attachments_dir) = storage::get_attachments_dir(app.handle()) {
                 let gc_db = db.clone();
@@ -484,6 +499,8 @@ pub fn run() {
             commands::get_path_file_size,
             commands::list_folder_for_attachment,
             commands::list_mention_candidates,
+            commands::file_history::get_turn_file_history,
+            commands::file_history::restore_turn_files,
             commands::extract_pdf_text_from_path,
             commands::extract_pdf_text_from_base64,
             commands::extract_office_text_from_storage,

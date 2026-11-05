@@ -114,6 +114,19 @@ pub fn conversation_scratch_dir<R: tauri::Runtime>(
         })
 }
 
+/// A conversation's file history (`<app_data>/file-history/<id>`): backups
+/// taken before write/edit, keyed by turn. Device-local, private.
+pub fn file_history_dir<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    conversation_id: &str,
+) -> Option<PathBuf> {
+    app_handle
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join("file-history").join(conversation_id))
+}
+
 /// Model-facing reference for a stored attachment:
 /// `attachment://<file name>`. The read tool resolves it through the
 /// conversation-scoped resolver (`llm::references`); absolute app-data
