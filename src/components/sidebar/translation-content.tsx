@@ -888,6 +888,12 @@ function TranslationTextPane({
   )
 }
 
+/** Tolerance (px) for treating a scroll position as the very bottom (sub-pixel rounding). */
+const BOTTOM_TOLERANCE_PX = 4
+
+/** Keys that scroll a container upward. */
+const SCROLL_UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
+
 function TranslationTextBody({
   text,
   placeholder,
@@ -907,10 +913,56 @@ function TranslationTextBody({
 }) {
   const rawRef = useRef<HTMLTextAreaElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+  // Whether streamed output should keep the view pinned to the bottom.
+  // Off by default: following only starts once the user scrolls to the very
+  // bottom, and stops as soon as they scroll upward.
+  const followRef = useRef(false)
+  // Last seen scrollTop per scroll container (raw and preview scroll independently).
+  const lastScrollTopRef = useRef(new WeakMap<HTMLElement, number>())
 
-  // Follow streamed output in whichever view is mounted.
+  // A new translation starts from an empty output; reset to not following.
+  if (!text) followRef.current = false
+
+  const handleScroll = useCallback(
+    (event: React.UIEvent<HTMLElement>) => {
+      if (!readOnly) return
+      const element = event.currentTarget
+      const scrollTop = element.scrollTop
+      const lastScrollTop = lastScrollTopRef.current.get(element) ?? 0
+      lastScrollTopRef.current.set(element, scrollTop)
+      const distance = element.scrollHeight - scrollTop - element.clientHeight
+      // Check the bottom first: macOS elastic overscroll overshoots past the
+      // end and then moves back up, which must not count as scrolling up.
+      if (distance <= BOTTOM_TOLERANCE_PX) {
+        followRef.current = true
+      } else if (scrollTop < lastScrollTop) {
+        // Covers scrollbar dragging and any other upward movement.
+        followRef.current = false
+      }
+    },
+    [readOnly]
+  )
+
+  // Upward intent from wheel/trackpad or keyboard cancels following
+  // immediately, even for small deltas that stay within the bottom tolerance.
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLElement>) => {
+      if (readOnly && event.deltaY < 0) followRef.current = false
+    },
+    [readOnly]
+  )
+
+  const handleScrollKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (readOnly && SCROLL_UP_KEYS.has(event.key)) followRef.current = false
+    },
+    [readOnly]
+  )
+
+  // Follow streamed output in whichever view is mounted, only after the user
+  // has opted in by scrolling to the bottom.
   useEffect(() => {
-    if (!readOnly) return
+    if (!readOnly || !followRef.current) return
     for (const element of [previewRef.current, rawRef.current]) {
       if (element) element.scrollTop = element.scrollHeight
     }
@@ -926,15 +978,20 @@ function TranslationTextBody({
           placeholder={placeholder}
           value={text}
           onChange={(event) => onChange?.(event.target.value)}
-          onKeyDown={onKeyDown}
           disabled={disabled}
           readOnly={readOnly}
+          onScroll={handleScroll}
+          onWheel={handleWheel}
+          onKeyDown={onKeyDown ?? handleScrollKeyDown}
           dir="auto"
         />
       </TabsContent>
       <TabsContent
         value="preview"
         ref={previewRef}
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+        onKeyDown={handleScrollKeyDown}
         className="min-h-0 overflow-auto px-4 py-4 sm:px-6"
         dir="auto"
       >

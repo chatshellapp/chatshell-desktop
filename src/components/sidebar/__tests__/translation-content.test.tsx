@@ -361,6 +361,45 @@ describe('TranslationContent', () => {
     expect(within(target).getByText('Updated paragraph.')).toBeInTheDocument()
   })
 
+  it('follows streamed output only after scrolling to the bottom, and stops on scroll up', () => {
+    useTranslationStore.setState({ outputText: 'Part 1', isTranslating: true })
+    render(<TranslationContent />)
+    const output = screen.getByRole('textbox', { name: 'translationOutputPlaceholder' })
+    let scrollHeight = 1000
+    Object.defineProperty(output, 'clientHeight', { configurable: true, get: () => 200 })
+    Object.defineProperty(output, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    const scrollTo = (top: number) => {
+      output.scrollTop = top
+      fireEvent.scroll(output)
+    }
+    const stream = (text: string) => {
+      scrollHeight += 100
+      act(() => useTranslationStore.setState({ outputText: text }))
+    }
+
+    // Not following by default.
+    stream('Part 1 2')
+    expect(output.scrollTop).toBe(0)
+
+    // Reaching the bottom starts following, even after an elastic bounce back.
+    scrollTo(scrollHeight - 200 + 30)
+    scrollTo(scrollHeight - 200)
+    stream('Part 1 2 3')
+    expect(output.scrollTop).toBe(scrollHeight)
+
+    // Scrolling up stops following.
+    scrollTo(scrollHeight - 200)
+    scrollTo(300)
+    stream('Part 1 2 3 4')
+    expect(output.scrollTop).toBe(300)
+
+    // An upward wheel gesture stops following even within the bottom tolerance.
+    scrollTo(scrollHeight - 200)
+    fireEvent.wheel(output, { deltaY: -2 })
+    stream('Part 1 2 3 4 5')
+    expect(output.scrollTop).toBe(scrollHeight - 200 - 100)
+  })
+
   it('imports a Markdown file into the editable source without translating automatically', async () => {
     render(<TranslationContent />)
     const file = new File(['# Imported'], 'notes.md', { type: 'text/markdown' })
