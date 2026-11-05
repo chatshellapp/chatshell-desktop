@@ -71,6 +71,86 @@ pub async fn get_path_file_size(path: String) -> Result<u64, String> {
         .map_err(|e| format!("Failed to read file {}: {}", path, e))
 }
 
+/// Entries listed for an attached folder.
+const FOLDER_LISTING_MAX_ENTRIES: usize = 500;
+/// Byte ceiling of an attached folder listing.
+const FOLDER_LISTING_MAX_BYTES: usize = 50 * 1024;
+
+/// A one-level listing of a folder the user attached. Folders are never
+/// expanded recursively into context: the listing names the absolute path
+/// so the model can go deeper with glob, bash, and read. Attaching a
+/// folder grants nothing and does not change the working directory.
+#[tauri::command]
+pub async fn list_folder_for_attachment(path: String) -> Result<String, String> {
+    let dir = std::path::Path::new(&path);
+    if let Some(block) = chatshell_agent_core::path_policy::classify_read(dir)
+        && block.tier == chatshell_agent_core::path_policy::ReadTier::Deny
+    {
+        return Err(block.message());
+    }
+    let mut entries: Vec<(bool, String, u64)> = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to list folder {}: {}", path, e))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| {
+            let meta = entry.metadata().ok();
+            let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
+            let size = meta.map(|m| m.len()).unwrap_or(0);
+            (
+                is_dir,
+                entry.file_name().to_string_lossy().into_owned(),
+                size,
+            )
+        })
+        .collect();
+    Ok(render_folder_listing(&path, &mut entries))
+}
+
+/// Folders first, then files, each sorted by name.
+fn render_folder_listing(path: &str, entries: &mut [(bool, String, u64)]) -> String {
+    entries.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+    });
+    let total = entries.len();
+    let mut body = String::new();
+    let mut shown = 0usize;
+    for (is_dir, name, size) in entries.iter() {
+        let line = if *is_dir {
+            format!("{name}/\n")
+        } else {
+            format!("{name}  ({})\n", human_size(*size))
+        };
+        if shown >= FOLDER_LISTING_MAX_ENTRIES || body.len() + line.len() > FOLDER_LISTING_MAX_BYTES
+        {
+            break;
+        }
+        body.push_str(&line);
+        shown += 1;
+    }
+    let more = if shown < total {
+        format!(" (showing the first {shown}; use glob or bash `ls` on the folder for the rest)")
+    } else {
+        String::new()
+    };
+    format!(
+        "Folder: {path}\n\
+         Attached by the user as a one-level listing. It is not the working directory and \
+         grants no extra access. Folders end with \"/\". Use glob or bash (ls, find) on this \
+         absolute path for deeper levels, and read for file contents.\n\
+         {total} entries{more}:\n\n{body}"
+    )
+}
+
+fn human_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
 // Read arbitrary binary file as base64 (for files selected via dialog)
 #[tauri::command]
 pub async fn read_file_as_base64(path: String) -> Result<String, String> {
@@ -260,4 +340,47 @@ pub fn copy_image_to_clipboard(
         .map_err(|e| format!("Failed to copy image: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn folder_listing_puts_folders_first_and_caps_entries() {
+        let mut entries = vec![
+            (false, "b.txt".to_string(), 2048),
+            (true, "src".to_string(), 0),
+            (false, "A.md".to_string(), 10),
+        ];
+        let listing = render_folder_listing("/work/proj", &mut entries);
+        assert!(listing.starts_with("Folder: /work/proj\n"), "{listing}");
+        assert!(listing.contains("3 entries:"), "{listing}");
+        let body = listing.split("\n\n").nth(1).unwrap();
+        assert_eq!(body, "src/\nA.md  (10 B)\nb.txt  (2.0 KB)\n");
+
+        let mut many: Vec<_> = (0..700).map(|i| (false, format!("f{i:04}"), 1)).collect();
+        let listing = render_folder_listing("/x", &mut many);
+        assert!(
+            listing.contains("700 entries (showing the first 500"),
+            "{}",
+            &listing[..300]
+        );
+    }
+
+    #[tokio::test]
+    async fn folder_listing_reads_a_real_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("x.rs"), "fn main() {}").unwrap();
+        let listing = list_folder_for_attachment(dir.path().display().to_string())
+            .await
+            .unwrap();
+        assert!(listing.contains("sub/\nx.rs  (12 B)"), "{listing}");
+        assert!(
+            list_folder_for_attachment("/definitely/not/here".to_string())
+                .await
+                .is_err()
+        );
+    }
 }

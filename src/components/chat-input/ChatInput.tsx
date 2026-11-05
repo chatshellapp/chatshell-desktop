@@ -101,6 +101,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
     clearAttachments,
     handleFileSelect,
     handleImageSelect,
+    handleFolderSelect,
     handlePaste,
     isDraggingOver,
     dragHandlers,
@@ -591,6 +592,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
           <InputToolbar
             onFileSelect={handleFileSelect}
             onImageSelect={handleImageSelect}
+            onFolderSelect={handleFolderSelect}
             onWebPageSelect={handleWebPageSelect}
             onUserPromptSelect={() => {
               cursorPositionRef.current = textareaRef.current?.selectionStart ?? null

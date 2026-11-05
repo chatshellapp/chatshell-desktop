@@ -72,12 +72,24 @@ export function useDragDrop(
       const files = Array.from(e.dataTransfer.files)
       if (files.length === 0) return
 
+      // Dropped folders surface as entries without a usable path.
+      const folderNames = new Set(
+        Array.from(e.dataTransfer.items ?? [])
+          .map((item) => item.webkitGetAsEntry?.())
+          .filter((entry) => entry?.isDirectory)
+          .map((entry) => entry!.name)
+      )
+
       const rejected: RejectedFile[] = []
       const documentsToProcess: File[] = []
       const imagesToProcess: File[] = []
 
       // Categorize files
       for (const file of files) {
+        if (folderNames.has(file.name)) {
+          rejected.push({ name: file.name, reason: 'folder' })
+          continue
+        }
         const fileType = getFileType(file.name)
         if (fileType === 'unsupported') {
           rejected.push({ name: file.name, reason: 'unsupported' })

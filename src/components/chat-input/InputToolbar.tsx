@@ -36,6 +36,7 @@ interface InputToolbarProps {
   // Add attachment handlers
   onFileSelect: () => void
   onImageSelect: () => void
+  onFolderSelect: () => void
   onWebPageSelect: () => void
   onUserPromptSelect: () => void
   // Model selector
@@ -98,6 +99,7 @@ function PermissionModeIcon({ mode, className }: { mode: PermissionMode; classNa
 export function InputToolbar({
   onFileSelect,
   onImageSelect,
+  onFolderSelect,
   onWebPageSelect,
   onUserPromptSelect,
   isModelMenuOpen,
@@ -164,6 +166,10 @@ export function InputToolbar({
           <DropdownMenuItem onClick={onFileSelect} className="gap-2">
             <FileText className="size-4" />
             <span>{t('attachFile')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onFolderSelect} className="gap-2">
+            <FolderOpen className="size-4" />
+            <span>{t('attachFolder')}</span>
           </DropdownMenuItem>
           {imageAttachDisabled ? (
             <Tooltip>

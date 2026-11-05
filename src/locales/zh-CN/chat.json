@@ -35,6 +35,7 @@
   "userPrompt": "用户提示词",
   "attachFile": "文件",
   "attachImage": "图片",
+  "attachFolder": "文件夹",
   "attachWebPage": "网页",
   "addToMessage": "添加文件、图片或提示词",
   "conversationOptions": "对话选项",

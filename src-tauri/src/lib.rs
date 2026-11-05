@@ -473,6 +473,7 @@ pub fn run() {
             commands::read_text_file_from_path,
             commands::read_file_as_base64,
             commands::get_path_file_size,
+            commands::list_folder_for_attachment,
             commands::extract_pdf_text_from_path,
             commands::extract_pdf_text_from_base64,
             commands::extract_office_text_from_storage,

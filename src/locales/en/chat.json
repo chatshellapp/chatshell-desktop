@@ -35,6 +35,7 @@
   "userPrompt": "User Prompt",
   "attachFile": "File",
   "attachImage": "Image",
+  "attachFolder": "Folder",
   "attachWebPage": "Web Page",
   "addToMessage": "Add files, images, or a prompt",
   "conversationOptions": "Conversation options",

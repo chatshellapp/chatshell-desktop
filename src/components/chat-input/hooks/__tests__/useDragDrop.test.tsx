@@ -221,6 +221,28 @@ describe('useDragDrop', () => {
       )
     })
 
+    it('points dropped folders at the folder picker', async () => {
+      const folder = makeFile('', 'project')
+      const { dragHandlers } = renderDrop()
+      const event = dragEvent([folder]) as unknown as {
+        dataTransfer: { items: unknown[] }
+      }
+      event.dataTransfer.items = [
+        { webkitGetAsEntry: () => ({ isDirectory: true, name: 'project' }) },
+      ]
+
+      await act(async () => {
+        await dragHandlers.onDrop(event as unknown as DragEvent)
+      })
+
+      expect(attachments).toEqual([])
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(toast.info).toHaveBeenCalledWith(
+        "Folders can't be dropped: project",
+        expect.objectContaining({ description: expect.stringContaining('Folder') })
+      )
+    })
+
     it('toasts a count for several unsupported files', async () => {
       const { dragHandlers } = renderDrop()
 

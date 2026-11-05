@@ -20,7 +20,7 @@ export function sizeLimitFor(fileName: string, kind: 'document' | 'image'): numb
 
 export interface RejectedFile {
   name: string
-  reason: 'unsupported' | 'tooLarge'
+  reason: 'unsupported' | 'tooLarge' | 'folder'
   size?: number
   limit?: number
 }
@@ -36,8 +36,18 @@ export function checkSize(
 }
 
 /** One toast for a batch of rejected files: names plus the next step. */
-export function reportRejected(t: TFunction, rejected: RejectedFile[]): void {
+export function reportRejected(t: TFunction, rejectedFiles: RejectedFile[]): void {
+  let rejected = rejectedFiles
   if (rejected.length === 0) return
+  const folders = rejected.filter((file) => file.reason === 'folder')
+  if (folders.length > 0) {
+    // A dropped folder carries no path in the webview; the picker does.
+    toast.info(t('folderDropUnsupported', { file: folders.map((f) => f.name).join(', ') }), {
+      description: t('folderDropHint'),
+    })
+    rejected = rejected.filter((file) => file.reason !== 'folder')
+    if (rejected.length === 0) return
+  }
   if (rejected.length === 1) {
     const [file] = rejected
     if (file.reason === 'tooLarge') {

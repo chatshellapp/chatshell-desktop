@@ -3,6 +3,7 @@ import {
   useAttachmentState,
   useFileSelect,
   useImageSelect,
+  useFolderSelect,
   usePasteHandler,
   useDragDrop,
   type DragHandlers,
@@ -16,6 +17,7 @@ export interface UseAttachmentsReturn {
   clearAttachments: () => void
   handleFileSelect: () => Promise<void>
   handleImageSelect: () => Promise<void>
+  handleFolderSelect: () => Promise<void>
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<void>
   // Drag and drop
   isDraggingOver: boolean
@@ -43,6 +45,9 @@ export function useAttachments(options: UseAttachmentsOptions = {}): UseAttachme
   // Image selection via native dialog
   const { handleImageSelect } = useImageSelect(setAttachments)
 
+  // Folder listing via native dialog
+  const { handleFolderSelect } = useFolderSelect(setAttachments)
+
   // Clipboard paste handling
   const { handlePaste } = usePasteHandler(attachments, setAttachments, visionDisabled)
 
@@ -57,6 +62,7 @@ export function useAttachments(options: UseAttachmentsOptions = {}): UseAttachme
     clearAttachments,
     handleFileSelect,
     handleImageSelect,
+    handleFolderSelect,
     handlePaste,
     isDraggingOver,
     dragHandlers,
