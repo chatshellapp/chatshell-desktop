@@ -16,7 +16,7 @@ import type { FileAttachment } from '@/types'
 import type { FilePreviewDialogProps, ImageAttachmentData } from './types'
 import { formatFileSize, isMarkdownFile } from './utils'
 import { ImageLightbox } from './image-lightbox'
-import { isBinaryDocument } from '@/lib/document-files'
+import { isBinaryDocument, isVideoFile } from '@/lib/document-files'
 import { logger } from '@/lib/logger'
 
 // File preview dialog component - supports both storage paths and in-memory content
@@ -47,6 +47,12 @@ export function FilePreviewDialog({
   // Load content when the dialog opens (only if no in-memory content)
   useEffect(() => {
     if (!isOpen || inMemoryContent || loadedContent !== null || noPreview || loading) {
+      return
+    }
+
+    if (isBinaryDoc && isVideoFile(fileName)) {
+      // Videos have no text preview.
+      setNoPreview(true)
       return
     }
 

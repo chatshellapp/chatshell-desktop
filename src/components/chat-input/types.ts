@@ -52,6 +52,12 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = [
   'xlsm',
   'pptx',
   'pptm',
+  'mp4',
+  'mov',
+  'm4v',
+  'webm',
+  'mkv',
+  'avi',
 ]
 
 export { BINARY_DOCUMENT_EXTENSIONS, isBinaryDocument } from '@/lib/document-files'
@@ -108,6 +114,12 @@ export function getMimeType(fileName: string): string {
     xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     pptm: 'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    m4v: 'video/x-m4v',
+    webm: 'video/webm',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
   }
   return mimeTypes[ext || ''] || 'text/plain'
 }

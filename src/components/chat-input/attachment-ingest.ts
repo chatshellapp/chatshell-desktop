@@ -13,15 +13,19 @@ import {
   isBinaryDocument,
 } from './types'
 import { isPdfFile } from './pdf-text'
+import { isVideoFile } from '@/lib/document-files'
 import { fitImage } from '@/lib/image-fit'
 
 /** Text files are inlined or read as text; larger ones belong on disk. */
 export const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024
 /** Office documents, PDFs, and images (before fitting). */
 export const MAX_BINARY_FILE_BYTES = 50 * 1024 * 1024
+/** Videos (stored as-is; the model sees frames only). */
+export const MAX_VIDEO_FILE_BYTES = 100 * 1024 * 1024
 
 export function sizeLimitFor(fileName: string, kind: 'document' | 'image'): number {
   if (kind === 'image') return MAX_BINARY_FILE_BYTES
+  if (isVideoFile(fileName)) return MAX_VIDEO_FILE_BYTES
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
   return isBinaryDocument(fileName) || ext === 'pdf' ? MAX_BINARY_FILE_BYTES : MAX_TEXT_FILE_BYTES
 }

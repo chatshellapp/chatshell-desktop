@@ -84,6 +84,13 @@ fn is_pdf(file: &llm::FileData) -> bool {
     file.media_type.eq_ignore_ascii_case("application/pdf")
 }
 
+const VIDEO_NOTE: &str =
+    "video: read it to see its metadata and a contact sheet of frames (time selects one frame)";
+
+fn is_video(file: &llm::FileData) -> bool {
+    file.media_type.to_ascii_lowercase().starts_with("video/")
+}
+
 const SCANNED_PDF_NOTE: &str =
     "no text layer (scanned): read it with pages (e.g. pages=\"1-3\") to see the page images";
 
@@ -381,8 +388,13 @@ fn project_file_attachments(
                     .map(|stored| stored.storage_path.clone())
                     .unwrap_or_default(),
                 bash_path: None,
-                note: (is_pdf(file) && is_opaque_binary(file))
-                    .then(|| SCANNED_PDF_NOTE.to_string()),
+                note: if is_pdf(file) && is_opaque_binary(file) {
+                    Some(SCANNED_PDF_NOTE.to_string())
+                } else if is_video(file) {
+                    Some(VIDEO_NOTE.to_string())
+                } else {
+                    None
+                },
             });
             continue;
         }

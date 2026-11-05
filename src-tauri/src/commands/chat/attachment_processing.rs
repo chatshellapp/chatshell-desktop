@@ -509,7 +509,7 @@ pub(crate) struct PersistedTurn {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PersistedKind {
     Image,
-    /// Raw container bytes (Office documents); the read tool parses them.
+    /// Raw container bytes (Office documents, videos); the read tool parses them.
     BinaryDocument,
     /// Original PDF bytes; the text layer is extracted again for projection.
     Pdf,
@@ -526,7 +526,9 @@ fn persisted_kind(mime_type: &str, storage_path: &str) -> PersistedKind {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if chatshell_agent_core::office::is_office_extension(&ext) {
+    if chatshell_agent_core::office::is_office_extension(&ext)
+        || chatshell_agent_core::video::is_video_extension(&ext)
+    {
         PersistedKind::BinaryDocument
     } else if ext == "pdf" {
         PersistedKind::Pdf
@@ -759,6 +761,10 @@ mod tests {
         assert_eq!(
             persisted_kind("text/markdown", "files/a.md"),
             PersistedKind::Text
+        );
+        assert_eq!(
+            persisted_kind("video/mp4", "files/a.mp4"),
+            PersistedKind::BinaryDocument
         );
     }
 
