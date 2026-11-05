@@ -83,9 +83,10 @@ fn bash_environment_view(passthrough: Vec<String>) -> BashEnvironmentView {
         .filter(|name| !passthrough.contains(name))
         .collect();
     BashEnvironmentView {
-        allowlist: shell_env::BASE_ALLOWLIST
-            .iter()
-            .map(|name| name.to_string())
+        // Platform list: Windows adds its process-startup variables.
+        allowlist: shell_env::allowlist()
+            .into_iter()
+            .map(str::to_string)
             .collect(),
         passthrough,
         suggestions,
