@@ -703,6 +703,20 @@ pub(crate) async fn handle_agent_streaming(
         effective_system_prompt.push_str(&crate::commands::svg_figure_instructions());
     }
 
+    // Where files go: deliverables vs scratch.
+    if !disable_tools
+        && let Some(guidance) = file_placement_instructions(
+            conv_settings
+                .as_ref()
+                .and_then(|s| s.working_directory.as_deref()),
+            edit_enabled || write_enabled,
+            bash_enabled,
+        )
+    {
+        effective_system_prompt.push_str("\n\n");
+        effective_system_prompt.push_str(&guidance);
+    }
+
     // Inject workflow instructions for skills and MCP tools
     if !skill_entries.is_empty() {
         effective_system_prompt.push_str("\n\n");
@@ -1857,6 +1871,37 @@ fn build_env_block(
     env_block
 }
 
+/// Where the model should put files: deliverables the user can find,
+/// intermediates out of their way. `None` when the model cannot write.
+fn file_placement_instructions(
+    working_dir: Option<&str>,
+    can_write: bool,
+    has_bash: bool,
+) -> Option<String> {
+    if !can_write && !has_bash {
+        return None;
+    }
+    let scratch = if has_bash {
+        "Keep scratch and intermediate files (downloads, temporary scripts, \
+         partial results) in $TMPDIR, not next to the user's files."
+    } else {
+        "Do not leave scratch or intermediate files behind."
+    };
+    let deliverables = match working_dir {
+        Some(dir) => format!(
+            "Save files the user asked for (deliverables) in the working directory \
+             ({dir}), at the location they named, or in an outputs/ folder there when \
+             they named none. Mention each saved file's path in your reply."
+        ),
+        None => "This conversation has no working directory. Before saving a \
+                 deliverable, ask the user where it should go (or suggest setting a \
+                 working directory) unless they already gave a path; mention each \
+                 saved file's path in your reply."
+            .to_string(),
+    };
+    Some(format!("## Files\n\n- {deliverables}\n- {scratch}"))
+}
+
 /// Collect MCP server IDs: enabled tool IDs that are not built-in tools.
 fn collect_mcp_server_ids(all_enabled_tool_ids: &[String]) -> Vec<String> {
     all_enabled_tool_ids
@@ -2160,6 +2205,18 @@ mod tests {
         let without_repo = build_env_block("p", "m", "today", "linux", plain.to_str());
         assert!(without_repo.contains(&format!("\n- Working directory: {}", plain.display())));
         assert!(without_repo.contains("- Is directory a git repo: no"));
+    }
+
+    #[test]
+    fn file_placement_separates_deliverables_from_scratch() {
+        assert!(file_placement_instructions(Some("/w"), false, false).is_none());
+        let with_dir = file_placement_instructions(Some("/w"), true, true).unwrap();
+        assert!(with_dir.contains("working directory (/w)"), "{with_dir}");
+        assert!(with_dir.contains("outputs/"), "{with_dir}");
+        assert!(with_dir.contains("$TMPDIR"), "{with_dir}");
+        let without_dir = file_placement_instructions(None, true, false).unwrap();
+        assert!(without_dir.contains("ask the user where"), "{without_dir}");
+        assert!(!without_dir.contains("$TMPDIR"), "{without_dir}");
     }
 
     #[test]
