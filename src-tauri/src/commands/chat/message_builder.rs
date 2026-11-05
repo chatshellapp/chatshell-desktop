@@ -113,10 +113,42 @@ fn estimate_attachment_tokens(text: &str) -> usize {
     cjk + other.div_ceil(4)
 }
 
-/// One flag per file: `true` = project as a lazy manifest, `false` = inline.
-fn attachment_manifest_plan(files: &[llm::FileData], read_available: bool) -> Vec<bool> {
+/// Head of an over-budget text attachment inlined ahead of its pointer.
+const PARTIAL_INLINE_TOKENS: usize = 4_000;
+/// A partial head smaller than this is not worth the space: manifest only.
+const MIN_PARTIAL_INLINE_TOKENS: usize = 1_000;
+
+/// How one current-turn attachment is projected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Projection {
+    /// The whole content inline.
+    Inline,
+    /// The first `lines` lines inline plus a continuation pointer and a
+    /// manifest entry.
+    Head { lines: usize, total_lines: usize },
+    /// Manifest entry only (binary documents; no room left).
+    Manifest,
+}
+
+/// `(lines, tokens)` of the longest head of `text` that fits `budget`
+/// tokens, or `None` when not even the first line fits.
+fn head_lines_within(text: &str, budget: usize) -> Option<(usize, usize)> {
+    let mut tokens = 0usize;
+    let mut lines = 0usize;
+    for line in text.lines() {
+        let next = tokens.saturating_add(estimate_attachment_tokens(line) + 1);
+        if next > budget {
+            break;
+        }
+        tokens = next;
+        lines += 1;
+    }
+    (lines > 0).then_some((lines, tokens))
+}
+
+fn attachment_projection_plan(files: &[llm::FileData], read_available: bool) -> Vec<Projection> {
     if !read_available {
-        return vec![false; files.len()];
+        return vec![Projection::Inline; files.len()];
     }
 
     let mut plan = Vec::with_capacity(files.len());
@@ -125,18 +157,55 @@ fn attachment_manifest_plan(files: &[llm::FileData], read_available: bool) -> Ve
         // Binary documents have no text representation to inline; the model
         // must open the persisted file with the read tool.
         if file.bytes.is_some() {
-            plan.push(true);
+            plan.push(Projection::Manifest);
             continue;
         }
         let tokens = estimate_attachment_tokens(&file.content);
-        let over_budget = tokens > INLINE_ATTACHMENT_TOKENS
-            || inline_tokens.saturating_add(tokens) > INLINE_ATTACHMENT_TOTAL_TOKENS;
-        plan.push(over_budget);
-        if !over_budget {
+        let fits = tokens <= INLINE_ATTACHMENT_TOKENS
+            && inline_tokens.saturating_add(tokens) <= INLINE_ATTACHMENT_TOTAL_TOKENS;
+        if fits {
             inline_tokens = inline_tokens.saturating_add(tokens);
+            plan.push(Projection::Inline);
+            continue;
+        }
+        // Over budget: inline the head when enough room remains, so the
+        // model sees the start without a tool round-trip.
+        let room = INLINE_ATTACHMENT_TOTAL_TOKENS
+            .saturating_sub(inline_tokens)
+            .min(PARTIAL_INLINE_TOKENS);
+        let head = (room >= MIN_PARTIAL_INLINE_TOKENS)
+            .then(|| head_lines_within(&file.content, room))
+            .flatten();
+        match head {
+            Some((lines, tokens)) => {
+                inline_tokens = inline_tokens.saturating_add(tokens);
+                plan.push(Projection::Head {
+                    lines,
+                    total_lines: file.content.lines().count(),
+                });
+            }
+            None => plan.push(Projection::Manifest),
         }
     }
     plan
+}
+
+/// The continuation pointer appended to a partially inlined attachment.
+fn continuation_note(reference: &str, lines: usize, total_lines: usize) -> String {
+    let pdf = reference.to_ascii_lowercase().ends_with(".pdf");
+    if pdf {
+        format!(
+            "[Truncated: showing the first {lines} of {total_lines} lines of the extracted \
+             text. Read the rest with the read tool on \"{reference}\" (use \"pages\" to \
+             select page ranges).]"
+        )
+    } else {
+        format!(
+            "[Truncated: showing lines 1-{lines} of {total_lines}. Continue with the read \
+             tool: path \"{reference}\", offset={}.]",
+            lines + 1
+        )
+    }
 }
 
 /// Split the current turn's files into inline content and lazy manifests.
@@ -148,7 +217,7 @@ fn project_file_attachments(
     stored_files: &[Option<StoredFile>],
     read_available: bool,
 ) -> (Vec<llm::FileData>, Vec<ManifestAttachment>) {
-    let plan = attachment_manifest_plan(files, read_available);
+    let plan = attachment_projection_plan(files, read_available);
     let mut inline = Vec::new();
     let mut manifest = Vec::new();
 
@@ -158,18 +227,35 @@ fn project_file_attachments(
             .and_then(|stored| stored.as_ref())
             .and_then(|stored| reference(&stored.storage_path));
 
-        if plan[index]
+        if plan[index] != Projection::Inline
             && let Some(path) = stored_path
         {
             let binary = file.bytes.as_ref();
+            let preview = match plan[index] {
+                Projection::Head { lines, total_lines } => {
+                    let head: Vec<&str> = file.content.lines().take(lines).collect();
+                    inline.push(llm::FileData {
+                        name: file.name.clone(),
+                        content: format!(
+                            "{}\n\n{}",
+                            head.join("\n"),
+                            continuation_note(&path, lines, total_lines)
+                        ),
+                        media_type: file.media_type.clone(),
+                        bytes: None,
+                    });
+                    None
+                }
+                _ => binary
+                    .is_none()
+                    .then(|| pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+            };
             manifest.push(ManifestAttachment {
                 name: file.name.clone(),
                 mime_type: file.media_type.clone(),
                 size: binary.map(Vec::len).unwrap_or_else(|| file.content.len()),
                 path,
-                preview: binary
-                    .is_none()
-                    .then(|| pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+                preview,
             });
             continue;
         }
@@ -824,8 +910,9 @@ mod tests {
             file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 4 + 4),
         ];
 
-        let plan = attachment_manifest_plan(&files, true);
-        assert_eq!(plan, vec![false, true]);
+        let plan = attachment_projection_plan(&files, true);
+        // One giant line has no line-bounded head: manifest only.
+        assert_eq!(plan, vec![Projection::Inline, Projection::Manifest]);
     }
 
     #[test]
@@ -842,16 +929,16 @@ mod tests {
             bytes: None,
         }];
 
-        let plan = attachment_manifest_plan(&files, true);
-        assert_eq!(plan, vec![true]);
+        let plan = attachment_projection_plan(&files, true);
+        assert_eq!(plan, vec![Projection::Manifest]);
     }
 
     #[test]
     fn read_unavailable_inlines_large_attachments() {
         let files = vec![file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 8)];
 
-        let plan = attachment_manifest_plan(&files, false);
-        assert_eq!(plan, vec![false]);
+        let plan = attachment_projection_plan(&files, false);
+        assert_eq!(plan, vec![Projection::Inline]);
     }
 
     #[test]
@@ -864,7 +951,10 @@ mod tests {
             bytes: Some(vec![1, 2, 3, 4]),
         }];
 
-        assert_eq!(attachment_manifest_plan(&files, true), vec![true]);
+        assert_eq!(
+            attachment_projection_plan(&files, true),
+            vec![Projection::Manifest]
+        );
 
         let stored = vec![Some(StoredFile {
             storage_path: "files/hash.docx".to_string(),
@@ -903,8 +993,87 @@ mod tests {
             .map(|i| file_data(&format!("part-{i}.txt"), 16_000))
             .collect();
 
-        let plan = attachment_manifest_plan(&files, true);
-        assert_eq!(plan, vec![false, false, false, false, true]);
+        let plan = attachment_projection_plan(&files, true);
+        assert_eq!(
+            plan,
+            vec![
+                Projection::Inline,
+                Projection::Inline,
+                Projection::Inline,
+                Projection::Inline,
+                Projection::Manifest
+            ]
+        );
+    }
+
+    fn lines_file(name: &str, lines: usize) -> llm::FileData {
+        llm::FileData {
+            name: name.to_string(),
+            content: (1..=lines)
+                .map(|i| format!("line {i:05} of the attached log file"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            media_type: "text/plain".to_string(),
+            bytes: None,
+        }
+    }
+
+    #[test]
+    fn over_budget_text_inlines_its_head_with_an_offset_pointer() {
+        // ~10 tokens per line: 5000 lines is ~50k tokens.
+        let files = vec![lines_file("app.log", 5_000)];
+        let plan = attachment_projection_plan(&files, true);
+        let Projection::Head { lines, total_lines } = plan[0] else {
+            panic!("expected a head projection: {plan:?}");
+        };
+        assert_eq!(total_lines, 5_000);
+        assert!(lines > 100 && lines < 1_000, "{lines}");
+
+        let stored = vec![Some(StoredFile {
+            storage_path: "files/hash.log".to_string(),
+        })];
+        let (inline, manifest) =
+            project_file_attachments(&crate::storage::attachment_reference, &files, &stored, true);
+        assert_eq!(inline.len(), 1);
+        assert!(inline[0].content.starts_with("line 00001"));
+        assert!(
+            inline[0].content.ends_with(&format!(
+                "Continue with the read tool: path \"attachment://hash.log\", offset={}.]",
+                lines + 1
+            )),
+            "{}",
+            &inline[0].content[inline[0].content.len() - 200..]
+        );
+        assert!(
+            !inline[0]
+                .content
+                .contains(&format!("line {:05} ", lines + 1))
+        );
+        assert_eq!(manifest.len(), 1);
+        assert!(
+            manifest[0].preview.is_none(),
+            "the head replaces the preview"
+        );
+    }
+
+    #[test]
+    fn partial_heads_share_the_total_budget() {
+        // The first head takes 4k tokens; three more heads fit the 16k
+        // total; nothing meaningful remains for a fifth.
+        let files: Vec<_> = (0..5)
+            .map(|i| lines_file(&format!("log-{i}.txt"), 5_000))
+            .collect();
+        let plan = attachment_projection_plan(&files, true);
+        assert!(matches!(plan[0], Projection::Head { .. }));
+        assert!(matches!(plan[3], Projection::Head { .. }));
+        assert_eq!(plan[4], Projection::Manifest);
+    }
+
+    #[test]
+    fn pdf_pointers_name_pages_instead_of_line_offsets() {
+        let note = continuation_note("attachment://doc.pdf", 10, 99);
+        assert!(note.contains("\"pages\""), "{note}");
+        assert!(!note.contains("offset="), "{note}");
     }
 
     #[test]
