@@ -14,17 +14,24 @@ import {
 import { logger } from '@/lib/logger'
 import type { Model, Provider } from '@/types'
 
-const { listenHandlers, unlistenSpies, modelStoreState, selectConversation, setSystemPrompt } =
-  vi.hoisted(() => ({
-    listenHandlers: new Map<string, (event: { payload: unknown }) => void>(),
-    unlistenSpies: [] as Array<() => void>,
-    modelStoreState: {
-      models: [] as Array<Model>,
-      providers: [] as Array<Provider>,
-    },
-    selectConversation: vi.fn(),
-    setSystemPrompt: vi.fn(),
-  }))
+const {
+  listenHandlers,
+  unlistenSpies,
+  modelStoreState,
+  selectConversation,
+  setSystemPrompt,
+  recordHistory,
+} = vi.hoisted(() => ({
+  listenHandlers: new Map<string, (event: { payload: unknown }) => void>(),
+  unlistenSpies: [] as Array<() => void>,
+  modelStoreState: {
+    models: [] as Array<Model>,
+    providers: [] as Array<Provider>,
+  },
+  selectConversation: vi.fn(),
+  setSystemPrompt: vi.fn(),
+  recordHistory: vi.fn(),
+}))
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -64,6 +71,10 @@ vi.mock('../conversation', () => ({
 
 vi.mock('../conversationSettingsStore', () => ({
   useConversationSettingsStore: { getState: () => ({ setSystemPrompt }) },
+}))
+
+vi.mock('../translationHistoryStore', () => ({
+  useTranslationHistoryStore: { getState: () => ({ record: recordHistory }) },
 }))
 
 const invokeMock = vi.mocked(invoke)
@@ -892,6 +903,80 @@ describe('useTranslationStore', () => {
       expect(state.conversationId).toBeNull()
       unlistenSpies.forEach((unlisten) => expect(unlisten).toHaveBeenCalled())
       expect(invokeMock).toHaveBeenCalledWith('delete_conversation', { id: 'conv-1' })
+    })
+
+    it('records the finished translation in history', async () => {
+      setupTranslate()
+
+      await useTranslationStore.getState().translate('fr')
+      fire('chat-stream', { conversation_id: 'conv-1', content: '<think>x</think>Bonjour' })
+      expect(recordHistory).not.toHaveBeenCalled()
+      fire('chat-complete', { conversation_id: 'conv-1', message: {} })
+
+      expect(recordHistory).toHaveBeenCalledTimes(1)
+      expect(recordHistory).toHaveBeenCalledWith({
+        source_text: 'hello',
+        translated_text: 'Bonjour',
+        source_language: 'auto',
+        target_language: 'fr',
+        model_id: 'model-1',
+      })
+    })
+
+    it('does not record failed translations in history', async () => {
+      setupTranslate()
+
+      await useTranslationStore.getState().translate('fr')
+      fire('chat-error', { conversation_id: 'conv-1', error: 'nope' })
+
+      expect(recordHistory).not.toHaveBeenCalled()
+    })
+
+    it('restores a history entry without calling the model', () => {
+      const model = createMockModel()
+      useTranslationStore.setState({ selectedModel: model, sourceLanguage: 'de', error: 'old' })
+
+      useTranslationStore.getState().restoreFromHistory({
+        id: 'h1',
+        source_text: 'hello',
+        translated_text: 'bonjour',
+        source_language: 'en',
+        target_language: 'fr',
+        model_id: 'model-9',
+        created_at: '2026-11-02T00:00:00Z',
+      })
+
+      const state = useTranslationStore.getState()
+      expect(state.inputText).toBe('hello')
+      expect(state.outputText).toBe('bonjour')
+      expect(state.sourceLanguage).toBe('auto')
+      expect(state.error).toBeNull()
+      expect(state.lastAttempt).toEqual({ sourceLanguage: 'en', targetLanguage: 'fr' })
+      expect(state.canContinue).toBe(true)
+      expect(state.lastTranslationContext).toEqual({
+        sourceLanguage: 'en',
+        targetLanguage: 'fr',
+        inputText: 'hello',
+        outputText: 'bonjour',
+        selectedModel: model,
+      })
+      expect(invokeMock).not.toHaveBeenCalled()
+    })
+
+    it('ignores history restores while translating', () => {
+      useTranslationStore.setState({ isTranslating: true, inputText: 'busy' })
+
+      useTranslationStore.getState().restoreFromHistory({
+        id: 'h1',
+        source_text: 'hello',
+        translated_text: 'bonjour',
+        source_language: 'auto',
+        target_language: 'fr',
+        model_id: null,
+        created_at: '2026-11-02T00:00:00Z',
+      })
+
+      expect(useTranslationStore.getState().inputText).toBe('busy')
     })
 
     it('stops translating and surfaces the error on chat-error', async () => {

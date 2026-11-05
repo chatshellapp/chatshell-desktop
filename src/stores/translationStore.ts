@@ -2,12 +2,13 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { Message, Model } from '@/types'
+import type { Message, Model, TranslationHistoryEntry } from '@/types'
 import { logger } from '@/lib/logger'
 import { useModelStore } from './modelStore'
 import { useSettingsStore } from './settingsStore'
 import { useConversationStore } from './conversation'
 import { useConversationSettingsStore } from './conversationSettingsStore'
+import { useTranslationHistoryStore } from './translationHistoryStore'
 import i18n, { getCurrentLanguage } from '@/lib/i18n'
 import { parseThinkingContent } from '@/lib/utils'
 import {
@@ -120,6 +121,8 @@ interface TranslationActions {
   detectInputLanguage: () => Promise<void>
   acceptPrimarySuggestion: () => void
   dismissPrimarySuggestion: () => void
+  /** Load a history entry into the panel without calling the model. */
+  restoreFromHistory: (entry: TranslationHistoryEntry) => void
 }
 
 type TranslationStore = TranslationState & TranslationActions
@@ -497,6 +500,13 @@ export const useTranslationStore = create<TranslationStore>()(
               })
               get().cleanup()
               invoke('delete_conversation', { id: conversation.id }).catch(() => {})
+              useTranslationHistoryStore.getState().record({
+                source_text: inputText,
+                translated_text: finalOutput,
+                source_language: sourceLanguage,
+                target_language: targetLanguage,
+                model_id: selectedModel.id,
+              })
             }),
             listen<{ conversation_id: string; error: string }>('chat-error', (event) => {
               if (event.payload.conversation_id !== conversation.id) return
@@ -607,6 +617,34 @@ export const useTranslationStore = create<TranslationStore>()(
         if (conversationId) {
           invoke('delete_conversation', { id: conversationId }).catch(() => {})
         }
+      },
+
+      restoreFromHistory: (entry: TranslationHistoryEntry) => {
+        if (get().isTranslating) return
+        const { selectedModel } = get()
+        const sourceLanguage = isTranslationLanguage(entry.source_language)
+          ? entry.source_language
+          : AUTO_LANGUAGE
+        set((draft) => {
+          draft.inputText = entry.source_text
+          draft.outputText = entry.translated_text
+          // Detection re-runs on the restored text; the recorded direction
+          // still drives the label and retry.
+          draft.sourceLanguage = AUTO_LANGUAGE
+          draft.detection = null
+          draft.error = null
+          draft.lastAttempt = { sourceLanguage, targetLanguage: entry.target_language }
+          draft.canContinue = !!selectedModel
+          draft.lastTranslationContext = selectedModel
+            ? {
+                sourceLanguage,
+                targetLanguage: entry.target_language,
+                inputText: entry.source_text,
+                outputText: entry.translated_text,
+                selectedModel,
+              }
+            : null
+        })
       },
 
       clear: () => {

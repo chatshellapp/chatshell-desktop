@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { DETECTION_DEBOUNCE_MS, LONG_INPUT_CHARS, TranslationContent } from '../translation-content'
 import { useTranslationStore } from '@/stores/translationStore'
-import type { Model } from '@/types'
+import { useTranslationHistoryStore } from '@/stores/translationHistoryStore'
+import type { Model, TranslationHistoryEntry } from '@/types'
 
 vi.mock('react-i18next', () => ({
   // Render interpolated values so labels stay distinguishable, e.g.
@@ -43,6 +44,23 @@ const translateToOther = vi.fn()
 const retranslate = vi.fn()
 const stopTranslation = vi.fn()
 const detectInputLanguage = vi.fn()
+const restoreFromHistory = vi.fn()
+const removeHistoryEntry = vi.fn().mockResolvedValue(undefined)
+const setHistoryEnabled = vi.fn()
+
+const historyEntry = (
+  id: string,
+  overrides: Partial<TranslationHistoryEntry> = {}
+): TranslationHistoryEntry => ({
+  id,
+  source_text: `source ${id}`,
+  translated_text: `translated ${id}`,
+  source_language: 'auto',
+  target_language: 'fr',
+  model_id: 'model-1',
+  created_at: new Date().toISOString(),
+  ...overrides,
+})
 
 const primaryButton = () =>
   screen.getByRole('button', { name: 'translateToWithShortcut(English|Enter)' })
@@ -77,6 +95,16 @@ beforeEach(() => {
     detectInputLanguage,
     detection: null,
     primarySuggestion: null,
+    restoreFromHistory,
+  })
+  // Loaded up front so the popover's mount-time load is a no-op.
+  useTranslationHistoryStore.setState({
+    entries: [],
+    enabled: true,
+    isLoaded: true,
+    loadPromise: null,
+    remove: removeHistoryEntry,
+    setEnabled: setHistoryEnabled,
   })
 })
 
@@ -361,5 +389,69 @@ describe('TranslationContent', () => {
     expect(screen.getByRole('textbox', { name: 'translationInputPlaceholder' })).toHaveValue(
       'Hello'
     )
+  })
+
+  describe('history', () => {
+    const openHistory = () =>
+      fireEvent.click(screen.getByRole('button', { name: 'translationHistory' }))
+
+    it('explains the empty and turned-off states', () => {
+      render(<TranslationContent />)
+      openHistory()
+      expect(screen.getByText('translationHistoryEmpty')).toBeInTheDocument()
+
+      act(() => useTranslationHistoryStore.setState({ enabled: false }))
+      expect(screen.getByText('translationHistoryOff')).toBeInTheDocument()
+    })
+
+    it('restores an entry and closes the popover', () => {
+      useTranslationHistoryStore.setState({
+        entries: [historyEntry('a', { source_text: 'Good morning', translated_text: 'Bonjour' })],
+      })
+      render(<TranslationContent />)
+      openHistory()
+
+      fireEvent.click(screen.getByText('Good morning'))
+
+      expect(restoreFromHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'a', translated_text: 'Bonjour' })
+      )
+      expect(screen.queryByText('Good morning')).not.toBeInTheDocument()
+    })
+
+    it('filters entries by source or translation and removes one', () => {
+      useTranslationHistoryStore.setState({
+        entries: [
+          historyEntry('a', { source_text: 'Good morning', translated_text: 'Bonjour' }),
+          historyEntry('b', { source_text: 'Thank you', translated_text: 'Merci' }),
+        ],
+      })
+      render(<TranslationContent />)
+      openHistory()
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'translationHistorySearch' }), {
+        target: { value: 'MERCI' },
+      })
+      expect(screen.queryByText('Good morning')).not.toBeInTheDocument()
+      const list = screen.getByRole('list', { name: 'translationHistory' })
+      expect(within(list).getByText('Thank you')).toBeInTheDocument()
+
+      fireEvent.click(within(list).getByRole('button', { name: 'translationHistoryDelete' }))
+      expect(removeHistoryEntry).toHaveBeenCalledWith('b')
+    })
+
+    it('toggles saving history', () => {
+      render(<TranslationContent />)
+      openHistory()
+
+      fireEvent.click(screen.getByRole('switch', { name: 'translationHistorySave' }))
+      expect(setHistoryEnabled).toHaveBeenCalledWith(false)
+    })
+
+    it('is unavailable while translating', () => {
+      useTranslationStore.setState({ isTranslating: true, activeTargetLanguage: 'en' })
+      render(<TranslationContent />)
+      expect(screen.getByRole('button', { name: 'translationHistory' })).toBeDisabled()
+    })
   })
 })

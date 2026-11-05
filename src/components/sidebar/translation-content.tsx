@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ModelAvatar } from '@/components/model-avatar'
+import { TranslationHistoryPopover } from './translation-history-popover'
 import { cn } from '@/lib/utils'
 import {
   useTranslationStore,
@@ -250,6 +251,7 @@ export function TranslationContent() {
               onOpenChange={setModelPickerOpen}
             />
           </div>
+          <TranslationHistoryPopover uiLocale={uiLocale} disabled={isTranslating} />
           <LanguageSettingsPopover
             open={settingsOpen}
             onOpenChange={setSettingsOpen}

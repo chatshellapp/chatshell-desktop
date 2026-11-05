@@ -385,6 +385,11 @@ pub fn run() {
             // Prompt history commands
             commands::add_prompt_history_entry,
             commands::get_prompt_history,
+            // Translation history commands
+            commands::add_translation_history_entry,
+            commands::list_translation_history,
+            commands::delete_translation_history_entry,
+            commands::clear_translation_history,
             // User commands
             commands::create_user,
             commands::get_user,

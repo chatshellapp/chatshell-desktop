@@ -86,5 +86,15 @@
   "detectedLanguage": "Detected: {{language}}",
   "primarySuggestion": "Make {{language}} your primary language?",
   "makePrimary": "Make primary",
-  "notNow": "Not now"
+  "notNow": "Not now",
+  "translationHistory": "History",
+  "translationHistorySave": "Save history",
+  "translationHistorySearch": "Search history",
+  "translationHistoryEmpty": "Translations you make will appear here.",
+  "translationHistoryOff": "History is off. Turn on Save history to keep new translations on this device.",
+  "translationHistoryDelete": "Remove from history",
+  "translationHistoryDeleteError": "Could not update translation history.",
+  "translationHistoryClear": "Clear history",
+  "translationHistoryClearTitle": "Clear translation history?",
+  "translationHistoryClearDescription": "All saved translations on this device will be removed. This cannot be undone."
 }

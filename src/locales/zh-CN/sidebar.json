@@ -85,5 +85,15 @@
   "detectedLanguage": "检测到：{{language}}",
   "primarySuggestion": "将{{language}}设为你的第一语言？",
   "makePrimary": "设为第一语言",
-  "notNow": "暂不"
+  "notNow": "暂不",
+  "translationHistory": "历史记录",
+  "translationHistorySave": "保存历史",
+  "translationHistorySearch": "搜索历史记录",
+  "translationHistoryEmpty": "你的翻译会显示在这里。",
+  "translationHistoryOff": "历史记录已关闭。开启“保存历史”后，新的翻译将保存在此设备上。",
+  "translationHistoryDelete": "从历史记录中移除",
+  "translationHistoryDeleteError": "无法更新翻译历史记录。",
+  "translationHistoryClear": "清空历史",
+  "translationHistoryClearTitle": "清空翻译历史记录？",
+  "translationHistoryClearDescription": "此设备上保存的所有翻译都将被移除，且无法撤销。"
 }

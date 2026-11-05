@@ -24,6 +24,7 @@ mod steps;
 mod svg_figure;
 mod sync;
 mod translation;
+mod translation_history;
 mod users;
 
 use crate::db::Database;
@@ -101,4 +102,5 @@ pub use steps::*;
 pub use svg_figure::*;
 pub use sync::*;
 pub use translation::*;
+pub use translation_history::*;
 pub use users::*;

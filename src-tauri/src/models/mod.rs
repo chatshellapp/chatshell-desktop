@@ -14,6 +14,7 @@ mod search;
 mod setting;
 mod skill;
 mod tool;
+mod translation_history;
 mod user;
 
 // Provider
@@ -80,6 +81,9 @@ pub use skill::{CreateSkillRequest, Skill};
 
 // Setting
 pub use setting::Setting;
+
+// Translation history (device-local)
+pub use translation_history::{CreateTranslationHistoryRequest, TranslationHistoryEntry};
 
 // Search
 pub use search::{ConversationSearchResult, MessageSearchResult, SearchResults};

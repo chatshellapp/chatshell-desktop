@@ -122,6 +122,12 @@ export type {
   LogLevel,
 } from './setting'
 
+// Translation history types
+export type {
+  TranslationHistoryEntry,
+  CreateTranslationHistoryRequest,
+} from './translation-history'
+
 // Event types
 export type {
   ChatStreamEvent,

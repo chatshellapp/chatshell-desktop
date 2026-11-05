@@ -16,6 +16,7 @@ mod settings;
 mod skills;
 mod steps;
 mod tools;
+mod translation_history;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
@@ -134,7 +135,24 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_conversation_timestamps(pool).await?;
     ensure_search_result_items_column(pool).await?;
     ensure_message_tree_columns(pool).await?;
+
+    Ok(())
+}
+
+/// Schema of the device-local database (`data.local.db`). It holds data that
+/// must never be synced, and is not versioned: tables are created idempotently.
+pub async fn init_local_schema(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS local_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    )
+    .execute(pool)
+    .await?;
     prompt_history::create_prompt_history_table(pool).await?;
+    translation_history::create_translation_history_table(pool).await?;
 
     Ok(())
 }
@@ -736,16 +754,14 @@ mod tests {
             .collect()
     }
 
-    /// Table -> sorted column names for every mergeable table. Desktop-local
-    /// infra that never rides snapshots is excluded: FTS5 search index and
-    /// the device-local prompt input history.
+    /// Table -> sorted column names for every mergeable table. The FTS5
+    /// search index is desktop-local infra and is excluded.
     async fn table_column_map(
         pool: &SqlitePool,
     ) -> std::collections::BTreeMap<String, Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
             "SELECT name FROM sqlite_master \
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%' \
-             AND name != 'prompt_history'",
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%'",
         )
         .fetch_all(pool)
         .await
@@ -869,6 +885,7 @@ mod tests {
 
         let db = crate::db::Database {
             pool: std::sync::Arc::new(pool),
+            local_pool: std::sync::Arc::new(fresh_pool().await),
         };
         let search = db
             .create_search_result(CreateSearchResultRequest {
