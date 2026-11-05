@@ -63,6 +63,25 @@ describe('useFileSelect', () => {
     expect(logger.error).not.toHaveBeenCalled()
   })
 
+  it('oversized picks are refused by name without reading them', async () => {
+    vi.mocked(open).mockResolvedValue(['/docs/big.pptx', '/docs/ok.md'])
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args: unknown) => {
+      const { path } = args as { path: string }
+      if (cmd === 'get_path_file_size') return path.endsWith('big.pptx') ? 60 * 1024 * 1024 : 4
+      return '# ok'
+    })
+    const { handleFileSelect } = renderSelect()
+
+    await act(async () => handleFileSelect())
+
+    expect(attachments.map((a) => a.name)).toEqual(['ok.md'])
+    expect(invoke).not.toHaveBeenCalledWith('read_file_as_base64', { path: '/docs/big.pptx' })
+    expect(toast.error).toHaveBeenCalledWith(
+      'big.pptx is too large to attach (60.0 MB, limit 50.0 MB)',
+      expect.anything()
+    )
+  })
+
   it('text files read via read_text_file_from_path with content and no base64', async () => {
     vi.mocked(open).mockResolvedValue('/docs/notes.md')
     vi.mocked(invoke).mockResolvedValue('# hello')

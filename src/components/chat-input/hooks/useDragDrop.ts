@@ -10,6 +10,7 @@ import {
   readFileAsBase64,
 } from '../types'
 import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
+import { checkSize, imageAttachment, reportRejected, type RejectedFile } from '../attachment-ingest'
 import { logger } from '@/lib/logger'
 
 export interface DragHandlers {
@@ -65,19 +66,24 @@ export function useDragDrop(
       const files = Array.from(e.dataTransfer.files)
       if (files.length === 0) return
 
-      const unsupportedFiles: string[] = []
+      const rejected: RejectedFile[] = []
       const documentsToProcess: File[] = []
       const imagesToProcess: File[] = []
 
       // Categorize files
       for (const file of files) {
         const fileType = getFileType(file.name)
-        if (fileType === 'document') {
+        if (fileType === 'unsupported') {
+          rejected.push({ name: file.name, reason: 'unsupported' })
+          continue
+        }
+        const tooLarge = checkSize(file.name, file.size, fileType)
+        if (tooLarge) {
+          rejected.push(tooLarge)
+        } else if (fileType === 'document') {
           documentsToProcess.push(file)
-        } else if (fileType === 'image') {
-          imagesToProcess.push(file)
         } else {
-          unsupportedFiles.push(file.name)
+          imagesToProcess.push(file)
         }
       }
 
@@ -88,22 +94,7 @@ export function useDragDrop(
         imagesToProcess.length = 0
       }
 
-      // Show error for unsupported files
-      if (unsupportedFiles.length > 0) {
-        const ext = unsupportedFiles[0].split('.').pop()?.toLowerCase() || 'unknown'
-        if (unsupportedFiles.length === 1) {
-          toast.error(t('unsupportedFileFormat', { file: `.${ext}` }), {
-            description: t('supportedFormats'),
-          })
-        } else {
-          toast.error(t('unsupportedFilesCount', { count: unsupportedFiles.length }), {
-            description: t('includingFiles', {
-              files: unsupportedFiles.slice(0, 3).join(', '),
-              more: unsupportedFiles.length > 3 ? '...' : '',
-            }),
-          })
-        }
-      }
+      reportRejected(t, rejected)
 
       // Process documents
       for (const file of documentsToProcess) {
@@ -137,20 +128,8 @@ export function useDragDrop(
       // Process images
       for (const file of imagesToProcess) {
         try {
-          const arrayBuffer = await file.arrayBuffer()
-          const base64 = btoa(
-            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-          )
-          const mimeType = getImageMimeType(file.name)
-
-          const newAttachment: Attachment = {
-            id: `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            type: 'image',
-            name: file.name,
-            base64: `data:${mimeType};base64,${base64}`,
-            mimeType,
-            size: file.size,
-          }
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          const newAttachment = await imageAttachment(file.name, bytes, getImageMimeType(file.name))
           setAttachments((prev) => [...prev, newAttachment])
         } catch (error) {
           logger.error(`Failed to read image: ${file.name}`, error)

@@ -193,6 +193,34 @@ describe('useDragDrop', () => {
       expect(attachments).toEqual([])
     })
 
+    it('names the single unsupported file and offers a next step', async () => {
+      const { dragHandlers } = renderDrop()
+
+      await act(async () => {
+        await dragHandlers.onDrop(dragEvent([makeFile('', 'archive.zip')]))
+      })
+
+      const [title, options] = vi.mocked(toast.error).mock.calls[0]
+      expect(title).toBe('Unsupported file format: archive.zip')
+      expect((options as { description: string }).description).toContain('working directory')
+    })
+
+    it('rejects oversized files by name before reading them', async () => {
+      const big = makeFile('', 'huge.md')
+      Object.defineProperty(big, 'size', { value: 11 * 1024 * 1024 })
+      const { dragHandlers } = renderDrop()
+
+      await act(async () => {
+        await dragHandlers.onDrop(dragEvent([big, makeFile('# ok', 'ok.md')]))
+      })
+
+      expect(attachments.map((a) => a.name)).toEqual(['ok.md'])
+      expect(toast.error).toHaveBeenCalledWith(
+        'huge.md is too large to attach (11.0 MB, limit 10.0 MB)',
+        expect.objectContaining({ description: expect.stringContaining('working directory') })
+      )
+    })
+
     it('toasts a count for several unsupported files', async () => {
       const { dragHandlers } = renderDrop()
 

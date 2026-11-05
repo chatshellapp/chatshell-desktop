@@ -10,6 +10,7 @@ import {
   isBinaryDocument,
 } from '../types'
 import { isPdfFile } from '../pdf-text'
+import { checkSize, reportRejected, type RejectedFile } from '../attachment-ingest'
 import { logger } from '@/lib/logger'
 
 export interface UseFileSelectReturn {
@@ -43,10 +44,17 @@ export function useFileSelect(
       const files = Array.isArray(selected) ? selected : [selected]
       logger.info('[handleFileSelect] Files to process:', files)
 
+      const rejected: RejectedFile[] = []
       for (const filePath of files) {
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'file'
         const mimeType = getMimeType(fileName)
         try {
+          const size = await invoke<number>('get_path_file_size', { path: filePath })
+          const tooLarge = checkSize(fileName, size, 'document')
+          if (tooLarge) {
+            rejected.push(tooLarge)
+            continue
+          }
           logger.info('[handleFileSelect] Reading file:', filePath)
           // Use Rust commands to read files (avoids plugin-fs scope issues).
           // PDFs are converted to their text layer: provider-native PDF
@@ -91,6 +99,7 @@ export function useFileSelect(
           })
         }
       }
+      reportRejected(t, rejected)
       logger.info('[handleFileSelect] Done processing files')
     } catch (error) {
       logger.error('[handleFileSelect] Failed to select file:', error)

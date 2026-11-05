@@ -61,6 +61,7 @@ pub async fn send_message(
     sibling_of_message_id: Option<String>,
 ) -> Result<Message, String> {
     super::ensure_no_generation(&state, &conversation_id).await?;
+    check_attachment_payload(images.as_deref(), files.as_deref())?;
 
     log_send_message_params(
         &conversation_id,
@@ -129,6 +130,38 @@ pub async fn send_message(
         false,
     );
     Ok(user_message)
+}
+
+/// Hard ceiling on the attachment payload of one `send_message` call, in
+/// base64/text characters. The composer refuses oversized files per file
+/// before reading them; this is the backend floor for anything else.
+const MAX_ATTACHMENT_PAYLOAD_CHARS: usize = 200 * 1024 * 1024;
+
+fn check_attachment_payload(
+    images: Option<&[ImageAttachmentInput]>,
+    files: Option<&[FileAttachmentInput]>,
+) -> Result<(), String> {
+    let images: usize = images
+        .unwrap_or_default()
+        .iter()
+        .map(|image| image.base64.len())
+        .sum();
+    let files: usize = files
+        .unwrap_or_default()
+        .iter()
+        .map(|file| file.content.len() + file.base64.as_ref().map_or(0, String::len))
+        .sum();
+    let total = images + files;
+    if total > MAX_ATTACHMENT_PAYLOAD_CHARS {
+        return Err(format!(
+            "Attachments are too large to send ({} MB, limit {} MB). Remove some \
+             attachments, or put large files in the working directory and ask \
+             the assistant to read them with its tools.",
+            total / (1024 * 1024),
+            MAX_ATTACHMENT_PAYLOAD_CHARS / (1024 * 1024)
+        ));
+    }
+    Ok(())
 }
 
 /// Regenerate an assistant/model reply as a SIBLING VARIANT: rewind the
@@ -784,6 +817,25 @@ async fn get_assistant_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn file(content_len: usize, base64_len: Option<usize>) -> FileAttachmentInput {
+        FileAttachmentInput {
+            name: "f".to_string(),
+            content: "x".repeat(content_len),
+            base64: base64_len.map(|n| "A".repeat(n)),
+            mime_type: "text/plain".to_string(),
+        }
+    }
+
+    #[test]
+    fn attachment_payload_ceiling_counts_text_and_base64() {
+        assert!(check_attachment_payload(None, None).is_ok());
+        assert!(check_attachment_payload(None, Some(&[file(10, Some(10))])).is_ok());
+        let half = MAX_ATTACHMENT_PAYLOAD_CHARS / 2;
+        let err = check_attachment_payload(None, Some(&[file(half, Some(half)), file(1, None)]))
+            .unwrap_err();
+        assert!(err.contains("too large to send"), "{err}");
+    }
     use crate::db::Database;
     use crate::llm::capabilities::CapabilitiesCache;
     use crate::llm::tools::BashSessionManager;

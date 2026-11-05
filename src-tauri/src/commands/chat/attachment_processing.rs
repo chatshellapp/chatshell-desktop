@@ -57,24 +57,74 @@ pub(crate) fn parse_image_attachments(
                 (img.mime_type.clone(), img.base64.clone())
             };
 
-            let base64_len = base64_data.len();
+            let _ = media_type; // sniffed from the bytes instead
+            let Some(data) = fit_for_provider(&img.name, base64_data) else {
+                continue;
+            };
             tracing::info!(
                 "   - Parsed image: {} - {} ({} chars)",
                 img.name,
-                media_type,
-                base64_len
+                data.media_type,
+                data.base64.len()
             );
             user_images.push(ParsedImage {
                 name: img.name.clone(),
-                data: ImageData {
-                    base64: base64_data,
-                    media_type,
-                },
+                data,
             });
         }
     }
 
     user_images
+}
+
+/// Apply the provider image limits (`chatshell_agent_core::image_fit`). The frontend already
+/// fits images at attach time; this is the floor for anything that slipped
+/// through. Undecodable images are dropped with an error log.
+fn fit_for_provider(name: &str, base64_data: String) -> Option<ImageData> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+    let bytes = match BASE64.decode(&base64_data) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::error!("🖼️  [attachment] Invalid base64 for {}: {}", name, e);
+            return None;
+        }
+    };
+    fit_bytes_for_provider(name, &bytes, Some(base64_data))
+}
+
+/// [`fit_for_provider`] over raw bytes; `original_base64` is reused when
+/// the image passes through unchanged.
+fn fit_bytes_for_provider(
+    name: &str,
+    bytes: &[u8],
+    original_base64: Option<String>,
+) -> Option<ImageData> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+    match chatshell_agent_core::image_fit::fit_image(bytes) {
+        Ok(fitted) if !fitted.changed => Some(ImageData {
+            base64: original_base64.unwrap_or_else(|| BASE64.encode(bytes)),
+            media_type: fitted.mime_type,
+        }),
+        Ok(fitted) => {
+            tracing::info!(
+                "🖼️  [attachment] Fitted {} to {}x{} {} ({} -> {} bytes)",
+                name,
+                fitted.width,
+                fitted.height,
+                fitted.mime_type,
+                bytes.len(),
+                fitted.bytes.len()
+            );
+            Some(ImageData {
+                base64: BASE64.encode(&fitted.bytes),
+                media_type: fitted.mime_type,
+            })
+        }
+        Err(e) => {
+            tracing::error!("🖼️  [attachment] Dropping image {}: {}", name, e);
+            None
+        }
+    }
 }
 
 /// Parse file attachments from frontend input
@@ -531,13 +581,12 @@ pub(crate) async fn load_persisted_turn(
         };
         match (kind, bytes) {
             (PersistedKind::Image, Some(bytes)) => {
-                use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+                let Some(data) = fit_bytes_for_provider(&file.file_name, &bytes, None) else {
+                    continue;
+                };
                 turn.images.push(ParsedImage {
                     name: file.file_name.clone(),
-                    data: ImageData {
-                        base64: BASE64.encode(&bytes),
-                        media_type: file.mime_type.clone(),
-                    },
+                    data,
                 });
                 turn.stored_images.push(StoredImage {
                     name: file.file_name.clone(),
@@ -624,7 +673,11 @@ mod tests {
 
         let attachments = dir.path().join("attachments");
         std::fs::create_dir_all(attachments.join("files")).unwrap();
-        std::fs::write(attachments.join("files/img.png"), [1u8, 2, 3]).unwrap();
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(4, 4))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(attachments.join("files/img.png"), &png).unwrap();
         std::fs::write(attachments.join("files/doc.docx"), [9u8, 9]).unwrap();
         std::fs::write(attachments.join("files/notes.md"), "# notes").unwrap();
         let rows = [
@@ -656,7 +709,11 @@ mod tests {
         let turn = load_persisted_turn(&db, &attachments, &message.id).await;
 
         assert_eq!(turn.images.len(), 1);
-        assert_eq!(turn.images[0].data.base64, "AQID");
+        {
+            use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+            assert_eq!(turn.images[0].data.base64, BASE64.encode(&png));
+        }
+        assert_eq!(turn.images[0].data.media_type, "image/png");
         assert_eq!(turn.stored_images[0].storage_path, "files/img.png");
         // Missing blobs are skipped; files and stored_files stay aligned.
         assert_eq!(turn.files.len(), 2);

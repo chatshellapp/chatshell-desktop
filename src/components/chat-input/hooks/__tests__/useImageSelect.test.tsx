@@ -133,7 +133,8 @@ describe('useImageSelect', () => {
     // First file was attached before the failure; second and third are gone:
     // the whole loop aborts into the outer catch (no per-file isolation here).
     expect(attachments.map((a) => a.name)).toEqual(['one.png'])
-    expect(invoke).toHaveBeenCalledTimes(2)
+    // one.png: size probe + read; bad.png: the size probe throws.
+    expect(invoke).toHaveBeenCalledTimes(3)
     expect(logger.error).toHaveBeenCalledTimes(1)
   })
 

@@ -54,6 +54,15 @@ pub async fn read_text_file_from_path(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file {}: {}", path, e))
 }
 
+/// Size in bytes of a file selected via the native dialog, so the
+/// composer can refuse oversized attachments before reading them.
+#[tauri::command]
+pub async fn get_path_file_size(path: String) -> Result<u64, String> {
+    std::fs::metadata(&path)
+        .map(|meta| meta.len())
+        .map_err(|e| format!("Failed to read file {}: {}", path, e))
+}
+
 // Read arbitrary binary file as base64 (for files selected via dialog)
 #[tauri::command]
 pub async fn read_file_as_base64(path: String) -> Result<String, String> {
