@@ -225,5 +225,10 @@
     "more": "另外 {{count}} 个",
     "pathCopied": "已复制路径",
     "revealFailed": "无法显示该文件"
+  },
+  "mention": {
+    "noWorkingDirectory": "为此对话设置工作目录后，即可用 @ 引用其中的文件。",
+    "loading": "正在列出文件…",
+    "noMatches": "没有匹配的文件"
   }
 }

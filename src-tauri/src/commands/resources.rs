@@ -151,6 +151,54 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
+/// Files offered by the composer's @-mention picker.
+const MENTION_MAX_FILES: usize = 20_000;
+
+/// Files under `root` (the conversation's working directory) for the
+/// composer's @-mention picker: gitignore-aware, hidden files skipped,
+/// relative paths sorted. Read-blocked files are left out.
+#[tauri::command]
+pub async fn list_mention_candidates(root: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || mention_candidates(std::path::Path::new(&root)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn mention_candidates(root: &std::path::Path) -> Result<Vec<String>, String> {
+    use chatshell_agent_core::path_policy::{ReadClassifier, ReadTier};
+    use chatshell_agent_core::tool_fs::{Fs, StdFs, WalkFilters};
+
+    let classifier = ReadClassifier::new();
+    if let Some(block) = classifier.classify(root)
+        && block.tier == ReadTier::Deny
+    {
+        return Err(block.message());
+    }
+    let filters = WalkFilters {
+        max_files: Some(MENTION_MAX_FILES),
+        ..WalkFilters::default()
+    };
+    let files = StdFs
+        .walk(root, &filters)
+        .map_err(|e| format!("Failed to list {}: {}", root.display(), e))?;
+    let mut relative: Vec<String> = files
+        .into_iter()
+        .filter(|path| {
+            classifier
+                .classify_lexical(path)
+                .is_none_or(|block| block.tier != ReadTier::Deny)
+        })
+        .filter_map(|path| {
+            path.strip_prefix(root)
+                .ok()
+                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        })
+        .filter(|rel| !rel.is_empty())
+        .collect();
+    relative.sort();
+    Ok(relative)
+}
+
 // Read arbitrary binary file as base64 (for files selected via dialog)
 #[tauri::command]
 pub async fn read_file_as_base64(path: String) -> Result<String, String> {
@@ -345,6 +393,27 @@ pub fn copy_image_to_clipboard(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mention_candidates_are_relative_sorted_and_gitignore_aware() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("target")).unwrap();
+        std::fs::write(root.join(".gitignore"), "target/\n").unwrap();
+        std::fs::write(root.join("src/main.rs"), "").unwrap();
+        std::fs::write(root.join("README.md"), "").unwrap();
+        std::fs::write(root.join("target/out.bin"), "").unwrap();
+        std::fs::write(root.join(".env"), "SECRET=1").unwrap();
+        // gitignore applies inside git repositories.
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+
+        let files = mention_candidates(root).unwrap();
+        assert_eq!(
+            files,
+            vec!["README.md".to_string(), "src/main.rs".to_string()]
+        );
+    }
 
     #[test]
     fn folder_listing_puts_folders_first_and_caps_entries() {

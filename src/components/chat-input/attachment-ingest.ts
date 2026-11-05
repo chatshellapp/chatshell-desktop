@@ -4,7 +4,15 @@
 
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
-import { type Attachment, formatFileSize, isBinaryDocument } from './types'
+import { invoke } from '@tauri-apps/api/core'
+import {
+  type Attachment,
+  formatFileSize,
+  getImageMimeType,
+  getMimeType,
+  isBinaryDocument,
+} from './types'
+import { isPdfFile } from './pdf-text'
 import { fitImage } from '@/lib/image-fit'
 
 /** Text files are inlined or read as text; larger ones belong on disk. */
@@ -100,6 +108,60 @@ export async function imageAttachment(
     mimeType: fitted.mimeType,
     size: fitted.size,
   }
+}
+
+/**
+ * Read a document at an absolute path (file picker, @-mention). Returns the
+ * attachment, or the rejection when it is over the size limit. Read errors
+ * throw.
+ */
+export async function readDocumentFromPath(
+  t: TFunction,
+  filePath: string,
+  fileName: string
+): Promise<Attachment | RejectedFile> {
+  const size = await invoke<number>('get_path_file_size', { path: filePath })
+  const tooLarge = checkSize(fileName, size, 'document')
+  if (tooLarge) return tooLarge
+  const mimeType = getMimeType(fileName)
+  // Rust commands read the file (no plugin-fs scope). OOXML documents are
+  // ZIP containers sent as base64 for the read tool; PDFs send their text
+  // layer and keep their original bytes.
+  const binary = isBinaryDocument(fileName)
+  const pdf = isPdfFile(fileName, mimeType)
+  const content = binary
+    ? ''
+    : await invoke<string>(pdf ? 'extract_pdf_text_from_path' : 'read_text_file_from_path', {
+        path: filePath,
+      })
+  const base64 =
+    binary || pdf ? await invoke<string>('read_file_as_base64', { path: filePath }) : undefined
+  if (pdf) notifyIfScanned(t, fileName, content)
+  return {
+    id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    type: 'file',
+    name: fileName,
+    content,
+    base64,
+    mimeType,
+    size: base64 ? Math.floor((base64.length * 3) / 4) : content.length,
+  }
+}
+
+/** Read an image at an absolute path, fitted to provider limits. */
+export async function readImageFromPath(
+  filePath: string,
+  fileName: string
+): Promise<Attachment | RejectedFile> {
+  const size = await invoke<number>('get_path_file_size', { path: filePath })
+  const tooLarge = checkSize(fileName, size, 'image')
+  if (tooLarge) return tooLarge
+  const base64 = await invoke<string>('read_file_as_base64', { path: filePath })
+  return imageAttachment(fileName, base64ToBytes(base64), getImageMimeType(fileName))
+}
+
+export function isRejected(result: Attachment | RejectedFile): result is RejectedFile {
+  return 'reason' in result
 }
 
 /** Decode standard base64 (no data URL prefix) to bytes. */

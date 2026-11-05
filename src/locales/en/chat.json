@@ -227,5 +227,10 @@
     "more": "+{{count}} more",
     "pathCopied": "Path copied",
     "revealFailed": "Could not show the file"
+  },
+  "mention": {
+    "noWorkingDirectory": "Set a working directory for this conversation to mention its files with @.",
+    "loading": "Listing files…",
+    "noMatches": "No matching files"
   }
 }

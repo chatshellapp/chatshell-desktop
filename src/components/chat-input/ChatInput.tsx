@@ -23,6 +23,8 @@ import { ModelParametersDialog } from './ModelParametersDialog'
 import { ContextCountDialog } from './ContextCountDialog'
 import { SystemPromptDialog } from './SystemPromptDialog'
 import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
+import { MentionPopup } from './MentionPopup'
+import { useMentions } from './hooks'
 import { McpServersDialog } from './McpServersDialog'
 import { SkillsDialog } from './SkillsDialog'
 import { useConversationStore } from '@/stores/conversation'
@@ -96,6 +98,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // Attachment handling hook
   const {
     attachments,
+    setAttachments,
     addAttachment,
     removeAttachment,
     clearAttachments,
@@ -184,6 +187,16 @@ export function ChatInput(/* _props: ChatInputProps */) {
     if (!currentConversation) return null
     return allSettings[currentConversation.id] || null
   }, [currentConversation, allSettings])
+
+  // @-mentions of working-directory files
+  const { mentionState, syncCaret, handleMentionKeyDown, pickMention } = useMentions({
+    input,
+    setInput,
+    textareaRef,
+    workingDirectory: conversationSettings?.workingDirectory,
+    setAttachments,
+    visionDisabled,
+  })
 
   // Consume a pending input prefilled by another surface (e.g. the log
   // diagnosis action in settings). Subscribing to pendingInput makes
@@ -573,7 +586,8 @@ export function ChatInput(/* _props: ChatInputProps */) {
           </div>
         )}
 
-        <InputGroup className="flex-1">
+        <InputGroup className="flex-1 relative">
+          {mentionState && <MentionPopup state={mentionState} onPick={pickMention} />}
           <AttachmentPreviewRow
             attachments={attachments}
             onRemove={removeAttachment}
@@ -584,8 +598,15 @@ export function ChatInput(/* _props: ChatInputProps */) {
             ref={textareaRef}
             placeholder={t('typeMessage')}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onChange={(e) => {
+              setInput(e.target.value)
+              syncCaret()
+            }}
+            onSelect={syncCaret}
+            onKeyDown={(e) => {
+              if (handleMentionKeyDown(e)) return
+              handleKeyDown(e)
+            }}
             onPaste={handlePaste}
             disabled={!selectedModel && !selectedAssistant}
           />
