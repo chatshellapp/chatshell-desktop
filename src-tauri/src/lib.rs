@@ -1,3 +1,4 @@
+mod attachment_gc;
 pub mod blob_sync;
 pub mod commands;
 mod crypto;
@@ -231,6 +232,14 @@ pub fn run() {
                     Err(e) => tracing::warn!("Log retention sweep failed: {}", e),
                 }
             });
+
+            // Reclaim attachments of deleted messages (rows, then blobs).
+            if let Ok(attachments_dir) = storage::get_attachments_dir(app.handle()) {
+                let gc_db = db.clone();
+                tauri::async_runtime::spawn(async move {
+                    attachment_gc::run(&gc_db, &attachments_dir).await;
+                });
+            }
 
             // Re-run the sweep periodically so a runaway log (verbose level
             // left on) is bounded within a minute, not at next launch.
