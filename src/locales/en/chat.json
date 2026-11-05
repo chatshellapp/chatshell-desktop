@@ -151,8 +151,10 @@
       "unparsed": "This command could not be fully analyzed. Review it carefully.",
       "network": "This command contacts a remote host over the network.",
       "privateNetwork": "This fetch targets your local machine or a private network.",
-      "sandbox": "The sandbox blocked this command: it touched files outside the workspace or a protected path.",
-      "sandboxNetwork": "The sandbox blocked this command's network access."
+      "sensitiveRead": "This file often contains secrets such as exported API keys. Approve only if the agent needs it.",
+      "sandbox": "The sandbox blocked this command: it wrote outside the workspace or touched a protected file.",
+      "sandboxNetwork": "The sandbox blocked this command's network access.",
+      "sandboxCredentials": "The sandbox blocked access to your stored credentials (keychain or credential helper)."
     },
     "escalation": {
       "title": "Command blocked by the sandbox",

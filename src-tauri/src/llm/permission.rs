@@ -535,7 +535,11 @@ impl PermissionGate {
                 "subject": request.command,
                 "tier": "exec",
                 "warning": {
-                    "kind": if network { "sandbox_network" } else { "sandbox" },
+                    "kind": match request.kind {
+                        EscalationKind::Network => "sandbox_network",
+                        EscalationKind::Credentials => "sandbox_credentials",
+                        EscalationKind::Filesystem => "sandbox",
+                    },
                     "detail": request.detail,
                 },
                 "grant": Value::Null,
@@ -1152,6 +1156,27 @@ mod tests {
         assert_eq!(payload["escalation"]["network_option"], json!(true));
         assert_eq!(payload["grant"], Value::Null);
         assert_eq!(payload["remember"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn credential_escalation_offers_a_retry_without_network() {
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.escalate(escalation(EscalationKind::Credentials)).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::RetryUnsandboxed,
+            0,
+        )
+        .await;
+        assert_eq!(task.await.unwrap(), EscalationDecision::RetryUnsandboxed);
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["warning"]["kind"], json!("sandbox_credentials"));
+        assert_eq!(payload["escalation"]["network_option"], json!(false));
+        assert_eq!(payload["escalation"]["retry_option"], json!(true));
     }
 
     #[tokio::test]

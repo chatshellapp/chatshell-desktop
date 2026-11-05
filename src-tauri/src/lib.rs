@@ -101,6 +101,10 @@ pub fn run() {
             // Remembered tool approvals and the bash environment settings
             // live in their own per-device files, outside the synced database.
             crate::llm::permission::init_device_stores(&app_data_dir);
+            // The agent must never read the app's own data (other
+            // conversations, settings): file tools refuse it and the bash
+            // sandbox denies it.
+            chatshell_agent_core::path_policy::register_private_dir(&app_data_dir);
 
             // Initialize logger first
             let log_dir = app_data_dir.join("logs");

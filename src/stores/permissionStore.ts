@@ -24,8 +24,10 @@ export type PermissionWarningKind =
   | 'unparsed'
   | 'network'
   | 'private_network'
+  | 'sensitive_read'
   | 'sandbox'
   | 'sandbox_network'
+  | 'sandbox_credentials'
 
 export interface PermissionWarning {
   kind: PermissionWarningKind
