@@ -619,7 +619,6 @@ async fn process_llm_request(
         &user_images,
         &user_files,
         &stored_files,
-        &app,
         read_available,
         context_message_count,
     )

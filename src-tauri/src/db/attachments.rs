@@ -184,6 +184,28 @@ impl Database {
         Ok(by_message)
     }
 
+    /// Storage paths of every live file attached to a message of
+    /// `conversation_id` (user attachments and saved assistant images).
+    /// Backs the read tool's `attachment://` grant: a conversation may only
+    /// read its own attachments.
+    pub async fn conversation_attachment_storage_paths(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT f.storage_path
+             FROM files f
+             JOIN message_attachments ma ON ma.attachment_id = f.id
+             JOIN messages m ON m.id = ma.message_id
+             WHERE f.deleted_at IS NULL AND ma.deleted_at IS NULL
+               AND m.deleted_at IS NULL AND m.conversation_id = ?",
+        )
+        .bind(conversation_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn unlink_message_attachment(
         &self,
         message_id: &str,

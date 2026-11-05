@@ -56,7 +56,7 @@ struct ManifestAttachment {
     preview: Option<String>,
 }
 
-fn xml_attr(value: &str) -> String {
+pub(crate) fn xml_attr(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -70,7 +70,7 @@ fn render_attachment_manifest(entries: &[ManifestAttachment]) -> String {
     }
 
     let mut out = String::from(
-        "<attachments note=\"Attachments are stored on disk. Use the read tool with a path to inspect them (offset/limit for text; question for images).\">\n",
+        "<attachments note=\"Attachments are stored by the app. Pass an attachment's path (attachment://...) to the read tool to inspect it (offset/limit for text; pages for PDF; question for images). Other tools such as bash cannot open these paths.\">\n",
     );
     for entry in entries {
         out.push_str(&format!(
@@ -143,7 +143,7 @@ fn attachment_manifest_plan(files: &[llm::FileData], read_available: bool) -> Ve
 /// Inlining falls back on the original behavior when the read tool is not
 /// available, or when a large file could not be persisted.
 fn project_file_attachments(
-    resolve_path: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+    reference: &dyn Fn(&str) -> Option<String>,
     files: &[llm::FileData],
     stored_files: &[Option<StoredFile>],
     read_available: bool,
@@ -156,7 +156,7 @@ fn project_file_attachments(
         let stored_path = stored_files
             .get(index)
             .and_then(|stored| stored.as_ref())
-            .and_then(|stored| resolve_path(&stored.storage_path));
+            .and_then(|stored| reference(&stored.storage_path));
 
         if plan[index]
             && let Some(path) = stored_path
@@ -166,7 +166,7 @@ fn project_file_attachments(
                 name: file.name.clone(),
                 mime_type: file.media_type.clone(),
                 size: binary.map(Vec::len).unwrap_or_else(|| file.content.len()),
-                path: path.to_string_lossy().into_owned(),
+                path,
                 preview: binary
                     .is_none()
                     .then(|| pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
@@ -200,7 +200,7 @@ fn project_file_attachments(
 /// Historical turns never re-inline attachment content. List the persisted
 /// files instead so a follow-up question can fetch them with the read tool.
 fn history_attachment_manifest(
-    resolve_path: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+    reference: &dyn Fn(&str) -> Option<String>,
     attachments: &[UserAttachment],
 ) -> Option<String> {
     let entries: Vec<ManifestAttachment> = attachments
@@ -208,12 +208,12 @@ fn history_attachment_manifest(
         .take(HISTORY_MANIFEST_ATTACHMENTS)
         .filter_map(|attachment| match attachment {
             UserAttachment::File(file) => {
-                let path = resolve_path(&file.storage_path)?;
+                let path = reference(&file.storage_path)?;
                 Some(ManifestAttachment {
                     name: file.file_name.clone(),
                     mime_type: file.mime_type.clone(),
                     size: file.file_size.max(0) as usize,
-                    path: path.to_string_lossy().into_owned(),
+                    path,
                     preview: None,
                 })
             }
@@ -234,7 +234,7 @@ fn history_attachment_manifest(
 ///   - `None` or negative value: include all history
 ///   - `Some(n)` where n > 0: include only the last n messages
 #[allow(clippy::too_many_arguments)]
-pub async fn build_chat_messages<R: tauri::Runtime>(
+pub async fn build_chat_messages(
     state: &AppState,
     conversation_id: &str,
     user_message_id: &str,
@@ -245,12 +245,10 @@ pub async fn build_chat_messages<R: tauri::Runtime>(
     user_images: &[attachment_processing::ParsedImage],
     user_files: &[llm::FileData],
     stored_files: &[Option<StoredFile>],
-    app: &tauri::AppHandle<R>,
     read_available: bool,
     context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
-    let resolve_attachment_path =
-        |storage_path: &str| crate::storage::get_full_path(app, storage_path).ok();
+    let attachment_reference = crate::storage::attachment_reference;
 
     let base_prompt = system_prompt
         .clone()
@@ -361,7 +359,7 @@ pub async fn build_chat_messages<R: tauri::Runtime>(
                         && manifest_message_ids.contains(msg.id.as_str())
                         && let Some(attachments) = attachments_by_message.get(&msg.id)
                         && let Some(manifest) =
-                            history_attachment_manifest(&resolve_attachment_path, attachments)
+                            history_attachment_manifest(&attachment_reference, attachments)
                     {
                         content.push_str("\n\n");
                         content.push_str(&manifest);
@@ -520,7 +518,7 @@ pub async fn build_chat_messages<R: tauri::Runtime>(
     apply_tool_output_pruning(&mut chat_messages, &tool_output_records);
 
     let (llm_files, manifest_entries) = project_file_attachments(
-        &resolve_attachment_path,
+        &attachment_reference,
         user_files,
         stored_files,
         read_available,
@@ -871,12 +869,8 @@ mod tests {
         let stored = vec![Some(StoredFile {
             storage_path: "files/hash.docx".to_string(),
         })];
-        let (inline, manifest) = project_file_attachments(
-            &|_| Some(std::path::PathBuf::from("/tmp/doc")),
-            &files,
-            &stored,
-            true,
-        );
+        let (inline, manifest) =
+            project_file_attachments(&crate::storage::attachment_reference, &files, &stored, true);
 
         assert!(inline.is_empty());
         assert_eq!(manifest.len(), 1);
@@ -939,19 +933,18 @@ mod tests {
     }
 
     #[test]
-    fn projection_inlines_small_and_manifests_large_with_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let resolver = |storage_path: &str| Some(dir.path().join(storage_path));
+    fn projection_inlines_small_and_manifests_large_with_reference() {
+        let resolver = crate::storage::attachment_reference;
         let files = vec![
             file_data("small.txt", 400),
             file_data("large.txt", INLINE_ATTACHMENT_TOKENS * 4 + 4),
         ];
         let stored_files = vec![
             Some(StoredFile {
-                storage_path: "small.txt".to_string(),
+                storage_path: "files/small.txt".to_string(),
             }),
             Some(StoredFile {
-                storage_path: "large.txt".to_string(),
+                storage_path: "files/large.txt".to_string(),
             }),
         ];
 
@@ -961,11 +954,7 @@ mod tests {
         assert_eq!(inline[0].name, "small.txt");
         assert_eq!(manifest.len(), 1);
         assert_eq!(manifest[0].name, "large.txt");
-        assert!(
-            manifest[0].path.ends_with("large.txt"),
-            "{:?}",
-            manifest[0].path
-        );
+        assert_eq!(manifest[0].path, "attachment://large.txt");
         assert!(
             manifest[0]
                 .preview
@@ -975,9 +964,8 @@ mod tests {
     }
 
     #[test]
-    fn history_manifest_lists_paths_without_preview() {
-        let dir = tempfile::tempdir().unwrap();
-        let resolver = |storage_path: &str| Some(dir.path().join(storage_path));
+    fn history_manifest_lists_references_without_preview() {
+        let resolver = crate::storage::attachment_reference;
         let attachments = vec![UserAttachment::File(crate::models::FileAttachment {
             id: "f1".to_string(),
             file_name: "report.pdf".to_string(),
@@ -987,16 +975,12 @@ mod tests {
             content_hash: "hash".to_string(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
         })];
-        let expected_path = dir
-            .path()
-            .join("files/hash.txt")
-            .to_string_lossy()
-            .into_owned();
+        let expected_path = "path=\"attachment://hash.txt\"";
 
         let manifest = history_attachment_manifest(&resolver, &attachments).expect("manifest");
 
         assert!(manifest.contains("name=\"report.pdf\""), "{manifest}");
-        assert!(manifest.contains(&expected_path), "{manifest}");
+        assert!(manifest.contains(expected_path), "{manifest}");
         assert!(!manifest.contains("preview="), "{manifest}");
     }
 }

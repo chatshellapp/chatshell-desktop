@@ -411,6 +411,22 @@ pub(crate) async fn handle_agent_streaming(
         if web_fetch_enabled {
             config = config.with_read_url_fetcher(Arc::new(HttpUrlByteFetcher));
         }
+        // Attachments sit in the private app data directory; the model
+        // reads them through conversation-scoped `attachment://` references.
+        match crate::storage::get_attachments_dir(&app) {
+            Ok(attachments_dir) => {
+                config = config.with_read_references(Arc::new(
+                    crate::llm::references::ConversationReferences::new(
+                        state_clone.db.clone(),
+                        conversation_id_clone.clone(),
+                        attachments_dir,
+                    ),
+                ));
+            }
+            Err(e) => {
+                tracing::warn!("⚠️ [agent_streaming] Attachment references unavailable: {e}")
+            }
+        }
     }
     if edit_enabled {
         tracing::info!("✏️ [agent_streaming] Enabling edit tool");
@@ -817,19 +833,10 @@ async fn run_agent_stream<R: tauri::Runtime>(
         }
         let resolved_images: Vec<(String, String)> = stored_images
             .iter()
-            .filter_map(
-                |img| match crate::storage::get_full_path(app, &img.storage_path) {
-                    Ok(full) => Some((img.name.clone(), full.to_string_lossy().into_owned())),
-                    Err(e) => {
-                        tracing::warn!(
-                            "🚫 [agent_streaming] Could not resolve storage path for {}: {}",
-                            img.name,
-                            e
-                        );
-                        None
-                    }
-                },
-            )
+            .filter_map(|img| {
+                crate::storage::attachment_reference(&img.storage_path)
+                    .map(|reference| (img.name.clone(), reference))
+            })
             .collect();
         let annotation = format_image_annotations(&resolved_images, !disable_tools);
         let mut chat_messages = chat_messages;
@@ -1984,7 +1991,11 @@ pub(crate) fn format_image_annotations(
     };
     let mut out = format!("<image_attachments note=\"{note}\">\n");
     for (name, path) in images {
-        out.push_str(&format!("<image name=\"{name}\" path=\"{path}\" />\n"));
+        out.push_str(&format!(
+            "<image name=\"{}\" path=\"{}\" />\n",
+            super::message_builder::xml_attr(name),
+            super::message_builder::xml_attr(path)
+        ));
     }
     out.push_str("</image_attachments>");
     out
@@ -3180,7 +3191,6 @@ mod tests {
             &[],
             &[],
             &[],
-            &app.handle(),
             false,
             None,
         )

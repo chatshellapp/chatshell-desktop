@@ -79,6 +79,9 @@ pub struct AgentConfig {
     pub read_main_model_vision: Option<bool>,
     /// Host-provided raw-byte fetcher for remote read paths.
     pub read_url_fetcher: Option<Arc<dyn UrlByteFetcher>>,
+    /// Conversation-scoped resolver for `attachment://` / `tool-output://`
+    /// read paths.
+    pub read_references: Option<Arc<dyn chatshell_agent_core::tools::ReferenceResolver>>,
     /// Default working directory for grep tool
     pub grep_working_directory: Option<String>,
     /// Default working directory for glob tool
@@ -199,6 +202,15 @@ impl AgentConfig {
     /// Declare whether the conversation's main model accepts image input
     pub fn with_read_main_model_vision(mut self, supports: bool) -> Self {
         self.read_main_model_vision = Some(supports);
+        self
+    }
+
+    /// Resolve `attachment://` / `tool-output://` read paths.
+    pub fn with_read_references(
+        mut self,
+        resolver: Arc<dyn chatshell_agent_core::tools::ReferenceResolver>,
+    ) -> Self {
+        self.read_references = Some(resolver);
         self
     }
 
@@ -599,6 +611,9 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         }
         if let Some(fetcher) = &config.read_url_fetcher {
             tool = tool.with_url_fetcher(fetcher.clone());
+        }
+        if let Some(references) = &config.read_references {
+            tool = tool.with_reference_resolver(references.clone());
         }
         tool
     };

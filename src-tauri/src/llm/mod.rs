@@ -25,6 +25,7 @@ pub mod permission;
 pub mod perplexity;
 #[cfg(test)]
 mod provider_smoke_eval;
+pub mod references;
 pub mod together;
 pub mod tools;
 #[cfg(test)]

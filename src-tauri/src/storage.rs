@@ -96,6 +96,18 @@ pub fn get_full_path<R: tauri::Runtime>(
     Ok(attachments_dir.join(storage_path))
 }
 
+/// Model-facing reference for a stored attachment:
+/// `attachment://<file name>`. The read tool resolves it through the
+/// conversation-scoped resolver (`llm::references`); absolute app-data
+/// paths never reach the model.
+pub fn attachment_reference(storage_path: &str) -> Option<String> {
+    let name = std::path::Path::new(storage_path).file_name()?.to_str()?;
+    Some(chatshell_agent_core::tools::reference::reference(
+        chatshell_agent_core::tools::reference::ATTACHMENT_SCHEME,
+        name,
+    ))
+}
+
 /// Write content to a storage path
 pub fn write_content<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
@@ -182,6 +194,20 @@ pub fn get_file_size(app_handle: &tauri::AppHandle, storage_path: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_references_use_the_file_name_only() {
+        assert_eq!(
+            attachment_reference("files/abc.pdf").as_deref(),
+            Some("attachment://abc.pdf")
+        );
+        // iOS-authored rows can carry absolute sandbox paths.
+        assert_eq!(
+            attachment_reference("/var/mobile/Containers/x/files/abc.png").as_deref(),
+            Some("attachment://abc.png")
+        );
+        assert_eq!(attachment_reference(""), None);
+    }
 
     #[test]
     fn test_hash_bytes() {
