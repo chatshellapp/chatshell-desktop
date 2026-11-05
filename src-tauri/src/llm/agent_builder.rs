@@ -95,6 +95,8 @@ pub struct AgentConfig {
     /// Extra app variables passed to bash; `Some` minimizes the bash
     /// environment to the allowlist plus these.
     pub bash_env_passthrough: Option<Vec<String>>,
+    /// Where bash output past the inline cap streams to.
+    pub bash_spill_target: Option<chatshell_agent_core::tools::SpillTarget>,
     /// OS sandbox for the bash session.
     pub bash_sandbox: Option<chatshell_agent_core::tools::bash_sandbox::BashSandbox>,
     /// MCP schema lookup tool with embedded catalog
@@ -291,6 +293,14 @@ impl AgentConfig {
     }
 
     /// Set a shared temp file tracker for bash output truncation cleanup
+    pub fn with_bash_spill_target(
+        mut self,
+        target: chatshell_agent_core::tools::SpillTarget,
+    ) -> Self {
+        self.bash_spill_target = Some(target);
+        self
+    }
+
     pub fn with_bash_temp_files(mut self, files: TempFileList) -> Self {
         self.bash_temp_files = Some(files);
         self
@@ -593,6 +603,9 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         }
         if let Some(ref sandbox) = config.bash_sandbox {
             tool = tool.with_sandbox(sandbox.clone());
+        }
+        if let Some(ref target) = config.bash_spill_target {
+            tool = tool.with_spill_target(target.clone());
         }
         tool
     };

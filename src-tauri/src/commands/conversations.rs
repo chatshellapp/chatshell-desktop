@@ -52,7 +52,11 @@ pub async fn update_conversation(
 }
 
 #[tauri::command]
-pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub async fn delete_conversation(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<(), String> {
     // Cancel any active generation for this conversation
     if let Some(cancel_token) = state.generation_tasks.write().await.remove(&id) {
         cancel_token.cancel();
@@ -70,6 +74,9 @@ pub async fn delete_conversation(state: State<'_, AppState>, id: String) -> Resu
     // Drop the conversation's session grants so they do not linger in RAM
     // for the rest of the app's lifetime.
     crate::llm::permission::forget_conversation_grants(&state.permission_grants, &id);
+    if let Some(root) = crate::tool_outputs::root(&app) {
+        crate::tool_outputs::remove_conversation(&root, &id);
+    }
     Ok(())
 }
 

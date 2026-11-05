@@ -352,6 +352,10 @@ pub(crate) async fn handle_agent_streaming(
     let _temp_file_guard = BashTempFileGuard {
         files: bash_temp_files.clone(),
     };
+    // Durable spill directory: the model reads it through tool-output://
+    // references for as long as the conversation exists (7-day TTL).
+    let tool_output_dir = crate::tool_outputs::root(&app)
+        .map(|root| crate::tool_outputs::conversation_dir(&root, &conversation_id_clone));
 
     if bash_enabled {
         tracing::info!("🖥️ [agent_streaming] Enabling bash tool");
@@ -363,6 +367,14 @@ pub(crate) async fn handle_agent_streaming(
         config = config.with_bash_session(session);
         config = config.with_bash_abort_notify(abort_notify);
         config = config.with_bash_temp_files(bash_temp_files.clone());
+        if let Some(dir) = &tool_output_dir {
+            config = config.with_bash_spill_target(chatshell_agent_core::tools::SpillTarget {
+                dir: dir.clone(),
+                reference_scheme: Some(
+                    chatshell_agent_core::tools::reference::TOOL_OUTPUT_SCHEME.to_string(),
+                ),
+            });
+        }
 
         if let Some(ref settings) = conv_settings
             && let Some(ref working_dir) = settings.working_directory
@@ -415,13 +427,15 @@ pub(crate) async fn handle_agent_streaming(
         // reads them through conversation-scoped `attachment://` references.
         match crate::storage::get_attachments_dir(&app) {
             Ok(attachments_dir) => {
-                config = config.with_read_references(Arc::new(
-                    crate::llm::references::ConversationReferences::new(
-                        state_clone.db.clone(),
-                        conversation_id_clone.clone(),
-                        attachments_dir,
-                    ),
-                ));
+                let mut references = crate::llm::references::ConversationReferences::new(
+                    state_clone.db.clone(),
+                    conversation_id_clone.clone(),
+                    attachments_dir,
+                );
+                if let Some(dir) = &tool_output_dir {
+                    references = references.with_tool_output_dir(dir.clone());
+                }
+                config = config.with_read_references(Arc::new(references));
             }
             Err(e) => {
                 tracing::warn!("⚠️ [agent_streaming] Attachment references unavailable: {e}")

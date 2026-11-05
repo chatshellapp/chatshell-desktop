@@ -19,6 +19,7 @@ pub mod sync_keychain;
 pub mod sync_scheduler;
 mod thinking_parser;
 mod tokenizer;
+mod tool_outputs;
 #[cfg(debug_assertions)]
 mod ui_automation;
 mod web_fetch;
@@ -118,6 +119,23 @@ pub fn run() {
             // Initialize storage directories
             if let Err(e) = storage::init_storage_dirs(app.handle()) {
                 tracing::warn!("Failed to initialize storage directories: {}", e);
+            }
+
+            // Spilled tool output: private like the app data (reachable only
+            // through a conversation's tool-output:// references), expired
+            // after the TTL.
+            if let Some(tool_output_root) = tool_outputs::root(app.handle()) {
+                chatshell_agent_core::path_policy::register_private_dir(&tool_output_root);
+                std::thread::spawn(move || {
+                    let deleted = tool_outputs::sweep(
+                        &tool_output_root,
+                        tool_outputs::TOOL_OUTPUT_TTL,
+                        std::time::SystemTime::now(),
+                    );
+                    if deleted > 0 {
+                        tracing::info!("🧹 [tool_outputs] Swept {deleted} expired file(s)");
+                    }
+                });
             }
 
             let db_path = app_data_dir.join("data.db");
