@@ -61,6 +61,8 @@
   "unsupportedFilesCount": "{{count}} 个不支持的文件",
   "includingFiles": "包括：{{files}}{{more}}",
   "unsupportedFileHint": "如需使用，请先转换为支持的格式，或将其放入对话的工作目录，再让助手用工具查看。",
+  "pdfScanned": "{{file}} 没有文本层",
+  "pdfScannedHint": "它可能是扫描件。助手可以通过视觉模型查看其页面图像；原始 PDF 会被保留。",
   "fileTooLarge": "{{file}} 过大，无法附加（{{size}}，上限 {{limit}}）",
   "fileTooLargeHint": "请将文件放入对话的工作目录，再让助手用工具读取需要的部分。",
   "failedToReadFile": "读取失败：{{file}}",

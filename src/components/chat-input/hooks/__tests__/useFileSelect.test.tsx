@@ -101,9 +101,14 @@ describe('useFileSelect', () => {
     expect(attachment.id).toMatch(/^file-\d+-[a-z0-9]+$/)
   })
 
-  it('pdfs are routed to extract_pdf_text_from_path', async () => {
+  it('pdfs carry their text layer and their original bytes', async () => {
+    const text = 'pdf text layer '.repeat(10)
     vi.mocked(open).mockResolvedValue('/docs/report.pdf')
-    vi.mocked(invoke).mockResolvedValue('pdf text layer')
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_path_file_size') return 3
+      if (cmd === 'read_file_as_base64') return BYTES_B64
+      return text
+    })
     const { handleFileSelect } = renderSelect()
 
     await act(async () => handleFileSelect())
@@ -114,9 +119,26 @@ describe('useFileSelect', () => {
     expect(attachments[0]).toMatchObject({
       name: 'report.pdf',
       mimeType: 'application/pdf',
-      content: 'pdf text layer',
-      size: 'pdf text layer'.length,
+      content: text,
+      base64: BYTES_B64,
+      size: 3,
     })
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+
+  it('a pdf without a text layer attaches with a scanned notice', async () => {
+    vi.mocked(open).mockResolvedValue('/docs/scan.pdf')
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_path_file_size') return 3
+      if (cmd === 'read_file_as_base64') return BYTES_B64
+      return ' 1 '
+    })
+    const { handleFileSelect } = renderSelect()
+
+    await act(async () => handleFileSelect())
+
+    expect(attachments).toHaveLength(1)
+    expect(toast.info).toHaveBeenCalledWith('scan.pdf has no text layer', expect.anything())
   })
 
   it('ooxml documents are read as base64 with empty string content', async () => {

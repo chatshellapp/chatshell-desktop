@@ -161,13 +161,11 @@ pub(crate) fn parse_file_attachments(files: Option<Vec<FileAttachmentInput>>) ->
             };
             let binary = bytes.is_some();
             let stored_size = bytes.as_ref().map(Vec::len).unwrap_or(file.content.len());
+            // PDFs carry both: the original bytes (persisted, paged by the
+            // read tool) and their extracted text layer (projected).
             user_files.push(FileData {
                 name: file.name.clone(),
-                content: if binary {
-                    String::new()
-                } else {
-                    file.content.clone()
-                },
+                content: file.content.clone(),
                 media_type: file.mime_type.clone(),
                 bytes,
             });
@@ -261,17 +259,18 @@ pub(crate) async fn store_file_attachments(
             continue;
         }
 
-        // Get extension from filename. PDF attachments carry extracted text,
-        // so store them as `.txt`: the read tool must be able to open the
-        // persisted file directly when the model fetches it on demand.
-        let ext = std::path::Path::new(&file.name)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("txt");
-        let ext = if file.media_type.eq_ignore_ascii_case("application/pdf") {
-            "txt"
-        } else {
-            ext
+        // Get extension from filename. A PDF that arrived as text only
+        // (no original bytes) is stored as `.txt` so the read tool opens
+        // it as text; with its bytes it stays a `.pdf` (paged reads, page
+        // images for scans).
+        let pdf = file.media_type.eq_ignore_ascii_case("application/pdf");
+        let ext = match (pdf, file.bytes.is_some()) {
+            (true, true) => "pdf",
+            (true, false) => "txt",
+            _ => std::path::Path::new(&file.name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("txt"),
         };
 
         // Generate storage path using content hash for deduplication
@@ -507,11 +506,13 @@ pub(crate) struct PersistedTurn {
 }
 
 /// How a stored attachment re-enters the projection.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PersistedKind {
     Image,
     /// Raw container bytes (Office documents); the read tool parses them.
     BinaryDocument,
+    /// Original PDF bytes; the text layer is extracted again for projection.
+    Pdf,
     /// Text content (code, markdown, extracted PDF text).
     Text,
 }
@@ -527,6 +528,8 @@ fn persisted_kind(mime_type: &str, storage_path: &str) -> PersistedKind {
         .to_ascii_lowercase();
     if chatshell_agent_core::office::is_office_extension(&ext) {
         PersistedKind::BinaryDocument
+    } else if ext == "pdf" {
+        PersistedKind::Pdf
     } else {
         PersistedKind::Text
     }
@@ -553,7 +556,7 @@ pub(crate) async fn load_persisted_turn(
         let crate::models::UserAttachment::File(file) = attachment;
         let kind = persisted_kind(&file.mime_type, &file.storage_path);
         let loaded = match kind {
-            PersistedKind::Image | PersistedKind::BinaryDocument => {
+            PersistedKind::Image | PersistedKind::BinaryDocument | PersistedKind::Pdf => {
                 std::fs::read(attachments_dir.join(&file.storage_path)).map(Some)
             }
             PersistedKind::Text => {
@@ -593,10 +596,15 @@ pub(crate) async fn load_persisted_turn(
                     storage_path: file.storage_path.clone(),
                 });
             }
-            (PersistedKind::BinaryDocument, Some(bytes)) => {
+            (kind @ (PersistedKind::BinaryDocument | PersistedKind::Pdf), Some(bytes)) => {
+                let content = if kind == PersistedKind::Pdf {
+                    chatshell_agent_core::pdf_text::extract_pdf_text(&bytes).unwrap_or_default()
+                } else {
+                    String::new()
+                };
                 turn.files.push(FileData {
                     name: file.file_name.clone(),
-                    content: String::new(),
+                    content,
                     media_type: file.mime_type.clone(),
                     bytes: Some(bytes),
                 });
@@ -739,10 +747,14 @@ mod tests {
             ),
             PersistedKind::BinaryDocument
         );
-        // PDFs persist their extracted text layer.
+        // Text-only PDFs persist as `.txt`; PDFs with bytes as `.pdf`.
         assert_eq!(
             persisted_kind("application/pdf", "files/a.txt"),
             PersistedKind::Text
+        );
+        assert_eq!(
+            persisted_kind("application/pdf", "files/a.pdf"),
+            PersistedKind::Pdf
         );
         assert_eq!(
             persisted_kind("text/markdown", "files/a.md"),

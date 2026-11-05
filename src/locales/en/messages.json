@@ -61,6 +61,8 @@
   "unsupportedFilesCount": "{{count}} unsupported files",
   "includingFiles": "Including: {{files}}{{more}}",
   "unsupportedFileHint": "To work with it anyway, convert it to a supported format, or put it in the conversation's working directory and ask the assistant to inspect it with its tools.",
+  "pdfScanned": "{{file}} has no text layer",
+  "pdfScannedHint": "It looks scanned. The assistant can look at its page images with a vision model; the original PDF is kept.",
   "fileTooLarge": "{{file}} is too large to attach ({{size}}, limit {{limit}})",
   "fileTooLargeHint": "Put the file in the conversation's working directory and ask the assistant to read the parts it needs with its tools.",
   "failedToReadFile": "Failed to read: {{file}}",

@@ -65,6 +65,16 @@ export function reportRejected(t: TFunction, rejected: RejectedFile[]): void {
   })
 }
 
+/** Mirrors the backend's MIN_TEXT_LAYER_CHARS (message_builder.rs). */
+const MIN_TEXT_LAYER_CHARS = 50
+
+/** Tell the user a PDF has no text layer: the assistant will look at page images. */
+export function notifyIfScanned(t: TFunction, fileName: string, text: string): void {
+  if (text.replace(/\s/g, '').length < MIN_TEXT_LAYER_CHARS) {
+    toast.info(t('pdfScanned', { file: fileName }), { description: t('pdfScannedHint') })
+  }
+}
+
 /** Build an image attachment from raw bytes, fitted to provider limits. */
 export async function imageAttachment(
   name: string,

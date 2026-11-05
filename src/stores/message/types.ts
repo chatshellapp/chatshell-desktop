@@ -206,7 +206,8 @@ export interface MessageStoreCrudActions {
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
-    siblingOfMessageId?: string
+    siblingOfMessageId?: string,
+    reuseAttachmentIds?: string[]
   ) => Promise<void>
   // Non-destructive resend: same as sendMessage but the new user message
   // becomes a sibling variant of `siblingOfMessageId`.
@@ -231,7 +232,8 @@ export interface MessageStoreCrudActions {
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
-    reuseFetchResultIds?: string[]
+    reuseFetchResultIds?: string[],
+    reuseAttachmentIds?: string[]
   ) => Promise<void>
   // Regenerate an assistant reply as a sibling variant of the same user
   // message (backend rewinds the active leaf and re-runs generation).

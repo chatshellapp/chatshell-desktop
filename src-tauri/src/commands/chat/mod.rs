@@ -61,6 +61,9 @@ pub async fn send_message(
     // VARIANT of this message (same parent), instead of appending under
     // the active leaf.
     sibling_of_message_id: Option<String>,
+    // Resend: stored attachments of the original message, re-linked to the
+    // new message and projected from storage (original bytes, no IPC copy).
+    reuse_attachment_ids: Option<Vec<String>>,
 ) -> Result<Message, String> {
     super::ensure_no_generation(&state, &conversation_id).await?;
     check_attachment_payload(images.as_deref(), files.as_deref())?;
@@ -130,6 +133,7 @@ pub async fn send_message(
         disable_tools.unwrap_or(false),
         reuse_fetch_result_ids,
         false,
+        reuse_attachment_ids.unwrap_or_default(),
     );
     Ok(user_message)
 }
@@ -245,6 +249,7 @@ pub async fn regenerate_message(
         disable_tools.unwrap_or(false),
         None,
         true,
+        Vec::new(),
     );
     Ok(())
 }
@@ -440,6 +445,7 @@ fn spawn_background_task(
     disable_tools: bool,
     reuse_fetch_result_ids: Option<Vec<String>>,
     reuse_persisted_turn: bool,
+    reuse_attachment_ids: Vec<String>,
 ) {
     tracing::info!("🔄 [send_message] Spawning background task...");
 
@@ -471,6 +477,7 @@ fn spawn_background_task(
             disable_tools,
             reuse_fetch_result_ids,
             reuse_persisted_turn,
+            reuse_attachment_ids,
         )
         .await;
     });
@@ -543,6 +550,7 @@ async fn process_llm_request(
     disable_tools: bool,
     reuse_fetch_result_ids: Option<Vec<String>>,
     reuse_persisted_turn: bool,
+    reuse_attachment_ids: Vec<String>,
 ) {
     tracing::info!("🎯 [background_task] Started processing LLM request");
 
@@ -629,9 +637,52 @@ async fn process_llm_request(
         processed_content.push_str(serp_context);
     }
 
-    // Steps 4-5: parse and store fresh attachments, or (regenerate) load
-    // the stored turn's attachments so the retry sends the same content.
-    let (user_images, user_files, stored_files, stored_images) = if reuse_persisted_turn {
+    // Resend: re-link the original message's stored attachments; the
+    // whole turn is then projected from storage below.
+    for (order, attachment_id) in reuse_attachment_ids.iter().enumerate() {
+        match state
+            .db
+            .link_message_attachment(&user_message_id, attachment_id, Some(order as i32))
+            .await
+        {
+            Ok(()) => {
+                let _ = app.emit(
+                    "attachment-update",
+                    serde_json::json!({
+                        "message_id": user_message_id,
+                        "conversation_id": conversation_id,
+                        "attachment_id": attachment_id,
+                    }),
+                );
+            }
+            Err(e) => tracing::error!("Failed to re-link attachment {}: {}", attachment_id, e),
+        }
+    }
+    let project_from_storage = reuse_persisted_turn || !reuse_attachment_ids.is_empty();
+
+    // Steps 4-5: parse and store fresh attachments, or (regenerate, resend)
+    // load the stored turn's attachments so the model sees the same content.
+    let (user_images, user_files, stored_files, stored_images) = if project_from_storage {
+        // Fresh attachments sent alongside reused ones are stored first, so
+        // the storage load below includes them.
+        let fresh_images = attachment_processing::parse_image_attachments(images);
+        let fresh_files = attachment_processing::parse_file_attachments(files);
+        attachment_processing::store_file_attachments(
+            &state,
+            &app,
+            &fresh_files,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        attachment_processing::store_image_attachments(
+            &state,
+            &app,
+            &fresh_images,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
         let turn = match crate::storage::get_attachments_dir(&app) {
             Ok(dir) => {
                 attachment_processing::load_persisted_turn(&state.db, &dir, &user_message_id).await

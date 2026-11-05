@@ -58,7 +58,34 @@ struct ManifestAttachment {
     storage_path: String,
     /// A copy bash can open (data files, when bash is enabled).
     bash_path: Option<String>,
+    /// How to read it, when the generic note is not enough (scanned PDFs).
+    note: Option<String>,
 }
+
+/// A text layer with fewer non-whitespace characters than this is treated
+/// as absent: scanned PDFs often carry a page number or stray glyphs.
+pub(crate) const MIN_TEXT_LAYER_CHARS: usize = 50;
+
+pub(crate) fn has_text_layer(text: &str) -> bool {
+    text.chars()
+        .filter(|c| !c.is_whitespace())
+        .take(MIN_TEXT_LAYER_CHARS)
+        .count()
+        >= MIN_TEXT_LAYER_CHARS
+}
+
+/// Binary attachments without usable text (Office containers, scanned
+/// PDFs): only the read tool can open them.
+fn is_opaque_binary(file: &llm::FileData) -> bool {
+    file.bytes.is_some() && !has_text_layer(&file.content)
+}
+
+fn is_pdf(file: &llm::FileData) -> bool {
+    file.media_type.eq_ignore_ascii_case("application/pdf")
+}
+
+const SCANNED_PDF_NOTE: &str =
+    "no text layer (scanned): read it with pages (e.g. pages=\"1-3\") to see the page images";
 
 /// Tabular data files: computed over (bash, scripts), not read into
 /// context. Never inlined beyond [`DATA_FILE_INLINE_TOKENS`].
@@ -161,6 +188,9 @@ fn render_attachment_manifest(entries: &[ManifestAttachment]) -> String {
             entry.size,
             xml_attr(&entry.path),
         ));
+        if let Some(note) = &entry.note {
+            out.push_str(&format!(" note=\"{}\"", xml_attr(note)));
+        }
         if let Some(bash_path) = &entry.bash_path {
             out.push_str(&format!(" bash_path=\"{}\"", xml_attr(bash_path)));
         }
@@ -238,9 +268,10 @@ fn attachment_projection_plan(files: &[llm::FileData], read_available: bool) -> 
     let mut plan = Vec::with_capacity(files.len());
     let mut inline_tokens = 0usize;
     for file in files {
-        // Binary documents have no text representation to inline; the model
-        // must open the persisted file with the read tool.
-        if file.bytes.is_some() {
+        // Binary documents without a text layer have nothing to inline; the
+        // model must open the persisted file with the read tool. PDFs with a
+        // text layer project their text like any text file.
+        if is_opaque_binary(file) {
             plan.push(Projection::Manifest);
             continue;
         }
@@ -335,7 +366,7 @@ fn project_file_attachments(
                     });
                     None
                 }
-                _ if binary.is_some() => None,
+                _ if is_opaque_binary(file) => None,
                 _ if is_data_file(&file.name) => Some(data_file_preview(&file.content)),
                 _ => Some(pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
             };
@@ -350,13 +381,15 @@ fn project_file_attachments(
                     .map(|stored| stored.storage_path.clone())
                     .unwrap_or_default(),
                 bash_path: None,
+                note: (is_pdf(file) && is_opaque_binary(file))
+                    .then(|| SCANNED_PDF_NOTE.to_string()),
             });
             continue;
         }
 
         // A binary document the model cannot open would otherwise vanish
         // from the prompt; say so instead of silently dropping it.
-        if file.bytes.is_some() {
+        if is_opaque_binary(file) {
             inline.push(llm::FileData {
                 name: file.name.clone(),
                 content: format!(
@@ -398,6 +431,7 @@ fn history_attachment_manifest(
                     preview: None,
                     storage_path: file.storage_path.clone(),
                     bash_path: None,
+                    note: None,
                 })
             }
         })
@@ -1237,6 +1271,47 @@ mod tests {
         assert!(rendered.contains("bash_path="), "{rendered}");
     }
 
+    fn pdf_file(text: &str) -> llm::FileData {
+        llm::FileData {
+            name: "report.pdf".to_string(),
+            content: text.to_string(),
+            media_type: "application/pdf".to_string(),
+            bytes: Some(b"%PDF-1.7 ...".to_vec()),
+        }
+    }
+
+    #[test]
+    fn pdfs_with_a_text_layer_project_their_text() {
+        let files = vec![pdf_file(&"Quarterly revenue grew. ".repeat(20))];
+        assert_eq!(
+            attachment_projection_plan(&files, true),
+            vec![Projection::Inline]
+        );
+    }
+
+    #[test]
+    fn scanned_pdfs_get_a_manifest_note_about_page_images() {
+        // A page number is not a text layer.
+        let files = vec![pdf_file("  1  ")];
+        assert!(!has_text_layer(&files[0].content));
+        assert_eq!(
+            attachment_projection_plan(&files, true),
+            vec![Projection::Manifest]
+        );
+        let stored = vec![Some(StoredFile {
+            storage_path: "files/scan.pdf".to_string(),
+        })];
+        let (inline, manifest) =
+            project_file_attachments(&crate::storage::attachment_reference, &files, &stored, true);
+        assert!(inline.is_empty());
+        let rendered = render_attachment_manifest(&manifest);
+        assert!(
+            rendered.contains("note=\"no text layer (scanned)"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("attachment://scan.pdf"), "{rendered}");
+    }
+
     #[test]
     fn manifest_escapes_xml_attributes() {
         let entries = vec![ManifestAttachment {
@@ -1247,6 +1322,7 @@ mod tests {
             preview: Some("x < y & z".to_string()),
             storage_path: String::new(),
             bash_path: None,
+            note: None,
         }];
 
         let manifest = render_attachment_manifest(&entries);

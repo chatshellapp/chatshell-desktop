@@ -10,7 +10,7 @@ import {
   isBinaryDocument,
 } from '../types'
 import { isPdfFile } from '../pdf-text'
-import { checkSize, reportRejected, type RejectedFile } from '../attachment-ingest'
+import { checkSize, notifyIfScanned, reportRejected, type RejectedFile } from '../attachment-ingest'
 import { logger } from '@/lib/logger'
 
 export interface UseFileSelectReturn {
@@ -62,17 +62,21 @@ export function useFileSelect(
           // OOXML documents are ZIP containers: read them as base64 so the
           // read tool can parse the persisted file.
           const binary = isBinaryDocument(fileName)
+          const pdf = isPdfFile(fileName, mimeType)
           const content = binary
             ? ''
             : await invoke<string>(
-                isPdfFile(fileName, mimeType)
-                  ? 'extract_pdf_text_from_path'
-                  : 'read_text_file_from_path',
-                { path: filePath }
+                pdf ? 'extract_pdf_text_from_path' : 'read_text_file_from_path',
+                {
+                  path: filePath,
+                }
               )
-          const base64 = binary
-            ? await invoke<string>('read_file_as_base64', { path: filePath })
-            : undefined
+          // PDFs keep their original bytes next to the text layer.
+          const base64 =
+            binary || pdf
+              ? await invoke<string>('read_file_as_base64', { path: filePath })
+              : undefined
+          if (pdf) notifyIfScanned(t, fileName, content)
           logger.info('[handleFileSelect] File read, length:', content.length)
 
           const newAttachment: Attachment = {
@@ -82,7 +86,7 @@ export function useFileSelect(
             content,
             base64,
             mimeType,
-            size: binary ? Math.floor((base64!.length * 3) / 4) : content.length,
+            size: base64 ? Math.floor((base64.length * 3) / 4) : content.length,
           }
           logger.info('[handleFileSelect] Created attachment', {
             name: newAttachment.name,

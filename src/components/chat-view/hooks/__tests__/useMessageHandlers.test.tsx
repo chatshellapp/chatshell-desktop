@@ -335,8 +335,9 @@ describe('useMessageHandlers', () => {
       await waitFor(() => expect(resendMessage).toHaveBeenCalledTimes(1))
 
       expect(invoke).toHaveBeenCalledWith('get_message_resources', { messageId: 'msg-user-1' })
-      expect(invoke).toHaveBeenCalledWith('read_image_base64', { storagePath: '/store/pic.png' })
-      expect(invoke).toHaveBeenCalledWith('read_file_content', { storagePath: '/store/notes.txt' })
+      // Stored attachments are re-linked by id, not re-read and re-sent.
+      expect(invoke).not.toHaveBeenCalledWith('read_image_base64', expect.anything())
+      expect(invoke).not.toHaveBeenCalledWith('read_file_content', expect.anything())
       // Non-destructive: the original branch stays; no tail deletion.
       expect(deleteMessagesFrom).not.toHaveBeenCalled()
 
@@ -349,10 +350,11 @@ describe('useMessageHandlers', () => {
       expect(args[5]).toBe('sk-test')
       expect(args[6]).toBe('https://api.example.com')
       expect(args[7]).toBe('responses')
-      expect(args[14]).toEqual([{ name: 'pic.png', base64: 'IMG64', mimeType: 'image/png' }])
-      expect(args[15]).toEqual([{ name: 'notes.txt', content: 'TXT', mimeType: 'text/plain' }])
+      expect(args[14]).toBeUndefined()
+      expect(args[15]).toBeUndefined()
       // Only user-provided link contexts are reused, not search results
       expect(args[20]).toEqual(['ctx-user-link'])
+      expect(args[21]).toEqual([imageAttachment.id, textAttachment.id])
       expect(toast.error).not.toHaveBeenCalled()
     })
 

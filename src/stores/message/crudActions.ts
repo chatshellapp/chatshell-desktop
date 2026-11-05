@@ -170,7 +170,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
-    siblingOfMessageId?: string
+    siblingOfMessageId?: string,
+    reuseAttachmentIds?: string[]
   ) => {
     set((draft) => {
       draft.isSending = true
@@ -234,6 +235,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         contextMessageCount,
         useProviderDefaults,
         hasReuseFetchResultIds: !!reuseFetchResultIds?.length,
+        reuseAttachmentCount: reuseAttachmentIds?.length ?? 0,
       })
 
       // This will return the user message immediately
@@ -259,6 +261,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         useProviderDefaults,
         reuseFetchResultIds,
         siblingOfMessageId,
+        reuseAttachmentIds,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
@@ -378,7 +381,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
-    reuseFetchResultIds?: string[]
+    reuseFetchResultIds?: string[],
+    reuseAttachmentIds?: string[]
   ) => {
     await get().sendMessage(
       content,
@@ -401,7 +405,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       contextMessageCount,
       useProviderDefaults,
       reuseFetchResultIds,
-      siblingOfMessageId
+      siblingOfMessageId,
+      reuseAttachmentIds
     )
   },
 

@@ -11,7 +11,13 @@ import {
   readFileAsBase64,
 } from '../types'
 import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
-import { checkSize, imageAttachment, reportRejected, type RejectedFile } from '../attachment-ingest'
+import {
+  checkSize,
+  imageAttachment,
+  notifyIfScanned,
+  reportRejected,
+  type RejectedFile,
+} from '../attachment-ingest'
 
 export interface UsePasteHandlerReturn {
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<void>
@@ -77,12 +83,15 @@ export function usePasteHandler(
           try {
             const mimeType = getMimeType(fileName)
             const binary = isBinaryDocument(fileName)
+            const pdf = isPdfFile(fileName, mimeType)
             const content = binary
               ? ''
-              : isPdfFile(fileName, mimeType)
+              : pdf
                 ? await extractPdfTextFromFile(file)
                 : await file.text()
-            const base64 = binary ? await readFileAsBase64(file) : undefined
+            // PDFs keep their original bytes next to the text layer.
+            const base64 = binary || pdf ? await readFileAsBase64(file) : undefined
+            if (pdf) notifyIfScanned(t, fileName, content)
             const newAttachment: Attachment = {
               id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
               type: 'file',

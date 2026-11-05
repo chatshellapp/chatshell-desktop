@@ -45,6 +45,14 @@ pub async fn read_file_content(
     app: tauri::AppHandle,
     storage_path: String,
 ) -> Result<String, String> {
+    // Stored PDFs keep their original bytes; preview their text layer.
+    if storage_path.to_ascii_lowercase().ends_with(".pdf") {
+        let bytes = crate::storage::read_binary(&app, &storage_path).map_err(|e| e.to_string())?;
+        if bytes.starts_with(b"%PDF-") {
+            return chatshell_agent_core::pdf_text::extract_pdf_text(&bytes)
+                .map_err(|e| format!("Failed to extract PDF text: {}", e));
+        }
+    }
     crate::storage::read_content(&app, &storage_path).map_err(|e| e.to_string())
 }
 
@@ -92,15 +100,11 @@ pub async fn extract_pdf_text_from_base64(base64: String) -> Result<String, Stri
 }
 
 fn extract_pdf_text_bytes(bytes: &[u8]) -> Result<String, String> {
-    let text = chatshell_agent_core::pdf_text::extract_pdf_text(bytes)
-        .map_err(|e| format!("Failed to extract PDF text: {}", e))?;
-    if text.trim().is_empty() {
-        return Err(
-            "No extractable text found in the PDF (it may contain only scanned images)."
-                .to_string(),
-        );
-    }
-    Ok(text)
+    // An empty or near-empty text layer is not an error: the original
+    // PDF travels with the attachment, and the read tool returns the page
+    // images of scanned pages.
+    chatshell_agent_core::pdf_text::extract_pdf_text(bytes)
+        .map_err(|e| format!("Failed to extract PDF text: {}", e))
 }
 
 /// Extract readable text from an OOXML document in attachment storage

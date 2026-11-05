@@ -92,39 +92,19 @@ export function useMessageHandlers({
         }
 
         // Retrieve original attachments so the resend carries the same
-        // images/files/fetched pages as the first send.
+        // images/files/fetched pages as the first send. Stored attachments
+        // are re-linked by id: the backend projects them from storage, so
+        // binary documents and PDFs keep their original bytes.
         const resources = await invoke<MessageResources>('get_message_resources', {
           messageId,
         })
 
-        const imageAttachments = resources.attachments.filter(
-          (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
-        )
-        const fileAttachments = resources.attachments.filter(
-          (a) => a.type === 'file' && !a.mime_type?.startsWith('image/')
-        )
+        const reuseAttachmentIds = resources.attachments
+          .filter((a) => a.type === 'file')
+          .map((a) => a.id)
         const reuseFetchResultIds = resources.contexts
           .filter((c) => c.type === 'fetch_result' && c.source_type === 'user_link')
           .map((c) => c.id)
-
-        const [images, files] = await Promise.all([
-          Promise.all(
-            imageAttachments.map(async (a) => {
-              const base64 = await invoke<string>('read_image_base64', {
-                storagePath: a.storage_path,
-              })
-              return { name: a.file_name, base64, mimeType: a.mime_type }
-            })
-          ),
-          Promise.all(
-            fileAttachments.map(async (a) => {
-              const fileContent = await invoke<string>('read_file_content', {
-                storagePath: a.storage_path,
-              })
-              return { name: a.file_name, content: fileContent, mimeType: a.mime_type }
-            })
-          ),
-        ])
 
         const settings =
           getSettings(currentConversation.id) ?? (await loadSettings(currentConversation.id))
@@ -168,13 +148,14 @@ export function useMessageHandlers({
           selectedAssistant ? undefined : modelToUse.id,
           selectedAssistant?.id,
           undefined,
-          images.length > 0 ? images : undefined,
-          files.length > 0 ? files : undefined,
+          undefined,
+          undefined,
           false,
           parameterOverrides,
           contextMessageCount,
           useProviderDefaults,
-          reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined
+          reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined,
+          reuseAttachmentIds.length > 0 ? reuseAttachmentIds : undefined
         )
         requestSentMessageScroll(
           currentConversation.id,

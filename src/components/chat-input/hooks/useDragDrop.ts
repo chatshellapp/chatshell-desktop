@@ -10,7 +10,13 @@ import {
   readFileAsBase64,
 } from '../types'
 import { extractPdfTextFromFile, isPdfFile } from '../pdf-text'
-import { checkSize, imageAttachment, reportRejected, type RejectedFile } from '../attachment-ingest'
+import {
+  checkSize,
+  imageAttachment,
+  notifyIfScanned,
+  reportRejected,
+  type RejectedFile,
+} from '../attachment-ingest'
 import { logger } from '@/lib/logger'
 
 export interface DragHandlers {
@@ -101,12 +107,11 @@ export function useDragDrop(
         try {
           const mimeType = getMimeType(file.name)
           const binary = isBinaryDocument(file.name)
-          const content = binary
-            ? ''
-            : isPdfFile(file.name, mimeType)
-              ? await extractPdfTextFromFile(file)
-              : await file.text()
-          const base64 = binary ? await readFileAsBase64(file) : undefined
+          const pdf = isPdfFile(file.name, mimeType)
+          const content = binary ? '' : pdf ? await extractPdfTextFromFile(file) : await file.text()
+          // PDFs keep their original bytes next to the text layer.
+          const base64 = binary || pdf ? await readFileAsBase64(file) : undefined
+          if (pdf) notifyIfScanned(t, file.name, content)
           const newAttachment: Attachment = {
             id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             type: 'file',
