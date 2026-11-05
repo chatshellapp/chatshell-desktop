@@ -46,6 +46,82 @@ pub(crate) struct UrlProcessingResult {
     pub attachment_ids: Vec<String>,
 }
 
+/// Rebuild the projected resource of a stored fetch result from disk.
+fn resource_from_fetch_result(
+    app: &tauri::AppHandle,
+    fetch_result: &crate::models::FetchResult,
+) -> Option<FetchedWebResource> {
+    let content = match crate::storage::read_content(app, &fetch_result.storage_path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(
+                "Failed to read fetch_result {} from {}: {}",
+                fetch_result.id,
+                fetch_result.storage_path,
+                e
+            );
+            return None;
+        }
+    };
+
+    let headings: Vec<String> = fetch_result
+        .headings
+        .as_deref()
+        .and_then(|h| serde_json::from_str(h).ok())
+        .unwrap_or_default();
+
+    let mime_type = fetch_result
+        .original_mime
+        .clone()
+        .unwrap_or_else(|| fetch_result.content_type.clone());
+
+    Some(FetchedWebResource {
+        url: fetch_result.url.clone(),
+        title: fetch_result.title.clone(),
+        description: fetch_result.description.clone(),
+        mime_type,
+        content_format: fetch_result.content_type.clone(),
+        content,
+        extraction_error: if fetch_result.status == "failed" {
+            fetch_result.error.clone()
+        } else {
+            None
+        },
+        metadata: WebFetchMetadata {
+            keywords: fetch_result.keywords.clone(),
+            headings,
+            fetched_at: fetch_result.updated_at.clone(),
+            original_length: fetch_result
+                .original_size
+                .and_then(|s| usize::try_from(s).ok()),
+            truncated: false,
+            favicon_url: fetch_result.favicon_url.clone(),
+            tier: None,
+            escalated: false,
+            partial: false,
+        },
+    })
+}
+
+/// Fetched resources already linked to `message_id`, in display order.
+/// Regenerate re-projects these instead of fetching again.
+pub(crate) async fn load_message_fetch_resources(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    message_id: &str,
+) -> Vec<FetchedWebResource> {
+    match state.db.get_fetch_results_by_message(message_id).await {
+        Ok(rows) => rows
+            .iter()
+            .filter_map(|row| resource_from_fetch_result(app, row))
+            .collect(),
+        Err(e) => {
+            tracing::error!("Failed to load fetch results for {}: {}", message_id, e);
+            Vec::new()
+        }
+    }
+}
+
 /// Re-link existing fetch_results to the new user message without re-hitting
 /// the network. Used by the "resend" path so the LLM sees the same content
 /// the user originally attached, even if the URL has since changed or gone
@@ -73,55 +149,8 @@ async fn reuse_fetch_results(
             }
         };
 
-        let content = match crate::storage::read_content(app, &fetch_result.storage_path) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to read reused fetch_result {} from {}: {}",
-                    fetch_result_id,
-                    fetch_result.storage_path,
-                    e
-                );
-                continue;
-            }
-        };
-
-        let headings: Vec<String> = fetch_result
-            .headings
-            .as_deref()
-            .and_then(|h| serde_json::from_str(h).ok())
-            .unwrap_or_default();
-
-        let mime_type = fetch_result
-            .original_mime
-            .clone()
-            .unwrap_or_else(|| fetch_result.content_type.clone());
-
-        let resource = FetchedWebResource {
-            url: fetch_result.url.clone(),
-            title: fetch_result.title.clone(),
-            description: fetch_result.description.clone(),
-            mime_type,
-            content_format: fetch_result.content_type.clone(),
-            content,
-            extraction_error: if fetch_result.status == "failed" {
-                fetch_result.error.clone()
-            } else {
-                None
-            },
-            metadata: WebFetchMetadata {
-                keywords: fetch_result.keywords.clone(),
-                headings,
-                fetched_at: fetch_result.updated_at.clone(),
-                original_length: fetch_result
-                    .original_size
-                    .and_then(|s| usize::try_from(s).ok()),
-                truncated: false,
-                favicon_url: fetch_result.favicon_url.clone(),
-                tier: None,
-                escalated: false,
-                partial: false,
-            },
+        let Some(resource) = resource_from_fetch_result(app, &fetch_result) else {
+            continue;
         };
 
         if let Err(e) = state

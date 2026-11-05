@@ -126,6 +126,7 @@ pub async fn send_message(
         use_provider_defaults.unwrap_or(false),
         disable_tools.unwrap_or(false),
         reuse_fetch_result_ids,
+        false,
     );
     Ok(user_message)
 }
@@ -208,6 +209,7 @@ pub async fn regenerate_message(
         use_provider_defaults.unwrap_or(false),
         disable_tools.unwrap_or(false),
         None,
+        true,
     );
     Ok(())
 }
@@ -402,6 +404,7 @@ fn spawn_background_task(
     use_provider_defaults: bool,
     disable_tools: bool,
     reuse_fetch_result_ids: Option<Vec<String>>,
+    reuse_persisted_turn: bool,
 ) {
     tracing::info!("🔄 [send_message] Spawning background task...");
 
@@ -432,6 +435,7 @@ fn spawn_background_task(
             use_provider_defaults,
             disable_tools,
             reuse_fetch_result_ids,
+            reuse_persisted_turn,
         )
         .await;
     });
@@ -503,6 +507,7 @@ async fn process_llm_request(
     use_provider_defaults: bool,
     disable_tools: bool,
     reuse_fetch_result_ids: Option<Vec<String>>,
+    reuse_persisted_turn: bool,
 ) {
     tracing::info!("🎯 [background_task] Started processing LLM request");
 
@@ -572,36 +577,62 @@ async fn process_llm_request(
     )
     .await;
 
+    // Regenerate answers a stored user turn: its fetched pages are
+    // already linked to the message and are projected again from storage.
+    let mut fetched_resources = url_result.fetched_resources;
+    if reuse_persisted_turn {
+        fetched_resources.extend(
+            url_processing::load_message_fetch_resources(&state, &app, &user_message_id).await,
+        );
+    }
+
     // Step 3: Build LLM content with fetched resources and the SERP block
     let mut processed_content =
-        web_fetch::build_llm_content_with_attachments(&content, &url_result.fetched_resources);
+        web_fetch::build_llm_content_with_attachments(&content, &fetched_resources);
     if let Some(serp_context) = &search_result.serp_context {
         processed_content.push_str("\n\n---\n");
         processed_content.push_str(serp_context);
     }
 
-    // Step 4: Parse attachments
-    let user_images = attachment_processing::parse_image_attachments(images);
-    let user_files = attachment_processing::parse_file_attachments(files);
-
-    // Step 5: Store attachments
-    let stored_files = attachment_processing::store_file_attachments(
-        &state,
-        &app,
-        &user_files,
-        &user_message_id,
-        &conversation_id,
-    )
-    .await;
-
-    let stored_images = attachment_processing::store_image_attachments(
-        &state,
-        &app,
-        &user_images,
-        &user_message_id,
-        &conversation_id,
-    )
-    .await;
+    // Steps 4-5: parse and store fresh attachments, or (regenerate) load
+    // the stored turn's attachments so the retry sends the same content.
+    let (user_images, user_files, stored_files, stored_images) = if reuse_persisted_turn {
+        let turn = match crate::storage::get_attachments_dir(&app) {
+            Ok(dir) => {
+                attachment_processing::load_persisted_turn(&state.db, &dir, &user_message_id).await
+            }
+            Err(e) => {
+                tracing::error!("Attachments directory unavailable: {e}");
+                attachment_processing::PersistedTurn::default()
+            }
+        };
+        (
+            turn.images,
+            turn.files,
+            turn.stored_files,
+            turn.stored_images,
+        )
+    } else {
+        let user_images = attachment_processing::parse_image_attachments(images);
+        let user_files = attachment_processing::parse_file_attachments(files);
+        let stored_files = attachment_processing::store_file_attachments(
+            &state,
+            &app,
+            &user_files,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        let stored_images = attachment_processing::store_image_attachments(
+            &state,
+            &app,
+            &user_images,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        (user_images, user_files, stored_files, stored_images)
+    };
 
     // Large attachments are projected as a path manifest only when the
     // conversation can actually fetch them back with the read tool.

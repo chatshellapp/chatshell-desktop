@@ -445,6 +445,130 @@ pub(crate) async fn store_image_attachments(
     stored
 }
 
+/// A user turn's attachments rebuilt from storage, shaped exactly like a
+/// fresh send after parse + store. Regenerate projects these so a retried
+/// turn sends the same images and files the user originally attached.
+#[derive(Default)]
+pub(crate) struct PersistedTurn {
+    pub images: Vec<ParsedImage>,
+    pub stored_images: Vec<StoredImage>,
+    pub files: Vec<FileData>,
+    pub stored_files: Vec<Option<StoredFile>>,
+}
+
+/// How a stored attachment re-enters the projection.
+#[derive(Debug, PartialEq, Eq)]
+enum PersistedKind {
+    Image,
+    /// Raw container bytes (Office documents); the read tool parses them.
+    BinaryDocument,
+    /// Text content (code, markdown, extracted PDF text).
+    Text,
+}
+
+fn persisted_kind(mime_type: &str, storage_path: &str) -> PersistedKind {
+    if mime_type.to_ascii_lowercase().starts_with("image/") {
+        return PersistedKind::Image;
+    }
+    let ext = std::path::Path::new(storage_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if chatshell_agent_core::office::is_office_extension(&ext) {
+        PersistedKind::BinaryDocument
+    } else {
+        PersistedKind::Text
+    }
+}
+
+/// Load the attachments linked to `message_id` from storage. Files whose
+/// bytes are missing locally (not yet fetched by sync) are skipped with a
+/// warning; the history manifest still lists them.
+pub(crate) async fn load_persisted_turn(
+    db: &crate::db::Database,
+    attachments_dir: &std::path::Path,
+    message_id: &str,
+) -> PersistedTurn {
+    let attachments = match db.get_message_attachments(message_id).await {
+        Ok(attachments) => attachments,
+        Err(e) => {
+            tracing::error!("Failed to load attachments of {}: {}", message_id, e);
+            return PersistedTurn::default();
+        }
+    };
+
+    let mut turn = PersistedTurn::default();
+    for attachment in attachments {
+        let crate::models::UserAttachment::File(file) = attachment;
+        let kind = persisted_kind(&file.mime_type, &file.storage_path);
+        let loaded = match kind {
+            PersistedKind::Image | PersistedKind::BinaryDocument => {
+                std::fs::read(attachments_dir.join(&file.storage_path)).map(Some)
+            }
+            PersistedKind::Text => {
+                std::fs::read_to_string(attachments_dir.join(&file.storage_path)).map(|text| {
+                    turn.files.push(FileData {
+                        name: file.file_name.clone(),
+                        content: text,
+                        media_type: file.mime_type.clone(),
+                        bytes: None,
+                    });
+                    None
+                })
+            }
+        };
+        let bytes = match loaded {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(
+                    "📎 [attachment] {} is not available locally ({}); regenerating without it",
+                    file.file_name,
+                    e
+                );
+                continue;
+            }
+        };
+        match (kind, bytes) {
+            (PersistedKind::Image, Some(bytes)) => {
+                use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+                turn.images.push(ParsedImage {
+                    name: file.file_name.clone(),
+                    data: ImageData {
+                        base64: BASE64.encode(&bytes),
+                        media_type: file.mime_type.clone(),
+                    },
+                });
+                turn.stored_images.push(StoredImage {
+                    name: file.file_name.clone(),
+                    storage_path: file.storage_path.clone(),
+                });
+            }
+            (PersistedKind::BinaryDocument, Some(bytes)) => {
+                turn.files.push(FileData {
+                    name: file.file_name.clone(),
+                    content: String::new(),
+                    media_type: file.mime_type.clone(),
+                    bytes: Some(bytes),
+                });
+                turn.stored_files.push(Some(StoredFile {
+                    storage_path: file.storage_path.clone(),
+                }));
+            }
+            _ => turn.stored_files.push(Some(StoredFile {
+                storage_path: file.storage_path.clone(),
+            })),
+        }
+    }
+    tracing::info!(
+        "📎 [attachment] Reusing {} image(s) and {} file(s) from storage for {}",
+        turn.images.len(),
+        turn.files.len(),
+        message_id
+    );
+    turn
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,6 +591,106 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0].content.is_empty());
         assert_eq!(files[0].bytes.as_deref(), Some(&[0u8, 1, 2][..]));
+    }
+
+    #[tokio::test]
+    async fn persisted_turn_rebuilds_images_and_files_from_storage() {
+        use crate::models::CreateMessageRequest;
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::new(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO conversations (id, title, created_at, updated_at)
+             VALUES ('conv', 'test', ?, ?)",
+        )
+        .bind(&now)
+        .bind(&now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+        let message = db
+            .create_message(CreateMessageRequest {
+                conversation_id: Some("conv".to_string()),
+                parent_id: None,
+                sender_type: "user".to_string(),
+                sender_id: None,
+                content: "look".to_string(),
+                tokens: None,
+            })
+            .await
+            .unwrap();
+
+        let attachments = dir.path().join("attachments");
+        std::fs::create_dir_all(attachments.join("files")).unwrap();
+        std::fs::write(attachments.join("files/img.png"), [1u8, 2, 3]).unwrap();
+        std::fs::write(attachments.join("files/doc.docx"), [9u8, 9]).unwrap();
+        std::fs::write(attachments.join("files/notes.md"), "# notes").unwrap();
+        let rows = [
+            ("photo.png", "image/png", "files/img.png"),
+            (
+                "report.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "files/doc.docx",
+            ),
+            ("notes.md", "text/markdown", "files/notes.md"),
+            ("gone.md", "text/markdown", "files/missing.md"),
+        ];
+        for (order, (name, mime, path)) in rows.iter().enumerate() {
+            let file = db
+                .create_file_attachment(CreateFileAttachmentRequest {
+                    file_name: name.to_string(),
+                    file_size: 1,
+                    mime_type: mime.to_string(),
+                    storage_path: path.to_string(),
+                    content_hash: format!("h{order}"),
+                })
+                .await
+                .unwrap();
+            db.link_message_attachment(&message.id, &file.id, Some(order as i32))
+                .await
+                .unwrap();
+        }
+
+        let turn = load_persisted_turn(&db, &attachments, &message.id).await;
+
+        assert_eq!(turn.images.len(), 1);
+        assert_eq!(turn.images[0].data.base64, "AQID");
+        assert_eq!(turn.stored_images[0].storage_path, "files/img.png");
+        // Missing blobs are skipped; files and stored_files stay aligned.
+        assert_eq!(turn.files.len(), 2);
+        assert_eq!(turn.stored_files.len(), 2);
+        assert_eq!(turn.files[0].bytes.as_deref(), Some(&[9u8, 9][..]));
+        assert_eq!(turn.files[1].content, "# notes");
+        assert_eq!(
+            turn.stored_files[1].as_ref().unwrap().storage_path,
+            "files/notes.md"
+        );
+    }
+
+    #[test]
+    fn persisted_attachments_reenter_by_kind() {
+        assert_eq!(
+            persisted_kind("image/png", "files/a.png"),
+            PersistedKind::Image
+        );
+        assert_eq!(
+            persisted_kind(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "files/a.docx"
+            ),
+            PersistedKind::BinaryDocument
+        );
+        // PDFs persist their extracted text layer.
+        assert_eq!(
+            persisted_kind("application/pdf", "files/a.txt"),
+            PersistedKind::Text
+        );
+        assert_eq!(
+            persisted_kind("text/markdown", "files/a.md"),
+            PersistedKind::Text
+        );
     }
 
     #[test]
