@@ -57,7 +57,7 @@
   "couldNotFindMessage": "Could not find message element",
   "assistantConfigNotFound": "Error: Model configuration not found for assistant",
   "unsupportedFileFormat": "Unsupported file format: {{file}}",
-  "supportedFormats": "Supported: documents (.md, .txt, .json, .js, .ts, .pdf, .docx, .xlsx, .pptx, etc.) and images (.png, .jpg, .gif, .webp)",
+  "supportedFormats": "Supported: documents (.md, .txt, .json, .csv, .js, .ts, .pdf, .docx, .xlsx, .pptx, etc.) and images (.png, .jpg, .gif, .webp)",
   "unsupportedFilesCount": "{{count}} unsupported files",
   "includingFiles": "Including: {{files}}{{more}}",
   "unsupportedFileHint": "To work with it anyway, convert it to a supported format, or put it in the conversation's working directory and ask the assistant to inspect it with its tools.",

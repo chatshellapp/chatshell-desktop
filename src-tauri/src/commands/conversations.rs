@@ -77,6 +77,13 @@ pub async fn delete_conversation(
     if let Some(root) = crate::tool_outputs::root(&app) {
         crate::tool_outputs::remove_conversation(&root, &id);
     }
+    // Bash scratch (TMPDIR, data-file copies) dies with the conversation.
+    let scratch = crate::storage::conversation_scratch_dir(&app, &id);
+    if scratch.exists()
+        && let Err(e) = std::fs::remove_dir_all(&scratch)
+    {
+        tracing::warn!("🧹 Could not remove scratch {}: {e}", scratch.display());
+    }
     Ok(())
 }
 

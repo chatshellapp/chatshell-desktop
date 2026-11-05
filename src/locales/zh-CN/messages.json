@@ -57,7 +57,7 @@
   "couldNotFindMessage": "无法找到消息元素",
   "assistantConfigNotFound": "错误：未找到助手的模型配置",
   "unsupportedFileFormat": "不支持的文件格式：{{file}}",
-  "supportedFormats": "支持：文档（.md, .txt, .json, .js, .ts, .pdf, .docx, .xlsx, .pptx 等）和图片（.png, .jpg, .gif, .webp）",
+  "supportedFormats": "支持：文档（.md, .txt, .json, .csv, .js, .ts, .pdf, .docx, .xlsx, .pptx 等）和图片（.png, .jpg, .gif, .webp）",
   "unsupportedFilesCount": "{{count}} 个不支持的文件",
   "includingFiles": "包括：{{files}}{{more}}",
   "unsupportedFileHint": "如需使用，请先转换为支持的格式，或将其放入对话的工作目录，再让助手用工具查看。",

@@ -54,6 +54,87 @@ struct ManifestAttachment {
     size: usize,
     path: String,
     preview: Option<String>,
+    /// Attachments-relative storage path (not rendered).
+    storage_path: String,
+    /// A copy bash can open (data files, when bash is enabled).
+    bash_path: Option<String>,
+}
+
+/// Tabular data files: computed over (bash, scripts), not read into
+/// context. Never inlined beyond [`DATA_FILE_INLINE_TOKENS`].
+const DATA_FILE_EXTENSIONS: &[&str] = &["csv", "tsv"];
+/// Data files up to this size inline whole; larger ones are manifest only.
+const DATA_FILE_INLINE_TOKENS: usize = 1_000;
+/// Lines of a data file shown in its manifest preview (header + rows).
+const DATA_FILE_PREVIEW_LINES: usize = 8;
+
+pub(crate) fn is_data_file(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| DATA_FILE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+}
+
+/// Header plus the first rows, one per line (rows stay readable).
+fn data_file_preview(content: &str) -> String {
+    let limit = ATTACHMENT_PREVIEW_CHARS * 2;
+    let mut out = String::new();
+    for line in content.lines().take(DATA_FILE_PREVIEW_LINES) {
+        if out.chars().count() + line.chars().count() > limit {
+            break;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+/// Where data-file attachments are copied so bash can compute over them:
+/// the attachments store itself is a private read root.
+pub(crate) struct BashCopies<'a> {
+    pub attachments_dir: &'a std::path::Path,
+    pub target_dir: &'a std::path::Path,
+}
+
+impl BashCopies<'_> {
+    /// Copy `storage_path` (named `name`) into the target directory, once.
+    fn copy(&self, storage_path: &str, name: &str) -> Option<String> {
+        let source = self.attachments_dir.join(storage_path);
+        let stem = std::path::Path::new(storage_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
+        let prefix: String = stem.chars().take(8).collect();
+        let safe_name: String = name
+            .chars()
+            .map(|c| {
+                if c == '/' || c == '\\' || c.is_control() {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let target = self.target_dir.join(format!("{prefix}-{safe_name}"));
+        let current = std::fs::metadata(&target).ok().map(|m| m.len());
+        let wanted = std::fs::metadata(&source).ok()?.len();
+        if current != Some(wanted) {
+            std::fs::create_dir_all(self.target_dir).ok()?;
+            if let Err(e) = std::fs::copy(&source, &target) {
+                tracing::warn!("📎 [attachment] Could not copy {} for bash: {}", name, e);
+                return None;
+            }
+        }
+        Some(target.to_string_lossy().into_owned())
+    }
+
+    fn apply(&self, entries: &mut [ManifestAttachment]) {
+        for entry in entries.iter_mut().filter(|e| is_data_file(&e.name)) {
+            entry.bash_path = self.copy(&entry.storage_path, &entry.name);
+        }
+    }
 }
 
 pub(crate) fn xml_attr(value: &str) -> String {
@@ -70,7 +151,7 @@ fn render_attachment_manifest(entries: &[ManifestAttachment]) -> String {
     }
 
     let mut out = String::from(
-        "<attachments note=\"Attachments are stored by the app. Pass an attachment's path (attachment://...) to the read tool to inspect it (offset/limit for text; pages for PDF; question for images). Other tools such as bash cannot open these paths.\">\n",
+        "<attachments note=\"Attachments are stored by the app. Pass an attachment's path (attachment://...) to the read tool to inspect it (offset/limit for text; pages for PDF; question for images). Other tools such as bash cannot open these paths; where an attachment has a bash_path, that copy can be processed with bash (for example python or awk for data files).\">\n",
     );
     for entry in entries {
         out.push_str(&format!(
@@ -80,6 +161,9 @@ fn render_attachment_manifest(entries: &[ManifestAttachment]) -> String {
             entry.size,
             xml_attr(&entry.path),
         ));
+        if let Some(bash_path) = &entry.bash_path {
+            out.push_str(&format!(" bash_path=\"{}\"", xml_attr(bash_path)));
+        }
         if let Some(preview) = &entry.preview {
             out.push_str(&format!(" preview=\"{}\"", xml_attr(preview)));
         }
@@ -161,6 +245,11 @@ fn attachment_projection_plan(files: &[llm::FileData], read_available: bool) -> 
             continue;
         }
         let tokens = estimate_attachment_tokens(&file.content);
+        if is_data_file(&file.name) && tokens > DATA_FILE_INLINE_TOKENS {
+            // Don't read into context what code should compute over.
+            plan.push(Projection::Manifest);
+            continue;
+        }
         let fits = tokens <= INLINE_ATTACHMENT_TOKENS
             && inline_tokens.saturating_add(tokens) <= INLINE_ATTACHMENT_TOTAL_TOKENS;
         if fits {
@@ -246,9 +335,9 @@ fn project_file_attachments(
                     });
                     None
                 }
-                _ => binary
-                    .is_none()
-                    .then(|| pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
+                _ if binary.is_some() => None,
+                _ if is_data_file(&file.name) => Some(data_file_preview(&file.content)),
+                _ => Some(pruning::ellipsize(&file.content, ATTACHMENT_PREVIEW_CHARS)),
             };
             manifest.push(ManifestAttachment {
                 name: file.name.clone(),
@@ -256,6 +345,11 @@ fn project_file_attachments(
                 size: binary.map(Vec::len).unwrap_or_else(|| file.content.len()),
                 path,
                 preview,
+                storage_path: stored_files[index]
+                    .as_ref()
+                    .map(|stored| stored.storage_path.clone())
+                    .unwrap_or_default(),
+                bash_path: None,
             });
             continue;
         }
@@ -288,8 +382,9 @@ fn project_file_attachments(
 fn history_attachment_manifest(
     reference: &dyn Fn(&str) -> Option<String>,
     attachments: &[UserAttachment],
+    bash_copies: Option<&BashCopies<'_>>,
 ) -> Option<String> {
-    let entries: Vec<ManifestAttachment> = attachments
+    let mut entries: Vec<ManifestAttachment> = attachments
         .iter()
         .take(HISTORY_MANIFEST_ATTACHMENTS)
         .filter_map(|attachment| match attachment {
@@ -301,10 +396,15 @@ fn history_attachment_manifest(
                     size: file.file_size.max(0) as usize,
                     path,
                     preview: None,
+                    storage_path: file.storage_path.clone(),
+                    bash_path: None,
                 })
             }
         })
         .collect();
+    if let Some(copies) = bash_copies {
+        copies.apply(&mut entries);
+    }
 
     if entries.is_empty() {
         None
@@ -332,6 +432,7 @@ pub async fn build_chat_messages(
     user_files: &[llm::FileData],
     stored_files: &[Option<StoredFile>],
     read_available: bool,
+    bash_copies: Option<&BashCopies<'_>>,
     context_message_count: Option<i64>,
 ) -> Vec<ChatMessage> {
     let attachment_reference = crate::storage::attachment_reference;
@@ -444,8 +545,11 @@ pub async fn build_chat_messages(
                     if read_available
                         && manifest_message_ids.contains(msg.id.as_str())
                         && let Some(attachments) = attachments_by_message.get(&msg.id)
-                        && let Some(manifest) =
-                            history_attachment_manifest(&attachment_reference, attachments)
+                        && let Some(manifest) = history_attachment_manifest(
+                            &attachment_reference,
+                            attachments,
+                            bash_copies,
+                        )
                     {
                         content.push_str("\n\n");
                         content.push_str(&manifest);
@@ -603,7 +707,7 @@ pub async fn build_chat_messages(
     // Protected window and threshold rules live in chatshell-agent-core.
     apply_tool_output_pruning(&mut chat_messages, &tool_output_records);
 
-    let (llm_files, manifest_entries) = project_file_attachments(
+    let (llm_files, mut manifest_entries) = project_file_attachments(
         &attachment_reference,
         user_files,
         stored_files,
@@ -614,6 +718,9 @@ pub async fn build_chat_messages(
     } else {
         processed_content.to_string()
     };
+    if let Some(copies) = bash_copies {
+        copies.apply(&mut manifest_entries);
+    }
     let manifest = render_attachment_manifest(&manifest_entries);
     if !manifest.is_empty() {
         final_user_content.push_str("\n\n");
@@ -1077,6 +1184,60 @@ mod tests {
     }
 
     #[test]
+    fn data_files_stay_out_of_context_and_get_a_bash_copy() {
+        let csv: String = std::iter::once("id,amount\n".to_string())
+            .chain((0..2_000).map(|i| format!("{i},{}\n", i * 3)))
+            .collect();
+        let files = vec![
+            llm::FileData {
+                name: "sales.csv".to_string(),
+                content: csv.clone(),
+                media_type: "text/csv".to_string(),
+                bytes: None,
+            },
+            llm::FileData {
+                name: "tiny.csv".to_string(),
+                content: "a,b\n1,2\n".to_string(),
+                media_type: "text/csv".to_string(),
+                bytes: None,
+            },
+        ];
+        assert_eq!(
+            attachment_projection_plan(&files, true),
+            vec![Projection::Manifest, Projection::Inline]
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let attachments = dir.path().join("attachments");
+        std::fs::create_dir_all(attachments.join("files")).unwrap();
+        std::fs::write(attachments.join("files/abcdef0123.csv"), &csv).unwrap();
+        let stored = vec![
+            Some(StoredFile {
+                storage_path: "files/abcdef0123.csv".to_string(),
+            }),
+            None,
+        ];
+        let (inline, mut manifest) =
+            project_file_attachments(&crate::storage::attachment_reference, &files, &stored, true);
+        assert_eq!(inline.len(), 1, "only the tiny file inlines");
+        let target = dir.path().join("scratch/attachments");
+        BashCopies {
+            attachments_dir: &attachments,
+            target_dir: &target,
+        }
+        .apply(&mut manifest);
+
+        let bash_path = manifest[0].bash_path.clone().expect("copied for bash");
+        assert!(bash_path.ends_with("abcdef01-sales.csv"), "{bash_path}");
+        assert_eq!(std::fs::read_to_string(&bash_path).unwrap(), csv);
+        let preview = manifest[0].preview.clone().unwrap();
+        assert!(preview.starts_with("id,amount\n0,0"), "{preview}");
+        assert_eq!(preview.lines().count(), 8);
+        let rendered = render_attachment_manifest(&manifest);
+        assert!(rendered.contains("bash_path="), "{rendered}");
+    }
+
+    #[test]
     fn manifest_escapes_xml_attributes() {
         let entries = vec![ManifestAttachment {
             name: "a&b\"<c>.pdf".to_string(),
@@ -1084,6 +1245,8 @@ mod tests {
             size: 10,
             path: "/tmp/a&b\".txt".to_string(),
             preview: Some("x < y & z".to_string()),
+            storage_path: String::new(),
+            bash_path: None,
         }];
 
         let manifest = render_attachment_manifest(&entries);
@@ -1146,7 +1309,8 @@ mod tests {
         })];
         let expected_path = "path=\"attachment://hash.txt\"";
 
-        let manifest = history_attachment_manifest(&resolver, &attachments).expect("manifest");
+        let manifest =
+            history_attachment_manifest(&resolver, &attachments, None).expect("manifest");
 
         assert!(manifest.contains("name=\"report.pdf\""), "{manifest}");
         assert!(manifest.contains(expected_path), "{manifest}");

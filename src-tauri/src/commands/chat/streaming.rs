@@ -572,15 +572,8 @@ pub(crate) async fn handle_agent_streaming(
         config = config.with_bash_env_passthrough(passthrough);
 
         if sandboxed {
-            let scratch_dir = app
-                .path()
-                .app_cache_dir()
-                .map(|dir| dir.join("sandbox-scratch").join(&conversation_id_clone))
-                .unwrap_or_else(|_| {
-                    std::env::temp_dir()
-                        .join("chatshell-sandbox-scratch")
-                        .join(&conversation_id_clone)
-                });
+            let scratch_dir =
+                crate::storage::conversation_scratch_dir(&app, &conversation_id_clone);
             let backend = chatshell_agent_core::sandbox::detect_backend();
             tracing::info!(
                 "🛡️ [agent_streaming] Bash sandbox enabled (backend {:?}, scratch {})",
@@ -3206,6 +3199,7 @@ mod tests {
             &[],
             &[],
             false,
+            None,
             None,
         )
         .await;

@@ -17,7 +17,9 @@ mod url_processing;
 pub mod web_search;
 
 use super::AppState;
-use crate::db::tools::{BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID};
+use crate::db::tools::{
+    BUILTIN_BASH_ID, BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID,
+};
 use crate::models::{CreateMessageRequest, Message};
 use crate::web_fetch;
 use tauri::{Emitter, State};
@@ -671,6 +673,19 @@ async fn process_llm_request(
     // conversation can actually fetch them back with the read tool.
     // (`read_available` is computed with the tool set above.)
 
+    // Data-file attachments get a bash-readable copy when bash is enabled:
+    // the attachments store itself is a private read root.
+    let attachments_dir = crate::storage::get_attachments_dir(&app).ok();
+    let bash_target =
+        crate::storage::conversation_scratch_dir(&app, &conversation_id).join("attachments");
+    let bash_copies = attachments_dir
+        .as_deref()
+        .filter(|_| tool_ids.iter().any(|id| id == BUILTIN_BASH_ID))
+        .map(|attachments_dir| message_builder::BashCopies {
+            attachments_dir,
+            target_dir: &bash_target,
+        });
+
     // Step 6: Build chat messages with context limit
     let chat_messages = message_builder::build_chat_messages(
         &state,
@@ -684,6 +699,7 @@ async fn process_llm_request(
         &user_files,
         &stored_files,
         read_available,
+        bash_copies.as_ref(),
         context_message_count,
     )
     .await;

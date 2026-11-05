@@ -96,6 +96,24 @@ pub fn get_full_path<R: tauri::Runtime>(
     Ok(attachments_dir.join(storage_path))
 }
 
+/// A conversation's bash scratch directory (`<app_cache>/sandbox-scratch/
+/// <conversation_id>`): `TMPDIR` and a writable root inside the sandbox,
+/// and where data-file attachments are copied for bash.
+pub fn conversation_scratch_dir<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    conversation_id: &str,
+) -> PathBuf {
+    app_handle
+        .path()
+        .app_cache_dir()
+        .map(|dir| dir.join("sandbox-scratch").join(conversation_id))
+        .unwrap_or_else(|_| {
+            std::env::temp_dir()
+                .join("chatshell-sandbox-scratch")
+                .join(conversation_id)
+        })
+}
+
 /// Model-facing reference for a stored attachment:
 /// `attachment://<file name>`. The read tool resolves it through the
 /// conversation-scoped resolver (`llm::references`); absolute app-data
