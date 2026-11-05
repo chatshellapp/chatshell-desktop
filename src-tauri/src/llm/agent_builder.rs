@@ -1057,7 +1057,9 @@ pub fn build_tool_result_message(
     output: &str,
 ) -> Message {
     use rig::message::{ToolResultContent, UserContent};
-    let content = vec![ToolResultContent::text(output)];
+    // Replayed image results go back as image blocks, like the live turn.
+    let content = chatshell_agent_core::tool_images::tool_result_content(output)
+        .unwrap_or_else(|| vec![ToolResultContent::text(output)]);
     Message::User {
         content: vec![if let Some(call_id) = call_id {
             UserContent::tool_result_with_call_id(
@@ -1797,6 +1799,21 @@ mod tests {
         };
         assert_eq!(result.provider, None);
         assert_eq!(result.call.as_str(), "tc_3");
+    }
+
+    #[test]
+    fn replayed_image_results_become_image_blocks() {
+        let output = "[Image: PNG, 2x2]\ndata:image/png;base64,iVBORw0KGgo=";
+        let Message::User { content } = build_tool_result_message("tc_5", None, output) else {
+            panic!("expected a user message");
+        };
+        let UserContent::ToolResult(result) = &content[0] else {
+            panic!("expected tool result content");
+        };
+        let blocks: Vec<_> = result.content.iter().collect();
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(blocks[0], ToolResultContent::Text(_)));
+        assert!(matches!(blocks[1], ToolResultContent::Image(_)));
     }
 
     #[test]

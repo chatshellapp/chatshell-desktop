@@ -212,15 +212,10 @@ pub async fn stream_agent(
             })) => {
                 consecutive_errors = 0;
                 trailing_error = None;
-                let tool_output = tool_result
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        rig::message::ToolResultContent::Text(text) => Some(text.text.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                // Image blocks (rewritten from read results) persist as their
+                // data lines, so history replay restores the same blocks.
+                let content: Vec<_> = tool_result.content.iter().cloned().collect();
+                let tool_output = chatshell_agent_core::tool_images::tool_result_text(&content);
 
                 tracing::info!(
                     "📦 [{}] Tool result received (id: {}, {} chars)",

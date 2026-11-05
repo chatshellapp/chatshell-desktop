@@ -17,7 +17,9 @@ use chatshell_agent_core::shell_env::BashEnvStore;
 use chatshell_agent_core::tools::bash_sandbox::{
     EscalationDecision, EscalationKind, EscalationRequest, SandboxEscalator,
 };
-use rig::agent::{AgentHook, HookContext, ToolCall, ToolCallAction};
+use rig::agent::{
+    AgentHook, HookContext, ToolCall, ToolCallAction, ToolResultAction, ToolResultEvent,
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::future::Future;
@@ -629,6 +631,23 @@ impl AgentHook for PermissionHook {
             }
             to_action(outcome)
         }
+    }
+
+    /// Images inside text results (`data:image/...;base64,` lines from the
+    /// read tool) go to the model as image blocks, not as base64 text.
+    fn on_tool_result(
+        &self,
+        _ctx: &HookContext,
+        event: ToolResultEvent<'_>,
+    ) -> impl Future<Output = ToolResultAction> + Send {
+        let action = event
+            .presentation
+            .as_text()
+            .and_then(chatshell_agent_core::tool_images::tool_result_content)
+            .and_then(|content| rig::tool::ToolOutput::content(content).ok())
+            .map(ToolResultAction::rewrite_output)
+            .unwrap_or_else(ToolResultAction::keep);
+        async move { action }
     }
 }
 
