@@ -1,12 +1,14 @@
 //! Inline SVG figures: the Tauri surface over `chatshell_agent_core::svg_figure`.
 //!
 //! The frontend hands each ```svg fence body to [`prepare_svg_figure`] and
-//! renders the result as an isolated `<img>`; the system prompt invites
-//! figures only while [`RENDER_SVG_FIGURES_SETTING`] is on.
-//! Design: `internal-docs/features/svg-figures.md`.
+//! renders the result as an isolated `<img>`; the visual-output prompt
+//! offers figures only while [`RENDER_SVG_FIGURES_SETTING`] is on.
+//! Design: `internal-docs/features/svg-figures.md` and
+//! `internal-docs/features/visual-output-formats.md`.
 
 use crate::db::Database;
 use chatshell_agent_core::svg_figure as core;
+use chatshell_agent_core::visual_output::{VisualCapabilities, visual_output_prompt};
 use serde::{Deserialize, Serialize};
 
 /// Settings key: `"false"` turns figures off; anything else (or unset) is on.
@@ -111,9 +113,14 @@ pub(crate) async fn svg_figures_enabled(db: &Database) -> bool {
     )
 }
 
-/// The system-prompt fragment for desktop, which also renders Mermaid.
-pub(crate) fn svg_figure_instructions() -> String {
-    core::svg_figure_prompt(true)
+/// The visual-output fragment for desktop. Mermaid and KaTeX math always
+/// render here; SVG figures follow the user setting.
+pub(crate) fn visual_output_instructions(svg_figures: bool) -> String {
+    visual_output_prompt(&VisualCapabilities {
+        svg: svg_figures,
+        mermaid: true,
+        math: true,
+    })
 }
 
 #[cfg(test)]
@@ -159,7 +166,12 @@ mod tests {
     }
 
     #[test]
-    fn desktop_prompt_mentions_mermaid() {
-        assert!(svg_figure_instructions().contains("```mermaid"));
+    fn desktop_prompt_offers_mermaid_and_math() {
+        for svg in [false, true] {
+            let prompt = visual_output_instructions(svg);
+            assert!(prompt.contains("```mermaid"));
+            assert!(prompt.contains("$$...$$"));
+            assert_eq!(prompt.contains("```svg"), svg);
+        }
     }
 }
