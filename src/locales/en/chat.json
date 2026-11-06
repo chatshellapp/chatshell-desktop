@@ -166,15 +166,19 @@
       "allowNetwork": "Allow network this session"
     },
     "escalateTitle": "Allow full access?",
-    "escalateBody": "Tool calls (file writes, terminal commands, MCP) will run without confirmation and without the sandbox. Only the built-in blocklist of catastrophic commands (such as deleting the whole disk) still applies.",
+    "escalateBody": "Yolo gives the agent full access with no review of individual actions: it can read, write, and delete files anywhere your account can, use the network, and run any terminal command or MCP tool, all without asking and without the sandbox. Only a small built-in blocklist of catastrophic operations still applies.",
     "escalateConfirm": "Allow full access",
     "mode": {
       "ask": "Ask",
       "askHint": "Confirm writes and commands",
       "auto": "Auto",
-      "autoHint": "Runs commands in a sandbox, asks before escaping",
+      "autoHint": "An AI reviewer approves safe actions, no prompts",
       "yolo": "Yolo",
-      "yoloHint": "Run everything without asking or a sandbox"
+      "yoloHint": "Run everything without asking or a sandbox",
+      "autoSandboxHint": "Runs commands in a sandbox, asks before escaping",
+      "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review",
+      "autoUnavailable": "Auto is unavailable for this model: it cannot review actions and this device has no sandbox.",
+      "autoUnavailableReason": "Auto is unavailable for this model: {{reason}}"
     }
   },
   "turn": {
@@ -241,5 +245,28 @@
     "noWorkingDirectory": "Set a working directory for this conversation to mention its files with @.",
     "loading": "Listing files…",
     "noMatches": "No matching files"
+  },
+  "autoReview": {
+    "allowed": "Auto-approved",
+    "allowedWithRisk": "Auto-approved · {{risk}}",
+    "denied": "Auto-blocked",
+    "deniedWithReason": "Auto-blocked: {{reason}}",
+    "failed": "Not run: the review could not finish",
+    "jailDenied": "Blocked by the sandbox",
+    "override": "Ran anyway at your request",
+    "overridden": "you ran it anyway",
+    "runAnyway": "Run anyway",
+    "runAnywayUnsandboxed": "Run outside sandbox",
+    "runAnywayWhenDone": "Available when the reply finishes",
+    "runAnywayMessage": "Run it anyway: {{subject}}",
+    "runAnywayUnsandboxedMessage": "Run it anyway, outside the sandbox: {{subject}}",
+    "runAnywayFailed": "This action can no longer be run from here.",
+    "suggestModeSwitch": "Auto mode has blocked several actions in this conversation. If you trust what the agent is doing, switch to Ask to approve actions yourself.",
+    "risk": {
+      "low": "low risk",
+      "medium": "medium risk",
+      "high": "high risk",
+      "critical": "critical risk"
+    }
   }
 }

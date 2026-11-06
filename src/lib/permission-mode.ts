@@ -1,9 +1,14 @@
-// Permission-mode defaults and sandbox availability, shared by the chat
-// input, the conversation settings store, and Settings.
+// Permission-mode defaults, sandbox availability, and auto-review
+// eligibility, shared by the chat input, the conversation settings store,
+// and Settings.
 //
 // There is no compiled-in permissive default: a conversation without a
 // chosen mode starts in the device's `default_permission_mode` setting,
 // and an unset or unknown setting means `ask` (the strictest mode).
+//
+// `auto` resolves per model, identically on every platform: judged by the
+// auto reviewer when the model is eligible, else sandbox plus prompts
+// where an OS sandbox exists, else `ask`.
 
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -24,13 +29,67 @@ export function defaultPermissionMode(settings: Record<string, string>): Permiss
   return parsePermissionMode(settings[DEFAULT_PERMISSION_MODE_KEY]) ?? FAIL_SAFE_PERMISSION_MODE
 }
 
-/** What the UI shows for `mode`: `auto` without a sandbox runs as `ask`. */
+/** How `auto` resolves for a model (backend `get_auto_review_status`). */
+export interface AutoReviewStatus {
+  resolution: 'judged' | 'sandbox_prompts' | 'ask'
+  /** Why the auto reviewer is not used, when it is not. */
+  reason: string | null
+  /** The judging model (`provider/model`). */
+  judge: string | null
+}
+
+/** What the UI shows for `mode`: `auto` that resolves to `ask` (no
+ * eligible reviewer and no sandbox) shows as `ask`. Unknown status shows
+ * the requested mode. */
 export function displayedPermissionMode(
   mode: PermissionMode,
-  sandboxAvailable: boolean
+  status: AutoReviewStatus | null
 ): PermissionMode {
-  return mode === 'auto' && !sandboxAvailable ? 'ask' : mode
+  return mode === 'auto' && status?.resolution === 'ask' ? 'ask' : mode
 }
+
+/** Ask the backend how `auto` resolves for a model. `recheck` drops the
+ * cached capability result first (a model change). */
+export function loadAutoReviewStatus(
+  modelDbId: string,
+  recheck: boolean
+): Promise<AutoReviewStatus | null> {
+  return invoke<AutoReviewStatus>('get_auto_review_status', { modelDbId, recheck }).catch(
+    (error) => {
+      logger.error('[permission-mode] get_auto_review_status failed:', error)
+      return null
+    }
+  )
+}
+
+/** React hook: auto-review status of the selected model (`null` until
+ * known). A change of model re-checks its capability; the first look at
+ * a model uses the backend's cache. */
+export function useAutoReviewStatus(modelDbId: string | null | undefined): AutoReviewStatus | null {
+  const [status, setStatus] = useState<AutoReviewStatus | null>(null)
+  const [previous, setPrevious] = useState<string | null | undefined>(modelDbId)
+  if (previous !== modelDbId) {
+    setPrevious(modelDbId)
+    setStatus(null)
+  }
+  useEffect(() => {
+    if (!modelDbId) return
+    let active = true
+    const recheck = changedModels.has(modelDbId)
+    changedModels.add(modelDbId)
+    void loadAutoReviewStatus(modelDbId, recheck).then((value) => {
+      if (active) setStatus(value)
+    })
+    return () => {
+      active = false
+    }
+  }, [modelDbId])
+  return status
+}
+
+/** Models already looked at this run: a later selection is a model change
+ * and re-probes. */
+const changedModels = new Set<string>()
 
 /** OS sandbox backend of this machine, as reported by the backend. */
 export interface SandboxStatus {

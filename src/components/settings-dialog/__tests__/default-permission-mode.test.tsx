@@ -31,13 +31,23 @@ describe('DefaultPermissionMode', () => {
     await waitFor(() => expect(screen.getByRole('radio', { name: /^auto/i })).toBeInTheDocument())
   })
 
-  it('hides auto without a sandbox and shows a stored auto as ask', async () => {
+  it('offers auto on every platform and shows a stored auto as auto', async () => {
     mockBackend(false)
     useSettingsStore.setState({ settings: { default_permission_mode: 'auto' } })
     render(<DefaultPermissionMode />)
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('get_sandbox_status'))
-    expect(screen.queryByRole('radio', { name: /^auto/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /^ask/i })).toBeChecked()
+    expect(await screen.findByRole('radio', { name: /^auto/i })).toBeChecked()
+    expect(screen.getByText(/an ai reviewer approves safe actions/i)).toBeInTheDocument()
+  })
+
+  it('names concrete consequences before saving yolo', async () => {
+    mockBackend(true)
+    render(<DefaultPermissionMode />)
+    ;(await screen.findByRole('radio', { name: /^yolo/i })).click()
+    expect(
+      await screen.findByText(/read, write, and delete files anywhere your account can/i)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/use the network/i)).toBeInTheDocument()
+    expect(screen.getByText(/no review of individual actions/i)).toBeInTheDocument()
   })
 
   it('saves auto directly but asks before saving yolo', async () => {

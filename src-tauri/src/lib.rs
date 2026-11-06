@@ -461,6 +461,9 @@ pub fn run() {
             commands::get_bash_environment,
             commands::set_bash_environment,
             commands::get_sandbox_status,
+            commands::get_auto_review_status,
+            commands::auto_review_run_anyway,
+            commands::list_auto_review_markers,
             // Message commands
             commands::create_message,
             commands::list_messages_by_conversation,

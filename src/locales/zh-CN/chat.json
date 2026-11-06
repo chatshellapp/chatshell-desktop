@@ -166,15 +166,19 @@
       "allowNetwork": "本次会话内允许联网"
     },
     "escalateTitle": "允许完全访问?",
-    "escalateBody": "工具调用(写入文件、执行命令、MCP)将不再确认,也不在沙盒中运行。只有内置黑名单中的灾难性命令(例如删除整个磁盘)仍会被拦截。",
+    "escalateBody": "Yolo 会给智能体完全访问权限,且不逐项审核:它可以在你的账户可访问的任何位置读取、写入和删除文件,访问网络,运行任意终端命令或 MCP 工具,全程不询问,也不经过沙盒。只有一小份内置的灾难性操作黑名单仍然生效。",
     "escalateConfirm": "允许完全访问",
     "mode": {
       "ask": "每次确认",
       "askHint": "写入与命令需确认",
       "auto": "沙盒自动",
-      "autoHint": "命令在沙盒中运行,越出沙盒前询问",
+      "autoHint": "由 AI 审核员批准安全操作,无需确认",
       "yolo": "自由执行",
-      "yoloHint": "不再逐项询问,也不使用沙盒"
+      "yoloHint": "不再逐项询问,也不使用沙盒",
+      "autoSandboxHint": "在沙盒中运行命令,越出沙盒前询问",
+      "autoDefaultHint": "由 AI 审核员批准安全操作;模型无法审核时改为询问",
+      "autoUnavailable": "此模型无法使用自动模式:它无法审核操作,且此设备没有沙盒。",
+      "autoUnavailableReason": "此模型无法使用自动模式:{{reason}}"
     }
   },
   "turn": {
@@ -239,5 +243,28 @@
     "noWorkingDirectory": "为此对话设置工作目录后，即可用 @ 引用其中的文件。",
     "loading": "正在列出文件…",
     "noMatches": "没有匹配的文件"
+  },
+  "autoReview": {
+    "allowed": "已自动批准",
+    "allowedWithRisk": "已自动批准 · {{risk}}",
+    "denied": "已自动拦截",
+    "deniedWithReason": "已自动拦截:{{reason}}",
+    "failed": "未运行:审核未能完成",
+    "jailDenied": "被沙盒拦截",
+    "override": "已按你的要求运行",
+    "overridden": "你已选择仍要运行",
+    "runAnyway": "仍要运行",
+    "runAnywayUnsandboxed": "在沙盒外运行",
+    "runAnywayWhenDone": "回复结束后可用",
+    "runAnywayMessage": "仍要运行:{{subject}}",
+    "runAnywayUnsandboxedMessage": "仍要运行,在沙盒外:{{subject}}",
+    "runAnywayFailed": "此操作已无法从这里运行。",
+    "suggestModeSwitch": "自动模式已在此对话中拦截多个操作。如果你信任智能体正在做的事,可切换到\"询问\"模式自行批准操作。",
+    "risk": {
+      "low": "低风险",
+      "medium": "中风险",
+      "high": "高风险",
+      "critical": "严重风险"
+    }
   }
 }

@@ -47,8 +47,9 @@ impl From<PromptMode> for String {
 pub enum PermissionMode {
     /// Prompt before write- and exec-tier tool calls
     Ask,
-    /// Bash runs inside the OS sandbox; prompts only at sandbox escapes,
-    /// out-of-workspace writes, MCP, and classifier signals
+    /// Classifier-judged: zero prompts, every risky call judged by the
+    /// auto-review model (bash jailed where a sandbox exists). Without an
+    /// eligible judge: sandbox plus prompts, or `ask` without a sandbox.
     Auto,
     /// Run tool calls without prompts (blocklist still enforced)
     Yolo,

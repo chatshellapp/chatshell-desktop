@@ -74,6 +74,11 @@ pub async fn delete_conversation(
     // Drop the conversation's session grants so they do not linger in RAM
     // for the rest of the app's lifetime.
     crate::llm::permission::forget_conversation_grants(&state.permission_grants, &id);
+    crate::llm::auto_review::forget_conversation(&id);
+    if let Some(log) = crate::llm::auto_review::decision_log().cloned() {
+        let conversation = id.clone();
+        let _ = tokio::task::spawn_blocking(move || log.forget_conversation(&conversation)).await;
+    }
     if let Some(root) = crate::tool_outputs::root(&app) {
         crate::tool_outputs::remove_conversation(&root, &id);
     }

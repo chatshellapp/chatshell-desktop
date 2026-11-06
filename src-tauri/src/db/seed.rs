@@ -7,6 +7,8 @@ use crate::models::{
 
 impl Database {
     pub async fn seed_default_data(&self) -> Result<()> {
+        // A fresh install is one without the seeded self user yet.
+        let fresh_install = self.get_self_user().await?.is_none();
         // Ensure self user exists
         let _self_user = match self.get_self_user().await? {
             Some(user) => {
@@ -304,6 +306,16 @@ impl Database {
             }
         }
 
+        // Fresh installs start conversations in `auto` (resolved through
+        // the auto-review capability gate at first use). Existing installs
+        // keep their setting; unset, unknown, or unreadable values still
+        // fall back to `ask`.
+        let mode_key = super::conversation_settings::DEFAULT_PERMISSION_MODE_KEY;
+        if fresh_install && self.get_setting(mode_key).await?.is_none() {
+            tracing::info!("🌱 [db] Seeding default permission mode: auto");
+            self.set_setting(mode_key, "auto").await?;
+        }
+
         tracing::info!("🎉 [db] Seeding complete!");
         Ok(())
     }
@@ -322,6 +334,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn existing_installs_keep_their_default_mode_and_corrupt_values_fail_safe() {
+        let (db, _dir) = test_db().await;
+        db.seed_default_data().await.unwrap();
+        // The user picked ask; a later launch (not fresh) never re-seeds.
+        db.set_setting("default_permission_mode", "ask")
+            .await
+            .unwrap();
+        db.seed_default_data().await.unwrap();
+        assert_eq!(
+            db.default_permission_mode().await,
+            crate::models::PermissionMode::Ask
+        );
+        db.set_setting("default_permission_mode", "garbage")
+            .await
+            .unwrap();
+        assert_eq!(
+            db.default_permission_mode().await,
+            crate::models::PermissionMode::FAIL_SAFE
+        );
+        assert_eq!(
+            crate::models::PermissionMode::FAIL_SAFE,
+            crate::models::PermissionMode::Ask
+        );
+    }
+
+    #[tokio::test]
     async fn seed_default_data_is_idempotent() {
         let (db, _dir) = test_db().await;
 
@@ -332,6 +370,12 @@ mod tests {
         assert!(db.list_prompts().await.unwrap().is_empty());
 
         db.seed_default_data().await.unwrap();
+
+        // Fresh install: new conversations default to auto.
+        assert_eq!(
+            db.default_permission_mode().await,
+            crate::models::PermissionMode::Auto
+        );
 
         // Self user: seeded once with the deterministic system id.
         let self_user = db.get_self_user().await.unwrap().unwrap();

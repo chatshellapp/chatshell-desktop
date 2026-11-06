@@ -74,8 +74,12 @@ interface InputToolbarProps {
   // Permission mode (ask / auto / yolo)
   permissionMode: PermissionMode
   onPermissionModeSelect: (mode: PermissionMode) => void
-  /** Offer `auto` (this machine has an OS sandbox). */
+  /** Offer `auto` (an eligible auto reviewer, or an OS sandbox). */
   autoAvailable: boolean
+  /** How `auto` resolves for the selected model (`null` until known). */
+  autoResolution?: 'judged' | 'sandbox_prompts' | 'ask' | null
+  /** Why the auto reviewer is unavailable, shown when `auto` is hidden. */
+  autoUnavailableReason?: string | null
   // Model capability flags
   toolsDisabled?: boolean
   skillsDisabled?: boolean
@@ -129,6 +133,8 @@ export function InputToolbar({
   permissionMode,
   onPermissionModeSelect,
   autoAvailable,
+  autoResolution = null,
+  autoUnavailableReason = null,
   toolsDisabled = false,
   skillsDisabled = false,
   imageAttachDisabled = false,
@@ -345,13 +351,22 @@ export function InputToolbar({
                 <div className="flex flex-col">
                   <span>{t(`permission.mode.${mode}`)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {t(`permission.mode.${mode}Hint`)}
+                    {mode === 'auto' && autoResolution === 'sandbox_prompts'
+                      ? t('permission.mode.autoSandboxHint')
+                      : t(`permission.mode.${mode}Hint`)}
                   </span>
                 </div>
               </div>
               {permissionMode === mode && <Check className="size-4" />}
             </DropdownMenuItem>
           ))}
+          {!autoAvailable && (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px]">
+              {autoUnavailableReason
+                ? t('permission.mode.autoUnavailableReason', { reason: autoUnavailableReason })
+                : t('permission.mode.autoUnavailable')}
+            </div>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

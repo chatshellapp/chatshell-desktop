@@ -2,20 +2,32 @@
 //! through the shared decision layer (`chatshell_agent_core::permission`)
 //! and round-trips prompts to the frontend over Tauri events.
 //!
-//! Flow: `resolve()` returns Allow / Deny / Prompt. Prompt creates a
-//! pending approval in the registry, emits `permission-requested`, and
-//! awaits the user's `resolve_permission` command (or a timeout, or
-//! stream-end cancellation). Denials become `ToolCallAction::Skip`, so
+//! Flow: `resolve()` returns Allow / Deny / Prompt / Classify. Prompt
+//! creates a pending approval in the registry, emits
+//! `permission-requested`, and awaits the user's `resolve_permission`
+//! command (or a timeout, or stream-end cancellation). Classify goes to
+//! the turn's auto-mode judge when one is eligible ([`JudgeSession`]:
+//! zero prompts, a marker per judgment), else it renders as the v2
+//! prompt its source produced. Denials become `ToolCallAction::Skip`, so
 //! the model receives the reason as the tool result and can adapt.
 
+use chatshell_agent_core::judgment::engine::{
+    self as review_engine, JudgeModel, JudgeParams, Review, ReviewFailure, ReviewOutcome,
+};
+use chatshell_agent_core::judgment::log::{DecisionLog, DecisionRecord};
+use chatshell_agent_core::judgment::ruleset::Posture;
+use chatshell_agent_core::judgment::{
+    JudgmentRequest, TranscriptBudget, TranscriptEntry, assemble, delta::execution_delta,
+};
 use chatshell_agent_core::permission::{
     ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, PermissionMode,
-    PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in,
+    PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in, subject_for,
 };
 use chatshell_agent_core::permission_store::PersistentGrantStore;
 use chatshell_agent_core::shell_env::BashEnvStore;
 use chatshell_agent_core::tools::bash_sandbox::{
-    EscalationDecision, EscalationKind, EscalationRequest, SandboxEscalator,
+    EscalationDecision, EscalationKind, EscalationRequest, ExecutionDelta, ExecutionDeltas,
+    SandboxEscalator,
 };
 use rig::agent::{
     AgentHook, HookContext, ToolCall, ToolCallAction, ToolResultAction, ToolResultEvent,
@@ -29,6 +41,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 /// Frontend event: a tool call needs approval.
@@ -36,6 +49,10 @@ pub const PERMISSION_REQUESTED_EVENT: &str = "permission-requested";
 /// Frontend event: a pending approval closed without user action
 /// (timeout or stream end) — the dialog should dismiss.
 pub const PERMISSION_RESOLVED_EVENT: &str = "permission-resolved";
+
+/// Frontend event: an auto-mode judgment (or a sandbox denial in judged
+/// auto) for one tool call — the transcript marker.
+pub const AUTO_REVIEW_EVENT: &str = "auto-review-decided";
 
 /// How long the gate waits for the user before denying. Generous: the
 /// turn keeps running, so an idle dialog must not kill a task.
@@ -86,20 +103,102 @@ pub fn sandbox_enabled_for(mode: PermissionMode) -> bool {
     mode == PermissionMode::Auto
 }
 
-/// Whether this machine has a sandbox backend (`auto` is offered only
-/// where this is true).
+/// Whether this machine has a sandbox backend. `auto` no longer depends
+/// on it when a judge is eligible; without one, it decides between the
+/// v2 sandbox-plus-prompts semantics and `ask`.
 pub fn sandbox_available() -> bool {
     chatshell_agent_core::sandbox::detect_backend().is_some()
 }
 
-/// The mode a turn actually runs in: `auto` without a sandbox backend
-/// degrades to `ask` (a synced `auto` default on a machine without a
-/// sandbox, e.g. Windows), never to unconfined execution.
-pub fn effective_mode(mode: PermissionMode, sandbox_available: bool) -> PermissionMode {
-    if mode == PermissionMode::Auto && !sandbox_available {
-        PermissionMode::Ask
-    } else {
-        mode
+/// The mode a turn runs in for a requested `mode` and the auto-mode
+/// resolution: `auto` stays `auto` when judged or when a sandbox carries
+/// the v2 semantics, and degrades to `ask` otherwise — never to
+/// unconfined execution.
+pub fn effective_mode(
+    mode: PermissionMode,
+    resolution: review_engine::AutoResolution,
+) -> PermissionMode {
+    match (mode, resolution) {
+        (PermissionMode::Auto, review_engine::AutoResolution::Ask) => PermissionMode::Ask,
+        (mode, _) => mode,
+    }
+}
+
+/// One turn's auto-mode judge (classifier `auto`).
+pub struct JudgeSession {
+    model: Arc<dyn JudgeModel>,
+    params: JudgeParams,
+    posture: Mutex<Posture>,
+    /// User texts and tool inputs before this turn's tool calls, ending
+    /// with the in-flight user message (extracted at the source).
+    history: Vec<TranscriptEntry>,
+    budget: TranscriptBudget,
+    log: Option<DecisionLog>,
+    /// Per-execution jail deltas, shared with the bash tool.
+    deltas: ExecutionDeltas,
+    /// Stream-end cancellation.
+    cancel: CancellationToken,
+    /// This turn's tool inputs, in the order the hook saw them.
+    turn_inputs: Mutex<Vec<TranscriptEntry>>,
+    /// Bash command -> tool call id of its latest call (sandbox denials
+    /// arrive with the command only).
+    bash_calls: Mutex<HashMap<String, String>>,
+}
+
+impl JudgeSession {
+    pub fn new(
+        model: Arc<dyn JudgeModel>,
+        params: JudgeParams,
+        posture: Posture,
+        history: Vec<TranscriptEntry>,
+        log: Option<DecisionLog>,
+        deltas: ExecutionDeltas,
+        cancel: CancellationToken,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            model,
+            params,
+            posture: Mutex::new(posture),
+            history,
+            budget: TranscriptBudget::default(),
+            log,
+            deltas,
+            cancel,
+            turn_inputs: Mutex::new(Vec::new()),
+            bash_calls: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// Set the MCP servers the posture names (loaded after the gate).
+    pub fn set_mcp_servers(&self, servers: Vec<String>) {
+        self.posture.lock().unwrap().mcp_servers = servers;
+    }
+
+    fn transcript(&self) -> chatshell_agent_core::judgment::AssembledTranscript {
+        let mut entries = self.history.clone();
+        entries.extend(self.turn_inputs.lock().unwrap().iter().cloned());
+        assemble(&entries, self.budget)
+    }
+
+    fn push_turn_input(&self, tool_name: &str, args: &Value) {
+        self.turn_inputs
+            .lock()
+            .unwrap()
+            .push(TranscriptEntry::ToolInput {
+                tool: tool_name.to_string(),
+                input: args.clone(),
+            });
+    }
+
+    fn record(&self, record: DecisionRecord) {
+        let Some(log) = self.log.clone() else {
+            return;
+        };
+        tokio::task::spawn_blocking(move || {
+            if let Err(err) = log.record(&record) {
+                tracing::warn!("🛡️ [auto_review] Decision log write failed: {err:#}");
+            }
+        });
     }
 }
 
@@ -114,6 +213,8 @@ pub struct GateEnvironment {
     pub network_flag: Option<Arc<AtomicBool>>,
     /// The conversation scratch directory (a jail writable root).
     pub scratch_dir: Option<PathBuf>,
+    /// The auto-mode judge, when `auto` resolved to judged.
+    pub judge: Option<Arc<JudgeSession>>,
 }
 
 /// The device's remembered-grant store, if initialized.
@@ -377,25 +478,276 @@ impl PermissionGate {
     }
 
     /// Gate one tool call; Prompt decisions round-trip through the UI.
+    #[cfg(test)]
     pub async fn check(&self, tool_name: &str, args: &Value) -> CheckOutcome {
-        let decision = resolve_in(
-            self.mode,
-            &self.context(),
-            tool_name,
-            args,
-            &self.grants_snapshot(),
-        );
-        match decision {
-            GateDecision::Allow => CheckOutcome::Allow,
-            GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
-            GateDecision::Classify(request) => {
-                self.v2_prompt(tool_name, args, request.subject, request.forced)
-                    .await
+        self.check_call(None, tool_name, args).await
+    }
+
+    /// Gate one tool call with its id (markers attach to it).
+    pub async fn check_call(
+        &self,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        args: &Value,
+    ) -> CheckOutcome {
+        let judge = self.environment.judge.clone();
+        let command = (tool_name == "bash")
+            .then(|| args.get("command").and_then(Value::as_str))
+            .flatten();
+        if let (Some(judge), Some(command), Some(id)) = (&judge, command, tool_call_id) {
+            judge
+                .bash_calls
+                .lock()
+                .unwrap()
+                .insert(command.to_string(), id.to_string());
+        }
+        let ctx = self.context();
+        let decision = resolve_in(self.mode, &ctx, tool_name, args, &self.grants_snapshot());
+        let outcome = match decision {
+            GateDecision::Allow => {
+                // Run-anyway on a sandbox denial: the command runs once
+                // outside the sandbox.
+                if let (Some(judge), Some(command)) = (&judge, command)
+                    && let Some(action) =
+                        super::auto_review::take_override(&self.conversation_id, tool_name, args)
+                {
+                    if action.unsandboxed {
+                        judge.deltas.authorize(
+                            command,
+                            ExecutionDelta {
+                                unsandboxed: true,
+                                ..ExecutionDelta::default()
+                            },
+                        );
+                    }
+                    self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
+                }
+                CheckOutcome::Allow
             }
+            GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
+            GateDecision::Classify(request) => match &judge {
+                Some(judge) => {
+                    self.judged(judge, &ctx, tool_call_id, tool_name, args, *request)
+                        .await
+                }
+                None => {
+                    self.v2_prompt(tool_name, args, request.subject, request.forced)
+                        .await
+                }
+            },
             GateDecision::Prompt { subject, forced } => {
                 self.prompt(tool_name, args, subject, forced).await
             }
+        };
+        if let Some(judge) = &judge {
+            judge.push_turn_input(tool_name, args);
         }
+        outcome
+    }
+
+    /// Route a judgment request to the auto-mode judge.
+    async fn judged(
+        &self,
+        judge: &JudgeSession,
+        ctx: &GateContext,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        args: &Value,
+        request: JudgmentRequest,
+    ) -> CheckOutcome {
+        let command = args.get("command").and_then(Value::as_str);
+        // Run-anyway: a human override for this exact action executes it
+        // once, with the deltas an allow would have produced. No grant.
+        if let Some(action) =
+            super::auto_review::take_override(&self.conversation_id, tool_name, args)
+        {
+            if let Some(command) = command {
+                let delta = if action.unsandboxed {
+                    Some(ExecutionDelta {
+                        unsandboxed: true,
+                        ..ExecutionDelta::default()
+                    })
+                } else {
+                    execution_delta(&request, args, ctx)
+                };
+                if let Some(delta) = delta {
+                    judge.deltas.authorize(command, delta);
+                }
+            }
+            self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
+            return CheckOutcome::Allow;
+        }
+
+        let transcript = judge.transcript();
+        let posture = judge.posture.lock().unwrap().clone();
+        let started = std::time::Instant::now();
+        let review = match tokio::time::timeout(
+            self.timeout,
+            review_engine::review(
+                judge.model.as_ref(),
+                judge.params,
+                &posture,
+                &transcript,
+                &request,
+                &judge.cancel,
+            ),
+        )
+        .await
+        {
+            Ok(review) => review,
+            // The outer bound on the whole decision (retries included).
+            Err(_elapsed) => Review {
+                outcome: ReviewOutcome::Failed {
+                    failure: ReviewFailure::Unavailable(
+                        "the review did not finish in time".to_string(),
+                    ),
+                },
+                attempts: 2,
+                duration: started.elapsed(),
+                model: judge.model.label(),
+            },
+        };
+
+        let delta = match &review.outcome {
+            ReviewOutcome::Allow { .. } => execution_delta(&request, args, ctx),
+            _ => None,
+        };
+        if let (Some(delta), Some(command)) = (&delta, command) {
+            judge.deltas.authorize(command, delta.clone());
+        }
+        let record = DecisionRecord::from_review(
+            &self.conversation_id,
+            tool_call_id,
+            &request,
+            &review,
+            delta.as_ref().map(ExecutionDelta::describe),
+        );
+        let decision_id = record.id.clone();
+        judge.record(record);
+        let suggest =
+            super::auto_review::denial_counters().record(&self.conversation_id, &review.outcome);
+        tracing::info!(
+            "🛡️ [auto_review] {} {} -> {:?} in {:?} ({} attempt(s))",
+            tool_name,
+            request.subject,
+            review.outcome.verdict().map(|v| v.outcome),
+            review.duration,
+            review.attempts
+        );
+
+        let reason = review.outcome.model_reason();
+        match &review.outcome {
+            ReviewOutcome::Allow { verdict } => {
+                self.emit_marker(
+                    tool_call_id,
+                    tool_name,
+                    args,
+                    "allowed",
+                    Some(&decision_id),
+                    Some((verdict.risk_level, verdict.rationale.as_str())),
+                    false,
+                );
+                CheckOutcome::Allow
+            }
+            ReviewOutcome::Cancelled => CheckOutcome::Deny("Auto-review was cancelled".to_string()),
+            ReviewOutcome::Block { verdict } => {
+                self.remember_denial(&decision_id, tool_name, args, false);
+                self.emit_marker(
+                    tool_call_id,
+                    tool_name,
+                    args,
+                    "denied",
+                    Some(&decision_id),
+                    Some((verdict.risk_level, verdict.rationale.as_str())),
+                    suggest,
+                );
+                CheckOutcome::Deny(reason.unwrap_or_default())
+            }
+            ReviewOutcome::Failed { .. } => {
+                self.remember_denial(&decision_id, tool_name, args, false);
+                self.emit_marker(
+                    tool_call_id,
+                    tool_name,
+                    args,
+                    "failed",
+                    Some(&decision_id),
+                    None,
+                    suggest,
+                );
+                CheckOutcome::Deny(reason.unwrap_or_default())
+            }
+        }
+    }
+
+    fn remember_denial(&self, decision_id: &str, tool_name: &str, args: &Value, unsandboxed: bool) {
+        super::auto_review::remember_denial(
+            decision_id,
+            super::auto_review::PendingAction {
+                conversation_id: self.conversation_id.clone(),
+                tool_name: tool_name.to_string(),
+                args: args.clone(),
+                subject: subject_for(tool_name, args),
+                unsandboxed,
+            },
+        );
+    }
+
+    /// Emit a transcript marker for one tool call.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_marker(
+        &self,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        args: &Value,
+        kind: &str,
+        decision_id: Option<&str>,
+        verdict: Option<(chatshell_agent_core::judgment::verdict::RiskLevel, &str)>,
+        suggest_mode_switch: bool,
+    ) {
+        (self.emitter)(
+            AUTO_REVIEW_EVENT,
+            json!({
+                "conversation_id": self.conversation_id,
+                "tool_call_id": tool_call_id,
+                "decision_id": decision_id,
+                "kind": kind,
+                "tool_name": tool_name,
+                "subject": subject_for(tool_name, args),
+                "risk_level": verdict.map(|(risk, _)| risk),
+                "rationale": verdict.map(|(_, rationale)| rationale),
+                "suggest_mode_switch": suggest_mode_switch,
+            }),
+        );
+    }
+
+    /// Judged auto: a sandbox denial is reported, never asked about.
+    fn report_jail_denial(&self, judge: &JudgeSession, request: &EscalationRequest) {
+        let tool_call_id = judge
+            .bash_calls
+            .lock()
+            .unwrap()
+            .get(&request.command)
+            .cloned();
+        let record = DecisionRecord::jail_denied(
+            &self.conversation_id,
+            tool_call_id.as_deref(),
+            &request.command,
+            &request.detail,
+            &judge.model.label(),
+        );
+        let decision_id = record.id.clone();
+        judge.record(record);
+        let args = json!({ "command": request.command });
+        self.remember_denial(&decision_id, "bash", &args, true);
+        self.emit_marker(
+            tool_call_id.as_deref(),
+            "bash",
+            &args,
+            "jail_denied",
+            Some(&decision_id),
+            None,
+            false,
+        );
     }
 
     /// A judgment request rendered as exactly the v2 prompt its source
@@ -535,6 +887,13 @@ impl PermissionGate {
     /// Timeout, cancellation, and any non-escalation answer resolve to
     /// `Deny` (fail closed).
     pub async fn escalate(&self, request: EscalationRequest) -> EscalationDecision {
+        // Judged auto never shows the FR-18 card: the denial becomes a
+        // tool-result annotation plus a `jail-denied` marker whose
+        // run-anyway retries once outside the sandbox.
+        if let Some(judge) = self.environment.judge.clone() {
+            self.report_jail_denial(&judge, &request);
+            return EscalationDecision::Reported;
+        }
         self.escalation_card(request, true).await
     }
 
@@ -642,9 +1001,12 @@ impl AgentHook for PermissionHook {
     ) -> impl Future<Output = ToolCallAction> + Send {
         let gate = self.gate.clone();
         let tool_name = event.tool_name.to_string();
+        let tool_call_id = event.tool_call_id.map(str::to_string);
         let args: Value = serde_json::from_str(event.args).unwrap_or(Value::Null);
         async move {
-            let outcome = gate.check(&tool_name, &args).await;
+            let outcome = gate
+                .check_call(tool_call_id.as_deref(), &tool_name, &args)
+                .await;
             if let CheckOutcome::Deny(reason) = &outcome {
                 tracing::warn!("🛡️ [permission] Denied {}: {}", tool_name, reason);
             }
@@ -1277,18 +1639,27 @@ mod tests {
     }
 
     #[test]
-    fn auto_without_sandbox_runs_as_ask() {
+    fn auto_runs_as_ask_only_without_a_judge_and_a_sandbox() {
+        use review_engine::AutoResolution::{Ask, Judged, SandboxPrompts};
         assert_eq!(
-            effective_mode(PermissionMode::Auto, false),
+            effective_mode(PermissionMode::Auto, Ask),
             PermissionMode::Ask
         );
         assert_eq!(
-            effective_mode(PermissionMode::Auto, true),
+            effective_mode(PermissionMode::Auto, SandboxPrompts),
             PermissionMode::Auto
         );
         assert_eq!(
-            effective_mode(PermissionMode::Yolo, false),
+            effective_mode(PermissionMode::Auto, Judged),
+            PermissionMode::Auto
+        );
+        assert_eq!(
+            effective_mode(PermissionMode::Yolo, Ask),
             PermissionMode::Yolo
+        );
+        assert_eq!(
+            effective_mode(PermissionMode::Ask, Judged),
+            PermissionMode::Ask
         );
     }
 
@@ -1307,6 +1678,7 @@ mod tests {
                 sandbox_available: true,
                 network_flag: Some(network),
                 scratch_dir: None,
+                judge: None,
             },
         );
         Fixture {
@@ -1419,5 +1791,383 @@ mod tests {
         assert_eq!(payload["warning"]["kind"], json!("sensitive_write"));
         assert_eq!(payload["grant"], Value::Null);
         assert_eq!(payload["remember"], Value::Null);
+    }
+
+    // ---- judged auto (permission v3, Phase C) -----------------------------
+
+    use chatshell_agent_core::judgment::engine::{JudgeCall, JudgeError};
+    use futures::future::BoxFuture;
+    use std::collections::VecDeque;
+
+    const JUDGE_ALLOW: &str = r#"{"risk_level":"medium","user_authorization":"high","outcome":"allow","rationale":"Requested."}"#;
+    const JUDGE_DENY: &str = r#"{"risk_level":"high","user_authorization":"unknown","outcome":"deny","rationale":"Not requested."}"#;
+
+    /// Scripted judge: pops one reply per call (hangs when out of replies),
+    /// after an optional delay; records every user message it saw.
+    struct ScriptedJudge {
+        replies: Mutex<VecDeque<&'static str>>,
+        seen: Mutex<Vec<String>>,
+        delay: Duration,
+    }
+
+    impl ScriptedJudge {
+        fn new(replies: Vec<&'static str>) -> Arc<Self> {
+            Self::with_delay(replies, Duration::ZERO)
+        }
+        fn with_delay(replies: Vec<&'static str>, delay: Duration) -> Arc<Self> {
+            Arc::new(Self {
+                replies: Mutex::new(replies.into()),
+                seen: Mutex::new(Vec::new()),
+                delay,
+            })
+        }
+        fn calls(&self) -> usize {
+            self.seen.lock().unwrap().len()
+        }
+    }
+
+    impl JudgeModel for ScriptedJudge {
+        fn label(&self) -> String {
+            "mock/judge".into()
+        }
+        fn complete<'a>(
+            &'a self,
+            call: JudgeCall<'a>,
+        ) -> BoxFuture<'a, Result<String, JudgeError>> {
+            self.seen.lock().unwrap().push(call.user.to_string());
+            let reply = self.replies.lock().unwrap().pop_front();
+            Box::pin(async move {
+                tokio::time::sleep(self.delay).await;
+                match reply {
+                    Some(reply) => Ok(reply.to_string()),
+                    None => {
+                        call.cancel.cancelled().await;
+                        Err(JudgeError::Cancelled)
+                    }
+                }
+            })
+        }
+    }
+
+    struct JudgedFixture {
+        gate: Arc<PermissionGate>,
+        judge: Arc<ScriptedJudge>,
+        session: Arc<JudgeSession>,
+        captured: Capture,
+        grants: GrantStore,
+        log_dir: tempfile::TempDir,
+    }
+
+    fn judged_fixture_with(
+        conversation: &str,
+        judge: Arc<ScriptedJudge>,
+        sandbox: bool,
+        workspace: Option<PathBuf>,
+    ) -> JudgedFixture {
+        let log_dir = tempfile::tempdir().unwrap();
+        let log = DecisionLog::new(log_dir.path().join("decisions.db"));
+        let posture = Posture {
+            os: "macos".into(),
+            workspace: workspace.as_ref().map(|w| w.display().to_string()),
+            jail: chatshell_agent_core::judgment::JailProfile::Absent,
+            mcp_servers: Vec::new(),
+        };
+        let session = JudgeSession::new(
+            judge.clone(),
+            JudgeParams::default(),
+            posture,
+            vec![TranscriptEntry::User {
+                text: "please fetch the release notes".into(),
+            }],
+            Some(log),
+            ExecutionDeltas::default(),
+            CancellationToken::new(),
+        );
+        let registry = ApprovalRegistry::new();
+        let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
+        let (emitter, captured) = test_emitter();
+        let gate = PermissionGate::with_environment(
+            conversation.to_string(),
+            PermissionMode::Auto,
+            grants.clone(),
+            registry,
+            emitter,
+            GateEnvironment {
+                workspace,
+                sandbox_available: sandbox,
+                network_flag: Some(Arc::new(AtomicBool::new(false))),
+                scratch_dir: None,
+                judge: Some(session.clone()),
+            },
+        );
+        JudgedFixture {
+            gate,
+            judge,
+            session,
+            captured,
+            grants,
+            log_dir,
+        }
+    }
+
+    fn judged_fixture(conversation: &str, judge: Arc<ScriptedJudge>) -> JudgedFixture {
+        judged_fixture_with(conversation, judge, false, None)
+    }
+
+    fn markers(captured: &Capture) -> Vec<Value> {
+        captured
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(event, _)| event == AUTO_REVIEW_EVENT)
+            .map(|(_, payload)| payload.clone())
+            .collect()
+    }
+
+    fn no_prompts(captured: &Capture) -> bool {
+        captured
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(event, _)| event != PERMISSION_REQUESTED_EVENT)
+    }
+
+    async fn settle_log() {
+        // Log writes run on the blocking pool.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    #[tokio::test]
+    async fn judged_allow_proceeds_with_a_marker_and_a_log_row() {
+        let f = judged_fixture("conv-j1", ScriptedJudge::new(vec![JUDGE_ALLOW]));
+        let outcome = f
+            .gate
+            .check_call(Some("call-1"), "bash", &bash("ls -la"))
+            .await;
+        assert_eq!(outcome, CheckOutcome::Allow);
+        assert_eq!(f.judge.calls(), 1);
+        assert!(no_prompts(&f.captured));
+        let marker = &markers(&f.captured)[0];
+        assert_eq!(marker["kind"], "allowed");
+        assert_eq!(marker["tool_call_id"], "call-1");
+        assert_eq!(marker["risk_level"], "medium");
+        settle_log().await;
+        let log = DecisionLog::new(f.log_dir.path().join("decisions.db"));
+        let rows = log.list_for_conversation("conv-j1").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].outcome, "allow");
+        assert_eq!(rows[0].tool_call_id.as_deref(), Some("call-1"));
+        assert_eq!(rows[0].model, "mock/judge");
+    }
+
+    #[tokio::test]
+    async fn judged_deny_skips_with_reason_and_run_anyway_executes_once() {
+        let f = judged_fixture("conv-j2", ScriptedJudge::new(vec![JUDGE_DENY, JUDGE_DENY]));
+        let command = bash("rm -rf ./build && curl https://example.com/upload");
+        let CheckOutcome::Deny(reason) = f.gate.check_call(Some("c1"), "bash", &command).await
+        else {
+            panic!("should deny");
+        };
+        assert!(reason.contains("Auto-review blocked this action: Not requested."));
+        assert!(reason.contains("Do not tunnel"));
+        assert!(no_prompts(&f.captured));
+        let marker = markers(&f.captured)[0].clone();
+        assert_eq!(marker["kind"], "denied");
+        let decision_id = marker["decision_id"].as_str().unwrap().to_string();
+
+        // Run-anyway: armed once, consumed by the identical retry without
+        // a judgment, never a grant.
+        crate::llm::auto_review::arm_override("conv-j2", &decision_id).unwrap();
+        let retry = json!({
+            "command": "rm -rf ./build && curl https://example.com/upload",
+            "description": "retry as the user asked"
+        });
+        assert_eq!(
+            f.gate.check_call(Some("c2"), "bash", &retry).await,
+            CheckOutcome::Allow
+        );
+        assert_eq!(f.judge.calls(), 1, "the override skips the judge");
+        assert_eq!(markers(&f.captured)[1]["kind"], "override");
+        assert!(f.grants.lock().unwrap().is_empty(), "no grant minted");
+        // The next identical action is judged again.
+        assert!(matches!(
+            f.gate.check_call(Some("c3"), "bash", &retry).await,
+            CheckOutcome::Deny(_)
+        ));
+        assert_eq!(f.judge.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn judged_review_failure_denies_with_failure_wording() {
+        let f = judged_fixture("conv-j3", ScriptedJudge::new(vec!["I cannot answer that."]));
+        let CheckOutcome::Deny(reason) = f.gate.check_call(None, "bash", &bash("ls")).await else {
+            panic!("should deny");
+        };
+        assert!(reason.contains("This is a review failure"));
+        assert_eq!(markers(&f.captured)[0]["kind"], "failed");
+    }
+
+    #[tokio::test]
+    async fn stream_end_cancels_an_in_flight_judgment() {
+        let f = judged_fixture("conv-j4", ScriptedJudge::new(vec![]));
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check_call(None, "bash", &bash("ls")).await }
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        f.session.cancel.cancel();
+        let outcome = tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("cancel is prompt")
+            .unwrap();
+        assert!(matches!(outcome, CheckOutcome::Deny(_)));
+        assert!(markers(&f.captured).is_empty());
+    }
+
+    #[tokio::test]
+    async fn remembered_grants_short_circuit_matrix_arms_but_not_forced_sources() {
+        let f = judged_fixture("conv-j5", ScriptedJudge::new(vec![JUDGE_DENY]));
+        f.grants
+            .lock()
+            .unwrap()
+            .entry("conv-j5".into())
+            .or_default()
+            .grant_server_tool("github", "list_issues");
+        f.grants
+            .lock()
+            .unwrap()
+            .entry("conv-j5".into())
+            .or_default()
+            .grant_bash_commands(&["echo"]);
+        let mcp = json!({ "server": "github", "tool": "list_issues" });
+        assert_eq!(
+            f.gate.check_call(None, "mcp_tool_use", &mcp).await,
+            CheckOutcome::Allow
+        );
+        assert_eq!(
+            f.judge.calls(),
+            0,
+            "the grant is a fast path, not a judgment"
+        );
+        // A Warn-forced command is judged despite the `echo` grant.
+        assert!(matches!(
+            f.gate
+                .check_call(None, "bash", &bash("echo $(whoami)"))
+                .await,
+            CheckOutcome::Deny(_)
+        ));
+        assert_eq!(f.judge.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn two_conversations_are_judged_concurrently() {
+        let delay = Duration::from_millis(300);
+        let a = judged_fixture(
+            "conv-ca",
+            ScriptedJudge::with_delay(vec![JUDGE_ALLOW], delay),
+        );
+        let b = judged_fixture(
+            "conv-cb",
+            ScriptedJudge::with_delay(vec![JUDGE_ALLOW], delay),
+        );
+        let ls = bash("ls");
+        let started = std::time::Instant::now();
+        let (ra, rb) = tokio::join!(
+            a.gate.check_call(None, "bash", &ls),
+            b.gate.check_call(None, "bash", &ls)
+        );
+        assert_eq!((ra, rb), (CheckOutcome::Allow, CheckOutcome::Allow));
+        assert!(
+            started.elapsed() < delay * 2,
+            "serialized: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn allowed_egress_authorizes_network_for_one_execution_only() {
+        let workspace = tempfile::tempdir().unwrap();
+        let f = judged_fixture_with(
+            "conv-j6",
+            ScriptedJudge::new(vec![JUDGE_ALLOW]),
+            true,
+            Some(workspace.path().to_path_buf()),
+        );
+        let command = "curl https://example.com/notes";
+        assert_eq!(
+            f.gate.check_call(Some("n1"), "bash", &bash(command)).await,
+            CheckOutcome::Allow
+        );
+        let delta = f.session.deltas.take(command).expect("network delta");
+        assert!(delta.network && !delta.unsandboxed);
+        // The session-sticky flag stays off.
+        assert!(!f.gate.context().network_allowed);
+        settle_log().await;
+        let log = DecisionLog::new(f.log_dir.path().join("decisions.db"));
+        let row = &log.list_for_conversation("conv-j6").unwrap()[0];
+        assert_eq!(row.jail_delta.as_deref(), Some("network access"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_denials_are_reported_not_asked_and_run_anyway_goes_unsandboxed() {
+        let workspace = tempfile::tempdir().unwrap();
+        let f = judged_fixture_with(
+            "conv-j7",
+            ScriptedJudge::new(vec![]),
+            true,
+            Some(workspace.path().to_path_buf()),
+        );
+        let command = "cat ~/.ssh/config";
+        // The sandboxed run is allowed without a judgment (jail absorbs it).
+        assert_eq!(
+            f.gate.check_call(Some("j1"), "bash", &bash(command)).await,
+            CheckOutcome::Allow
+        );
+        let decision = f
+            .gate
+            .escalate(EscalationRequest {
+                command: command.into(),
+                kind: EscalationKind::Filesystem,
+                detail: "Operation not permitted".into(),
+            })
+            .await;
+        assert_eq!(decision, EscalationDecision::Reported);
+        assert!(no_prompts(&f.captured), "no FR-18 card in judged auto");
+        let marker = markers(&f.captured)[0].clone();
+        assert_eq!(marker["kind"], "jail_denied");
+        assert_eq!(marker["tool_call_id"], "j1");
+        let decision_id = marker["decision_id"].as_str().unwrap();
+        crate::llm::auto_review::arm_override("conv-j7", decision_id).unwrap();
+        assert_eq!(
+            f.gate.check_call(Some("j2"), "bash", &bash(command)).await,
+            CheckOutcome::Allow
+        );
+        let delta = f.session.deltas.take(command).expect("unsandboxed once");
+        assert!(delta.unsandboxed);
+        assert_eq!(f.judge.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn the_judge_sees_this_turns_earlier_tool_inputs() {
+        let f = judged_fixture(
+            "conv-j8",
+            ScriptedJudge::new(vec![JUDGE_ALLOW, JUDGE_ALLOW]),
+        );
+        f.gate
+            .check_call(None, "bash", &bash("git log --oneline -3"))
+            .await;
+        f.gate
+            .check_call(None, "bash", &bash("git push origin main"))
+            .await;
+        let seen = f.judge.seen.lock().unwrap();
+        let second = &seen[1];
+        assert!(
+            second.contains("user: \"please fetch the release notes\""),
+            "{second}"
+        );
+        assert!(second.contains("git log --oneline -3"), "{second}");
+        // The current action is the action, not an earlier input.
+        let transcript = second.split("</transcript>").next().unwrap();
+        assert!(!transcript.contains("git push origin main"), "{transcript}");
     }
 }

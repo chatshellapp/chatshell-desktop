@@ -1,7 +1,9 @@
 // Default permission mode for new conversations (device setting
-// `default_permission_mode`). Fresh installs start in `ask`; `auto` is
-// offered only where an OS sandbox exists; choosing `yolo` asks for
-// confirmation, so new conversations never start unconfined by accident.
+// `default_permission_mode`). Fresh installs start in `auto`, offered on
+// every platform and resolved per conversation at first use (auto
+// reviewer, else sandbox plus prompts, else `ask`); choosing `yolo` asks
+// for confirmation, so new conversations never start unconfined by
+// accident.
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -20,12 +22,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { SettingsCard } from './settings-card'
 import { useSettingsStore } from '@/stores/settingsStore'
-import {
-  DEFAULT_PERMISSION_MODE_KEY,
-  defaultPermissionMode,
-  displayedPermissionMode,
-  useSandboxAvailable,
-} from '@/lib/permission-mode'
+import { DEFAULT_PERMISSION_MODE_KEY, defaultPermissionMode } from '@/lib/permission-mode'
 import type { PermissionMode } from '@/types'
 
 const ICONS: Record<PermissionMode, typeof Shield> = {
@@ -39,11 +36,10 @@ export function DefaultPermissionMode() {
   const { t: tChat } = useTranslation('chat')
   const settings = useSettingsStore((state) => state.settings)
   const saveSetting = useSettingsStore((state) => state.saveSetting)
-  const sandboxAvailable = useSandboxAvailable()
   const [confirmYolo, setConfirmYolo] = useState(false)
 
-  const current = displayedPermissionMode(defaultPermissionMode(settings), sandboxAvailable)
-  const modes: PermissionMode[] = sandboxAvailable ? ['ask', 'auto', 'yolo'] : ['ask', 'yolo']
+  const current = defaultPermissionMode(settings)
+  const modes: PermissionMode[] = ['ask', 'auto', 'yolo']
 
   const select = (value: string) => {
     const mode = value as PermissionMode
@@ -77,7 +73,9 @@ export function DefaultPermissionMode() {
                   {tChat(`permission.mode.${mode}`)}
                 </span>
                 <span className="text-xs leading-4 text-muted-foreground">
-                  {tChat(`permission.mode.${mode}Hint`)}
+                  {mode === 'auto'
+                    ? tChat('permission.mode.autoDefaultHint')
+                    : tChat(`permission.mode.${mode}Hint`)}
                 </span>
               </Label>
             </div>

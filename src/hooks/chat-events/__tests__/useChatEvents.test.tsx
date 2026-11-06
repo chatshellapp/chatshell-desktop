@@ -82,6 +82,7 @@ const BACKEND_EVENTS = [
   'attachment-processing-error',
   'attachment-processing-started',
   'attachment-update',
+  'auto-review-decided',
   'chat-complete',
   'chat-error',
   'chat-stream',

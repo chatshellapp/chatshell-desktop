@@ -43,11 +43,14 @@ describe('PermissionsSettings', () => {
     expect(await screen.findByText('Bash environment')).toBeInTheDocument()
   })
 
-  it('explains why auto is missing without a sandbox', async () => {
+  it('keeps auto without a sandbox and explains how it runs there', async () => {
     mockBackend({ available: false, backend: null })
     render(<PermissionsSettings />)
     expect(await screen.findByTestId('sandbox-status-badge')).toHaveTextContent('Not available')
-    expect(screen.getByText(/auto mode is unavailable/i)).toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: /^auto/i })).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/every terminal command is reviewed before it runs/i)
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^auto/i })).toBeInTheDocument()
+    expect(screen.queryByText(/requires a sandbox/i)).not.toBeInTheDocument()
   })
 })

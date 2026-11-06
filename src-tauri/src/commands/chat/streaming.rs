@@ -532,25 +532,98 @@ pub(crate) async fn handle_agent_streaming(
         Err(e) => tracing::warn!("⚠️ [agent_streaming] Stored permission mode unreadable: {e}"),
     }
     let requested_mode = chatshell_agent_core::permission::PermissionMode::from(permission_mode);
-    let core_mode = crate::llm::permission::effective_mode(
-        requested_mode,
-        crate::llm::permission::sandbox_available(),
-    );
-    if core_mode != requested_mode {
-        tracing::warn!("🛡️ [agent_streaming] auto mode without a sandbox backend; running as ask");
-    }
+    let backend = chatshell_agent_core::sandbox::detect_backend();
+    // `auto` resolves through the capability gate: judged when the
+    // classifier model is eligible, else the v2 sandbox semantics, else
+    // `ask` (never unconfined execution).
+    let mut judge_model: Option<(
+        crate::llm::auto_review::ProviderJudge,
+        chatshell_agent_core::judgment::engine::JudgeParams,
+    )> = None;
+    let core_mode = if requested_mode == chatshell_agent_core::permission::PermissionMode::Auto {
+        let conversation_model = crate::commands::chat::aux_models::ConversationModel {
+            provider_type: provider_type.clone(),
+            model_id: model_id.clone(),
+            api_key: api_key.clone(),
+            base_url: base_url.clone(),
+            api_style: api_style.clone(),
+            supports_vision: None,
+        };
+        let judge =
+            crate::llm::auto_review::resolve_classifier_model(&state_clone, &conversation_model)
+                .await;
+        let eligibility = crate::llm::auto_review::eligibility_for(&judge, &cancel_token).await;
+        let resolution = chatshell_agent_core::judgment::engine::resolve_auto(
+            Some(&eligibility),
+            backend.is_some(),
+        );
+        tracing::info!(
+            "🛡️ [agent_streaming] auto resolved to {:?} (judge {})",
+            resolution,
+            chatshell_agent_core::judgment::engine::JudgeModel::label(&judge)
+        );
+        if let chatshell_agent_core::judgment::engine::Eligibility::Eligible(params) = eligibility {
+            judge_model = Some((judge, params));
+        }
+        crate::llm::permission::effective_mode(requested_mode, resolution)
+    } else {
+        requested_mode
+    };
     tracing::info!("🛡️ [agent_streaming] Permission mode: {:?}", core_mode);
     let app_for_permissions = app.clone();
     let permission_emitter: crate::llm::permission::PermissionEmitter =
         Arc::new(move |event, payload| {
             let _ = app_for_permissions.emit(event, payload);
         });
-    let sandboxed = crate::llm::permission::sandbox_enabled_for(core_mode) && bash_enabled;
+    // Bash is jailed in `auto` wherever a backend exists; judged `auto`
+    // without one runs bash unconfined, every command judged.
+    let sandboxed =
+        crate::llm::permission::sandbox_enabled_for(core_mode) && bash_enabled && backend.is_some();
     let network_flag = state_clone
         .bash_session_manager
         .network_flag(&conversation_id_clone);
     let scratch_dir =
         sandboxed.then(|| crate::storage::conversation_scratch_dir(&app, &conversation_id_clone));
+    let workspace = conv_settings
+        .as_ref()
+        .and_then(|settings| settings.working_directory.as_ref())
+        .map(PathBuf::from);
+    let execution_deltas = chatshell_agent_core::tools::bash_sandbox::ExecutionDeltas::default();
+    let judge_session = match judge_model {
+        Some((model, params))
+            if core_mode == chatshell_agent_core::permission::PermissionMode::Auto =>
+        {
+            let posture_ctx = chatshell_agent_core::permission::GateContext {
+                workspace: workspace.clone(),
+                sandbox_available: sandboxed,
+                network_allowed: network_flag.load(std::sync::atomic::Ordering::SeqCst),
+                scratch_dir: scratch_dir.clone(),
+            };
+            let posture = chatshell_agent_core::judgment::ruleset::Posture {
+                os: std::env::consts::OS.to_string(),
+                workspace: workspace.as_ref().map(|w| w.display().to_string()),
+                jail: chatshell_agent_core::judgment::JailProfile::for_context(&posture_ctx),
+                mcp_servers: Vec::new(),
+            };
+            let history = crate::llm::auto_review::load_transcript_history(
+                &state_clone,
+                &conversation_id_clone,
+                &user_message_id,
+                &content,
+            )
+            .await;
+            Some(crate::llm::permission::JudgeSession::new(
+                Arc::new(model),
+                params,
+                posture,
+                history,
+                crate::llm::auto_review::decision_log().cloned(),
+                execution_deltas.clone(),
+                cancel_token.clone(),
+            ))
+        }
+        _ => None,
+    };
     let gate = crate::llm::permission::PermissionGate::with_environment(
         conversation_id_clone.clone(),
         core_mode,
@@ -558,13 +631,11 @@ pub(crate) async fn handle_agent_streaming(
         state_clone.approval_registry.clone(),
         permission_emitter,
         crate::llm::permission::GateEnvironment {
-            workspace: conv_settings
-                .as_ref()
-                .and_then(|settings| settings.working_directory.as_ref())
-                .map(PathBuf::from),
+            workspace,
             sandbox_available: sandboxed,
             network_flag: Some(network_flag.clone()),
             scratch_dir: scratch_dir.clone(),
+            judge: judge_session.clone(),
         },
     );
 
@@ -583,7 +654,6 @@ pub(crate) async fn handle_agent_streaming(
         config = config.with_bash_env_passthrough(passthrough);
 
         if let Some(scratch_dir) = scratch_dir {
-            let backend = chatshell_agent_core::sandbox::detect_backend();
             tracing::info!(
                 "🛡️ [agent_streaming] Bash sandbox enabled (backend {:?}, scratch {})",
                 backend,
@@ -597,6 +667,7 @@ pub(crate) async fn handle_agent_streaming(
                     escalator: Some(Arc::new(crate::llm::permission::GateEscalator(
                         gate.clone(),
                     ))),
+                    deltas: execution_deltas,
                 });
         }
     }
@@ -695,6 +766,12 @@ pub(crate) async fn handle_agent_streaming(
     } else {
         (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
     };
+    if let Some(judge) = &judge_session {
+        let mut servers: Vec<String> = mcp_tool_name_to_server_name.values().cloned().collect();
+        servers.sort();
+        servers.dedup();
+        judge.set_mcp_servers(servers);
+    }
 
     // Invite inline SVG figures (skipped for tool-less modes like translation,
     // whose output is never rendered as a chat answer).
@@ -1199,6 +1276,9 @@ async fn run_agent_stream<R: tauri::Runtime>(
         &provider_type,
     )
     .await;
+
+    // Run-anyway overrides cover the turn after the tap; this turn ended.
+    crate::llm::auto_review::clear_overrides(&conversation_id_clone);
 
     // Close any approvals still pending for this conversation (the
     // stream ended; nobody will answer them): deny and tell the frontend

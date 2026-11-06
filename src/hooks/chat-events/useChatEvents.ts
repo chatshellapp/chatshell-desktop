@@ -25,6 +25,9 @@ import type {
   ToolCallCompletedEvent,
 } from './types'
 import { usePermissionStore } from '@/stores/permissionStore'
+import { useAutoReviewStore, type AutoReviewDecidedEvent } from '@/stores/autoReviewStore'
+import { toast } from 'sonner'
+import i18n from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import {
   useChatHandlers,
@@ -40,6 +43,11 @@ export function useChatEvents(conversationId: string | null) {
   // Update ref when conversationId changes
   useEffect(() => {
     conversationIdRef.current = conversationId
+  }, [conversationId])
+
+  // Markers of earlier turns, from this device's decision log
+  useEffect(() => {
+    if (conversationId) void useAutoReviewStore.getState().load(conversationId)
   }, [conversationId])
 
   // Get handlers from separated hooks
@@ -247,6 +255,15 @@ export function useChatEvents(conversationId: string | null) {
       }
     )
 
+    // Auto-mode judgments: transcript markers, and the one-time suggestion
+    // to switch modes after repeated denials (never aborts the turn)
+    const unlistenAutoReview = listen<AutoReviewDecidedEvent>('auto-review-decided', (event) => {
+      useAutoReviewStore.getState().receive(event.payload)
+      if (event.payload.suggest_mode_switch) {
+        toast.info(i18n.t('chat:autoReview.suggestModeSwitch'), { duration: 12000 })
+      }
+    })
+
     // Backend-closed approvals (timeout / stream end): dismiss the dialog
     const unlistenPermissionResolved = listen<PermissionResolvedEvent>(
       'permission-resolved',
@@ -278,6 +295,7 @@ export function useChatEvents(conversationId: string | null) {
       unlistenMcpAuthRequired.then((fn) => fn())
       unlistenPermissionRequested.then((fn) => fn())
       unlistenPermissionResolved.then((fn) => fn())
+      unlistenAutoReview.then((fn) => fn())
     }
   }, [
     conversationId,

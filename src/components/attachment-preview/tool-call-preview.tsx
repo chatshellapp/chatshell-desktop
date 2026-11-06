@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AutoReviewMarker } from '@/components/chat-view/AutoReviewMarker'
 import { Wrench, ChevronDown, ChevronUp, XCircle, Loader2, Plug, Ban } from 'lucide-react'
 import type { ToolCall } from '@/types'
 import { parseToolName } from '@/lib/tool-name'
@@ -206,63 +207,66 @@ export function ToolCallPreview({
       : 'w-fit max-w-full rounded border border-transparent bg-muted/20 overflow-hidden'
 
   return (
-    <div className={containerClass}>
-      {/* Header row */}
-      <button
-        onClick={() => canExpand && setIsExpanded(!isExpanded)}
-        className={`flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 text-left transition-colors ${
-          canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
-        }`}
-      >
-        <StatusIcon status={status} isStreaming={isInProgress} parsed={parsed} />
+    <>
+      <div className={containerClass}>
+        {/* Header row */}
+        <button
+          onClick={() => canExpand && setIsExpanded(!isExpanded)}
+          className={`flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 text-left transition-colors ${
+            canExpand ? 'hover:bg-muted/30 cursor-pointer' : 'cursor-default'
+          }`}
+        >
+          <StatusIcon status={status} isStreaming={isInProgress} parsed={parsed} />
 
-        <ToolNameDisplay rawName={toolName} />
+          <ToolNameDisplay rawName={toolName} />
 
-        {diffStats && !isInProgress && (
-          <DiffStatsBadge additions={diffStats.additions} deletions={diffStats.deletions} />
-        )}
-        {inputSummary && (
-          <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
-            {inputSummary}
-          </span>
-        )}
-
-        {duration && !isInProgress && (
-          <span className="text-xs text-muted-foreground/40 flex-shrink-0">{duration}</span>
-        )}
-
-        {canExpand && (
-          <span className="flex items-center text-muted-foreground/60 flex-shrink-0 ml-auto">
-            {isExpanded ? (
-              <ChevronUp className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5" />
-            )}
-          </span>
-        )}
-      </button>
-
-      {/* Expandable content */}
-      {isExpanded && canExpand && (
-        <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
-          {hasSpecializedRenderer ? (
-            <ToolOutputRenderer
-              toolName={parsed.toolName}
-              toolInput={toolInput}
-              toolOutput={toolOutput}
-            />
-          ) : isMcp ? (
-            <McpToolOutput toolInput={toolInput} toolOutput={rawOutput} />
-          ) : null}
-          {hasError && <ErrorBlock error={error ?? ''} />}
-          {isInProgress && !hasOutput && !hasError && (
-            <p className="text-xs text-muted-foreground/50 italic">
-              {t('toolCallPreview.waitingForResult')}
-            </p>
+          {diffStats && !isInProgress && (
+            <DiffStatsBadge additions={diffStats.additions} deletions={diffStats.deletions} />
           )}
-        </div>
-      )}
-    </div>
+          {inputSummary && (
+            <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
+              {inputSummary}
+            </span>
+          )}
+
+          {duration && !isInProgress && (
+            <span className="text-xs text-muted-foreground/40 flex-shrink-0">{duration}</span>
+          )}
+
+          {canExpand && (
+            <span className="flex items-center text-muted-foreground/60 flex-shrink-0 ml-auto">
+              {isExpanded ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </span>
+          )}
+        </button>
+
+        {/* Expandable content */}
+        {isExpanded && canExpand && (
+          <div className="border-t border-muted/50 px-2.5 py-2.5 space-y-2.5">
+            {hasSpecializedRenderer ? (
+              <ToolOutputRenderer
+                toolName={parsed.toolName}
+                toolInput={toolInput}
+                toolOutput={toolOutput}
+              />
+            ) : isMcp ? (
+              <McpToolOutput toolInput={toolInput} toolOutput={rawOutput} />
+            ) : null}
+            {hasError && <ErrorBlock error={error ?? ''} />}
+            {isInProgress && !hasOutput && !hasError && (
+              <p className="text-xs text-muted-foreground/50 italic">
+                {t('toolCallPreview.waitingForResult')}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <AutoReviewMarker toolCallId={tc.id} />
+    </>
   )
 }
 

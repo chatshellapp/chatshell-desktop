@@ -54,8 +54,9 @@ import { logger } from '@/lib/logger'
 import {
   defaultPermissionMode,
   displayedPermissionMode,
-  useSandboxAvailable,
+  useAutoReviewStatus,
 } from '@/lib/permission-mode'
+import { COMPOSE_SUBMIT_EVENT, type ComposeSubmitDetail } from '@/stores/autoReviewStore'
 
 // interface ChatInputProps {}
 
@@ -127,6 +128,32 @@ export function ChatInput(/* _props: ChatInputProps */) {
     clearAttachments,
     webSearchEnabled: false,
   })
+
+  // Run-anyway retry requests from auto-review markers: sent right away
+  // when the composer is empty, otherwise added to the draft for the user
+  // to send.
+  const [autoSendText, setAutoSendText] = useState<string | null>(null)
+  useEffect(() => {
+    const onComposeSubmit = (event: Event) => {
+      const detail = (event as CustomEvent<ComposeSubmitDetail>).detail
+      if (!detail || detail.conversationId !== currentConversation?.id) return
+      if (input.trim() === '' && attachments.length === 0) {
+        setInput(detail.text)
+        setAutoSendText(detail.text)
+      } else {
+        setInput((draft) => `${draft}\n\n${detail.text}`)
+        textareaRef.current?.focus()
+      }
+    }
+    window.addEventListener(COMPOSE_SUBMIT_EVENT, onComposeSubmit)
+    return () => window.removeEventListener(COMPOSE_SUBMIT_EVENT, onComposeSubmit)
+  }, [currentConversation?.id, input, attachments.length])
+  useEffect(() => {
+    if (autoSendText !== null && input === autoSendText) {
+      setAutoSendText(null)
+      void handleSend()
+    }
+  }, [autoSendText, input, handleSend])
 
   // Global sent-prompt history (newest first), recorded by useSubmitHandler
   const inputHistory = useInputHistoryStore((state) => state.history)
@@ -338,14 +365,18 @@ export function ChatInput(/* _props: ChatInputProps */) {
 
   // Permission mode, an escalation ladder ask -> auto -> yolo: only
   // crossing into yolo asks for explicit confirmation. A conversation that
-  // has not loaded its settings shows the device default; `auto` without
-  // a sandbox runs (and shows) as `ask`.
-  const sandboxAvailable = useSandboxAvailable()
+  // has not loaded its settings shows the device default. `auto` resolves
+  // per model: it is offered where the auto reviewer is eligible or a
+  // sandbox carries it, and shows as `ask` where neither does.
+  const autoReviewStatus = useAutoReviewStatus(
+    selectedModelEarly?.id ?? selectedAssistant?.model_id ?? null
+  )
   const appSettings = useSettingsStore((state) => state.settings)
   const permissionMode: PermissionMode = displayedPermissionMode(
     conversationSettings?.permissionMode ?? defaultPermissionMode(appSettings),
-    sandboxAvailable
+    autoReviewStatus
   )
+  const autoAvailable = autoReviewStatus?.resolution !== 'ask'
   const [isYoloConfirmOpen, setIsYoloConfirmOpen] = useState(false)
   const handlePermissionModeSelect = (mode: PermissionMode) => {
     if (!currentConversation) return
@@ -677,7 +708,9 @@ export function ChatInput(/* _props: ChatInputProps */) {
             onWorkingDirectorySelect={handleWorkingDirectorySelect}
             permissionMode={permissionMode}
             onPermissionModeSelect={handlePermissionModeSelect}
-            autoAvailable={sandboxAvailable}
+            autoAvailable={autoAvailable}
+            autoResolution={autoReviewStatus?.resolution ?? null}
+            autoUnavailableReason={autoReviewStatus?.reason ?? null}
             toolsDisabled={toolsDisabled}
             skillsDisabled={toolsDisabled}
             imageAttachDisabled={visionDisabled}
