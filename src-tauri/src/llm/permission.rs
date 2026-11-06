@@ -111,6 +111,8 @@ pub struct GateEnvironment {
     pub sandbox_available: bool,
     /// The conversation's "allow network this session" flag.
     pub network_flag: Option<Arc<AtomicBool>>,
+    /// The conversation scratch directory (a jail writable root).
+    pub scratch_dir: Option<PathBuf>,
 }
 
 /// The device's remembered-grant store, if initialized.
@@ -321,6 +323,7 @@ impl PermissionGate {
                 .network_flag
                 .as_ref()
                 .is_some_and(|flag| flag.load(Ordering::SeqCst)),
+            scratch_dir: self.environment.scratch_dir.clone(),
         }
     }
 
@@ -384,21 +387,36 @@ impl PermissionGate {
         match decision {
             GateDecision::Allow => CheckOutcome::Allow,
             GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
-            // Sandboxed auto: detected egress goes straight to the network
-            // escalation card, so one network call yields one prompt.
-            GateDecision::Prompt {
-                subject,
-                forced:
-                    Some(ForcedPrompt {
-                        kind: ForcedPromptKind::Network,
-                        detail,
-                    }),
-            } if self.mode == PermissionMode::Auto && self.environment.sandbox_available => {
-                self.network_before_execution(subject, detail).await
+            GateDecision::Classify(request) => {
+                self.v2_prompt(tool_name, args, request.subject, request.forced)
+                    .await
             }
             GateDecision::Prompt { subject, forced } => {
                 self.prompt(tool_name, args, subject, forced).await
             }
+        }
+    }
+
+    /// A judgment request rendered as exactly the v2 prompt its source
+    /// produced: the interim behavior until the auto-mode judge is wired,
+    /// and the fallback when no eligible judge exists.
+    async fn v2_prompt(
+        &self,
+        tool_name: &str,
+        args: &Value,
+        subject: String,
+        forced: Option<ForcedPrompt>,
+    ) -> CheckOutcome {
+        match forced {
+            // Sandboxed auto: detected egress goes straight to the network
+            // escalation card, so one network call yields one prompt.
+            Some(ForcedPrompt {
+                kind: ForcedPromptKind::Network,
+                detail,
+            }) if self.environment.sandbox_available => {
+                self.network_before_execution(subject, detail).await
+            }
+            forced => self.prompt(tool_name, args, subject, forced).await,
         }
     }
 
@@ -1287,6 +1305,7 @@ mod tests {
                 workspace: Some(std::env::temp_dir()),
                 sandbox_available: true,
                 network_flag: Some(network),
+                scratch_dir: None,
             },
         );
         Fixture {
@@ -1354,5 +1373,50 @@ mod tests {
         .await;
         assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
         assert!(!network.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn auto_judgment_requests_render_as_their_v2_prompt() {
+        let f = auto_fixture(Arc::new(AtomicBool::new(false)));
+        // Matrix arm (MCP): the plain prompt with its pair grant, as in v2.
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move {
+                gate.check("mcp_tool_use", &json!({ "server": "s", "tool": "t" }))
+                    .await
+            }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["warning"], Value::Null);
+        assert_eq!(payload["grant"]["kind"], json!("server_tool"));
+        // The session grant it minted short-circuits the next call.
+        assert_eq!(
+            f.gate
+                .check("mcp_tool_use", &json!({ "server": "s", "tool": "t" }))
+                .await,
+            CheckOutcome::Allow
+        );
+        assert_eq!(requested_payloads(&f.captured).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn sensitive_writes_prompt_with_their_warning_and_no_grant() {
+        let f = fixture(PermissionMode::Ask);
+        let target = dirs::home_dir().unwrap().join(".claude/settings.json");
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move {
+                gate.check("write", &json!({ "path": target.to_str().unwrap() }))
+                    .await
+            }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["warning"]["kind"], json!("sensitive_write"));
+        assert_eq!(payload["grant"], Value::Null);
+        assert_eq!(payload["remember"], Value::Null);
     }
 }

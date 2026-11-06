@@ -85,6 +85,10 @@ function warningText(t: TFunction, kind: PermissionWarningKind): string {
       return t('permission.warning.privateNetwork')
     case 'sensitive_read':
       return t('permission.warning.sensitiveRead')
+    case 'sensitive_write':
+      return t('permission.warning.sensitiveWrite')
+    case 'outside_deletion':
+      return t('permission.warning.outsideDeletion')
     case 'sandbox':
       return t('permission.warning.sandbox')
     case 'sandbox_network':

@@ -488,15 +488,14 @@ pub(crate) async fn handle_agent_streaming(
         }
     }
 
-    // Apply project_root security boundary from conversation working directory
+    // Project root from the conversation working directory: relative-path
+    // resolution for the file tools. The workspace write boundary itself
+    // is owned by the permission gate (and the bash jail), not the tools.
     if let Some(ref settings) = conv_settings
         && let Some(ref working_dir) = settings.working_directory
     {
         let root = PathBuf::from(working_dir);
-        tracing::info!(
-            "🛡️ [agent_streaming] Enforcing project root security boundary: {}",
-            working_dir
-        );
+        tracing::info!("🛡️ [agent_streaming] Project root: {}", working_dir);
         config = config.with_project_root(root);
     }
 
@@ -550,6 +549,8 @@ pub(crate) async fn handle_agent_streaming(
     let network_flag = state_clone
         .bash_session_manager
         .network_flag(&conversation_id_clone);
+    let scratch_dir =
+        sandboxed.then(|| crate::storage::conversation_scratch_dir(&app, &conversation_id_clone));
     let gate = crate::llm::permission::PermissionGate::with_environment(
         conversation_id_clone.clone(),
         core_mode,
@@ -563,6 +564,7 @@ pub(crate) async fn handle_agent_streaming(
                 .map(PathBuf::from),
             sandbox_available: sandboxed,
             network_flag: Some(network_flag.clone()),
+            scratch_dir: scratch_dir.clone(),
         },
     );
 
@@ -580,9 +582,7 @@ pub(crate) async fn handle_agent_streaming(
             .unwrap_or_default();
         config = config.with_bash_env_passthrough(passthrough);
 
-        if sandboxed {
-            let scratch_dir =
-                crate::storage::conversation_scratch_dir(&app, &conversation_id_clone);
+        if let Some(scratch_dir) = scratch_dir {
             let backend = chatshell_agent_core::sandbox::detect_backend();
             tracing::info!(
                 "🛡️ [agent_streaming] Bash sandbox enabled (backend {:?}, scratch {})",

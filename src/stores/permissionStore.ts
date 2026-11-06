@@ -25,6 +25,8 @@ export type PermissionWarningKind =
   | 'network'
   | 'private_network'
   | 'sensitive_read'
+  | 'sensitive_write'
+  | 'outside_deletion'
   | 'sandbox'
   | 'sandbox_network'
   | 'sandbox_credentials'
