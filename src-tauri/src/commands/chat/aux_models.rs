@@ -60,7 +60,7 @@ impl ConversationModel {
 /// Resolve a settings-configured model to a callable form. `None` when the
 /// setting is unset or the referenced model/provider rows are gone (stale
 /// setting, pruned provider) — callers fall back.
-async fn model_from_setting(state: &AppState, setting: &str) -> Option<AuxModel> {
+pub(crate) async fn model_from_setting(state: &AppState, setting: &str) -> Option<AuxModel> {
     let model_row_id = state.db.get_setting(setting).await.ok().flatten()?;
     let model = state.db.get_model(&model_row_id).await.ok()??;
     let provider = state.db.get_provider(&model.provider_id).await.ok()??;

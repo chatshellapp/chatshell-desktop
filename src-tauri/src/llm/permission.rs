@@ -61,8 +61,8 @@ static PERSISTENT_GRANTS: OnceLock<PersistentGrantStore> = OnceLock::new();
 /// The device's bash environment settings (passthrough variables).
 static BASH_ENV: OnceLock<BashEnvStore> = OnceLock::new();
 
-/// Point the device-local stores (remembered grants, bash environment)
-/// at files in the app data directory. Called once from setup; later
+/// Point the device-local stores (remembered grants, bash environment,
+/// auto-review decision log) at files in the app data directory. Called once from setup; later
 /// calls are ignored. Neither file is part of the synced database.
 pub fn init_device_stores(app_data_dir: &std::path::Path) {
     let _ = PERSISTENT_GRANTS.set(PersistentGrantStore::new(
@@ -71,6 +71,7 @@ pub fn init_device_stores(app_data_dir: &std::path::Path) {
     let _ = BASH_ENV.set(BashEnvStore::new(
         app_data_dir.join(chatshell_agent_core::shell_env::CONFIG_FILE_NAME),
     ));
+    super::auto_review::init_decision_log(app_data_dir);
 }
 
 /// The device's bash environment store, if initialized.
