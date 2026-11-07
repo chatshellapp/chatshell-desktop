@@ -140,9 +140,10 @@ pub struct JudgeSession {
     cancel: CancellationToken,
     /// This turn's tool inputs, in the order the hook saw them.
     turn_inputs: Mutex<Vec<TranscriptEntry>>,
-    /// Bash command -> tool call id of its latest call (sandbox denials
-    /// arrive with the command only).
-    bash_calls: Mutex<HashMap<String, String>>,
+    /// Bash command -> its latest call: the tool call id and the full
+    /// arguments. Sandbox denials arrive with the command only; the
+    /// arguments (`workdir` included) are what run-anyway must match.
+    bash_calls: Mutex<HashMap<String, BashCall>>,
 }
 
 impl JudgeSession {
@@ -200,6 +201,18 @@ impl JudgeSession {
             }
         });
     }
+}
+
+/// The latest bash call of a command this turn.
+#[derive(Clone)]
+struct BashCall {
+    tool_call_id: Option<String>,
+    args: Value,
+}
+
+/// The `workdir` argument of a bash call.
+fn bash_workdir(args: &Value) -> Option<&str> {
+    args.get("workdir").and_then(Value::as_str)
 }
 
 /// Facts about the turn the gate resolves against.
@@ -494,12 +507,14 @@ impl PermissionGate {
         let command = (tool_name == "bash")
             .then(|| args.get("command").and_then(Value::as_str))
             .flatten();
-        if let (Some(judge), Some(command), Some(id)) = (&judge, command, tool_call_id) {
-            judge
-                .bash_calls
-                .lock()
-                .unwrap()
-                .insert(command.to_string(), id.to_string());
+        if let (Some(judge), Some(command)) = (&judge, command) {
+            judge.bash_calls.lock().unwrap().insert(
+                command.to_string(),
+                BashCall {
+                    tool_call_id: tool_call_id.map(str::to_string),
+                    args: args.clone(),
+                },
+            );
         }
         let ctx = self.context();
         let decision = resolve_in(self.mode, &ctx, tool_name, args, &self.grants_snapshot());
@@ -514,6 +529,7 @@ impl PermissionGate {
                     if action.unsandboxed {
                         judge.deltas.authorize(
                             command,
+                            bash_workdir(args),
                             ExecutionDelta {
                                 unsandboxed: true,
                                 ..ExecutionDelta::default()
@@ -571,7 +587,7 @@ impl PermissionGate {
                     execution_delta(&request, args, ctx)
                 };
                 if let Some(delta) = delta {
-                    judge.deltas.authorize(command, delta);
+                    judge.deltas.authorize(command, bash_workdir(args), delta);
                 }
             }
             self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
@@ -613,7 +629,9 @@ impl PermissionGate {
             _ => None,
         };
         if let (Some(delta), Some(command)) = (&delta, command) {
-            judge.deltas.authorize(command, delta.clone());
+            judge
+                .deltas
+                .authorize(command, bash_workdir(args), delta.clone());
         }
         let record = DecisionRecord::from_review(
             &self.conversation_id,
@@ -722,12 +740,18 @@ impl PermissionGate {
 
     /// Judged auto: a sandbox denial is reported, never asked about.
     fn report_jail_denial(&self, judge: &JudgeSession, request: &EscalationRequest) {
-        let tool_call_id = judge
+        let call = judge
             .bash_calls
             .lock()
             .unwrap()
             .get(&request.command)
             .cloned();
+        let tool_call_id = call.as_ref().and_then(|call| call.tool_call_id.clone());
+        // Run-anyway must match the model's retry of the same call, so the
+        // action keeps that call's arguments (its `workdir` included).
+        let args = call
+            .map(|call| call.args)
+            .unwrap_or_else(|| json!({ "command": request.command }));
         let record = DecisionRecord::jail_denied(
             &self.conversation_id,
             tool_call_id.as_deref(),
@@ -737,7 +761,6 @@ impl PermissionGate {
         );
         let decision_id = record.id.clone();
         judge.record(record);
-        let args = json!({ "command": request.command });
         self.remember_denial(&decision_id, "bash", &args, true);
         self.emit_marker(
             tool_call_id.as_deref(),
@@ -2098,7 +2121,7 @@ mod tests {
             f.gate.check_call(Some("n1"), "bash", &bash(command)).await,
             CheckOutcome::Allow
         );
-        let delta = f.session.deltas.take(command).expect("network delta");
+        let delta = f.session.deltas.take(command, None).expect("network delta");
         assert!(delta.network && !delta.unsandboxed);
         // The session-sticky flag stays off.
         assert!(!f.gate.context().network_allowed);
@@ -2142,9 +2165,57 @@ mod tests {
             f.gate.check_call(Some("j2"), "bash", &bash(command)).await,
             CheckOutcome::Allow
         );
-        let delta = f.session.deltas.take(command).expect("unsandboxed once");
+        let delta = f
+            .session
+            .deltas
+            .take(command, None)
+            .expect("unsandboxed once");
         assert!(delta.unsandboxed);
         assert_eq!(f.judge.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn run_anyway_on_a_sandbox_denial_matches_a_retry_with_its_workdir() {
+        let workspace = tempfile::tempdir().unwrap();
+        let workdir = workspace.path().join("sub");
+        std::fs::create_dir_all(&workdir).unwrap();
+        let workdir = workdir.to_str().unwrap().to_string();
+        let f = judged_fixture_with(
+            "conv-j7w",
+            ScriptedJudge::new(vec![]),
+            true,
+            Some(workspace.path().to_path_buf()),
+        );
+        let command = "cat ~/.ssh/config";
+        let call = json!({ "command": command, "workdir": workdir, "description": "first" });
+        assert_eq!(
+            f.gate.check_call(Some("w1"), "bash", &call).await,
+            CheckOutcome::Allow
+        );
+        f.gate
+            .escalate(EscalationRequest {
+                command: command.into(),
+                kind: EscalationKind::Filesystem,
+                detail: "Operation not permitted".into(),
+            })
+            .await;
+        let marker = markers(&f.captured)[0].clone();
+        assert_eq!(marker["kind"], "jail_denied");
+        let decision_id = marker["decision_id"].as_str().unwrap();
+        crate::llm::auto_review::arm_override("conv-j7w", decision_id).unwrap();
+        // The model retries the same call; its free-text description differs.
+        let retry = json!({ "command": command, "workdir": workdir, "description": "retry" });
+        assert_eq!(
+            f.gate.check_call(Some("w2"), "bash", &retry).await,
+            CheckOutcome::Allow
+        );
+        let delta = f
+            .session
+            .deltas
+            .take(command, Some(&workdir))
+            .expect("unsandboxed once, keyed by the workdir");
+        assert!(delta.unsandboxed);
+        assert!(f.session.deltas.is_empty());
     }
 
     #[tokio::test]

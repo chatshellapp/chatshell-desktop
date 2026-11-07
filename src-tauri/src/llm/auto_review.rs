@@ -255,17 +255,20 @@ impl JudgeModel for ProviderJudge {
 /// (auth, bad request, unsupported parameter, unknown model) is permanent.
 pub fn classify_provider_error(message: &str) -> JudgeError {
     let lower = message.to_ascii_lowercase();
+    // Status codes match as whole numbers only, so a limit or a count in
+    // a permanent error ("at most 15000 tokens") never reads as a 500.
+    let transient_codes = ["429", "500", "502", "503", "504", "529"];
+    if lower
+        .split(|c: char| !c.is_ascii_digit())
+        .any(|token| transient_codes.contains(&token))
+    {
+        return JudgeError::Transient(message.to_string());
+    }
     let transient_markers = [
-        "429",
         "rate limit",
         "rate_limit",
         "too many requests",
         "overloaded",
-        "529",
-        "500",
-        "502",
-        "503",
-        "504",
         "internal server error",
         "bad gateway",
         "service unavailable",
@@ -495,6 +498,8 @@ mod tests {
             "401 Unauthorized: invalid x-api-key",
             "400 Unsupported value: 'temperature' does not support 0",
             "model not found: gpt-nope",
+            "400 max_tokens must be at most 15000",
+            "400 prompt is 4500 tokens over the limit for model-5029",
         ] {
             assert!(
                 matches!(classify_provider_error(permanent), JudgeError::Permanent(_)),
