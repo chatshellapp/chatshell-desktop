@@ -493,17 +493,23 @@ impl PermissionGate {
             .grant_scope(scope);
     }
 
-    async fn remember_grant(&self, tool_name: &str, scope: &GrantScope) {
+    async fn remember_grant(&self, tool_name: &str, scope: &GrantScope) -> bool {
         let Some(store) = self.persistent.clone() else {
-            return;
+            return false;
         };
         let tool = tool_name.to_string();
         let keys = scope.keys();
         let result = tokio::task::spawn_blocking(move || store.record(&tool, &keys)).await;
         match result {
-            Ok(Ok(())) => {}
-            Ok(Err(err)) => tracing::warn!("🛡️ [permission] Could not remember grant: {err:#}"),
-            Err(err) => tracing::warn!("🛡️ [permission] Remember task failed: {err}"),
+            Ok(Ok(())) => true,
+            Ok(Err(err)) => {
+                tracing::warn!("🛡️ [permission] Could not remember grant: {err:#}");
+                false
+            }
+            Err(err) => {
+                tracing::warn!("🛡️ [permission] Remember task failed: {err}");
+                false
+            }
         }
     }
 
@@ -520,13 +526,26 @@ impl PermissionGate {
         self.check_call(None, tool_name, args).await
     }
 
-    /// Gate one tool call with its id (markers attach to it).
+    /// Gate one tool call with its id (markers attach to it), logging one
+    /// INFO line for the decision.
     pub async fn check_call(
         &self,
         tool_call_id: Option<&str>,
         tool_name: &str,
         args: &Value,
     ) -> CheckOutcome {
+        let (outcome, source) = self.decide(tool_call_id, tool_name, args).await;
+        tracing::info!("{}", decision_line(tool_name, args, &outcome, &source));
+        outcome
+    }
+
+    /// Gate one tool call: the outcome and where it came from.
+    async fn decide(
+        &self,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        args: &Value,
+    ) -> (CheckOutcome, String) {
         let judge = self.environment.judge.clone();
         let command = (tool_name == "bash")
             .then(|| args.get("command").and_then(Value::as_str))
@@ -542,8 +561,9 @@ impl PermissionGate {
         }
         let ctx = self.context();
         let decision = resolve_in(self.mode, &ctx, tool_name, args, &self.grants_snapshot());
-        let outcome = match decision {
+        let (outcome, source) = match decision {
             GateDecision::Allow => {
+                let mut source = allow_source(self.mode, &ctx, tool_name, args).to_string();
                 // Run-anyway on a sandbox denial: the command runs once
                 // outside the sandbox.
                 if let (Some(judge), Some(command)) = (&judge, command)
@@ -561,10 +581,15 @@ impl PermissionGate {
                         );
                     }
                     self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
+                    source = if action.unsandboxed {
+                        "run anyway, once outside the sandbox".to_string()
+                    } else {
+                        "run anyway".to_string()
+                    };
                 }
-                CheckOutcome::Allow
+                (CheckOutcome::Allow, source)
             }
-            GateDecision::Deny { reason } => CheckOutcome::Deny(reason),
+            GateDecision::Deny { reason } => (CheckOutcome::Deny(reason), "policy".to_string()),
             GateDecision::Classify(request) => match &judge {
                 Some(judge) => {
                     self.judged(judge, &ctx, tool_call_id, tool_name, args, *request)
@@ -582,7 +607,7 @@ impl PermissionGate {
         if let Some(judge) = &judge {
             judge.push_turn_input(tool_name, args);
         }
-        outcome
+        (outcome, source)
     }
 
     /// Route a judgment request to the auto-mode judge.
@@ -594,7 +619,7 @@ impl PermissionGate {
         tool_name: &str,
         args: &Value,
         request: JudgmentRequest,
-    ) -> CheckOutcome {
+    ) -> (CheckOutcome, String) {
         let command = args.get("command").and_then(Value::as_str);
         // Run-anyway: a human override for this exact action executes it
         // once, with the deltas an allow would have produced. No grant.
@@ -615,7 +640,7 @@ impl PermissionGate {
                 }
             }
             self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
-            return CheckOutcome::Allow;
+            return (CheckOutcome::Allow, "run anyway".to_string());
         }
 
         let transcript = judge.transcript();
@@ -637,17 +662,25 @@ impl PermissionGate {
         {
             Ok(review) => review,
             // The outer bound on the whole decision (retries included).
-            Err(_elapsed) => Review {
-                outcome: ReviewOutcome::Failed {
-                    failure: ReviewFailure::Unavailable(
-                        "the review did not finish in time".to_string(),
-                    ),
-                },
-                attempts: 2,
-                duration: started.elapsed(),
-                model: judge.model.label(),
-                max_tokens: params.max_tokens,
-            },
+            Err(_elapsed) => {
+                tracing::warn!(
+                    "🛡️ [auto_review] Review of {} {} exceeded {:?}",
+                    tool_name,
+                    log_subject(tool_name, args),
+                    self.timeout
+                );
+                Review {
+                    outcome: ReviewOutcome::Failed {
+                        failure: ReviewFailure::Unavailable(
+                            "the review did not finish in time".to_string(),
+                        ),
+                    },
+                    attempts: 2,
+                    duration: started.elapsed(),
+                    model: judge.model.label(),
+                    max_tokens: params.max_tokens,
+                }
+            }
         };
 
         judge.keep_budget(review.max_tokens);
@@ -671,14 +704,33 @@ impl PermissionGate {
         judge.record(record);
         let suggest =
             super::auto_review::denial_counters().record(&self.conversation_id, &review.outcome);
-        tracing::info!(
-            "🛡️ [auto_review] {} {} -> {:?} in {:?} ({} attempt(s))",
-            tool_name,
-            request.subject,
-            review.outcome.verdict().map(|v| v.outcome),
-            review.duration,
-            review.attempts
+        let timing = format!(
+            "{:.1}s, {} attempt(s), {}",
+            review.duration.as_secs_f64(),
+            review.attempts,
+            review.model
         );
+        let source_of = |verdict: &chatshell_agent_core::judgment::verdict::Verdict| {
+            format!(
+                "auto-review: {} risk, {} authorization; {}",
+                wire_name(&verdict.risk_level),
+                wire_name(&verdict.user_authorization),
+                timing
+            )
+        };
+        if let ReviewOutcome::Failed { failure } = &review.outcome {
+            tracing::warn!(
+                "🛡️ [auto_review] Review failed for {} {}: {} ({})",
+                tool_name,
+                log_subject(tool_name, args),
+                match failure {
+                    ReviewFailure::Unavailable(_) => "unavailable",
+                    ReviewFailure::Unparseable(_) => "unparseable",
+                    ReviewFailure::Truncated(_) => "truncated",
+                },
+                timing
+            );
+        }
 
         let reason = review.outcome.model_reason();
         match &review.outcome {
@@ -692,9 +744,12 @@ impl PermissionGate {
                     Some((verdict.risk_level, verdict.rationale.as_str())),
                     false,
                 );
-                CheckOutcome::Allow
+                (CheckOutcome::Allow, source_of(verdict))
             }
-            ReviewOutcome::Cancelled => CheckOutcome::Deny("Auto-review was cancelled".to_string()),
+            ReviewOutcome::Cancelled => (
+                CheckOutcome::Deny("Auto-review was cancelled".to_string()),
+                "auto-review cancelled".to_string(),
+            ),
             ReviewOutcome::Block { verdict } => {
                 self.remember_denial(&decision_id, tool_name, args, false);
                 self.emit_marker(
@@ -706,7 +761,10 @@ impl PermissionGate {
                     Some((verdict.risk_level, verdict.rationale.as_str())),
                     suggest,
                 );
-                CheckOutcome::Deny(reason.unwrap_or_default())
+                (
+                    CheckOutcome::Deny(reason.unwrap_or_default()),
+                    source_of(verdict),
+                )
             }
             ReviewOutcome::Failed { .. } => {
                 self.remember_denial(&decision_id, tool_name, args, false);
@@ -719,7 +777,10 @@ impl PermissionGate {
                     None,
                     suggest,
                 );
-                CheckOutcome::Deny(reason.unwrap_or_default())
+                (
+                    CheckOutcome::Deny(reason.unwrap_or_default()),
+                    format!("auto-review failed; {timing}"),
+                )
             }
         }
     }
@@ -788,6 +849,10 @@ impl PermissionGate {
         );
         let decision_id = record.id.clone();
         judge.record(record);
+        tracing::info!(
+            "🛡️ [permission] bash [command redacted] -> sandbox blocked {:?}, reported (run anyway available)",
+            request.kind
+        );
         self.remember_denial(&decision_id, "bash", &args, true);
         self.emit_marker(
             tool_call_id.as_deref(),
@@ -809,7 +874,7 @@ impl PermissionGate {
         args: &Value,
         subject: String,
         forced: Option<ForcedPrompt>,
-    ) -> CheckOutcome {
+    ) -> (CheckOutcome, String) {
         match forced {
             // Sandboxed auto: detected egress goes straight to the network
             // escalation card, so one network call yields one prompt.
@@ -824,7 +889,11 @@ impl PermissionGate {
     }
 
     /// Pre-execution network escalation (auto + egress detection).
-    async fn network_before_execution(&self, command: String, detail: String) -> CheckOutcome {
+    async fn network_before_execution(
+        &self,
+        command: String,
+        detail: String,
+    ) -> (CheckOutcome, String) {
         let decision = self
             .escalation_card(
                 EscalationRequest {
@@ -840,12 +909,18 @@ impl PermissionGate {
                 if let Some(flag) = &self.environment.network_flag {
                     flag.store(true, Ordering::SeqCst);
                 }
-                CheckOutcome::Allow
+                (
+                    CheckOutcome::Allow,
+                    "user: allow network this session".to_string(),
+                )
             }
-            _ => CheckOutcome::Deny(
-                "User did not allow network access for this command. Do not retry it; \
-                 ask the user how to proceed."
-                    .to_string(),
+            _ => (
+                CheckOutcome::Deny(
+                    "User did not allow network access for this command. Do not retry it; \
+                     ask the user how to proceed."
+                        .to_string(),
+                ),
+                "network card not allowed".to_string(),
             ),
         }
     }
@@ -856,7 +931,7 @@ impl PermissionGate {
         args: &Value,
         subject: String,
         forced: Option<ForcedPrompt>,
-    ) -> CheckOutcome {
+    ) -> (CheckOutcome, String) {
         // Forced prompts are about this specific call: never offer a
         // session grant or remembering for them.
         let (scope, remember) = match forced {
@@ -890,26 +965,39 @@ impl PermissionGate {
         tracing::info!(
             "🛡️ [permission] Prompting for {} {} (request {})",
             tool_name,
-            subject,
+            log_subject(tool_name, args),
             request_id
         );
 
         let answer = tokio::time::timeout(self.timeout, receiver).await;
-        if let Ok(Ok(ApprovalAnswer {
+        let remembered = if let Ok(Ok(ApprovalAnswer {
             decision: ApprovalDecision::AllowOnce | ApprovalDecision::AllowSession,
             remember: true,
         })) = &answer
             && let Some(remember) = &remember
         {
-            self.remember_grant(tool_name, remember).await;
-        }
+            self.remember_grant(tool_name, remember).await
+        } else {
+            false
+        };
+        let remembered_note = if remembered {
+            ", remembered on this device"
+        } else {
+            ""
+        };
         match answer.map(|received| received.map(|answer| answer.decision)) {
-            Ok(Ok(ApprovalDecision::AllowOnce)) => CheckOutcome::Allow,
+            Ok(Ok(ApprovalDecision::AllowOnce)) => (
+                CheckOutcome::Allow,
+                format!("user: allow once{remembered_note}"),
+            ),
             Ok(Ok(ApprovalDecision::AllowSession)) => {
                 if let Some(scope) = scope {
                     self.store_grant(&scope);
                 }
-                CheckOutcome::Allow
+                (
+                    CheckOutcome::Allow,
+                    format!("user: allow for this session{remembered_note}"),
+                )
             }
             // Escalation answers never apply to a pre-execution prompt;
             // treat a mismatched answer as a denial (fail closed).
@@ -917,16 +1005,25 @@ impl PermissionGate {
                 ApprovalDecision::Deny
                 | ApprovalDecision::RetryUnsandboxed
                 | ApprovalDecision::AllowNetworkSession,
-            )) => CheckOutcome::Deny("User denied this tool call".to_string()),
+            )) => (
+                CheckOutcome::Deny("User denied this tool call".to_string()),
+                "user: deny".to_string(),
+            ),
             Ok(Err(_dropped)) => {
                 // The awaiting hook future was dropped (stream cancelled).
                 self.emit_resolved(&request_id);
-                CheckOutcome::Deny("Approval request cancelled".to_string())
+                (
+                    CheckOutcome::Deny("Approval request cancelled".to_string()),
+                    "approval cancelled".to_string(),
+                )
             }
             Err(_elapsed) => {
                 self.registry.resolve(&request_id, ApprovalDecision::Deny);
                 self.emit_resolved(&request_id);
-                CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string())
+                (
+                    CheckOutcome::Deny(TIMEOUT_DENY_REASON.to_string()),
+                    "approval timed out".to_string(),
+                )
             }
         }
     }
@@ -978,31 +1075,121 @@ impl PermissionGate {
             }),
         );
         tracing::info!(
-            "🛡️ [permission] Sandbox escalation for {} (request {})",
-            request.command,
+            "🛡️ [permission] Sandbox escalation (request {})",
             request_id
         );
-        match tokio::time::timeout(self.timeout, receiver).await {
+        let (decision, how) = match tokio::time::timeout(self.timeout, receiver).await {
             Ok(Ok(answer)) => match answer.decision {
-                ApprovalDecision::RetryUnsandboxed if retry_option => {
-                    EscalationDecision::RetryUnsandboxed
-                }
-                ApprovalDecision::AllowNetworkSession if network => {
-                    EscalationDecision::AllowNetworkSession
-                }
-                _ => EscalationDecision::Deny,
+                ApprovalDecision::RetryUnsandboxed if retry_option => (
+                    EscalationDecision::RetryUnsandboxed,
+                    "user: run once outside the sandbox",
+                ),
+                ApprovalDecision::AllowNetworkSession if network => (
+                    EscalationDecision::AllowNetworkSession,
+                    "user: allow network this session",
+                ),
+                _ => (EscalationDecision::Deny, "user: deny"),
             },
             Ok(Err(_dropped)) => {
                 self.emit_resolved(&request_id);
-                EscalationDecision::Deny
+                (EscalationDecision::Deny, "card cancelled")
             }
             Err(_elapsed) => {
                 self.registry.resolve(&request_id, ApprovalDecision::Deny);
                 self.emit_resolved(&request_id);
-                EscalationDecision::Deny
+                (EscalationDecision::Deny, "card timed out")
             }
-        }
+        };
+        tracing::info!(
+            "🛡️ [permission] Sandbox escalation (request {}) -> {}",
+            request_id,
+            how
+        );
+        decision
     }
+}
+
+/// Longest non-secret subject kept on a log line.
+const LOG_TEXT_CHARS: usize = 200;
+
+/// `text` on one line, bounded, for INFO lines.
+fn log_text(text: &str) -> String {
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let total = flat.chars().count();
+    if total <= LOG_TEXT_CHARS {
+        return flat;
+    }
+    let kept: String = flat.chars().take(LOG_TEXT_CHARS).collect();
+    format!("{kept}… (+{} chars)", total - LOG_TEXT_CHARS)
+}
+
+/// The INFO line of one gate decision: what ran or not, and why.
+fn decision_line(tool_name: &str, args: &Value, outcome: &CheckOutcome, source: &str) -> String {
+    match outcome {
+        CheckOutcome::Allow => format!(
+            "🛡️ [permission] {} {} -> allowed ({})",
+            tool_name,
+            log_subject(tool_name, args),
+            source
+        ),
+        CheckOutcome::Deny(_) => format!(
+            "🛡️ [permission] {} {} -> denied ({})",
+            tool_name,
+            log_subject(tool_name, args),
+            source
+        ),
+    }
+}
+
+/// The call's subject for log lines.
+fn log_subject(tool_name: &str, args: &Value) -> String {
+    // Omit payloads rather than guessing which shell arguments or URL parts
+    // contain secrets. Reasons and judge rationale can echo those payloads too.
+    match tool_name {
+        "bash" => "[command redacted]".to_string(),
+        "web_fetch" => "[URL redacted]".to_string(),
+        _ => log_text(&subject_for(tool_name, args)),
+    }
+}
+
+/// A verdict axis as its wire name (`high`, `unknown`, ...).
+fn wire_name<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// Why the resolver allowed a call without asking, for the log.
+fn allow_source(
+    mode: PermissionMode,
+    ctx: &GateContext,
+    tool_name: &str,
+    args: &Value,
+) -> &'static str {
+    if mode == PermissionMode::Yolo {
+        return "yolo mode";
+    }
+    if tool_name == "bash" && args.get("command").and_then(Value::as_str).is_none() {
+        return "no command (the tool reports it)";
+    }
+    if PermissionTier::for_tool(tool_name) == PermissionTier::Read {
+        return "read-only tool";
+    }
+    if mode == PermissionMode::Auto && tool_name == "bash" && ctx.sandbox_available {
+        return "runs in the sandbox";
+    }
+    if mode == PermissionMode::Auto
+        && matches!(tool_name, "edit" | "write")
+        && let (Some(path), Some(workspace)) = (
+            args.get("path").and_then(Value::as_str),
+            ctx.workspace.as_deref(),
+        )
+        && chatshell_agent_core::permission::inside_workspace(path, workspace)
+    {
+        return "inside the workspace";
+    }
+    "session or remembered grant"
 }
 
 /// [`SandboxEscalator`] backed by the conversation's approval gate.
@@ -1054,12 +1241,10 @@ impl AgentHook for PermissionHook {
         let tool_call_id = event.tool_call_id.map(str::to_string);
         let args: Value = serde_json::from_str(event.args).unwrap_or(Value::Null);
         async move {
+            // The gate logs every decision itself.
             let outcome = gate
                 .check_call(tool_call_id.as_deref(), &tool_name, &args)
                 .await;
-            if let CheckOutcome::Deny(reason) = &outcome {
-                tracing::warn!("🛡️ [permission] Denied {}: {}", tool_name, reason);
-            }
             to_action(outcome)
         }
     }
@@ -2267,5 +2452,119 @@ mod tests {
         // The current action is the action, not an earlier input.
         let transcript = second.split("</transcript>").next().unwrap();
         assert!(!transcript.contains("git push origin main"), "{transcript}");
+    }
+
+    #[tokio::test]
+    async fn every_decision_reports_its_source_on_one_line() {
+        // A user answer.
+        let f = fixture(PermissionMode::Ask);
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.decide(None, "bash", &bash("git status")).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowSession, 0).await;
+        let answered = task.await.unwrap();
+        // A grant fast path and a policy denial.
+        let granted = f
+            .gate
+            .decide(None, "bash", &bash("git status --short"))
+            .await;
+        let blocked = f.gate.decide(None, "bash", &bash("rm -rf /")).await;
+        // A reviewer verdict.
+        let j = judged_fixture("conv-log", ScriptedJudge::new(vec![JUDGE_DENY]));
+        let reviewed = j.gate.decide(None, "bash", &bash("ls")).await;
+
+        let line = |args: Value, (outcome, source): &(CheckOutcome, String)| {
+            decision_line("bash", &args, outcome, source)
+        };
+        assert_eq!(
+            line(bash("git status"), &answered),
+            "🛡️ [permission] bash [command redacted] -> allowed (user: allow for this session)"
+        );
+        assert_eq!(
+            line(bash("git status --short"), &granted),
+            "🛡️ [permission] bash [command redacted] -> allowed (session or remembered grant)"
+        );
+        assert!(
+            line(bash("rm -rf /"), &blocked)
+                .starts_with("🛡️ [permission] bash [command redacted] -> denied (policy)"),
+            "{}",
+            line(bash("rm -rf /"), &blocked)
+        );
+        let reviewed = line(bash("ls"), &reviewed);
+        assert!(
+            reviewed.starts_with(
+                "🛡️ [permission] bash [command redacted] -> denied (auto-review: high risk, unknown authorization; "
+            ),
+            "{reviewed}"
+        );
+        assert!(reviewed.contains("mock/judge"), "{reviewed}");
+        assert!(!reviewed.contains('\n'));
+    }
+
+    #[tokio::test]
+    async fn remembered_source_requires_a_successful_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid = PersistentGrantStore::new(dir.path().join("grants.db"));
+        // A directory cannot be opened as a SQLite database.
+        let invalid = PersistentGrantStore::new(dir.path());
+        for (store, expected) in [
+            (None, false),
+            (Some(invalid), false),
+            (Some(valid.clone()), true),
+        ] {
+            let f = fixture_with_store(PermissionMode::Ask, store);
+            let task = tokio::spawn({
+                let gate = f.gate.clone();
+                async move { gate.decide(None, "bash", &bash("git status")).await }
+            });
+            answer_remembering(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+            let (outcome, source) = task.await.unwrap();
+            assert_eq!(outcome, CheckOutcome::Allow);
+            assert_eq!(
+                source.contains("remembered on this device"),
+                expected,
+                "{source}"
+            );
+        }
+        assert!(!valid.keys().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn decision_logs_omit_payloads_and_echoed_reasons() {
+        let secret = "secret-token-123";
+        for (tool, args) in [
+            ("bash", bash(&format!("TOKEN={secret} deploy"))),
+            (
+                "web_fetch",
+                json!({"url": format!("https://user:{secret}@example.com/?token={secret}")}),
+            ),
+        ] {
+            for outcome in [CheckOutcome::Allow, CheckOutcome::Deny(secret.into())] {
+                let line = decision_line(tool, &args, &outcome, "policy");
+                assert!(!line.contains(secret), "{line}");
+                assert!(line.contains("redacted"), "{line}");
+            }
+        }
+        // A judge can echo a secret from the action in its rationale.
+        let reply = r#"{"outcome":"deny","risk_level":"high","user_authorization":"unknown","rationale":"secret-token-123"}"#;
+        let j = judged_fixture("conv-secret-log", ScriptedJudge::new(vec![reply]));
+        let (outcome, source) = j.gate.decide(None, "bash", &bash("ls")).await;
+        assert!(matches!(outcome, CheckOutcome::Deny(_)));
+        assert!(!source.contains(secret), "{source}");
+    }
+
+    #[test]
+    fn log_lines_are_single_line_and_bounded() {
+        let long = format!("echo {}\n{}", "a".repeat(300), "rm x");
+        let line = decision_line(
+            "write",
+            &json!({ "path": long }),
+            &CheckOutcome::Deny("multi\nline reason".into()),
+            "policy",
+        );
+        assert!(!line.contains('\n'), "{line}");
+        assert!(line.contains("… (+"), "{line}");
+        assert!(!line.contains("multi"), "{line}");
     }
 }

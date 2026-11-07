@@ -229,6 +229,13 @@ impl JudgeModel for ProviderJudge {
                 &config,
             )
             .map_err(|err| JudgeError::Permanent(format!("{err:#}")))?;
+            // Keep diagnostics to metadata: prompts and replies can contain secrets.
+            tracing::debug!(
+                "🛡️ [auto_review] Judge request to {} (temperature {:?}, max_tokens {})",
+                self.label(),
+                call.temperature,
+                call.max_tokens
+            );
             let prompt = build_user_message(call.user, &[], &[]);
             let cancel = call.cancel.clone();
             let response = super::stream_chat_with_agent(
@@ -243,14 +250,23 @@ impl JudgeModel for ProviderJudge {
             if cancel.is_cancelled() {
                 return Err(JudgeError::Cancelled);
             }
-            match response {
+            let result = match response {
                 Ok(response) => match response.interrupted {
                     // A stream that broke mid-answer: the verdict may be cut.
                     Some(error) => Err(classify_provider_error(&error)),
                     None => Ok(response.content),
                 },
                 Err(err) => Err(classify_provider_error(&format!("{err:#}"))),
+            };
+            match &result {
+                Ok(text) => tracing::debug!(
+                    "🛡️ [auto_review] Judge response from {} ({} bytes)",
+                    self.label(),
+                    text.len()
+                ),
+                Err(_) => tracing::debug!("🛡️ [auto_review] Judge call to {} failed", self.label()),
             }
+            result
         })
     }
 }
@@ -266,7 +282,6 @@ pub fn classify_provider_error(message: &str) -> JudgeError {
     if lower.contains("finish_reason=length") {
         return JudgeError::Truncated(message.to_string());
     }
-
     // Status codes match as whole numbers only, so a limit or a count in
     // a permanent error ("at most 15000 tokens") never reads as a 500.
     let transient_codes = ["429", "500", "502", "503", "504", "529"];
@@ -358,15 +373,41 @@ pub fn raise_budget(cache_key: &str, max_tokens: u32) {
 pub async fn eligibility_for(judge: &ProviderJudge, cancel: &CancellationToken) -> Eligibility {
     let key = judge.cache_key();
     if let Some(cached) = ELIGIBILITY.get(&key) {
+        tracing::debug!(
+            "🛡️ [auto_review] {} eligibility (cached): {:?}",
+            judge.label(),
+            cached
+        );
         return cached;
     }
     tracing::info!(
         "🛡️ [auto_review] Probing {} as the auto-mode judge",
         judge.label()
     );
+    let started = std::time::Instant::now();
     let candidates = thinking_candidates(&judge.provider_type, judge.api_style.as_deref());
     let eligibility =
         engine::probe_with(judge, engine::JudgeParams::default(), &candidates, cancel).await;
+    match &eligibility {
+        Eligibility::Eligible(params) => tracing::info!(
+            "🛡️ [auto_review] {} is eligible as the judge ({:.1}s, temperature {}, max_tokens {}, extra {})",
+            judge.label(),
+            started.elapsed().as_secs_f64(),
+            params
+                .temperature
+                .map_or_else(|| "omitted".to_string(), |t| t.to_string()),
+            params.max_tokens,
+            params
+                .extra
+                .as_ref()
+                .map_or_else(|| "none".to_string(), |extra| extra.to_string())
+        ),
+        Eligibility::Ineligible { reason } => tracing::warn!(
+            "🛡️ [auto_review] {} is not eligible as the judge: {}",
+            judge.label(),
+            reason
+        ),
+    }
     if !cancel.is_cancelled() {
         ELIGIBILITY.insert(key, eligibility.clone());
     }
