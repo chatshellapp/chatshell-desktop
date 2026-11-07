@@ -593,6 +593,7 @@ pub(crate) async fn handle_agent_streaming(
         Some((model, params))
             if core_mode == chatshell_agent_core::permission::PermissionMode::Auto =>
         {
+            let budget_key = model.cache_key();
             let posture_ctx = chatshell_agent_core::permission::GateContext {
                 workspace: workspace.clone(),
                 sandbox_available: sandboxed,
@@ -612,7 +613,7 @@ pub(crate) async fn handle_agent_streaming(
                 &content,
             )
             .await;
-            Some(crate::llm::permission::JudgeSession::new(
+            let session = crate::llm::permission::JudgeSession::new(
                 Arc::new(model),
                 params,
                 posture,
@@ -620,7 +621,9 @@ pub(crate) async fn handle_agent_streaming(
                 crate::llm::auto_review::decision_log().cloned(),
                 execution_deltas.clone(),
                 cancel_token.clone(),
-            ))
+            );
+            session.set_budget_key(budget_key);
+            Some(session)
         }
         _ => None,
     };

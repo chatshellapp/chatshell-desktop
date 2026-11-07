@@ -2182,6 +2182,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn judge_thinking_controls_reach_the_request_body() {
+        use chatshell_agent_core::judgment::engine::JudgeCall;
+        // The first chat-wire candidate the probe tries.
+        let candidates = crate::llm::auto_review::thinking_candidates("minimax_cn", None);
+        let call = JudgeCall {
+            system: "rules",
+            user: "action",
+            temperature: Some(0.0),
+            max_tokens: 256,
+            extra: candidates.first(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+        };
+        let config = crate::llm::auto_review::ProviderJudge::agent_config(&call);
+        let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
+        let agent = create_provider_agent(
+            "minimax_cn",
+            "MiniMax-M3.1-Flash-Preview",
+            Some("probe-key"),
+            Some(&base_url),
+            None,
+            &config,
+        )
+        .expect("minimax agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["reasoning_effort"], json!("none"), "{body}");
+        assert_eq!(body["temperature"], json!(0.0), "{body}");
+        assert_eq!(body["max_tokens"], json!(256), "{body}");
+    }
+
+    #[tokio::test]
     async fn openrouter_tool_free_agent_gets_reasoning_default() {
         let (base_url, captured) = serve_one_request(CHAT_COMPLETIONS_BODY).await;
         let agent = create_openrouter_agent(

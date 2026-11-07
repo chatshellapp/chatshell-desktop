@@ -127,7 +127,11 @@ pub fn effective_mode(
 /// One turn's auto-mode judge (classifier `auto`).
 pub struct JudgeSession {
     model: Arc<dyn JudgeModel>,
-    params: JudgeParams,
+    /// Raised in place when a review needed a larger output bound.
+    params: Mutex<JudgeParams>,
+    /// The model's eligibility-cache key: a raised bound is kept there for
+    /// later turns.
+    budget_key: Mutex<Option<String>>,
     posture: Mutex<Posture>,
     /// User texts and tool inputs before this turn's tool calls, ending
     /// with the in-flight user message (extracted at the source).
@@ -158,7 +162,8 @@ impl JudgeSession {
     ) -> Arc<Self> {
         Arc::new(Self {
             model,
-            params,
+            params: Mutex::new(params),
+            budget_key: Mutex::new(None),
             posture: Mutex::new(posture),
             history,
             budget: TranscriptBudget::default(),
@@ -168,6 +173,25 @@ impl JudgeSession {
             turn_inputs: Mutex::new(Vec::new()),
             bash_calls: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Name the model's eligibility-cache entry, so a raised output bound
+    /// outlives this turn.
+    pub fn set_budget_key(&self, key: String) {
+        *self.budget_key.lock().unwrap() = Some(key);
+    }
+
+    /// Keep a larger output bound a review needed, for this turn's later
+    /// reviews and (through the cache) later turns.
+    fn keep_budget(&self, max_tokens: u32) {
+        let mut params = self.params.lock().unwrap();
+        if max_tokens <= params.max_tokens {
+            return;
+        }
+        params.max_tokens = max_tokens;
+        if let Some(key) = self.budget_key.lock().unwrap().as_deref() {
+            super::auto_review::raise_budget(key, max_tokens);
+        }
     }
 
     /// Set the MCP servers the posture names (loaded after the gate).
@@ -596,12 +620,13 @@ impl PermissionGate {
 
         let transcript = judge.transcript();
         let posture = judge.posture.lock().unwrap().clone();
+        let params = judge.params.lock().unwrap().clone();
         let started = std::time::Instant::now();
         let review = match tokio::time::timeout(
             self.timeout,
             review_engine::review(
                 judge.model.as_ref(),
-                judge.params,
+                &params,
                 &posture,
                 &transcript,
                 &request,
@@ -621,9 +646,11 @@ impl PermissionGate {
                 attempts: 2,
                 duration: started.elapsed(),
                 model: judge.model.label(),
+                max_tokens: params.max_tokens,
             },
         };
 
+        judge.keep_budget(review.max_tokens);
         let delta = match &review.outcome {
             ReviewOutcome::Allow { .. } => execution_delta(&request, args, ctx),
             _ => None,

@@ -3,6 +3,8 @@ pub mod agent_streaming;
 #[cfg(test)]
 mod anthropic_wire_tests;
 pub mod auto_review;
+#[cfg(test)]
+mod auto_review_eval;
 pub mod azure;
 pub mod capabilities;
 pub mod cohere;

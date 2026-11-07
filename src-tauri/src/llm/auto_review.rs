@@ -203,6 +203,11 @@ impl ProviderJudge {
         if let Some(temperature) = call.temperature {
             config = config.with_temperature(temperature);
         }
+        // Also suppresses the providers' own reasoning defaults (gpt-5,
+        // OpenRouter), which apply only when no additional params are set.
+        if let Some(extra) = call.extra {
+            config = config.with_additional_params(extra.clone());
+        }
         config
     }
 }
@@ -255,6 +260,13 @@ impl JudgeModel for ProviderJudge {
 /// (auth, bad request, unsupported parameter, unknown model) is permanent.
 pub fn classify_provider_error(message: &str) -> JudgeError {
     let lower = message.to_ascii_lowercase();
+    // rig ends a run that delivered no answer with this finish reason
+    // (reasoning used the whole output budget): worth a retry with a
+    // larger bound, and never a sign that a request field was rejected.
+    if lower.contains("finish_reason=length") {
+        return JudgeError::Truncated(message.to_string());
+    }
+
     // Status codes match as whole numbers only, so a limit or a count in
     // a permanent error ("at most 15000 tokens") never reads as a 500.
     let transient_codes = ["429", "500", "502", "503", "504", "529"];
@@ -291,6 +303,55 @@ pub fn classify_provider_error(message: &str) -> JudgeError {
     }
 }
 
+/// Request fields that reduce a judge model's reasoning, most reducing
+/// first, for the probe to try in order (see
+/// [`engine::probe_with`]). Chosen by wire, never by vendor: which value a
+/// model accepts varies by model and endpoint (2026-11-06 eval: Volcengine
+/// GLM 5.3 takes `low` but not `none`, its Flash model takes `minimal`,
+/// GPT-6 Luna takes `none` and `low` but not `minimal`), so the probe
+/// finds out and drops what a provider rejects. Wires without a known
+/// control get none; the probe's larger output bound covers them.
+pub fn thinking_candidates(provider_type: &str, api_style: Option<&str>) -> Vec<Value> {
+    use chatshell_agent_core::provider_catalog::{self, Wire};
+    const LEVELS: [&str; 3] = ["none", "minimal", "low"];
+    let chat = || {
+        LEVELS
+            .iter()
+            .map(|level| serde_json::json!({ "reasoning_effort": level }))
+            .collect()
+    };
+    let responses = || {
+        LEVELS
+            .iter()
+            .map(|level| serde_json::json!({ "reasoning": { "effort": level } }))
+            .collect()
+    };
+    match provider_catalog::resolve(provider_type).map(|route| route.wire) {
+        // Custom OpenAI-compatible providers pick their wire by API style.
+        Some(Wire::Responses) if api_style == Some("chat_completions") => chat(),
+        Some(Wire::Responses) => responses(),
+        Some(Wire::OpenAiCompat | Wire::OpenRouter | Wire::Azure) => chat(),
+        Some(Wire::Anthropic) => vec![serde_json::json!({ "thinking": { "type": "disabled" } })],
+        // Ollama's native API; rig lifts `think` out of the extra fields.
+        Some(Wire::Ollama) => vec![serde_json::json!({ "think": false })],
+        _ => Vec::new(),
+    }
+}
+
+/// Keep a larger output bound for a model after a review needed it, so
+/// its later reviews start there instead of running out first.
+pub fn raise_budget(cache_key: &str, max_tokens: u32) {
+    if let Some(Eligibility::Eligible(mut params)) = ELIGIBILITY.get(cache_key)
+        && params.max_tokens < max_tokens
+    {
+        params.max_tokens = max_tokens;
+        tracing::info!(
+            "🛡️ [auto_review] Judge output bound raised to {max_tokens} tokens for later reviews"
+        );
+        ELIGIBILITY.insert(cache_key.to_string(), Eligibility::Eligible(params));
+    }
+}
+
 /// The judge's eligibility: cached for this run of the app, probed on
 /// first use (model selection, a model or classifier-model change, or the
 /// first `auto` turn). A cancelled probe is not cached.
@@ -303,7 +364,9 @@ pub async fn eligibility_for(judge: &ProviderJudge, cancel: &CancellationToken) 
         "🛡️ [auto_review] Probing {} as the auto-mode judge",
         judge.label()
     );
-    let eligibility = engine::probe(judge, cancel).await;
+    let candidates = thinking_candidates(&judge.provider_type, judge.api_style.as_deref());
+    let eligibility =
+        engine::probe_with(judge, engine::JudgeParams::default(), &candidates, cancel).await;
     if !cancel.is_cancelled() {
         ELIGIBILITY.insert(key, eligibility.clone());
     }
@@ -515,6 +578,7 @@ mod tests {
             user: "action",
             temperature: Some(0.0),
             max_tokens: 256,
+            extra: None,
             cancel: CancellationToken::new(),
         };
         let config = ProviderJudge::agent_config(&call);
@@ -531,6 +595,92 @@ mod tests {
             ProviderJudge::agent_config(&call).model_params.temperature,
             None
         );
+    }
+
+    #[test]
+    fn thinking_candidates_follow_the_wire() {
+        use serde_json::json;
+        let efforts = |field: &dyn Fn(&str) -> Value| -> Vec<Value> {
+            ["none", "minimal", "low"]
+                .iter()
+                .map(|l| field(l))
+                .collect()
+        };
+        let chat = efforts(&|l| json!({ "reasoning_effort": l }));
+        let responses = efforts(&|l| json!({ "reasoning": { "effort": l } }));
+        // OpenAI-compatible chat wires, whatever the vendor.
+        assert_eq!(thinking_candidates("minimax_cn", None), chat);
+        assert_eq!(thinking_candidates("openrouter", None), chat);
+        assert_eq!(
+            thinking_candidates("custom_openai", Some("chat_completions")),
+            chat
+        );
+        // The Responses wire nests the level.
+        assert_eq!(
+            thinking_candidates("custom_openai", Some("responses")),
+            responses
+        );
+        assert_eq!(thinking_candidates("openai", None), responses);
+        assert_eq!(
+            thinking_candidates("custom_anthropic", None),
+            vec![json!({ "thinking": { "type": "disabled" } })]
+        );
+        assert_eq!(
+            thinking_candidates("ollama", None),
+            vec![json!({ "think": false })]
+        );
+        // No known control: the probe relies on the larger output bound.
+        assert!(thinking_candidates("gemini", None).is_empty());
+        assert!(thinking_candidates("not-a-provider", None).is_empty());
+    }
+
+    #[test]
+    fn running_out_of_budget_is_classified_as_truncated() {
+        let message = "PromptError: CompletionError: ResponseError: the model produced no \
+                       answer and stopped with finish_reason=Length; the turn ran out of \
+                       output budget before producing one — raise max_tokens for this request";
+        assert!(matches!(
+            classify_provider_error(message),
+            JudgeError::Truncated(_)
+        ));
+        // A filtered reply is not a budget problem.
+        assert!(matches!(
+            classify_provider_error(
+                "the model produced no answer and stopped with finish_reason=ContentFilter"
+            ),
+            JudgeError::Permanent(_)
+        ));
+    }
+
+    #[test]
+    fn a_raised_budget_is_kept_for_later_reviews() {
+        let key = EligibilityCache::key("test-raise", "model", Some("https://raise.test"));
+        ELIGIBILITY.insert(
+            key.clone(),
+            Eligibility::Eligible(engine::JudgeParams::default()),
+        );
+        raise_budget(&key, engine::ESCALATED_OUTPUT_TOKENS);
+        let Some(Eligibility::Eligible(params)) = ELIGIBILITY.get(&key) else {
+            panic!("still eligible");
+        };
+        assert_eq!(params.max_tokens, engine::ESCALATED_OUTPUT_TOKENS);
+        // Never lowered.
+        raise_budget(&key, engine::MAX_OUTPUT_TOKENS);
+        let Some(Eligibility::Eligible(params)) = ELIGIBILITY.get(&key) else {
+            panic!("still eligible");
+        };
+        assert_eq!(params.max_tokens, engine::ESCALATED_OUTPUT_TOKENS);
+        // An ineligible model stays ineligible.
+        let other = EligibilityCache::key("test-raise", "other", None);
+        ELIGIBILITY.insert(
+            other.clone(),
+            Eligibility::Ineligible { reason: "x".into() },
+        );
+        raise_budget(&other, engine::ESCALATED_OUTPUT_TOKENS);
+        assert!(matches!(
+            ELIGIBILITY.get(&other),
+            Some(Eligibility::Ineligible { .. })
+        ));
     }
 
     #[test]
