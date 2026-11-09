@@ -265,4 +265,40 @@ describe('PermissionApprovalDialog', () => {
       })
     )
   })
+
+  it('presents the before-run network card as a request, disclosing the write widening', () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-n',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'curl https://example.com -o ~/proj/f',
+      tier: 'exec',
+      grant: null,
+      warning: { kind: 'sandbox_network', detail: 'curl https://example.com' },
+      escalation: { network_option: true, retry_option: false },
+      escape: { writable_roots: ['/Users/me/proj'], unbounded: [] },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByText('Command needs network access')).toBeInTheDocument()
+    expect(screen.queryByText('Command blocked by the sandbox')).not.toBeInTheDocument()
+    expect(screen.getByText(/approving also lets this run write to/i)).toBeInTheDocument()
+    expect(screen.getByText('/Users/me/proj')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /run once outside/i })).not.toBeInTheDocument()
+  })
+
+  it('discloses targets the sandbox will still block', () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-u',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'cp a ~/outside.txt',
+      tier: 'exec',
+      grant: { kind: 'bash', bases: ['cp'] },
+      escape: { writable_roots: [], unbounded: ['/Users/me/outside.txt'] },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByText(/the sandbox will still block writes/i)).toBeInTheDocument()
+    expect(screen.getByText('/Users/me/outside.txt')).toBeInTheDocument()
+    expect(screen.queryByText(/approving also lets this run write to/i)).not.toBeInTheDocument()
+  })
 })

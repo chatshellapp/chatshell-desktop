@@ -1,7 +1,8 @@
 // Default permission mode for new conversations (device setting
 // `default_permission_mode`). Fresh installs start in `auto`, offered on
 // every platform and resolved per conversation at first use (auto
-// reviewer, else sandbox plus prompts, else `ask`); choosing `yolo` asks
+// reviewer, else `ask`, which runs bash in the sandbox where one exists);
+// choosing `yolo` asks
 // for confirmation, so new conversations never start unconfined by
 // accident.
 
@@ -22,7 +23,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { SettingsCard } from './settings-card'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { DEFAULT_PERMISSION_MODE_KEY, defaultPermissionMode } from '@/lib/permission-mode'
+import {
+  DEFAULT_PERMISSION_MODE_KEY,
+  defaultPermissionMode,
+  permissionModeHintKey,
+  useSandboxAvailable,
+} from '@/lib/permission-mode'
 import type { PermissionMode } from '@/types'
 
 const ICONS: Record<PermissionMode, typeof Shield> = {
@@ -37,6 +43,7 @@ export function DefaultPermissionMode() {
   const settings = useSettingsStore((state) => state.settings)
   const saveSetting = useSettingsStore((state) => state.saveSetting)
   const [confirmYolo, setConfirmYolo] = useState(false)
+  const sandboxAvailable = useSandboxAvailable()
 
   const current = defaultPermissionMode(settings)
   const modes: PermissionMode[] = ['ask', 'auto', 'yolo']
@@ -75,8 +82,13 @@ export function DefaultPermissionMode() {
                 <span className="text-xs leading-4 text-muted-foreground">
                   {mode === 'auto'
                     ? tChat('permission.mode.autoDefaultHint')
-                    : tChat(`permission.mode.${mode}Hint`)}
+                    : tChat(permissionModeHintKey(mode, sandboxAvailable))}
                 </span>
+                {mode === 'ask' && sandboxAvailable && (
+                  <span className="text-xs leading-4 text-muted-foreground">
+                    {tChat('permission.mode.askSandboxDetail')}
+                  </span>
+                )}
               </Label>
             </div>
           )

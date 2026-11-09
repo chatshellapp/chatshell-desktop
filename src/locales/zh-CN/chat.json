@@ -163,22 +163,29 @@
       "title": "命令被沙盒拦截",
       "body": "你已批准此命令,但系统沙盒阻止了其中的部分操作。请选择是否允许它绕过沙盒。",
       "retryOutside": "在沙盒外运行一次",
-      "allowNetwork": "本次会话内允许联网"
+      "allowNetwork": "本次会话内允许联网",
+      "beforeRunTitle": "命令需要访问网络",
+      "beforeRunBody": "沙盒会阻止网络访问。可在本对话剩余时间内允许网络,或拒绝此命令。"
+    },
+    "escape": {
+      "widens": "批准后,本次运行还可以写入:",
+      "unbounded": "沙盒仍会阻止写入以下路径;如被阻止,将再次询问你:"
     },
     "escalateTitle": "允许完全访问?",
     "escalateBody": "Yolo 会给智能体完全访问权限,且不逐项审核:它可以在你的账户可访问的任何位置读取、写入和删除文件,访问网络,运行任意终端命令或 MCP 工具,全程不询问,也不经过沙盒。只有一小份内置的灾难性操作黑名单仍然生效。",
     "escalateConfirm": "允许完全访问",
     "mode": {
-      "ask": "每次确认",
-      "askHint": "写入与命令需确认",
-      "auto": "沙盒自动",
+      "ask": "询问",
+      "askHint": "每条命令、文件编辑与工具调用都需确认",
+      "askSandboxHint": "命令在沙盒中运行;越出沙盒、文件编辑与工具调用需确认",
+      "askSandboxDetail": "留在沙盒内的 Shell 命令无需确认即可运行,包括在工作目录内写入;通过文件工具进行的编辑始终需要确认。",
+      "auto": "自动审核",
       "autoHint": "由 AI 审核员批准安全操作,无需确认",
       "yolo": "自由执行",
       "yoloHint": "不再逐项询问,也不使用沙盒",
-      "autoSandboxHint": "在沙盒中运行命令,越出沙盒前询问",
       "autoDefaultHint": "由 AI 审核员批准安全操作;模型无法审核时改为询问",
-      "autoUnavailable": "此模型无法使用自动模式:它无法审核操作,且此设备没有沙盒。",
-      "autoUnavailableReason": "此模型无法使用自动模式:{{reason}}"
+      "autoUnavailable": "此模型无法使用自动模式:它无法审核操作。对话将使用询问模式。",
+      "autoUnavailableReason": "此模型无法使用自动模式({{reason}})。对话将使用询问模式。"
     }
   },
   "turn": {

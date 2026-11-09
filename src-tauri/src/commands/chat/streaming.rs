@@ -384,6 +384,25 @@ pub(crate) async fn handle_agent_streaming(
                 working_dir
             );
             config = config.with_bash_working_directory(working_dir.clone());
+        } else {
+            // No working directory: bash runs in the conversation scratch
+            // (ADR 09 §2) — a writable root, where data-file attachments
+            // are copied, and the analysis root of the permission gate.
+            let scratch = crate::storage::conversation_scratch_dir(&app, &conversation_id_clone);
+            match std::fs::create_dir_all(&scratch) {
+                Ok(()) => {
+                    tracing::info!(
+                        "📂 [agent_streaming] Setting bash working directory to scratch: {}",
+                        scratch.display()
+                    );
+                    config =
+                        config.with_bash_working_directory(scratch.to_string_lossy().to_string());
+                }
+                Err(e) => tracing::warn!(
+                    "⚠️ [agent_streaming] Could not create scratch {}: {e}",
+                    scratch.display()
+                ),
+            }
         }
     }
     if kill_shell_enabled && bash_enabled {
@@ -553,10 +572,7 @@ pub(crate) async fn handle_agent_streaming(
             crate::llm::auto_review::resolve_classifier_model(&state_clone, &conversation_model)
                 .await;
         let eligibility = crate::llm::auto_review::eligibility_for(&judge, &cancel_token).await;
-        let resolution = chatshell_agent_core::judgment::engine::resolve_auto(
-            Some(&eligibility),
-            backend.is_some(),
-        );
+        let resolution = chatshell_agent_core::judgment::engine::resolve_auto(Some(&eligibility));
         tracing::info!(
             "🛡️ [agent_streaming] auto resolved to {:?} (judge {})",
             resolution,
@@ -575,15 +591,21 @@ pub(crate) async fn handle_agent_streaming(
         Arc::new(move |event, payload| {
             let _ = app_for_permissions.emit(event, payload);
         });
-    // Bash is jailed in `auto` wherever a backend exists; judged `auto`
-    // without one runs bash unconfined, every command judged.
+    // Bash is jailed in `ask` and `auto` wherever a backend exists (ADR
+    // 08); without one, `ask` prompts per command and judged `auto` judges
+    // every command. `yolo` is never jailed.
     let sandboxed =
         crate::llm::permission::sandbox_enabled_for(core_mode) && bash_enabled && backend.is_some();
     let network_flag = state_clone
         .bash_session_manager
         .network_flag(&conversation_id_clone);
-    let scratch_dir =
-        sandboxed.then(|| crate::storage::conversation_scratch_dir(&app, &conversation_id_clone));
+    let cwd_drift_flag = state_clone
+        .bash_session_manager
+        .cwd_drift_flag(&conversation_id_clone);
+    // The scratch exists whenever bash is enabled (ADR 09 §2): it is the
+    // bash cwd without a workspace and the gate's analysis root then.
+    let scratch_dir = bash_enabled
+        .then(|| crate::storage::conversation_scratch_dir(&app, &conversation_id_clone));
     let workspace = conv_settings
         .as_ref()
         .and_then(|settings| settings.working_directory.as_ref())
@@ -599,6 +621,7 @@ pub(crate) async fn handle_agent_streaming(
                 sandbox_available: sandboxed,
                 network_allowed: network_flag.load(std::sync::atomic::Ordering::SeqCst),
                 scratch_dir: scratch_dir.clone(),
+                cwd_drifted: cwd_drift_flag.load(std::sync::atomic::Ordering::SeqCst),
             };
             let posture = chatshell_agent_core::judgment::ruleset::Posture {
                 os: std::env::consts::OS.to_string(),
@@ -619,7 +642,6 @@ pub(crate) async fn handle_agent_streaming(
                 posture,
                 history,
                 crate::llm::auto_review::decision_log().cloned(),
-                execution_deltas.clone(),
                 cancel_token.clone(),
             );
             session.set_budget_key(budget_key);
@@ -639,6 +661,8 @@ pub(crate) async fn handle_agent_streaming(
             network_flag: Some(network_flag.clone()),
             scratch_dir: scratch_dir.clone(),
             judge: judge_session.clone(),
+            deltas: execution_deltas.clone(),
+            cwd_drifted: sandboxed.then(|| cwd_drift_flag.clone()),
         },
     );
 
@@ -656,7 +680,7 @@ pub(crate) async fn handle_agent_streaming(
             .unwrap_or_default();
         config = config.with_bash_env_passthrough(passthrough);
 
-        if let Some(scratch_dir) = scratch_dir {
+        if let Some(scratch_dir) = scratch_dir.filter(|_| sandboxed) {
             tracing::info!(
                 "🛡️ [agent_streaming] Bash sandbox enabled (backend {:?}, scratch {})",
                 backend,
@@ -671,6 +695,7 @@ pub(crate) async fn handle_agent_streaming(
                         gate.clone(),
                     ))),
                     deltas: execution_deltas,
+                    cwd_drifted: cwd_drift_flag,
                 });
         }
     }

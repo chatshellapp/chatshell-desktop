@@ -1,5 +1,6 @@
 import type {
   PermissionEscalation,
+  PermissionEscape,
   PermissionGrant,
   PermissionWarning,
 } from '@/stores/permissionStore'
@@ -59,6 +60,8 @@ export interface PermissionRequestedEvent {
   remember?: PermissionGrant | null
   /** Set for sandbox escalation cards. */
   escalation?: PermissionEscalation | null
+  /** Jailed bash: what approving widens for this one execution. */
+  escape?: PermissionEscape | null
 }
 
 export interface PermissionResolvedEvent {

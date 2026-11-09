@@ -163,22 +163,29 @@
       "title": "Command blocked by the sandbox",
       "body": "You approved this command, but the OS sandbox stopped part of it. Choose whether to let it escape the sandbox.",
       "retryOutside": "Run once outside sandbox",
-      "allowNetwork": "Allow network this session"
+      "allowNetwork": "Allow network this session",
+      "beforeRunTitle": "Command needs network access",
+      "beforeRunBody": "The sandbox blocks network access. Allow it for the rest of this conversation, or deny this command."
+    },
+    "escape": {
+      "widens": "Approving also lets this run write to:",
+      "unbounded": "The sandbox will still block writes to the paths below; if it does, you will be asked again:"
     },
     "escalateTitle": "Allow full access?",
     "escalateBody": "Yolo gives the agent full access with no review of individual actions: it can read, write, and delete files anywhere your account can, use the network, and run any terminal command or MCP tool, all without asking and without the sandbox. Only a small built-in blocklist of catastrophic operations still applies.",
     "escalateConfirm": "Allow full access",
     "mode": {
       "ask": "Ask",
-      "askHint": "Confirm writes and commands",
+      "askHint": "Confirm every command, file edit, and tool use",
+      "askSandboxHint": "Commands run in a sandbox; confirms escapes, file edits, and tool use",
+      "askSandboxDetail": "Shell commands that stay in the sandbox run without asking, including writes inside the workspace; edits made with the file tools are always confirmed.",
       "auto": "Auto",
       "autoHint": "An AI reviewer approves safe actions, no prompts",
       "yolo": "Yolo",
       "yoloHint": "Run everything without asking or a sandbox",
-      "autoSandboxHint": "Runs commands in a sandbox, asks before escaping",
       "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review",
-      "autoUnavailable": "Auto is unavailable for this model: it cannot review actions and this device has no sandbox.",
-      "autoUnavailableReason": "Auto is unavailable for this model: {{reason}}"
+      "autoUnavailable": "Auto is unavailable for this model: it cannot review actions. Conversations use Ask.",
+      "autoUnavailableReason": "Auto is unavailable for this model ({{reason}}). Conversations use Ask."
     }
   },
   "turn": {

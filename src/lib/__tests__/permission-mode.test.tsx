@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import {
   displayedPermissionMode,
+  permissionModeHintKey,
   useAutoReviewStatus,
   type AutoReviewStatus,
 } from '../permission-mode'
@@ -26,13 +27,19 @@ const ask: AutoReviewStatus = {
 describe('displayedPermissionMode', () => {
   it('shows auto unless it resolves to ask, on every platform', () => {
     expect(displayedPermissionMode('auto', judged)).toBe('auto')
-    expect(displayedPermissionMode('auto', { ...judged, resolution: 'sandbox_prompts' })).toBe(
-      'auto'
-    )
     expect(displayedPermissionMode('auto', ask)).toBe('ask')
     // Unknown yet: the requested mode.
     expect(displayedPermissionMode('auto', null)).toBe('auto')
     expect(displayedPermissionMode('yolo', ask)).toBe('yolo')
+  })
+})
+
+describe('permissionModeHintKey', () => {
+  it('describes ask by platform and leaves the other modes alone', () => {
+    expect(permissionModeHintKey('ask', true)).toBe('permission.mode.askSandboxHint')
+    expect(permissionModeHintKey('ask', false)).toBe('permission.mode.askHint')
+    expect(permissionModeHintKey('auto', true)).toBe('permission.mode.autoHint')
+    expect(permissionModeHintKey('yolo', false)).toBe('permission.mode.yoloHint')
   })
 })
 

@@ -6,10 +6,12 @@
 //! creates a pending approval in the registry, emits
 //! `permission-requested`, and awaits the user's `resolve_permission`
 //! command (or a timeout, or stream-end cancellation). Classify goes to
-//! the turn's auto-mode judge when one is eligible ([`JudgeSession`]:
-//! zero prompts, a marker per judgment), else it renders as the v2
-//! prompt its source produced. Denials become `ToolCallAction::Skip`, so
-//! the model receives the reason as the tool result and can adapt.
+//! the turn's auto-mode judge ([`JudgeSession`]: zero prompts, a marker
+//! per judgment); `auto` without an eligible judge runs as `ask`, which
+//! carries the jail wherever a backend exists (ADR 08). In jailed `ask`, a
+//! bash prompt for an escape authorizes the same per-execution delta an
+//! `auto` allow would. Denials become `ToolCallAction::Skip`, so the model
+//! receives the reason as the tool result and can adapt.
 
 use chatshell_agent_core::judgment::engine::{
     self as review_engine, JudgeModel, JudgeParams, Review, ReviewFailure, ReviewOutcome,
@@ -17,7 +19,8 @@ use chatshell_agent_core::judgment::engine::{
 use chatshell_agent_core::judgment::log::{DecisionLog, DecisionRecord};
 use chatshell_agent_core::judgment::ruleset::Posture;
 use chatshell_agent_core::judgment::{
-    JudgmentRequest, TranscriptBudget, TranscriptEntry, assemble, delta::execution_delta,
+    JudgmentRequest, TranscriptBudget, TranscriptEntry, assemble,
+    delta::{EscapePlan, escape_delta, execution_delta},
 };
 use chatshell_agent_core::permission::{
     ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, PermissionMode,
@@ -96,24 +99,17 @@ pub fn bash_env_store() -> Option<&'static BashEnvStore> {
     BASH_ENV.get()
 }
 
-/// Whether bash runs inside the OS sandbox under `mode`. Only `auto`
-/// relies on the sandbox; `ask` prompts per command and `yolo` is the
-/// explicit opt-in to unconfined execution.
+/// Whether bash runs inside the OS sandbox under `mode` (where a backend
+/// exists): `ask` and `auto` share one jail profile (ADR 08 INV-6); `yolo`
+/// is the explicit opt-in to unconfined execution.
 pub fn sandbox_enabled_for(mode: PermissionMode) -> bool {
-    mode == PermissionMode::Auto
-}
-
-/// Whether this machine has a sandbox backend. `auto` no longer depends
-/// on it when a judge is eligible; without one, it decides between the
-/// v2 sandbox-plus-prompts semantics and `ask`.
-pub fn sandbox_available() -> bool {
-    chatshell_agent_core::sandbox::detect_backend().is_some()
+    mode != PermissionMode::Yolo
 }
 
 /// The mode a turn runs in for a requested `mode` and the auto-mode
-/// resolution: `auto` stays `auto` when judged or when a sandbox carries
-/// the v2 semantics, and degrades to `ask` otherwise — never to
-/// unconfined execution.
+/// resolution: `auto` stays `auto` when judged and degrades to `ask`
+/// otherwise — a prompting posture that carries the jail wherever a
+/// backend exists, never unconfined execution.
 pub fn effective_mode(
     mode: PermissionMode,
     resolution: review_engine::AutoResolution,
@@ -138,8 +134,6 @@ pub struct JudgeSession {
     history: Vec<TranscriptEntry>,
     budget: TranscriptBudget,
     log: Option<DecisionLog>,
-    /// Per-execution jail deltas, shared with the bash tool.
-    deltas: ExecutionDeltas,
     /// Stream-end cancellation.
     cancel: CancellationToken,
     /// This turn's tool inputs, in the order the hook saw them.
@@ -157,7 +151,6 @@ impl JudgeSession {
         posture: Posture,
         history: Vec<TranscriptEntry>,
         log: Option<DecisionLog>,
-        deltas: ExecutionDeltas,
         cancel: CancellationToken,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -168,7 +161,6 @@ impl JudgeSession {
             history,
             budget: TranscriptBudget::default(),
             log,
-            deltas,
             cancel,
             turn_inputs: Mutex::new(Vec::new()),
             bash_calls: Mutex::new(HashMap::new()),
@@ -252,6 +244,13 @@ pub struct GateEnvironment {
     pub scratch_dir: Option<PathBuf>,
     /// The auto-mode judge, when `auto` resolved to judged.
     pub judge: Option<Arc<JudgeSession>>,
+    /// Per-execution jail deltas, shared with the bash tool: authorized by
+    /// a judge's allow, a run-anyway, or (jailed `ask`) an approved escape
+    /// card (ADR 08 SA-3).
+    pub deltas: ExecutionDeltas,
+    /// The bash shell has left its launch directory (shared with the bash
+    /// tool; relative write targets are then unprovable).
+    pub cwd_drifted: Option<Arc<AtomicBool>>,
 }
 
 /// The device's remembered-grant store, if initialized.
@@ -463,6 +462,11 @@ impl PermissionGate {
                 .as_ref()
                 .is_some_and(|flag| flag.load(Ordering::SeqCst)),
             scratch_dir: self.environment.scratch_dir.clone(),
+            cwd_drifted: self
+                .environment
+                .cwd_drifted
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::SeqCst)),
         }
     }
 
@@ -566,12 +570,12 @@ impl PermissionGate {
                 let mut source = allow_source(self.mode, &ctx, tool_name, args).to_string();
                 // Run-anyway on a sandbox denial: the command runs once
                 // outside the sandbox.
-                if let (Some(judge), Some(command)) = (&judge, command)
+                if let (Some(_), Some(command)) = (&judge, command)
                     && let Some(action) =
                         super::auto_review::take_override(&self.conversation_id, tool_name, args)
                 {
                     if action.unsandboxed {
-                        judge.deltas.authorize(
+                        self.environment.deltas.authorize(
                             command,
                             bash_workdir(args),
                             ExecutionDelta {
@@ -595,13 +599,16 @@ impl PermissionGate {
                     self.judged(judge, &ctx, tool_call_id, tool_name, args, *request)
                         .await
                 }
+                // Classify only occurs in judged `auto`, which always has a
+                // judge; should that ever break, fail safe to a prompt.
                 None => {
-                    self.v2_prompt(tool_name, args, request.subject, request.forced)
+                    self.prompt(tool_name, args, request.subject, request.forced, None)
                         .await
                 }
             },
             GateDecision::Prompt { subject, forced } => {
-                self.prompt(tool_name, args, subject, forced).await
+                self.ask_prompt(&ctx, tool_name, args, subject, forced)
+                    .await
             }
         };
         if let Some(judge) = &judge {
@@ -636,7 +643,9 @@ impl PermissionGate {
                     execution_delta(&request, args, ctx)
                 };
                 if let Some(delta) = delta {
-                    judge.deltas.authorize(command, bash_workdir(args), delta);
+                    self.environment
+                        .deltas
+                        .authorize(command, bash_workdir(args), delta);
                 }
             }
             self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
@@ -689,7 +698,7 @@ impl PermissionGate {
             _ => None,
         };
         if let (Some(delta), Some(command)) = (&delta, command) {
-            judge
+            self.environment
                 .deltas
                 .authorize(command, bash_workdir(args), delta.clone());
         }
@@ -865,34 +874,55 @@ impl PermissionGate {
         );
     }
 
-    /// A judgment request rendered as exactly the v2 prompt its source
-    /// produced: the interim behavior until the auto-mode judge is wired,
-    /// and the fallback when no eligible judge exists.
-    async fn v2_prompt(
+    /// A prompt in `ask`. In a jail, a bash prompt is about an escape (or
+    /// a forced signal): its approval authorizes the delta an `auto` allow
+    /// would produce, and detected egress goes straight to the network
+    /// card, so one action yields one card (ADR 08 §1).
+    async fn ask_prompt(
         &self,
+        ctx: &GateContext,
         tool_name: &str,
         args: &Value,
         subject: String,
         forced: Option<ForcedPrompt>,
     ) -> (CheckOutcome, String) {
+        let jailed_bash = tool_name == "bash" && ctx.sandbox_available;
+        // The network arrives through the session flag (a human may choose
+        // it); the plan carries the write widening only.
+        let plan = jailed_bash.then(|| escape_delta(args, ctx, false));
         match forced {
-            // Sandboxed auto: detected egress goes straight to the network
-            // escalation card, so one network call yields one prompt.
             Some(ForcedPrompt {
                 kind: ForcedPromptKind::Network,
                 detail,
-            }) if self.environment.sandbox_available => {
-                self.network_before_execution(subject, detail).await
+            }) if jailed_bash => {
+                self.network_before_execution(args, subject, detail, plan.unwrap_or_default())
+                    .await
             }
-            forced => self.prompt(tool_name, args, subject, forced).await,
+            forced => self.prompt(tool_name, args, subject, forced, plan).await,
         }
     }
 
-    /// Pre-execution network escalation (auto + egress detection).
+    /// Authorize an approved escape's delta for the call's one execution.
+    /// The bash tool notes the widening on the result (the audit channel).
+    fn authorize_escape(&self, args: &Value, plan: &EscapePlan) {
+        if let (Some(delta), Some(command)) =
+            (&plan.delta, args.get("command").and_then(Value::as_str))
+        {
+            self.environment
+                .deltas
+                .authorize(command, bash_workdir(args), delta.clone());
+        }
+    }
+
+    /// Pre-execution network card (jailed bash + egress). Approval sets
+    /// the session flag and, for a command that also writes outside the
+    /// roots, authorizes that widening too (one card, ADR 08 §1).
     async fn network_before_execution(
         &self,
+        args: &Value,
         command: String,
         detail: String,
+        plan: EscapePlan,
     ) -> (CheckOutcome, String) {
         let decision = self
             .escalation_card(
@@ -902,6 +932,7 @@ impl PermissionGate {
                     detail,
                 },
                 false,
+                Some(&plan),
             )
             .await;
         match decision {
@@ -909,6 +940,7 @@ impl PermissionGate {
                 if let Some(flag) = &self.environment.network_flag {
                     flag.store(true, Ordering::SeqCst);
                 }
+                self.authorize_escape(args, &plan);
                 (
                     CheckOutcome::Allow,
                     "user: allow network this session".to_string(),
@@ -931,6 +963,7 @@ impl PermissionGate {
         args: &Value,
         subject: String,
         forced: Option<ForcedPrompt>,
+        escape: Option<EscapePlan>,
     ) -> (CheckOutcome, String) {
         // Forced prompts are about this specific call: never offer a
         // session grant or remembering for them.
@@ -960,6 +993,7 @@ impl PermissionGate {
                 },
                 "grant": scope.as_ref().map_or(Value::Null, scope_payload),
                 "remember": remember.as_ref().map_or(Value::Null, scope_payload),
+                "escape": escape.as_ref().map_or(Value::Null, escape_payload),
             }),
         );
         tracing::info!(
@@ -985,7 +1019,13 @@ impl PermissionGate {
         } else {
             ""
         };
-        match answer.map(|received| received.map(|answer| answer.decision)) {
+        let decision = answer.map(|received| received.map(|answer| answer.decision));
+        if let (Ok(Ok(ApprovalDecision::AllowOnce | ApprovalDecision::AllowSession)), Some(plan)) =
+            (&decision, &escape)
+        {
+            self.authorize_escape(args, plan);
+        }
+        match decision {
             Ok(Ok(ApprovalDecision::AllowOnce)) => (
                 CheckOutcome::Allow,
                 format!("user: allow once{remembered_note}"),
@@ -1041,15 +1081,17 @@ impl PermissionGate {
             self.report_jail_denial(&judge, &request);
             return EscalationDecision::Reported;
         }
-        self.escalation_card(request, true).await
+        self.escalation_card(request, true, None).await
     }
 
     /// Show an escalation card. `retry_option` offers "run once outside
-    /// the sandbox" (only meaningful after a sandboxed run failed).
+    /// the sandbox" (only meaningful after a sandboxed run failed);
+    /// `escape` discloses a write widening the approval also carries.
     async fn escalation_card(
         &self,
         request: EscalationRequest,
         retry_option: bool,
+        escape: Option<&EscapePlan>,
     ) -> EscalationDecision {
         let (request_id, receiver) = self.registry.register(&self.conversation_id);
         let network = request.kind == EscalationKind::Network;
@@ -1072,6 +1114,7 @@ impl PermissionGate {
                 "grant": Value::Null,
                 "remember": Value::Null,
                 "escalation": { "network_option": network, "retry_option": retry_option },
+                "escape": escape.map_or(Value::Null, escape_payload),
             }),
         );
         tracing::info!(
@@ -1176,7 +1219,7 @@ fn allow_source(
     if PermissionTier::for_tool(tool_name) == PermissionTier::Read {
         return "read-only tool";
     }
-    if mode == PermissionMode::Auto && tool_name == "bash" && ctx.sandbox_available {
+    if tool_name == "bash" && ctx.sandbox_available {
         return "runs in the sandbox";
     }
     if mode == PermissionMode::Auto
@@ -1202,6 +1245,24 @@ impl SandboxEscalator for GateEscalator {
     ) -> Pin<Box<dyn Future<Output = EscalationDecision> + Send + 'a>> {
         Box::pin(self.0.escalate(request))
     }
+}
+
+/// Wire shape of an approval's write widening in `permission-requested`:
+/// the directories it opens for the one execution, and the targets no
+/// bounded widening can open (they run jailed; a denial card follows).
+fn escape_payload(plan: &EscapePlan) -> Value {
+    let paths = |paths: &[PathBuf]| -> Vec<String> {
+        paths.iter().map(|p| p.display().to_string()).collect()
+    };
+    let roots = plan
+        .delta
+        .as_ref()
+        .map(|delta| paths(&delta.writable_roots))
+        .unwrap_or_default();
+    if roots.is_empty() && plan.unbounded.is_empty() {
+        return Value::Null;
+    }
+    json!({ "writable_roots": roots, "unbounded": paths(&plan.unbounded) })
 }
 
 /// Wire shape of a grant scope in `permission-requested`.
@@ -1867,22 +1928,18 @@ mod tests {
     }
 
     #[test]
-    fn only_auto_uses_the_sandbox() {
+    fn ask_and_auto_share_the_jail_and_yolo_never_uses_it() {
         assert!(sandbox_enabled_for(PermissionMode::Auto));
-        assert!(!sandbox_enabled_for(PermissionMode::Ask));
+        assert!(sandbox_enabled_for(PermissionMode::Ask));
         assert!(!sandbox_enabled_for(PermissionMode::Yolo));
     }
 
     #[test]
-    fn auto_runs_as_ask_only_without_a_judge_and_a_sandbox() {
-        use review_engine::AutoResolution::{Ask, Judged, SandboxPrompts};
+    fn auto_runs_as_ask_without_an_eligible_judge() {
+        use review_engine::AutoResolution::{Ask, Judged};
         assert_eq!(
             effective_mode(PermissionMode::Auto, Ask),
             PermissionMode::Ask
-        );
-        assert_eq!(
-            effective_mode(PermissionMode::Auto, SandboxPrompts),
-            PermissionMode::Auto
         );
         assert_eq!(
             effective_mode(PermissionMode::Auto, Judged),
@@ -1898,22 +1955,33 @@ mod tests {
         );
     }
 
-    fn auto_fixture(network: Arc<AtomicBool>) -> Fixture {
+    /// Jailed `ask` (the old ineligible-judge `auto` posture, ADR 08 §3).
+    fn jailed_ask_fixture(network: Arc<AtomicBool>) -> Fixture {
+        jailed_ask_fixture_with(network, std::env::temp_dir(), ExecutionDeltas::default())
+    }
+
+    fn jailed_ask_fixture_with(
+        network: Arc<AtomicBool>,
+        workspace: PathBuf,
+        deltas: ExecutionDeltas,
+    ) -> Fixture {
         let registry = ApprovalRegistry::new();
         let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
         let (emitter, captured) = test_emitter();
         let gate = PermissionGate::with_environment(
             "conv-1".to_string(),
-            PermissionMode::Auto,
+            PermissionMode::Ask,
             grants.clone(),
             registry.clone(),
             emitter,
             GateEnvironment {
-                workspace: Some(std::env::temp_dir()),
+                workspace: Some(workspace),
                 sandbox_available: true,
                 network_flag: Some(network),
                 scratch_dir: None,
                 judge: None,
+                deltas,
+                cwd_drifted: None,
             },
         );
         Fixture {
@@ -1925,9 +1993,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auto_egress_asks_once_with_the_network_card() {
+    async fn jailed_ask_egress_asks_once_with_the_network_card() {
         let network = Arc::new(AtomicBool::new(false));
-        let f = auto_fixture(network.clone());
+        let f = jailed_ask_fixture(network.clone());
         let task = tokio::spawn({
             let gate = f.gate.clone();
             async move { gate.check("bash", &bash("curl https://example.com")).await }
@@ -1955,8 +2023,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auto_runs_plain_commands_silently() {
-        let f = auto_fixture(Arc::new(AtomicBool::new(false)));
+    async fn jailed_ask_runs_plain_commands_silently() {
+        let f = jailed_ask_fixture(Arc::new(AtomicBool::new(false)));
         assert_eq!(
             f.gate.check("bash", &bash("cargo build")).await,
             CheckOutcome::Allow
@@ -1967,7 +2035,7 @@ mod tests {
     #[tokio::test]
     async fn retry_answer_is_rejected_on_a_pre_execution_card() {
         let network = Arc::new(AtomicBool::new(false));
-        let f = auto_fixture(network.clone());
+        let f = jailed_ask_fixture(network.clone());
         let task = tokio::spawn({
             let gate = f.gate.clone();
             async move { gate.check("bash", &bash("curl https://example.com")).await }
@@ -1984,8 +2052,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auto_judgment_requests_render_as_their_v2_prompt() {
-        let f = auto_fixture(Arc::new(AtomicBool::new(false)));
+    async fn jailed_ask_matrix_prompts_keep_their_grants() {
+        let f = jailed_ask_fixture(Arc::new(AtomicBool::new(false)));
         // Matrix arm (MCP): the plain prompt with its pair grant, as in v2.
         let task = tokio::spawn({
             let gate = f.gate.clone();
@@ -2088,6 +2156,7 @@ mod tests {
         gate: Arc<PermissionGate>,
         judge: Arc<ScriptedJudge>,
         session: Arc<JudgeSession>,
+        deltas: ExecutionDeltas,
         captured: Capture,
         grants: GrantStore,
         log_dir: tempfile::TempDir,
@@ -2115,9 +2184,9 @@ mod tests {
                 text: "please fetch the release notes".into(),
             }],
             Some(log),
-            ExecutionDeltas::default(),
             CancellationToken::new(),
         );
+        let deltas = ExecutionDeltas::default();
         let registry = ApprovalRegistry::new();
         let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
         let (emitter, captured) = test_emitter();
@@ -2133,12 +2202,15 @@ mod tests {
                 network_flag: Some(Arc::new(AtomicBool::new(false))),
                 scratch_dir: None,
                 judge: Some(session.clone()),
+                deltas: deltas.clone(),
+                cwd_drifted: None,
             },
         );
         JudgedFixture {
             gate,
             judge,
             session,
+            deltas,
             captured,
             grants,
             log_dir,
@@ -2333,7 +2405,7 @@ mod tests {
             f.gate.check_call(Some("n1"), "bash", &bash(command)).await,
             CheckOutcome::Allow
         );
-        let delta = f.session.deltas.take(command, None).expect("network delta");
+        let delta = f.deltas.take(command, None).expect("network delta");
         assert!(delta.network && !delta.unsandboxed);
         // The session-sticky flag stays off.
         assert!(!f.gate.context().network_allowed);
@@ -2377,11 +2449,7 @@ mod tests {
             f.gate.check_call(Some("j2"), "bash", &bash(command)).await,
             CheckOutcome::Allow
         );
-        let delta = f
-            .session
-            .deltas
-            .take(command, None)
-            .expect("unsandboxed once");
+        let delta = f.deltas.take(command, None).expect("unsandboxed once");
         assert!(delta.unsandboxed);
         assert_eq!(f.judge.calls(), 0);
     }
@@ -2422,12 +2490,11 @@ mod tests {
             CheckOutcome::Allow
         );
         let delta = f
-            .session
             .deltas
             .take(command, Some(&workdir))
             .expect("unsandboxed once, keyed by the workdir");
         assert!(delta.unsandboxed);
-        assert!(f.session.deltas.is_empty());
+        assert!(f.deltas.is_empty());
     }
 
     #[tokio::test]
@@ -2566,5 +2633,128 @@ mod tests {
         assert!(!line.contains('\n'), "{line}");
         assert!(line.contains("… (+"), "{line}");
         assert!(!line.contains("multi"), "{line}");
+    }
+
+    // ---- ADR 08 SA-3: escape approvals in jailed `ask` ------------------
+
+    #[tokio::test]
+    async fn an_approved_write_escape_carries_its_roots_delta() {
+        let outside = tempfile::tempdir_in(dirs::home_dir().unwrap()).unwrap();
+        let outside = outside.path().canonicalize().unwrap();
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(
+            Arc::new(AtomicBool::new(false)),
+            std::env::temp_dir(),
+            deltas.clone(),
+        );
+        let command = format!("cp a {}/f", outside.display());
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            let command = command.clone();
+            async move { gate.check("bash", &bash(&command)).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        // One card, naming the widened directory...
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(
+            payload["escape"]["writable_roots"],
+            json!([outside.display().to_string()])
+        );
+        assert_eq!(requested_payloads(&f.captured).len(), 1);
+        // ...whose approval authorizes exactly that widening, once.
+        let delta = deltas.take(&command, None).expect("roots delta");
+        assert_eq!(delta.writable_roots, vec![outside.clone()]);
+        assert!(!delta.network && !delta.unsandboxed);
+    }
+
+    #[tokio::test]
+    async fn a_denied_write_escape_authorizes_nothing() {
+        let outside = tempfile::tempdir_in(dirs::home_dir().unwrap()).unwrap();
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(
+            Arc::new(AtomicBool::new(false)),
+            std::env::temp_dir(),
+            deltas.clone(),
+        );
+        let command = format!("cp a {}/f", outside.path().display());
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            let command = command.clone();
+            async move { gate.check("bash", &bash(&command)).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        assert!(deltas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_unboundable_escape_is_disclosed_on_its_card() {
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(
+            Arc::new(AtomicBool::new(false)),
+            std::env::temp_dir(),
+            deltas.clone(),
+        );
+        // The parent is $HOME: no bounded widening can open it.
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move {
+                gate.check("bash", &bash("cp a ~/chatshell-outside.txt"))
+                    .await
+            }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payload = requested_payloads(&f.captured)[0].clone();
+        assert_eq!(payload["escape"]["writable_roots"], json!([]));
+        assert_eq!(
+            payload["escape"]["unbounded"],
+            json!([dirs::home_dir()
+                .unwrap()
+                .canonicalize()
+                .unwrap()
+                .join("chatshell-outside.txt")
+                .display()
+                .to_string()])
+        );
+        // Runs jailed: the denial card follows after execution.
+        assert!(deltas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn combined_egress_and_write_escape_is_one_card() {
+        let outside = tempfile::tempdir_in(dirs::home_dir().unwrap()).unwrap();
+        let outside = outside.path().canonicalize().unwrap();
+        let network = Arc::new(AtomicBool::new(false));
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(network.clone(), std::env::temp_dir(), deltas.clone());
+        let command = format!(
+            "curl https://example.com -o x && cp x {}/f",
+            outside.display()
+        );
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            let command = command.clone();
+            async move { gate.check("bash", &bash(&command)).await }
+        });
+        answer_when_prompted(
+            &f.registry,
+            &f.captured,
+            ApprovalDecision::AllowNetworkSession,
+            0,
+        )
+        .await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payloads = requested_payloads(&f.captured);
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["warning"]["kind"], json!("sandbox_network"));
+        assert_eq!(
+            payloads[0]["escape"]["writable_roots"],
+            json!([outside.display().to_string()])
+        );
+        assert!(network.load(Ordering::SeqCst));
+        let delta = deltas.take(&command, None).expect("roots delta");
+        assert_eq!(delta.writable_roots, vec![outside]);
     }
 }

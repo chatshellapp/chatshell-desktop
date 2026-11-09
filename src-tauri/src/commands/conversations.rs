@@ -62,8 +62,13 @@ pub async fn delete_conversation(
         cancel_token.cancel();
     }
 
-    // Kill any persistent bash session for this conversation
-    state.bash_session_manager.remove(&id);
+    // Kill the conversation's bash session before its scratch directory
+    // is removed below: a running command is aborted and the shell killed,
+    // so no process outlives (or races) the cleanup.
+    state
+        .bash_session_manager
+        .shutdown(&id, std::time::Duration::from_secs(5))
+        .await;
 
     state
         .db

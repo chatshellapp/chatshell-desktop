@@ -50,6 +50,16 @@ export interface PermissionRequest {
   /** Set when the OS sandbox blocked an already-approved command and the
    * card asks whether to escape it. */
   escalation?: PermissionEscalation | null
+  /** Jailed bash only: what approving widens for this one execution. */
+  escape?: PermissionEscape | null
+}
+
+/** The write widening an approval carries (ADR 08 SA-3): directories the
+ * approved run may also write, and targets no bounded widening can open
+ * (the sandbox still blocks them; a second card follows if it does). */
+export interface PermissionEscape {
+  writable_roots: string[]
+  unbounded: string[]
 }
 
 /** Options of a sandbox escalation card. */

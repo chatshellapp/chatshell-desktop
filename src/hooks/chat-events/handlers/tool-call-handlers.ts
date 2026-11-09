@@ -53,6 +53,7 @@ export function useToolCallHandlers() {
       warning: request.warning ?? null,
       remember: request.remember ?? null,
       escalation: request.escalation ?? null,
+      escape: request.escape ?? null,
     })
   }, [])
 

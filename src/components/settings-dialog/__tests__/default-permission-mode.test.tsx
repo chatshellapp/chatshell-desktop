@@ -73,4 +73,27 @@ describe('DefaultPermissionMode', () => {
       })
     )
   })
+
+  it('describes ask by platform: sandboxed commands run silently, file edits still ask', async () => {
+    mockBackend(true)
+    render(<DefaultPermissionMode />)
+    expect(
+      await screen.findByText(
+        /commands run in a sandbox; confirms escapes, file edits, and tool use/i
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/edits made with the file tools are always confirmed/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/confirm every command/i)).not.toBeInTheDocument()
+  })
+
+  it('describes ask as per-command confirmation without a sandbox', async () => {
+    mockBackend(false)
+    render(<DefaultPermissionMode />)
+    expect(
+      await screen.findByText(/confirm every command, file edit, and tool use/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/commands run in a sandbox/i)).not.toBeInTheDocument()
+  })
 })

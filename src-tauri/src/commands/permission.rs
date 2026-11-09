@@ -143,8 +143,8 @@ pub async fn get_sandbox_status() -> Result<SandboxStatus, String> {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoReviewStatus {
-    /// `judged` (classifier, zero prompts), `sandbox_prompts` (v2:
-    /// sandbox plus a few prompts), or `ask`.
+    /// `judged` (classifier, zero prompts) or `ask` (no eligible judge:
+    /// the conversation runs in `ask`, jailed wherever a backend exists).
     pub resolution: &'static str,
     /// Why the classifier is not used, when it is not.
     pub reason: Option<String>,
@@ -221,14 +221,10 @@ pub async fn get_auto_review_status(
         &tokio_util::sync::CancellationToken::new(),
     )
     .await;
-    let resolution = resolve_auto(
-        Some(&eligibility),
-        crate::llm::permission::sandbox_available(),
-    );
+    let resolution = resolve_auto(Some(&eligibility));
     Ok(AutoReviewStatus {
         resolution: match resolution {
             AutoResolution::Judged => "judged",
-            AutoResolution::SandboxPrompts => "sandbox_prompts",
             AutoResolution::Ask => "ask",
         },
         reason: match eligibility {

@@ -25,6 +25,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import {
   usePermissionStore,
+  type PermissionEscape,
   type PermissionGrant,
   type PermissionWarningKind,
 } from '@/stores/permissionStore'
@@ -71,6 +72,35 @@ function GrantScopeView({
       break
   }
   return <p className="text-xs text-muted-foreground break-all">{text}</p>
+}
+
+/** What approving also widens for this one run, and what the sandbox will
+ * still block (disclosed up front: a second card follows if it does). */
+function EscapeView({ t, escape }: { t: TFunction; escape: PermissionEscape }) {
+  return (
+    <div className="grid gap-1.5 rounded-md border px-3 py-2 text-xs">
+      {escape.writable_roots.length > 0 && (
+        <div className="space-y-0.5">
+          <p>{t('permission.escape.widens')}</p>
+          {escape.writable_roots.map((dir) => (
+            <p key={dir} className="font-mono break-all text-muted-foreground">
+              {dir}
+            </p>
+          ))}
+        </div>
+      )}
+      {escape.unbounded.length > 0 && (
+        <div className="space-y-0.5">
+          <p>{t('permission.escape.unbounded')}</p>
+          {escape.unbounded.map((path) => (
+            <p key={path} className="font-mono break-all text-muted-foreground">
+              {path}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function warningText(t: TFunction, kind: PermissionWarningKind): string {
@@ -124,6 +154,10 @@ export function PermissionApprovalDialog() {
   if (!pending) return null
 
   const escalation = pending.escalation ?? null
+  // The network card shown before a jailed command runs (nothing was
+  // blocked yet), as opposed to a denial card after a sandboxed run.
+  const beforeRun = escalation?.retry_option === false
+  const escape = pending.escape ?? null
 
   const answer = async (decision: Decision) => {
     const requestId = pending.requestId
@@ -154,11 +188,15 @@ export function PermissionApprovalDialog() {
             ) : (
               <ShieldQuestion className="size-5 shrink-0 text-destructive" />
             )}
-            {escalation ? t('permission.escalation.title') : t('permission.title')}
+            {escalation
+              ? t(
+                  beforeRun ? 'permission.escalation.beforeRunTitle' : 'permission.escalation.title'
+                )
+              : t('permission.title')}
           </DialogTitle>
           <DialogDescription className="text-left">
             {escalation
-              ? t('permission.escalation.body')
+              ? t(beforeRun ? 'permission.escalation.beforeRunBody' : 'permission.escalation.body')
               : t('permission.body', {
                   tool: pending.toolName,
                   subject: pending.subject,
@@ -180,6 +218,7 @@ export function PermissionApprovalDialog() {
             </div>
           </div>
         )}
+        {escape && <EscapeView t={t} escape={escape} />}
         {pending.grant && <GrantScopeView t={t} grant={pending.grant} label="scope" />}
         {pending.remember && (
           <div className="grid gap-1.5 rounded-md border px-3 py-2.5">

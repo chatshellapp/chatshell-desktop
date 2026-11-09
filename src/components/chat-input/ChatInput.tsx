@@ -709,7 +709,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
             permissionMode={permissionMode}
             onPermissionModeSelect={handlePermissionModeSelect}
             autoAvailable={autoAvailable}
-            autoResolution={autoReviewStatus?.resolution ?? null}
             autoUnavailableReason={autoReviewStatus?.reason ?? null}
             toolsDisabled={toolsDisabled}
             skillsDisabled={toolsDisabled}

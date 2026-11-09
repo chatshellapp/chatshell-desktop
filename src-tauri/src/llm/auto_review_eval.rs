@@ -144,6 +144,7 @@ impl Fixture {
             sandbox_available: sandbox,
             network_allowed: false,
             scratch_dir: sandbox.then(|| self.workspace.with_file_name(".scratch")),
+            cwd_drifted: false,
         }
     }
 }

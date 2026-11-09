@@ -45,11 +45,13 @@ impl From<PromptMode> for String {
 #[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionMode {
-    /// Prompt before write- and exec-tier tool calls
+    /// The user confirms the residual: bash runs in the sandbox where one
+    /// exists (escapes, file edits, and tool use prompt); without one,
+    /// every bash command prompts.
     Ask,
     /// Classifier-judged: zero prompts, every risky call judged by the
     /// auto-review model (bash jailed where a sandbox exists). Without an
-    /// eligible judge: sandbox plus prompts, or `ask` without a sandbox.
+    /// eligible judge the conversation runs as `ask`.
     Auto,
     /// Run tool calls without prompts (blocklist still enforced)
     Yolo,

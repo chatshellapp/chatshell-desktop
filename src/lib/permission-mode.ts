@@ -7,8 +7,9 @@
 // and an unset or unknown setting means `ask` (the strictest mode).
 //
 // `auto` resolves per model, identically on every platform: judged by the
-// auto reviewer when the model is eligible, else sandbox plus prompts
-// where an OS sandbox exists, else `ask`.
+// auto reviewer when the model is eligible, else `ask`. `ask` runs bash in
+// the OS sandbox wherever one exists (escapes, file edits, and tool use
+// are confirmed); without one, every command is confirmed.
 
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -31,7 +32,7 @@ export function defaultPermissionMode(settings: Record<string, string>): Permiss
 
 /** How `auto` resolves for a model (backend `get_auto_review_status`). */
 export interface AutoReviewStatus {
-  resolution: 'judged' | 'sandbox_prompts' | 'ask'
+  resolution: 'judged' | 'ask'
   /** Why the auto reviewer is not used, when it is not. */
   reason: string | null
   /** The judging model (`provider/model`). */
@@ -39,13 +40,22 @@ export interface AutoReviewStatus {
 }
 
 /** What the UI shows for `mode`: `auto` that resolves to `ask` (no
- * eligible reviewer and no sandbox) shows as `ask`. Unknown status shows
- * the requested mode. */
+ * eligible reviewer) shows as `ask`. Unknown status shows the requested
+ * mode. */
 export function displayedPermissionMode(
   mode: PermissionMode,
   status: AutoReviewStatus | null
 ): PermissionMode {
   return mode === 'auto' && status?.resolution === 'ask' ? 'ask' : mode
+}
+
+/** The i18n key (namespace `chat`) of a mode's one-line hint. `ask` is
+ * platform-conditional: sandboxed bash runs silently and only escapes,
+ * file edits, and tool use are confirmed; without a sandbox every command
+ * is confirmed. `auto` in the default-mode setting uses its own key. */
+export function permissionModeHintKey(mode: PermissionMode, sandboxAvailable: boolean): string {
+  if (mode === 'ask' && sandboxAvailable) return 'permission.mode.askSandboxHint'
+  return `permission.mode.${mode}Hint`
 }
 
 /** Ask the backend how `auto` resolves for a model. `recheck` drops the

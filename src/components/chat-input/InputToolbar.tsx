@@ -31,6 +31,7 @@ import { ModelSelectorDropdown } from './ModelSelectorDropdown'
 import type { Model } from '@/types'
 import type { Assistant } from '@/types/assistant'
 import type { PermissionMode } from '@/types'
+import { permissionModeHintKey, useSandboxAvailable } from '@/lib/permission-mode'
 
 interface InputToolbarProps {
   // Add attachment handlers
@@ -74,10 +75,8 @@ interface InputToolbarProps {
   // Permission mode (ask / auto / yolo)
   permissionMode: PermissionMode
   onPermissionModeSelect: (mode: PermissionMode) => void
-  /** Offer `auto` (an eligible auto reviewer, or an OS sandbox). */
+  /** Offer `auto` (the selected model has an eligible auto reviewer). */
   autoAvailable: boolean
-  /** How `auto` resolves for the selected model (`null` until known). */
-  autoResolution?: 'judged' | 'sandbox_prompts' | 'ask' | null
   /** Why the auto reviewer is unavailable, shown when `auto` is hidden. */
   autoUnavailableReason?: string | null
   // Model capability flags
@@ -133,13 +132,13 @@ export function InputToolbar({
   permissionMode,
   onPermissionModeSelect,
   autoAvailable,
-  autoResolution = null,
   autoUnavailableReason = null,
   toolsDisabled = false,
   skillsDisabled = false,
   imageAttachDisabled = false,
 }: InputToolbarProps) {
   const { t } = useTranslation('chat')
+  const sandboxAvailable = useSandboxAvailable()
   return (
     <InputGroupAddon align="block-end">
       {/* Add attachment dropdown */}
@@ -351,9 +350,7 @@ export function InputToolbar({
                 <div className="flex flex-col">
                   <span>{t(`permission.mode.${mode}`)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {mode === 'auto' && autoResolution === 'sandbox_prompts'
-                      ? t('permission.mode.autoSandboxHint')
-                      : t(`permission.mode.${mode}Hint`)}
+                    {t(permissionModeHintKey(mode, sandboxAvailable))}
                   </span>
                 </div>
               </div>
