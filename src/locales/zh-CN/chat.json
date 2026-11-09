@@ -253,13 +253,26 @@
     "noMatches": "没有匹配的文件"
   },
   "autoReview": {
-    "allowed": "已自动批准",
-    "allowedWithRisk": "已自动批准 · {{risk}}",
-    "denied": "已自动拦截",
-    "deniedWithReason": "已自动拦截:{{reason}}",
-    "failed": "未运行:审核未能完成",
-    "jailDenied": "被沙盒拦截",
-    "override": "已按你的要求运行",
+    "title": "审核",
+    "status": {
+      "allowed": "已批准",
+      "denied": "已拦截",
+      "failed": "审核失败",
+      "jail_denied": "沙盒拦截",
+      "override": "已仍要运行"
+    },
+    "detail": {
+      "failed": "审核未能完成,因此该操作未运行。",
+      "jail_denied": "沙盒拦截了此命令。",
+      "override": "已按你的要求运行。"
+    },
+    "authorization": "用户授权:{{level}}",
+    "authorizationLevel": {
+      "unknown": "未知",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
     "overridden": "你已选择仍要运行",
     "runAnyway": "仍要运行",
     "runAnywayUnsandboxed": "在沙盒外运行",

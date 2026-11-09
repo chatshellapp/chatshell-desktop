@@ -287,7 +287,10 @@ pub struct AutoReviewMarker {
     /// `allowed`, `denied`, `failed`, or `jail_denied`.
     pub kind: &'static str,
     pub risk_level: Option<String>,
+    pub user_authorization: Option<String>,
     pub rationale: Option<String>,
+    /// How long the review took (none for sandbox blocks).
+    pub duration_ms: Option<i64>,
     /// The user ran it anyway.
     pub overridden: bool,
 }
@@ -324,6 +327,8 @@ fn marker_from_record(
         tool_call_id: record.tool_call_id,
         kind,
         risk_level: record.risk_level,
+        user_authorization: record.user_authorization,
+        duration_ms: (kind != "jail_denied").then_some(record.duration_ms),
         rationale: match kind {
             // Failure rows hold the model-facing wording; markers show a
             // localized line instead.

@@ -255,13 +255,26 @@
     "noMatches": "No matching files"
   },
   "autoReview": {
-    "allowed": "Auto-approved",
-    "allowedWithRisk": "Auto-approved · {{risk}}",
-    "denied": "Auto-blocked",
-    "deniedWithReason": "Auto-blocked: {{reason}}",
-    "failed": "Not run: the review could not finish",
-    "jailDenied": "Blocked by the sandbox",
-    "override": "Ran anyway at your request",
+    "title": "Review",
+    "status": {
+      "allowed": "approved",
+      "denied": "blocked",
+      "failed": "review failed",
+      "jail_denied": "sandbox blocked",
+      "override": "ran anyway"
+    },
+    "detail": {
+      "failed": "The review could not finish, so the action did not run.",
+      "jail_denied": "The sandbox blocked this command.",
+      "override": "Ran anyway at your request."
+    },
+    "authorization": "Authorization {{level}}",
+    "authorizationLevel": {
+      "unknown": "unknown",
+      "low": "low",
+      "medium": "medium",
+      "high": "high"
+    },
     "overridden": "you ran it anyway",
     "runAnyway": "Run anyway",
     "runAnywayUnsandboxed": "Run outside sandbox",

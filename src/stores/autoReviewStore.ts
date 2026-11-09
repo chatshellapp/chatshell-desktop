@@ -11,6 +11,8 @@ export type AutoReviewMarkerKind = 'allowed' | 'denied' | 'failed' | 'jail_denie
 
 export type AutoReviewRisk = 'low' | 'medium' | 'high' | 'critical'
 
+export type AutoReviewAuthorization = 'unknown' | 'low' | 'medium' | 'high'
+
 export interface AutoReviewMarker {
   toolCallId: string
   conversationId: string
@@ -18,7 +20,10 @@ export interface AutoReviewMarker {
   decisionId: string | null
   kind: AutoReviewMarkerKind
   riskLevel: AutoReviewRisk | null
+  userAuthorization: AutoReviewAuthorization | null
   rationale: string | null
+  /** How long the review took; null when no review ran. */
+  durationMs: number | null
   /** The user ran this denied action anyway. */
   overridden: boolean
 }
@@ -32,7 +37,9 @@ export interface AutoReviewDecidedEvent {
   tool_name: string
   subject: string
   risk_level: AutoReviewRisk | null
+  user_authorization?: AutoReviewAuthorization | null
   rationale: string | null
+  duration_ms?: number | null
   suggest_mode_switch: boolean
 }
 
@@ -42,7 +49,9 @@ interface PersistedMarker {
   toolCallId: string | null
   kind: Exclude<AutoReviewMarkerKind, 'override'>
   riskLevel: string | null
+  userAuthorization: string | null
   rationale: string | null
+  durationMs: number | null
   overridden: boolean
 }
 
@@ -50,6 +59,12 @@ const RISKS: readonly string[] = ['low', 'medium', 'high', 'critical']
 
 function parseRisk(value: string | null | undefined): AutoReviewRisk | null {
   return value && RISKS.includes(value) ? (value as AutoReviewRisk) : null
+}
+
+const AUTHORIZATIONS: readonly string[] = ['unknown', 'low', 'medium', 'high']
+
+function parseAuthorization(value: string | null | undefined): AutoReviewAuthorization | null {
+  return value && AUTHORIZATIONS.includes(value) ? (value as AutoReviewAuthorization) : null
 }
 
 /** Markers that offer run-anyway. */
@@ -84,7 +99,9 @@ export const useAutoReviewStore = create<AutoReviewState>()((set) => ({
       decisionId: event.decision_id,
       kind: event.kind,
       riskLevel: parseRisk(event.risk_level),
+      userAuthorization: parseAuthorization(event.user_authorization),
       rationale: event.rationale,
+      durationMs: event.duration_ms ?? null,
       overridden: false,
     }
     set((state) => ({ markers: { ...state.markers, [marker.toolCallId]: marker } }))
@@ -104,7 +121,9 @@ export const useAutoReviewStore = create<AutoReviewState>()((set) => ({
             decisionId: row.decisionId,
             kind: row.kind,
             riskLevel: parseRisk(row.riskLevel),
+            userAuthorization: parseAuthorization(row.userAuthorization),
             rationale: row.rationale,
+            durationMs: row.durationMs ?? null,
             overridden: row.overridden,
           }
         }

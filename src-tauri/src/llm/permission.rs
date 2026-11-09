@@ -657,7 +657,16 @@ impl PermissionGate {
                             },
                         );
                     }
-                    self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
+                    self.emit_marker(
+                        tool_call_id,
+                        tool_name,
+                        args,
+                        "override",
+                        None,
+                        None,
+                        None,
+                        false,
+                    );
                     source = if action.unsandboxed {
                         "run anyway, once outside the sandbox".to_string()
                     } else {
@@ -787,7 +796,16 @@ impl PermissionGate {
                 }
             }
             judge.take_prefetched(tool_name, args, None);
-            self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
+            self.emit_marker(
+                tool_call_id,
+                tool_name,
+                args,
+                "override",
+                None,
+                None,
+                None,
+                false,
+            );
             return (CheckOutcome::Allow, "run anyway".to_string());
         }
 
@@ -888,7 +906,8 @@ impl PermissionGate {
                     args,
                     "allowed",
                     Some(&decision_id),
-                    Some((verdict.risk_level, verdict.rationale.as_str())),
+                    Some(verdict),
+                    Some(review.duration),
                     false,
                 );
                 (CheckOutcome::Allow, source_of(verdict))
@@ -905,7 +924,8 @@ impl PermissionGate {
                     args,
                     "denied",
                     Some(&decision_id),
-                    Some((verdict.risk_level, verdict.rationale.as_str())),
+                    Some(verdict),
+                    Some(review.duration),
                     suggest,
                 );
                 (
@@ -922,6 +942,7 @@ impl PermissionGate {
                     "failed",
                     Some(&decision_id),
                     None,
+                    Some(review.duration),
                     suggest,
                 );
                 (
@@ -954,7 +975,8 @@ impl PermissionGate {
         args: &Value,
         kind: &str,
         decision_id: Option<&str>,
-        verdict: Option<(chatshell_agent_core::judgment::verdict::RiskLevel, &str)>,
+        verdict: Option<&chatshell_agent_core::judgment::verdict::Verdict>,
+        duration: Option<Duration>,
         suggest_mode_switch: bool,
     ) {
         (self.emitter)(
@@ -966,8 +988,10 @@ impl PermissionGate {
                 "kind": kind,
                 "tool_name": tool_name,
                 "subject": subject_for(tool_name, args),
-                "risk_level": verdict.map(|(risk, _)| risk),
-                "rationale": verdict.map(|(_, rationale)| rationale),
+                "risk_level": verdict.map(|v| v.risk_level),
+                "user_authorization": verdict.map(|v| v.user_authorization),
+                "rationale": verdict.map(|v| v.rationale.as_str()),
+                "duration_ms": duration.map(|d| d.as_millis() as u64),
                 "suggest_mode_switch": suggest_mode_switch,
             }),
         );
@@ -1007,6 +1031,7 @@ impl PermissionGate {
             &args,
             "jail_denied",
             Some(&decision_id),
+            None,
             None,
             false,
         );

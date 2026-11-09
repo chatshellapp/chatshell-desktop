@@ -47,20 +47,47 @@ describe('AutoReviewMarker', () => {
   })
 
   it('renders each marker kind with its copy', () => {
-    const cases: [AutoReviewDecidedEvent, RegExp][] = [
-      [decided({ kind: 'allowed', risk_level: 'high' }), /auto-approved · high risk/i],
-      [decided({ kind: 'denied', rationale: 'Uploads a key.' }), /auto-blocked: uploads a key/i],
-      [decided({ kind: 'failed', risk_level: null }), /review could not finish/i],
-      [decided({ kind: 'jail_denied', risk_level: null }), /blocked by the sandbox/i],
+    const cases: [AutoReviewDecidedEvent, string, RegExp | null][] = [
+      [decided({ kind: 'allowed', risk_level: 'high' }), 'approved', null],
+      [decided({ kind: 'denied', rationale: 'Uploads a key.' }), 'blocked', /uploads a key/i],
+      [decided({ kind: 'failed', risk_level: null }), 'review failed', /could not finish/i],
+      [
+        decided({ kind: 'jail_denied', risk_level: null }),
+        'sandbox blocked',
+        /sandbox blocked this/i,
+      ],
     ]
-    for (const [event, text] of cases) {
+    for (const [event, status, detail] of cases) {
       useAutoReviewStore.getState().reset()
       useAutoReviewStore.getState().receive(event)
       const { unmount } = render(<AutoReviewMarker toolCallId="call-1" />)
-      expect(screen.getByText(text)).toBeInTheDocument()
+      expect(screen.getByText(status)).toBeInTheDocument()
+      // Blocks open expanded with their reason; approvals stay collapsed.
+      if (detail) expect(screen.getByText(detail)).toBeInTheDocument()
       expect(screen.getByTestId('auto-review-marker')).toHaveAttribute('data-kind', event.kind)
       unmount()
     }
+  })
+
+  it('shows the subject, risk, and time in the header and the verdict in the body', () => {
+    useAutoReviewStore.getState().receive(
+      decided({
+        kind: 'allowed',
+        risk_level: 'low',
+        user_authorization: 'high',
+        rationale: 'Reading the issue was requested.',
+        duration_ms: 3100,
+      })
+    )
+    render(<AutoReviewMarker toolCallId="call-1" subject="gh issue view 34" />)
+    expect(screen.getByText('Review')).toBeInTheDocument()
+    expect(screen.getByText('gh issue view 34')).toBeInTheDocument()
+    expect(screen.getByText('low risk')).toBeInTheDocument()
+    expect(screen.getByText('3.1s')).toBeInTheDocument()
+    expect(screen.queryByText(/reading the issue/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /review/i }))
+    expect(screen.getByText('Reading the issue was requested.')).toBeInTheDocument()
+    expect(screen.getByText('Authorization high')).toBeInTheDocument()
   })
 
   it('offers run-anyway only on denials, failures, and sandbox blocks', () => {

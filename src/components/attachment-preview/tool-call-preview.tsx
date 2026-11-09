@@ -199,6 +199,19 @@ export function ToolCallPreview({
     return null
   }, [isBuiltin, parsed.toolName, toolInput])
   const duration = formatDuration(durationMs)
+  // The auto-review card names the action it judged: the command itself
+  // for bash (the header summary is the model's description).
+  const reviewSubject = useMemo(() => {
+    if (isBuiltin && parsed.toolName === 'bash') {
+      try {
+        const command = toolInput ? JSON.parse(toolInput).command : null
+        if (typeof command === 'string' && command) return command
+      } catch {
+        // fall back to the summary
+      }
+    }
+    return inputSummary
+  }, [isBuiltin, parsed.toolName, toolInput, inputSummary])
 
   const containerClass = isExpanded
     ? 'w-full rounded border border-muted/50 bg-muted/20 overflow-hidden'
@@ -265,7 +278,7 @@ export function ToolCallPreview({
           </div>
         )}
       </div>
-      <AutoReviewMarker toolCallId={tc.id} />
+      <AutoReviewMarker toolCallId={tc.id} subject={reviewSubject} />
     </>
   )
 }
