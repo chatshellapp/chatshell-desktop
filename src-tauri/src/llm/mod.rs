@@ -44,7 +44,8 @@ pub use tools::{WebFetchTool, WebSearchTool};
 
 use agent_builder::{
     AgentConfig, build_assistant_message, build_assistant_message_with_tool_calls,
-    build_tool_result_message, build_user_message, create_provider_agent, stream_chat_with_agent,
+    build_tool_result_message, build_user_message, create_provider_agent,
+    stream_chat_reporting_errors, stream_chat_with_agent,
 };
 use anyhow::Result;
 use rig::completion::Message as RigMessage;

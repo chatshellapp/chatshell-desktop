@@ -244,12 +244,12 @@ impl JudgeModel for ProviderJudge {
             );
             let prompt = build_user_message(call.user, &[], &[]);
             let cancel = call.cancel.clone();
-            let response = super::stream_chat_with_agent(
+            // This function reports failures (below): a rejected request is
+            // routine while probing, so the stream does not log it as an error.
+            let response = super::stream_chat_reporting_errors(
                 agent,
                 prompt,
-                Vec::new(),
                 cancel.clone(),
-                |_, _| true,
                 &self.provider_type,
             )
             .await;
@@ -270,7 +270,18 @@ impl JudgeModel for ProviderJudge {
                     self.label(),
                     text.len()
                 ),
-                Err(_) => tracing::debug!("🛡️ [auto_review] Judge call to {} failed", self.label()),
+                Err(JudgeError::Cancelled) => {}
+                Err(err) => tracing::info!(
+                    "🛡️ [auto_review] Judge call to {} failed ({}): {}",
+                    self.label(),
+                    match err {
+                        JudgeError::Transient(_) => "transient",
+                        JudgeError::Permanent(_) => "rejected",
+                        JudgeError::Truncated(_) => "out of output budget",
+                        JudgeError::Cancelled => "cancelled",
+                    },
+                    err.to_string().chars().take(300).collect::<String>()
+                ),
             }
             result
         })

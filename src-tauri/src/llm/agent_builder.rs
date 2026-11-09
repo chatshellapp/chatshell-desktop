@@ -1000,6 +1000,26 @@ pub async fn stream_chat_with_agent(
     .await
 }
 
+/// [`stream_chat_with_agent`] for a caller that reports the stream's
+/// errors itself (see [`agent_streaming::StreamErrors::Caller`]).
+pub async fn stream_chat_reporting_errors(
+    agent: Agent,
+    prompt: Message,
+    cancel_token: CancellationToken,
+    log_prefix: &str,
+) -> Result<ChatResponse> {
+    agent_streaming::stream_agent_with(
+        agent,
+        prompt,
+        Vec::new(),
+        cancel_token,
+        |_, _| true,
+        log_prefix,
+        agent_streaming::StreamErrors::Caller,
+    )
+    .await
+}
+
 /// Helper to convert chat messages to rig Message format
 /// Uses build_user_content from common.rs for consistency
 pub fn build_user_message(

@@ -60,14 +60,58 @@ fn image_data_urls(content: &[AssistantContent]) -> Vec<String> {
         .collect()
 }
 
+/// Who reports a stream's errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamErrors {
+    /// This function logs them at error level (chat turns).
+    Log,
+    /// The caller does: they arrive in the result and are logged here at
+    /// debug only. For callers whose failures are routine and handled,
+    /// such as the auto-mode judge's capability probe, which expects some
+    /// request fields to be rejected.
+    Caller,
+}
+
+/// Log a stream error at the level `errors` asks for.
+macro_rules! stream_error {
+    ($errors:expr, $($arg:tt)*) => {
+        match $errors {
+            StreamErrors::Log => tracing::error!($($arg)*),
+            StreamErrors::Caller => tracing::debug!($($arg)*),
+        }
+    };
+}
+
 /// Implementation for streaming with any agent type
 pub async fn stream_agent(
     agent: Agent,
     prompt: Message,
     chat_history: Vec<Message>,
     cancel_token: CancellationToken,
+    callback: impl FnMut(String, StreamChunkType) -> bool + Send,
+    log_prefix: &str,
+) -> Result<ChatResponse> {
+    stream_agent_with(
+        agent,
+        prompt,
+        chat_history,
+        cancel_token,
+        callback,
+        log_prefix,
+        StreamErrors::Log,
+    )
+    .await
+}
+
+/// [`stream_agent`] with the error reporting chosen by the caller.
+pub async fn stream_agent_with(
+    agent: Agent,
+    prompt: Message,
+    chat_history: Vec<Message>,
+    cancel_token: CancellationToken,
     mut callback: impl FnMut(String, StreamChunkType) -> bool + Send,
     log_prefix: &str,
+    errors: StreamErrors,
 ) -> Result<ChatResponse> {
     tracing::info!("🤖 [{}] Agent created, starting stream chat", log_prefix);
 
@@ -304,7 +348,8 @@ pub async fn stream_agent(
                     || error_str.contains("stream");
 
                 if is_decode_error && !full_content.is_empty() {
-                    tracing::error!(
+                    stream_error!(
+                        errors,
                         "⚠️ [{}] Stream decode error after receiving content, treating as stream end: {}",
                         log_prefix,
                         error_str
@@ -313,14 +358,16 @@ pub async fn stream_agent(
                 }
 
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                    tracing::error!(
+                    stream_error!(
+                        errors,
                         "❌ [{}] Too many consecutive stream errors ({}): {}",
                         log_prefix,
                         consecutive_errors,
                         error_str
                     );
                     if !full_content.is_empty() {
-                        tracing::error!(
+                        stream_error!(
+                            errors,
                             "⚠️ [{}] Returning partial content ({} chars) due to stream errors",
                             log_prefix,
                             full_content.len()
@@ -330,7 +377,8 @@ pub async fn stream_agent(
                     return Err(anyhow::anyhow!("{}", strip_internal_prefixes(&error_str)));
                 }
 
-                tracing::error!(
+                stream_error!(
+                    errors,
                     "⚠️ [{}] Stream error ({}/{}), continuing: {}",
                     log_prefix,
                     consecutive_errors,
@@ -347,7 +395,8 @@ pub async fn stream_agent(
         && let Some(err) = last_error
     {
         let clean_err = strip_internal_prefixes(&err);
-        tracing::error!(
+        stream_error!(
+            errors,
             "❌ [{}] Stream ended with no content after error(s), propagating: {}",
             log_prefix,
             clean_err
@@ -380,7 +429,8 @@ pub async fn stream_agent(
     if cancelled {
         tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
     } else if let Some(err) = &interrupted {
-        tracing::warn!(
+        stream_error!(
+            errors,
             "⚠️ [{}] Stream ended on an error after partial output: {}",
             log_prefix,
             err
