@@ -34,7 +34,8 @@ use chatshell_agent_core::tools::bash_sandbox::{
     SandboxEscalator,
 };
 use rig::agent::{
-    AgentHook, HookContext, ToolCall, ToolCallAction, ToolResultAction, ToolResultEvent,
+    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, ToolCall, ToolCallAction,
+    ToolResultAction, ToolResultEvent,
 };
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -143,6 +144,31 @@ pub struct JudgeSession {
     /// arguments. Sandbox denials arrive with the command only; the
     /// arguments (`workdir` included) are what run-anyway must match.
     bash_calls: Mutex<HashMap<String, BashCall>>,
+    /// Reviews started when the model's turn finished, before its tool
+    /// calls run one by one (see [`PermissionGate::prefetch_reviews`]).
+    prefetched: Mutex<Vec<Prefetch>>,
+}
+
+/// A review started ahead of its tool call, with everything it was
+/// started from. The call's gate uses it only if all of that is unchanged
+/// when the call is decided; otherwise it reviews afresh.
+struct Prefetch {
+    tool_name: String,
+    args: Value,
+    request: JudgmentRequest,
+    transcript: chatshell_agent_core::judgment::AssembledTranscript,
+    posture: Posture,
+    params: JudgeParams,
+    task: tokio::task::JoinHandle<Review>,
+}
+
+impl Drop for JudgeSession {
+    fn drop(&mut self) {
+        // Reviews nobody will read: stop paying for them.
+        for prefetch in self.prefetched.get_mut().unwrap().drain(..) {
+            prefetch.task.abort();
+        }
+    }
 }
 
 impl JudgeSession {
@@ -165,6 +191,7 @@ impl JudgeSession {
             cancel,
             turn_inputs: Mutex::new(Vec::new()),
             bash_calls: Mutex::new(HashMap::new()),
+            prefetched: Mutex::new(Vec::new()),
         })
     }
 
@@ -193,9 +220,54 @@ impl JudgeSession {
     }
 
     fn transcript(&self) -> chatshell_agent_core::judgment::AssembledTranscript {
+        self.transcript_with(&[])
+    }
+
+    /// The transcript once `ahead` (tool inputs not decided yet) have been
+    /// decided: each call's input joins the transcript after its decision,
+    /// whatever the outcome, so a later call in the same batch sees these.
+    fn transcript_with(
+        &self,
+        ahead: &[TranscriptEntry],
+    ) -> chatshell_agent_core::judgment::AssembledTranscript {
         let mut entries = self.history.clone();
         entries.extend(self.turn_inputs.lock().unwrap().iter().cloned());
+        entries.extend(ahead.iter().cloned());
         assemble(&entries, self.budget)
+    }
+
+    /// The prefetched review of this call, if it was started from exactly
+    /// the inputs a review now would use. A prefetch for the same call
+    /// whose inputs changed (a session network grant, cwd drift, a raised
+    /// output bound) is aborted, and the caller reviews afresh.
+    fn take_prefetched(
+        &self,
+        tool_name: &str,
+        args: &Value,
+        current: Option<(
+            &JudgmentRequest,
+            &chatshell_agent_core::judgment::AssembledTranscript,
+            &Posture,
+            &JudgeParams,
+        )>,
+    ) -> Option<tokio::task::JoinHandle<Review>> {
+        let mut prefetched = self.prefetched.lock().unwrap();
+        let index = prefetched
+            .iter()
+            .position(|p| p.tool_name == tool_name && &p.args == args)?;
+        let prefetch = prefetched.remove(index);
+        let same = current.is_some_and(|(request, transcript, posture, params)| {
+            &prefetch.request == request
+                && &prefetch.transcript == transcript
+                && &prefetch.posture == posture
+                && &prefetch.params == params
+        });
+        if same {
+            Some(prefetch.task)
+        } else {
+            prefetch.task.abort();
+            None
+        }
     }
 
     fn push_turn_input(&self, tool_name: &str, args: &Value) {
@@ -618,6 +690,71 @@ impl PermissionGate {
         (outcome, source)
     }
 
+    /// Start the reviews of a finished model turn's tool calls at once.
+    ///
+    /// rig runs a turn's tool calls one by one, and each would otherwise
+    /// wait for the previous call's review and execution before its own
+    /// review starts. A review reads no tool output — only the transcript
+    /// (history plus the tool inputs decided so far) and the call's
+    /// request — so every call's review inputs are known when the turn
+    /// finishes. Each is started now; the call's gate uses it only if its
+    /// inputs are unchanged when the call is decided
+    /// ([`JudgeSession::take_prefetched`]). Markers, the decision log, and
+    /// deltas still happen at decision time, in call order.
+    pub fn prefetch_reviews(&self, calls: &[(String, Value)]) {
+        let Some(judge) = self.environment.judge.clone() else {
+            return;
+        };
+        let ctx = self.context();
+        let grants = self.grants_snapshot();
+        let posture = judge.posture.lock().unwrap().clone();
+        let params = judge.params.lock().unwrap().clone();
+        let mut ahead: Vec<TranscriptEntry> = Vec::new();
+        let mut started = Vec::new();
+        for (tool_name, args) in calls {
+            if let GateDecision::Classify(request) =
+                resolve_in(self.mode, &ctx, tool_name, args, &grants)
+            {
+                let transcript = judge.transcript_with(&ahead);
+                let task = tokio::spawn(timed_review(
+                    judge.model.clone(),
+                    params.clone(),
+                    posture.clone(),
+                    transcript.clone(),
+                    (*request).clone(),
+                    judge.cancel.clone(),
+                    self.timeout,
+                    format!("{} {}", tool_name, log_subject(tool_name, args)),
+                ));
+                started.push(Prefetch {
+                    tool_name: tool_name.clone(),
+                    args: args.clone(),
+                    request: *request,
+                    transcript,
+                    posture: posture.clone(),
+                    params: params.clone(),
+                    task,
+                });
+            }
+            ahead.push(TranscriptEntry::ToolInput {
+                tool: tool_name.clone(),
+                input: args.clone(),
+            });
+        }
+        let mut prefetched = judge.prefetched.lock().unwrap();
+        // A new turn: whatever the last one left unused is stale.
+        for stale in prefetched.drain(..) {
+            stale.task.abort();
+        }
+        if !started.is_empty() {
+            tracing::debug!(
+                "🛡️ [auto_review] Started {} review(s) with the model turn",
+                started.len()
+            );
+        }
+        *prefetched = started;
+    }
+
     /// Route a judgment request to the auto-mode judge.
     async fn judged(
         &self,
@@ -649,6 +786,7 @@ impl PermissionGate {
                         .authorize(command, bash_workdir(args), delta);
                 }
             }
+            judge.take_prefetched(tool_name, args, None);
             self.emit_marker(tool_call_id, tool_name, args, "override", None, None, false);
             return (CheckOutcome::Allow, "run anyway".to_string());
         }
@@ -656,40 +794,39 @@ impl PermissionGate {
         let transcript = judge.transcript();
         let posture = judge.posture.lock().unwrap().clone();
         let params = judge.params.lock().unwrap().clone();
-        let started = std::time::Instant::now();
-        let review = match tokio::time::timeout(
-            self.timeout,
-            review_engine::review(
-                judge.model.as_ref(),
-                &params,
-                &posture,
-                &transcript,
-                &request,
-                &judge.cancel,
-            ),
-        )
-        .await
-        {
-            Ok(review) => review,
-            // The outer bound on the whole decision (retries included).
-            Err(_elapsed) => {
-                tracing::warn!(
-                    "🛡️ [auto_review] Review of {} {} exceeded {:?}",
-                    tool_name,
-                    log_subject(tool_name, args),
-                    self.timeout
-                );
-                Review {
-                    outcome: ReviewOutcome::Failed {
-                        failure: ReviewFailure::Unavailable(
-                            "the review did not finish in time".to_string(),
-                        ),
-                    },
-                    attempts: 2,
-                    duration: started.elapsed(),
-                    model: judge.model.label(),
-                    max_tokens: params.max_tokens,
+        let prefetched = judge.take_prefetched(
+            tool_name,
+            args,
+            Some((&request, &transcript, &posture, &params)),
+        );
+        let review = match prefetched {
+            Some(task) => match task.await {
+                Ok(review) => {
+                    tracing::debug!(
+                        "🛡️ [auto_review] Using the review started with the model turn for {} {}",
+                        tool_name,
+                        log_subject(tool_name, args)
+                    );
+                    Some(review)
                 }
+                Err(_aborted_or_panicked) => None,
+            },
+            None => None,
+        };
+        let review = match review {
+            Some(review) => review,
+            None => {
+                timed_review(
+                    judge.model.clone(),
+                    params,
+                    posture,
+                    transcript,
+                    request.clone(),
+                    judge.cancel.clone(),
+                    self.timeout,
+                    format!("{} {}", tool_name, log_subject(tool_name, args)),
+                )
+                .await
             }
         };
 
@@ -1301,6 +1438,51 @@ fn scope_payload(scope: &GrantScope) -> Value {
     }
 }
 
+/// One review, bounded by `timeout` (retries included). `what` names the
+/// call in the timeout warning.
+#[allow(clippy::too_many_arguments)]
+async fn timed_review(
+    model: Arc<dyn JudgeModel>,
+    params: JudgeParams,
+    posture: Posture,
+    transcript: chatshell_agent_core::judgment::AssembledTranscript,
+    request: JudgmentRequest,
+    cancel: CancellationToken,
+    timeout: Duration,
+    what: String,
+) -> Review {
+    let started = std::time::Instant::now();
+    match tokio::time::timeout(
+        timeout,
+        review_engine::review(
+            model.as_ref(),
+            &params,
+            &posture,
+            &transcript,
+            &request,
+            &cancel,
+        ),
+    )
+    .await
+    {
+        Ok(review) => review,
+        Err(_elapsed) => {
+            tracing::warn!("🛡️ [auto_review] Review of {what} exceeded {timeout:?}");
+            Review {
+                outcome: ReviewOutcome::Failed {
+                    failure: ReviewFailure::Unavailable(
+                        "the review did not finish in time".to_string(),
+                    ),
+                },
+                attempts: 2,
+                duration: started.elapsed(),
+                model: model.label(),
+                max_tokens: params.max_tokens,
+            }
+        }
+    }
+}
+
 /// rig hook that routes every tool call through the gate. Attached in
 /// `build_agent` when `AgentConfig.permission_gate` is set.
 pub struct PermissionHook {
@@ -1314,6 +1496,29 @@ impl PermissionHook {
 }
 
 impl AgentHook for PermissionHook {
+    /// The model's turn is complete and its tool calls are about to run
+    /// one by one: start their reviews together.
+    fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        event: ModelTurnFinished<'_>,
+    ) -> impl Future<Output = ModelTurnAction> + Send {
+        let calls: Vec<(String, Value)> = event
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                rig::message::AssistantContent::ToolCall(call) => {
+                    Some((call.function.name.clone(), call.function.arguments.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        if !calls.is_empty() {
+            self.gate.prefetch_reviews(&calls);
+        }
+        async { ModelTurnAction::Continue }
+    }
+
     fn on_tool_call(
         &self,
         _ctx: &HookContext,
@@ -2832,5 +3037,73 @@ mod tests {
         answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
         assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
         assert!(deltas.is_empty());
+    }
+
+    // ---- Reviews started with the model turn -----------------------------
+
+    #[tokio::test]
+    async fn a_turns_reviews_run_together_and_each_is_used_once() {
+        let judge =
+            ScriptedJudge::with_delay(vec![JUDGE_ALLOW, JUDGE_ALLOW], Duration::from_millis(400));
+        let f = judged_fixture("conv-p1", judge);
+        let calls = vec![
+            ("bash".to_string(), bash("ls -la")),
+            ("bash".to_string(), bash("git status")),
+        ];
+        let started = std::time::Instant::now();
+        f.gate.prefetch_reviews(&calls);
+        for (tool, args) in &calls {
+            assert_eq!(
+                f.gate.check_call(None, tool, args).await,
+                CheckOutcome::Allow
+            );
+        }
+        // Concurrent: well under two sequential 400ms reviews.
+        assert!(
+            started.elapsed() < Duration::from_millis(750),
+            "{:?}",
+            started.elapsed()
+        );
+        // Each prefetched review was used: no second round of calls.
+        assert_eq!(f.judge.calls(), 2);
+        // The second review saw the first call's input, as it would have
+        // after the first call's decision.
+        let seen = f.judge.seen.lock().unwrap().clone();
+        let second = seen.iter().find(|p| p.contains("git status")).unwrap();
+        assert!(second.contains("ls -la"), "{second}");
+        settle_log().await;
+    }
+
+    #[tokio::test]
+    async fn a_prefetch_whose_inputs_changed_is_reviewed_afresh() {
+        let judge = ScriptedJudge::new(vec![JUDGE_ALLOW, JUDGE_ALLOW]);
+        let f = judged_fixture("conv-p2", judge);
+        let args = bash("ls -la");
+        f.gate
+            .prefetch_reviews(&[("bash".to_string(), args.clone())]);
+        // The posture changes before the call is decided (MCP servers load
+        // after the gate is built): the prefetched review is stale.
+        f.session.set_mcp_servers(vec!["Context7".to_string()]);
+        assert_eq!(
+            f.gate.check_call(None, "bash", &args).await,
+            CheckOutcome::Allow
+        );
+        // The deciding review saw the new posture (the stale one was
+        // aborted, possibly before it ever reached the judge).
+        let seen = f.judge.seen.lock().unwrap().clone();
+        assert!(seen.last().unwrap().contains("Context7"), "{seen:?}");
+        assert!(f.session.prefetched.lock().unwrap().is_empty());
+        settle_log().await;
+    }
+
+    #[tokio::test]
+    async fn calls_that_need_no_review_start_none() {
+        let judge = ScriptedJudge::new(vec![]);
+        let f = judged_fixture("conv-p3", judge);
+        // Read-only tools never reach the judge.
+        f.gate
+            .prefetch_reviews(&[("read".to_string(), json!({ "path": "/tmp/x" }))]);
+        assert!(f.session.prefetched.lock().unwrap().is_empty());
+        assert_eq!(f.judge.calls(), 0);
     }
 }
