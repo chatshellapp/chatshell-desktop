@@ -89,6 +89,12 @@ function EscapeView({ t, escape }: { t: TFunction; escape: PermissionEscape }) {
           ))}
         </div>
       )}
+      {escape.network && (
+        <div className="space-y-0.5">
+          <p>{t('permission.escape.network')}</p>
+          <p className="font-mono break-all text-muted-foreground">{escape.network}</p>
+        </div>
+      )}
       {escape.unbounded.length > 0 && (
         <div className="space-y-0.5">
           <p>{t('permission.escape.unbounded')}</p>

@@ -293,12 +293,29 @@ describe('PermissionApprovalDialog', () => {
       toolName: 'bash',
       subject: 'cp a ~/outside.txt',
       tier: 'exec',
-      grant: { kind: 'bash', bases: ['cp'] },
+      grant: null,
       escape: { writable_roots: [], unbounded: ['/Users/me/outside.txt'] },
     })
     render(<PermissionApprovalDialog />)
     expect(screen.getByText(/the sandbox will still block writes/i)).toBeInTheDocument()
     expect(screen.getByText('/Users/me/outside.txt')).toBeInTheDocument()
+    expect(screen.queryByText(/approving also lets this run write to/i)).not.toBeInTheDocument()
+  })
+
+  it('discloses the network a flagged command gets for its one run', () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-s',
+      conversationId: 'conv-1',
+      toolName: 'bash',
+      subject: 'curl https://example.com > $out',
+      tier: 'exec',
+      grant: null,
+      warning: { kind: 'security', detail: 'Unresolvable redirect target' },
+      escape: { writable_roots: [], unbounded: [], network: 'curl -> example.com' },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByText(/also lets this run use the network/i)).toBeInTheDocument()
+    expect(screen.getByText('curl -> example.com')).toBeInTheDocument()
     expect(screen.queryByText(/approving also lets this run write to/i)).not.toBeInTheDocument()
   })
 })

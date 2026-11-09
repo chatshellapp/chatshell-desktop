@@ -22,6 +22,7 @@ use chatshell_agent_core::judgment::{
     JudgmentRequest, TranscriptBudget, TranscriptEntry, assemble,
     delta::{EscapePlan, escape_delta, execution_delta},
 };
+use chatshell_agent_core::net_policy;
 use chatshell_agent_core::permission::{
     ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, PermissionMode,
     PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in, subject_for,
@@ -887,18 +888,32 @@ impl PermissionGate {
         forced: Option<ForcedPrompt>,
     ) -> (CheckOutcome, String) {
         let jailed_bash = tool_name == "bash" && ctx.sandbox_available;
-        // The network arrives through the session flag (a human may choose
-        // it); the plan carries the write widening only.
-        let plan = jailed_bash.then(|| escape_delta(args, ctx, false));
         match forced {
+            // The network card: its answer sets the session flag (a human
+            // may choose it), so the plan carries the write widening only.
             Some(ForcedPrompt {
                 kind: ForcedPromptKind::Network,
                 detail,
             }) if jailed_bash => {
-                self.network_before_execution(args, subject, detail, plan.unwrap_or_default())
+                let plan = escape_delta(args, ctx, None);
+                self.network_before_execution(args, subject, detail, plan)
                     .await
             }
-            forced => self.prompt(tool_name, args, subject, forced, plan).await,
+            // Any other jailed bash card: a command flagged ahead of the
+            // egress check (security -> unparsed -> egress) may contact the
+            // network too. Its approval opens the network for that one run,
+            // disclosed on the card, as an `auto` allow would — never a
+            // second card after a network denial (ADR 08 single prompt).
+            forced => {
+                let plan = jailed_bash.then(|| {
+                    let egress = args
+                        .get("command")
+                        .and_then(Value::as_str)
+                        .and_then(net_policy::detect_egress);
+                    escape_delta(args, ctx, egress.as_deref())
+                });
+                self.prompt(tool_name, args, subject, forced, plan).await
+            }
         }
     }
 
@@ -966,10 +981,12 @@ impl PermissionGate {
         escape: Option<EscapePlan>,
     ) -> (CheckOutcome, String) {
         // Forced prompts are about this specific call: never offer a
-        // session grant or remembering for them.
-        let (scope, remember) = match forced {
-            Some(_) => (None, None),
-            None => (
+        // session grant or remembering for them. Neither for a jailed bash
+        // card (`escape` is set): it is about an escape, which the resolver
+        // checks before any grant, so a grant would never apply.
+        let (scope, remember) = match (&forced, &escape) {
+            (Some(_), _) | (None, Some(_)) => (None, None),
+            (None, None) => (
                 grant_scope(tool_name, args),
                 self.persistent
                     .as_ref()
@@ -1247,9 +1264,10 @@ impl SandboxEscalator for GateEscalator {
     }
 }
 
-/// Wire shape of an approval's write widening in `permission-requested`:
-/// the directories it opens for the one execution, and the targets no
-/// bounded widening can open (they run jailed; a denial card follows).
+/// Wire shape of an approval's widening in `permission-requested`: the
+/// directories it opens for the one execution, the egress it opens the
+/// network for (that run only), and the targets no bounded widening can
+/// open (they run jailed; a denial card follows).
 fn escape_payload(plan: &EscapePlan) -> Value {
     let paths = |paths: &[PathBuf]| -> Vec<String> {
         paths.iter().map(|p| p.display().to_string()).collect()
@@ -1259,10 +1277,14 @@ fn escape_payload(plan: &EscapePlan) -> Value {
         .as_ref()
         .map(|delta| paths(&delta.writable_roots))
         .unwrap_or_default();
-    if roots.is_empty() && plan.unbounded.is_empty() {
+    if roots.is_empty() && plan.unbounded.is_empty() && plan.network.is_none() {
         return Value::Null;
     }
-    json!({ "writable_roots": roots, "unbounded": paths(&plan.unbounded) })
+    json!({
+        "writable_roots": roots,
+        "unbounded": paths(&plan.unbounded),
+        "network": plan.network,
+    })
 }
 
 /// Wire shape of a grant scope in `permission-requested`.
@@ -2662,6 +2684,10 @@ mod tests {
             json!([outside.display().to_string()])
         );
         assert_eq!(requested_payloads(&f.captured).len(), 1);
+        // No grant or remember offer: the escape arm precedes the grant
+        // lookup, so a grant would never cover the next run.
+        assert_eq!(payload["grant"], Value::Null);
+        assert_eq!(payload["remember"], Value::Null);
         // ...whose approval authorizes exactly that widening, once.
         let delta = deltas.take(&command, None).expect("roots delta");
         assert_eq!(delta.writable_roots, vec![outside.clone()]);
@@ -2756,5 +2782,55 @@ mod tests {
         assert!(network.load(Ordering::SeqCst));
         let delta = deltas.take(&command, None).expect("roots delta");
         assert_eq!(delta.writable_roots, vec![outside]);
+    }
+
+    #[tokio::test]
+    async fn a_flagged_command_with_egress_opens_the_network_on_its_one_card() {
+        let network = Arc::new(AtomicBool::new(false));
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(network.clone(), std::env::temp_dir(), deltas.clone());
+        // Security outranks egress (security -> unparsed -> egress), so the
+        // Security card is the one card; it must carry the network too.
+        let command = "curl https://example.com > $out";
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("bash", &bash(command)).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::AllowOnce, 0).await;
+        assert_eq!(task.await.unwrap(), CheckOutcome::Allow);
+        let payloads = requested_payloads(&f.captured);
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0]["warning"]["kind"], json!("security"));
+        assert!(
+            payloads[0]["escape"]["network"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("example.com")),
+            "{}",
+            payloads[0]
+        );
+        // That one run gets the network; the session flag stays off.
+        let delta = deltas.take(command, None).expect("network delta");
+        assert!(delta.network && !delta.unsandboxed);
+        assert!(!network.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_denied_flagged_egress_authorizes_nothing() {
+        let deltas = ExecutionDeltas::default();
+        let f = jailed_ask_fixture_with(
+            Arc::new(AtomicBool::new(false)),
+            std::env::temp_dir(),
+            deltas.clone(),
+        );
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move {
+                gate.check("bash", &bash("curl https://example.com > $out"))
+                    .await
+            }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        assert!(deltas.is_empty());
     }
 }

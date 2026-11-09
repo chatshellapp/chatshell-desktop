@@ -169,6 +169,7 @@
     },
     "escape": {
       "widens": "Approving also lets this run write to:",
+      "network": "Approving also lets this run use the network (this run only):",
       "unbounded": "The sandbox will still block writes to the paths below; if it does, you will be asked again:"
     },
     "escalateTitle": "Allow full access?",

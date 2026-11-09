@@ -1262,6 +1262,7 @@ dependencies = [
  "ignore",
  "image",
  "jieba-rs 0.7.4",
+ "libc",
  "lopdf 0.45.0",
  "nanoid",
  "pdf-extract",

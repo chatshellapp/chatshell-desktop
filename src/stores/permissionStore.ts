@@ -60,6 +60,8 @@ export interface PermissionRequest {
 export interface PermissionEscape {
   writable_roots: string[]
   unbounded: string[]
+  /** Detected egress the approval opens the network for, this run only. */
+  network?: string | null
 }
 
 /** Options of a sandbox escalation card. */
