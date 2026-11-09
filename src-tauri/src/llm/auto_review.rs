@@ -21,8 +21,8 @@ use chatshell_agent_core::judgment::engine::{
 use chatshell_agent_core::judgment::log::{DecisionLog, LOG_FILE_NAME};
 use futures::future::BoxFuture;
 use serde_json::Value;
-use std::collections::VecDeque;
-use std::sync::{LazyLock, Mutex, OnceLock};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use tokio_util::sync::CancellationToken;
 
 /// Setting key of the optional dedicated classifier model (a model row
@@ -31,6 +31,12 @@ pub const CLASSIFIER_MODEL_SETTING: &str = "auto_review_model_id";
 
 /// Probe results for this run of the app (cleared on restart).
 static ELIGIBILITY: LazyLock<EligibilityCache> = LazyLock::new(EligibilityCache::default);
+
+/// One in-flight capability check per judge (cache key). The input bar's
+/// status and a turn often ask about the same model at once; without this
+/// both probe it, and the turn waits for its own duplicate probe.
+static PROBES: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(Default::default);
 
 /// Denial counters per conversation (RAM only).
 static DENIALS: LazyLock<DenialCounters> = LazyLock::new(DenialCounters::default);
@@ -369,47 +375,80 @@ pub fn raise_budget(cache_key: &str, max_tokens: u32) {
 
 /// The judge's eligibility: cached for this run of the app, probed on
 /// first use (model selection, a model or classifier-model change, or the
-/// first `auto` turn). A cancelled probe is not cached.
+/// first `auto` turn). A cancelled probe is not cached. Concurrent callers
+/// share one probe (see [`single_flight`]).
 pub async fn eligibility_for(judge: &ProviderJudge, cancel: &CancellationToken) -> Eligibility {
     let key = judge.cache_key();
-    if let Some(cached) = ELIGIBILITY.get(&key) {
-        tracing::debug!(
-            "🛡️ [auto_review] {} eligibility (cached): {:?}",
-            judge.label(),
-            cached
+    single_flight(&key, cancel, || async {
+        tracing::info!(
+            "🛡️ [auto_review] Probing {} as the auto-mode judge",
+            judge.label()
         );
+        let started = std::time::Instant::now();
+        let candidates = thinking_candidates(&judge.provider_type, judge.api_style.as_deref());
+        let eligibility =
+            engine::probe_with(judge, engine::JudgeParams::default(), &candidates, cancel).await;
+        match &eligibility {
+            Eligibility::Eligible(params) => tracing::info!(
+                "🛡️ [auto_review] {} is eligible as the judge ({:.1}s, temperature {}, max_tokens {}, extra {})",
+                judge.label(),
+                started.elapsed().as_secs_f64(),
+                params
+                    .temperature
+                    .map_or_else(|| "omitted".to_string(), |t| t.to_string()),
+                params.max_tokens,
+                params
+                    .extra
+                    .as_ref()
+                    .map_or_else(|| "none".to_string(), |extra| extra.to_string())
+            ),
+            Eligibility::Ineligible { reason } => tracing::warn!(
+                "🛡️ [auto_review] {} is not eligible as the judge: {}",
+                judge.label(),
+                reason
+            ),
+        }
+        eligibility
+    })
+    .await
+}
+
+/// The cached eligibility for `key`, else the result of `probe`, run by at
+/// most one caller at a time per key: a caller that finds a probe in
+/// flight waits for it and reads its cached result instead of probing
+/// again. A cancelled probe is not cached (the next waiter probes); a
+/// caller cancelled while waiting returns without probing.
+async fn single_flight<F, Fut>(key: &str, cancel: &CancellationToken, probe: F) -> Eligibility
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Eligibility>,
+{
+    if let Some(cached) = ELIGIBILITY.get(key) {
+        tracing::debug!("🛡️ [auto_review] eligibility (cached): {:?}", cached);
         return cached;
     }
-    tracing::info!(
-        "🛡️ [auto_review] Probing {} as the auto-mode judge",
-        judge.label()
-    );
-    let started = std::time::Instant::now();
-    let candidates = thinking_candidates(&judge.provider_type, judge.api_style.as_deref());
-    let eligibility =
-        engine::probe_with(judge, engine::JudgeParams::default(), &candidates, cancel).await;
-    match &eligibility {
-        Eligibility::Eligible(params) => tracing::info!(
-            "🛡️ [auto_review] {} is eligible as the judge ({:.1}s, temperature {}, max_tokens {}, extra {})",
-            judge.label(),
-            started.elapsed().as_secs_f64(),
-            params
-                .temperature
-                .map_or_else(|| "omitted".to_string(), |t| t.to_string()),
-            params.max_tokens,
-            params
-                .extra
-                .as_ref()
-                .map_or_else(|| "none".to_string(), |extra| extra.to_string())
-        ),
-        Eligibility::Ineligible { reason } => tracing::warn!(
-            "🛡️ [auto_review] {} is not eligible as the judge: {}",
-            judge.label(),
-            reason
-        ),
+    let lock = PROBES
+        .lock()
+        .unwrap()
+        .entry(key.to_string())
+        .or_default()
+        .clone();
+    let _guard = tokio::select! {
+        guard = lock.lock() => guard,
+        _ = cancel.cancelled() => {
+            return Eligibility::Ineligible {
+                reason: "The capability check was cancelled.".to_string(),
+            };
+        }
+    };
+    // The probe this caller waited for may have settled it.
+    if let Some(cached) = ELIGIBILITY.get(key) {
+        tracing::debug!("🛡️ [auto_review] eligibility (shared probe): {:?}", cached);
+        return cached;
     }
+    let eligibility = probe().await;
     if !cancel.is_cancelled() {
-        ELIGIBILITY.insert(key, eligibility.clone());
+        ELIGIBILITY.insert(key.to_string(), eligibility.clone());
     }
     eligibility
 }
@@ -927,5 +966,88 @@ mod tests {
         let name = log.path().file_name().unwrap().to_str().unwrap();
         assert_eq!(name, LOG_FILE_NAME);
         assert_ne!(name, "data.db");
+    }
+
+    // ---- single-flight eligibility probe --------------------------------
+
+    fn eligible() -> Eligibility {
+        Eligibility::Eligible(engine::JudgeParams::default())
+    }
+
+    #[tokio::test]
+    async fn concurrent_callers_share_one_probe() {
+        let key = format!("single-flight-{}", uuid::Uuid::now_v7());
+        let probes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let probe = || {
+            let probes = probes.clone();
+            async move {
+                probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                eligible()
+            }
+        };
+        let (a, b) = tokio::join!(
+            single_flight(&key, &cancel, probe),
+            single_flight(&key, &cancel, probe)
+        );
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(matches!(a, Eligibility::Eligible(_)));
+        assert!(matches!(b, Eligibility::Eligible(_)));
+        // Later callers read the cache.
+        single_flight(&key, &cancel, probe).await;
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_probe_is_not_cached_and_the_next_caller_probes() {
+        let key = format!("single-flight-{}", uuid::Uuid::now_v7());
+        let owner = CancellationToken::new();
+        let result = single_flight(&key, &owner, || {
+            owner.cancel();
+            async {
+                Eligibility::Ineligible {
+                    reason: "The capability check was cancelled.".into(),
+                }
+            }
+        })
+        .await;
+        assert!(matches!(result, Eligibility::Ineligible { .. }));
+        assert!(ELIGIBILITY.get(&key).is_none());
+        let fresh = CancellationToken::new();
+        let next = single_flight(&key, &fresh, || async { eligible() }).await;
+        assert!(matches!(next, Eligibility::Eligible(_)));
+        assert!(matches!(
+            ELIGIBILITY.get(&key),
+            Some(Eligibility::Eligible(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_waiter_cancelled_while_waiting_never_probes() {
+        let key = format!("single-flight-{}", uuid::Uuid::now_v7());
+        let owner = CancellationToken::new();
+        let waiter = CancellationToken::new();
+        let owning = single_flight(&key, &owner, || async {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            eligible()
+        });
+        let waiting = async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let cancel_soon = async {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                waiter.cancel();
+            };
+            let (result, ()) = tokio::join!(
+                single_flight(&key, &waiter, || async {
+                    panic!("a waiter must not probe while the owner's probe runs")
+                }),
+                cancel_soon
+            );
+            result
+        };
+        let (owned, waited) = tokio::join!(owning, waiting);
+        assert!(matches!(owned, Eligibility::Eligible(_)));
+        assert!(matches!(waited, Eligibility::Ineligible { .. }));
     }
 }
