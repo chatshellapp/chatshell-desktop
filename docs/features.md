@@ -9,7 +9,7 @@ Your AI can combine these tools to complete tasks. Choose Ask, Auto, or Yolo mod
 - **Web Search**: Multi-engine web search (DuckDuckGo, Bing, Baidu, Yahoo) with stealth mode
 - **Web Fetch**: Intelligent content extraction from URLs using HTTP, optional Obscura, the system WebView, and headless Chrome, or the Jina Reader API
 - **Bash**: Execute shell commands in the conversation's working directory, or in a private per-conversation scratch directory when none is set; long output is kept for later turns
-- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges and page images for scans, videos as metadata and frames, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets)
+- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges and page images for scans, videos as metadata and frames, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets). When Web Fetch is enabled, Read also accepts a URL and returns its raw content, such as a JSON or CSV file
 - **Edit**: Make precise text replacements in files
 - **Write**: Create or overwrite files with provided content
 - **Grep**: Search file contents with regex support

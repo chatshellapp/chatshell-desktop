@@ -21,10 +21,10 @@ Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
 3. Select a model that supports tool use, then send:
 
 ```text
-Find things to do in Kyoto on a rainy day and group them by neighborhood.
+Compare three robot vacuums under $400. Which should I buy?
 ```
 
-ChatShell can use its built-in search and fetch tools to gather information and return a summary. New conversations start in Ask mode, which confirms file changes and risky commands before they run. Switch to Auto or Yolo in the chat input toolbar, or change the default in Settings → Permissions.
+ChatShell can use its built-in search and fetch tools to read reviews and product pages, then lay out the trade-offs. New conversations start in Ask mode, which confirms file changes and risky commands before they run. Switch to Auto or Yolo in the chat input toolbar, or change the default in Settings → Permissions.
 
 ---
 
@@ -55,10 +55,10 @@ ChatShell can use its built-in search and fetch tools to gather information and 
 
 Try these prompts with a model that supports tool use:
 
-- **Plan a trip:** `Find things to do in Kyoto on a rainy day and group them by neighborhood.`
-- **Choose a purchase:** `Compare three robot vacuums under $400, including recurring costs and common complaints.`
-- **Plan meals:** `Suggest five dinners for two using rice, eggs, spinach, and chicken. Save a shopping list for anything else needed.`
-- **Organize files:** `Look through my Downloads folder and suggest how to organize it. Wait for my approval before moving anything.`
+- **Understand a document:** `Explain this lease in plain English. What should I watch out for?` (attach the PDF, even a scanned one)
+- **Choose what to buy:** `Compare three robot vacuums under $400. Which should I buy?`
+- **Plan meals:** `Plan five dinners using rice, eggs, and chicken, and save me a shopping list.`
+- **Tidy up files:** `Look through my Downloads folder and suggest how to organize it. Wait for my approval before moving anything.`
 
 Results depend on the selected model, enabled tools, and available permissions.
 
@@ -68,14 +68,14 @@ See [more example tasks](docs/example-tasks.md) for research, coding, automation
 
 ## Screenshots
 
-![ChatShell — Travel Planning with Web Search](docs/travel.png)
+![ChatShell answering how Apple's stock did over six months, with a line chart of closing prices built from web lookups](docs/stock.png)
 
 <details>
 <summary>More screenshots</summary>
 
-![ChatShell — Movie Research with Web Search & Fetch](docs/movies.png)
+![ChatShell analyzing an attached housing.csv with shell commands, with a bar chart of median home value by income group](docs/housing.png)
 
-![ChatShell — Project Structure Analysis with Local Tools](docs/project.png)
+![ChatShell planning a 3-day Los Angeles trip, with an SVG map of each day's route drawn in the reply](docs/trip.png)
 
 </details>
 
