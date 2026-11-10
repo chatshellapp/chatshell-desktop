@@ -36,6 +36,7 @@ export const Chart = defineComponent({
     series: z.union([z.array(Series.ref), Series.ref]),
     description: z.string().optional(),
     variant: z.enum(['stacked', 'horizontal', 'donut']).optional(),
+    unit: z.string().optional(),
   }),
   description: 'A statistical chart in a card.',
   component: ({ props }) => {
@@ -47,6 +48,7 @@ export const Chart = defineComponent({
       series: elementProps(props.series).flatMap(toSeries),
       description: props.description,
       variant: props.variant,
+      unit: props.unit,
     })
   },
 })
