@@ -1,6 +1,6 @@
 // The `Chart` component of ChatShell's OpenUI library, drawn the way shadcn's
 // charts are: a Card around a Recharts chart in a ChartContainer, colored
-// from the app's --chart-1..5 tokens. Colors and config keys never come
+// from the app's --chart-1..6 palette. Colors and config keys never come
 // from the model: series are keyed s0, s1, ... and slices p0, p1, ..., so
 // model text never reaches the <style> tag ChartContainer writes.
 // Design: internal-docs/features/openui-blocks.md.
@@ -55,8 +55,9 @@ export interface OpenUiChartProps {
   variant?: ChartVariant
 }
 
-/** The app palette has five chart colors; later series reuse them. */
-const PALETTE_SIZE = 5
+/** The app palette has six colors (cyan, pink, purple, amber, green,
+ * indigo; see App.css); later series and slices reuse them in order. */
+const PALETTE_SIZE = 6
 
 const color = (index: number) => `var(--chart-${(index % PALETTE_SIZE) + 1})`
 

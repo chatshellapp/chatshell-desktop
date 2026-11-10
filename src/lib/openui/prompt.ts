@@ -39,7 +39,7 @@ export function generateOpenUiPrompt(): string {
 Write one statement per line, \`name = Expression\`, starting with \`root = Chart(...)\` or \`root = Stats([...])\`. Arguments are positional (never \`name: value\`); optional ones (?) may be left off the end. Strings use double quotes. Define every name you use and use every name you define.
 
 - ${chart} - type is "bar", "line", "area", "pie", "radar", or "radial". labels are the categories on the x-axis (the slices of a pie or radial chart, the axes of a radar chart). variant: "stacked" (bar, area), "horizontal" (bar, for long or many labels), "donut" (pie).
-- ${series} - one number per label; at most 5 series, and pie and radial charts take exactly one. When every series has a total (a formatted string such as "7,324"), the chart header shows the totals as tiles the reader switches between, one series at a time.
+- ${series} - one number per label; at most 6 series, and pie and radial charts take exactly one. When every series has a total (a formatted string such as "7,324"), the chart header shows the totals as tiles the reader switches between, one series at a time.
 - ${stats} - a row of 2 to 4 KPI cards.
 - ${stat} - value and change are formatted strings such as "$48.2k" and "+8.1%"; note is a short comparison such as "vs last month".
 

@@ -6,15 +6,23 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { writeTextFile } from '@tauri-apps/plugin-fs'
 import type { MermaidBlockProps } from './types'
 import { logger } from '@/lib/logger'
+import { mermaidThemeVariables, readDiagramBackground } from '@/lib/mermaid-theme'
+import { paletteKey, useSvgPalette, type SvgPalette } from '@/lib/svg-figure'
 
-// Initialize mermaid with default config - runs once on module load
-let mermaidInitialized = false
+// Mermaid's config is global; it is re-initialized whenever the app theme
+// (and so the palette) changes, and every block re-renders with it.
+let initializedThemeKey: string | null = null
 
-function initializeMermaid() {
-  if (mermaidInitialized) return
+function initializeMermaid(palette: SvgPalette) {
+  const background = readDiagramBackground(palette.isDark)
+  const themeKey = `${paletteKey(palette)}|${background}`
+  if (initializedThemeKey === themeKey) return
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'default',
+    // `base` is the only theme Mermaid lets callers recolor; the variables
+    // come from the app's visual palette (see mermaid-theme.ts).
+    theme: 'base',
+    themeVariables: mermaidThemeVariables(palette, background),
     // `strict`: labels are HTML-escaped and click callbacks are disabled; the
     // diagram source comes from model output, so it is untrusted.
     securityLevel: 'strict',
@@ -24,7 +32,7 @@ function initializeMermaid() {
     sequence: { useMaxWidth: true },
     mindmap: { useMaxWidth: true, padding: 10 },
   })
-  mermaidInitialized = true
+  initializedThemeKey = themeKey
 }
 
 // Clean up any orphaned mermaid error elements from failed renders
@@ -56,6 +64,8 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
   const [renderKey, setRenderKey] = useState(0)
   const [copied, setCopied] = useState(false)
   const [isWaiting, setIsWaiting] = useState(true) // Start in waiting state
+  const palette = useSvgPalette()
+  const themeKey = paletteKey(palette)
 
   useEffect(() => {
     let cancelled = false
@@ -68,8 +78,8 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
       const elementId = `mermaid-${uniqueId.replace(/:/g, '-')}-${renderKey}-${Date.now()}`
 
       try {
-        // Ensure mermaid is initialized before rendering
-        initializeMermaid()
+        // Ensure mermaid is initialized with the current theme before rendering
+        initializeMermaid(palette)
 
         const { svg: renderedSvg } = await mermaid.render(elementId, code)
         if (!cancelled) {
@@ -101,7 +111,8 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [code, uniqueId, renderKey])
+    // themeKey stands for palette: re-render when the app theme changes.
+  }, [code, uniqueId, renderKey, themeKey])
 
   // Retry handler for error state
   const handleRetry = useCallback(() => {
@@ -236,7 +247,7 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
         </div>
       </div>
       <div
-        className="p-4 bg-white flex justify-center overflow-x-auto [&>svg]:max-w-full"
+        className="p-4 bg-card flex justify-center overflow-x-auto [&>svg]:max-w-full"
         dangerouslySetInnerHTML={{ __html: svg }}
       />
     </div>

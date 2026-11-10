@@ -25,6 +25,9 @@ pub struct SvgPaletteInput {
     pub success: String,
     pub warning: String,
     pub error: String,
+    /// The app's six chart colors (`--chart-1`..`--chart-6`) for `--c1`..`--c6`.
+    #[serde(default)]
+    pub series: Vec<String>,
     pub is_dark: bool,
 }
 
@@ -88,6 +91,7 @@ pub fn prepare_svg_figure(
         success: palette.success,
         warning: palette.warning,
         error: palette.error,
+        series: palette.series,
         is_dark: palette.is_dark,
     };
     let options = core::PrepareOptions {
@@ -126,6 +130,7 @@ mod tests {
             success: "#16a34a".into(),
             warning: "#d97706".into(),
             error: "#dc2626".into(),
+            series: Vec::new(),
             is_dark: false,
         }
     }
