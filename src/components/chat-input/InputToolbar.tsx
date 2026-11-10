@@ -358,7 +358,10 @@ export function InputToolbar({
             </DropdownMenuItem>
           ))}
           {!autoAvailable && (
-            <div className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px]">
+            <div
+              className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px] line-clamp-6 [overflow-wrap:anywhere]"
+              title={autoUnavailableReason ?? undefined}
+            >
               {autoUnavailableReason
                 ? t('permission.mode.autoUnavailableReason', { reason: autoUnavailableReason })
                 : t('permission.mode.autoUnavailable')}
