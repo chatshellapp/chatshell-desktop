@@ -296,7 +296,9 @@ pub fn classify_provider_error(message: &str) -> JudgeError {
     // rig ends a run that delivered no answer with this finish reason
     // (reasoning used the whole output budget): worth a retry with a
     // larger bound, and never a sign that a request field was rejected.
-    if lower.contains("finish_reason=length") {
+    if lower.contains("finish_reason=length")
+        || lower.contains(&crate::llm::agent_streaming::OUTPUT_LIMIT_REACHED.to_ascii_lowercase())
+    {
         return JudgeError::Truncated(message.to_string());
     }
     // Status codes match as whole numbers only, so a limit or a count in
@@ -363,7 +365,16 @@ pub fn thinking_candidates(provider_type: &str, api_style: Option<&str>) -> Vec<
         Some(Wire::Responses) if api_style == Some("chat_completions") => chat(),
         Some(Wire::Responses) => responses(),
         Some(Wire::OpenAiCompat | Wire::OpenRouter | Wire::Azure) => chat(),
-        Some(Wire::Anthropic) => vec![serde_json::json!({ "thinking": { "type": "disabled" } })],
+        // `disabled` for models that allow it; `between_tools` is how
+        // Claude Sonnet 5.5 turns thinking off (it rejects `disabled`);
+        // models whose thinking can't be turned off (Claude Opus 5.5, the
+        // Fable line) keep it with no visible output, so the judge never
+        // falls through to the chat defaults that request summaries.
+        Some(Wire::Anthropic) => vec![
+            serde_json::json!({ "thinking": { "type": "disabled" } }),
+            serde_json::json!({ "thinking": { "type": "between_tools" } }),
+            serde_json::json!({ "thinking": { "type": "adaptive", "display": "omitted" } }),
+        ],
         // Ollama's native API; rig lifts `think` out of the extra fields.
         Some(Wire::Ollama) => vec![serde_json::json!({ "think": false })],
         _ => Vec::new(),
@@ -714,7 +725,11 @@ mod tests {
         assert_eq!(thinking_candidates("openai", None), responses);
         assert_eq!(
             thinking_candidates("custom_anthropic", None),
-            vec![json!({ "thinking": { "type": "disabled" } })]
+            vec![
+                json!({ "thinking": { "type": "disabled" } }),
+                json!({ "thinking": { "type": "between_tools" } }),
+                json!({ "thinking": { "type": "adaptive", "display": "omitted" } }),
+            ]
         );
         assert_eq!(
             thinking_candidates("ollama", None),
@@ -723,6 +738,14 @@ mod tests {
         // No known control: the probe relies on the larger output bound.
         assert!(thinking_candidates("gemini", None).is_empty());
         assert!(thinking_candidates("not-a-provider", None).is_empty());
+    }
+
+    #[test]
+    fn a_reply_cut_at_the_output_limit_is_classified_as_truncated() {
+        assert!(matches!(
+            classify_provider_error(crate::llm::agent_streaming::OUTPUT_LIMIT_REACHED),
+            JudgeError::Truncated(_)
+        ));
     }
 
     #[test]

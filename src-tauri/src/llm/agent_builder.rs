@@ -464,21 +464,31 @@ pub fn create_ollama_agent(
 ///
 /// The completion model itself comes from core's `create_anthropic_completion_model`
 /// (shared HTTP client, default base URL, prompt caching); this wrapper applies
-/// desktop's AgentConfig and fills in Anthropic's mandatory default max_tokens.
+/// desktop's AgentConfig and fills in the model-dependent defaults the caller
+/// left unset: Anthropic's mandatory `max_tokens`, sized to the model's output
+/// window, and readable adaptive thinking (current Claude models stream empty
+/// thinking blocks unless `display: "summarized"` is requested).
 pub fn create_anthropic_agent(
     api_key: &str,
     base_url: Option<&str>,
     model_id: &str,
     config: &AgentConfig,
 ) -> Result<Agent> {
+    use chatshell_agent_core::anthropic_models;
+
     let model =
         chatshell_agent_core::create_anthropic_completion_model(api_key, base_url, model_id)?;
 
     let mut anthropic_config = config.clone();
-    if anthropic_config.model_params.max_tokens.is_none() {
-        anthropic_config.model_params.max_tokens =
-            Some(chatshell_agent_core::ANTHROPIC_DEFAULT_MAX_TOKENS as i64);
+    let params = &mut anthropic_config.model_params;
+    if params.max_tokens.is_none() {
+        params.max_tokens = Some(anthropic_models::anthropic_default_max_tokens(model_id) as i64);
     }
+    params.additional_params = anthropic_models::with_anthropic_thinking_default(
+        model_id,
+        params.temperature,
+        params.additional_params.take(),
+    );
 
     Ok(build_agent(AgentBuilder::new(model), &anthropic_config))
 }
@@ -2343,7 +2353,52 @@ mod tests {
             "anthropic should use the Messages API"
         );
         let body = captured_json(&captured);
-        assert_eq!(body["max_tokens"], json!(8192));
+        assert_eq!(body["max_tokens"], json!(64_000));
+        assert!(
+            body.get("thinking").is_none(),
+            "models without adaptive thinking get no thinking default"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_agent_requests_readable_thinking_on_current_models() {
+        let (base_url, captured) = serve_one_request(ANTHROPIC_MESSAGES_BODY).await;
+        let agent = create_anthropic_agent(
+            "probe-key",
+            Some(&base_url),
+            "anthropic/claude-sonnet-5.5",
+            &AgentConfig::new(),
+        )
+        .expect("anthropic agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(
+            body["thinking"],
+            json!({ "type": "adaptive", "display": "summarized" })
+        );
+        assert_eq!(body["max_tokens"], json!(64_000));
+    }
+
+    #[tokio::test]
+    async fn anthropic_agent_keeps_user_thinking_and_skips_it_with_temperature() {
+        let (base_url, captured) = serve_one_request(ANTHROPIC_MESSAGES_BODY).await;
+        let config = AgentConfig::new()
+            .with_additional_params(json!({ "thinking": { "type": "between_tools" } }));
+        let agent =
+            create_anthropic_agent("probe-key", Some(&base_url), "claude-sonnet-5-5", &config)
+                .expect("anthropic agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert_eq!(body["thinking"], json!({ "type": "between_tools" }));
+
+        let (base_url, captured) = serve_one_request(ANTHROPIC_MESSAGES_BODY).await;
+        let config = AgentConfig::new().with_temperature(0.3);
+        let agent =
+            create_anthropic_agent("probe-key", Some(&base_url), "claude-sonnet-5-5", &config)
+                .expect("anthropic agent should build");
+        fire_prompt(&agent).await;
+        let body = captured_json(&captured);
+        assert!(body.get("thinking").is_none());
     }
 
     #[tokio::test]

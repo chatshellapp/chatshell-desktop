@@ -6,7 +6,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};
-use rig::completion::Message;
+use rig::completion::{FinishReason, Message};
 use rig::message::{AssistantContent, DocumentSourceKind, Image, Reasoning};
 use rig::prelude::StreamingChat;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
@@ -15,6 +15,12 @@ use tokio_util::sync::CancellationToken;
 use crate::llm::ChatResponse;
 use crate::llm::common::{StreamChunkType, ToolCallInfo, ToolResultInfo};
 use crate::thinking_parser;
+
+/// Reported as the turn's interruption when the model stopped because it
+/// reached `max_tokens`: the saved reply is partial, and without this it
+/// looks like a complete answer that simply ends mid-sentence.
+pub const OUTPUT_LIMIT_REACHED: &str = "The response was cut off because it reached the output \
+     token limit (max_tokens). Raise Max Tokens in the model parameters to allow longer replies.";
 
 /// Strip internal error prefixes (e.g. "CompletionError: ProviderError: ") to
 /// produce a cleaner user-facing message.
@@ -132,6 +138,8 @@ pub async fn stream_agent_with(
     // The error that ended the stream, if no item arrived after it. A
     // transient error followed by more output is recovered and cleared.
     let mut trailing_error: Option<String> = None;
+    // The run's last model call stopped at the output-token limit.
+    let mut output_limited = false;
     const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
     tracing::info!("📥 [{}] Processing stream...", log_prefix);
@@ -282,6 +290,16 @@ pub async fn stream_agent_with(
             Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                 consecutive_errors = 0;
                 trailing_error = None;
+                output_limited = final_response
+                    .completion_calls()
+                    .last()
+                    .is_some_and(|call| call.finish_reason == Some(FinishReason::Length));
+                if output_limited {
+                    tracing::warn!(
+                        "✂️ [{}] Response stopped at the output token limit (max_tokens)",
+                        log_prefix
+                    );
+                }
                 // Log final response usage if available
                 let usage = final_response.usage();
                 if usage.input_tokens > 0 || usage.output_tokens > 0 {
@@ -425,7 +443,11 @@ pub async fn stream_agent_with(
         tracing::info!("💡 [{}] Reasoning ended", log_prefix);
     }
 
-    let interrupted = if cancelled { None } else { trailing_error };
+    let interrupted = if cancelled {
+        None
+    } else {
+        trailing_error.or_else(|| output_limited.then(|| OUTPUT_LIMIT_REACHED.to_string()))
+    };
     if cancelled {
         tracing::warn!("⚠️ [{}] Stream was cancelled", log_prefix);
     } else if let Some(err) = &interrupted {
@@ -537,6 +559,12 @@ mod tests {
             "mock",
             Usage::new(),
         )))
+    }
+
+    fn length_final_event() -> MockEvent {
+        Ok(RawStreamingChoice::FinalResponse(
+            StreamFinal::new("mock", Usage::new()).with_finish_reason(FinishReason::Length),
+        ))
     }
 
     fn error_event(message: &str) -> MockEvent {
@@ -923,6 +951,21 @@ mod tests {
                 Chunk::Text("world".into()),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_reply_cut_at_the_output_limit_is_marked_interrupted() {
+        let (result, _) = record(
+            vec![vec![text_event("Day 1: Santa Mon"), length_final_event()]],
+            false,
+        )
+        .await;
+        let response = result.expect("partial output is still returned");
+        assert_eq!(response.content, "Day 1: Santa Mon");
+        assert_eq!(response.interrupted.as_deref(), Some(OUTPUT_LIMIT_REACHED));
+
+        let (result, _) = record(vec![vec![text_event("Done."), final_event()]], false).await;
+        assert_eq!(result.expect("stream should succeed").interrupted, None);
     }
 
     #[tokio::test]
