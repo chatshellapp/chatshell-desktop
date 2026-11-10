@@ -8,7 +8,6 @@
 
 use crate::db::Database;
 use chatshell_agent_core::svg_figure as core;
-use chatshell_agent_core::visual_output::{VisualCapabilities, visual_output_prompt};
 use serde::{Deserialize, Serialize};
 
 /// Settings key: `"false"` turns figures off; anything else (or unset) is on.
@@ -113,16 +112,6 @@ pub(crate) async fn svg_figures_enabled(db: &Database) -> bool {
     )
 }
 
-/// The visual-output fragment for desktop. Mermaid and KaTeX math always
-/// render here; SVG figures follow the user setting.
-pub(crate) fn visual_output_instructions(svg_figures: bool) -> String {
-    visual_output_prompt(&VisualCapabilities {
-        svg: svg_figures,
-        mermaid: true,
-        math: true,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,15 +152,5 @@ mod tests {
         )
         .expect_err("incomplete");
         assert_eq!(streaming.kind, "incomplete");
-    }
-
-    #[test]
-    fn desktop_prompt_offers_mermaid_and_math() {
-        for svg in [false, true] {
-            let prompt = visual_output_instructions(svg);
-            assert!(prompt.contains("```mermaid"));
-            assert!(prompt.contains("$$...$$"));
-            assert_eq!(prompt.contains("```svg"), svg);
-        }
     }
 }

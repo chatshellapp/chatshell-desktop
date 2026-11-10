@@ -32,6 +32,7 @@ import {
   ToggleLeft,
   ToggleRight,
   LogIn,
+  ChartColumn,
 } from 'lucide-react'
 
 import { invoke } from '@tauri-apps/api/core'
@@ -103,10 +104,10 @@ import { logger } from '@/lib/logger'
 import appIcon from '@/assets/app-icon.png'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
-import { RENDER_SVG_FIGURES_SETTING } from '@/lib/svg-figure'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { SyncSettingsSection } from '@/components/sync/sync-settings-section'
+import { VisualsSettings } from '@/components/settings-dialog/visuals-settings'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 // Translation key per fetch strategy. Record<> forces exhaustiveness: adding
@@ -133,6 +134,7 @@ const data = {
     { name: 'skills', icon: Zap },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
+    { name: 'visuals', icon: ChartColumn },
     { name: 'sync', icon: Cloud },
     { name: 'language', icon: Globe },
     { name: 'advanced', icon: Settings },
@@ -363,9 +365,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }
 
   const saveSetting = useSettingsStore((state) => state.saveSetting)
-  const svgFiguresEnabled = useSettingsStore(
-    (state) => state.settings[RENDER_SVG_FIGURES_SETTING] !== 'false'
-  )
   const getSetting = useSettingsStore((state) => state.getSetting)
   const searchProviders = useSettingsStore((state) => state.searchProviders)
   const loadSearchProviders = useSettingsStore((state) => state.loadSearchProviders)
@@ -1465,28 +1464,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       )
     }
 
+    if (activeSection === 'visuals') {
+      return <VisualsSettings />
+    }
+
     if (activeSection === 'advanced') {
       const logLevels: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error']
 
       return (
         <div className="grid gap-6">
-          {/* Inline SVG figures */}
-          <div className="flex items-center justify-between gap-4 max-w-md">
-            <div className="grid gap-1">
-              <Label htmlFor="render-svg-figures">{t('renderSvgFiguresLabel')}</Label>
-              <p className="text-xs text-muted-foreground">{t('renderSvgFiguresDescription')}</p>
-            </div>
-            <Switch
-              id="render-svg-figures"
-              checked={svgFiguresEnabled}
-              onCheckedChange={(checked) => {
-                saveSetting(RENDER_SVG_FIGURES_SETTING, checked ? 'true' : 'false').catch((error) =>
-                  logger.error('Failed to save SVG figure setting:', error)
-                )
-              }}
-            />
-          </div>
-
           {/* Model Capabilities Database */}
           <div className="grid gap-2">
             <Label>{t('modelCapabilitiesDatabase')}</Label>

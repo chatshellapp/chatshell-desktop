@@ -16,6 +16,8 @@
   "webSearch": "Web Search",
   "sync": "Sync",
   "language": "Language",
+  "visuals": "Visuals",
+  "visualsSectionDescription": "Formats the assistant may draw inline in its answers. Mermaid diagrams and math always render.",
   "advanced": "Advanced",
   "languageDescription": "Choose your preferred language for the application interface.",
   "appearance": "Appearance",
@@ -178,5 +180,7 @@
   "updateAutoCheckLabel": "Check for updates automatically",
   "updateAutoCheckDescription": "Checks dl.chatshell.app once shortly after launch. No usage data is sent.",
   "renderSvgFiguresLabel": "Render SVG figures",
-  "renderSvgFiguresDescription": "Let the assistant draw diagrams, mockups, and animations as inline SVG. Off: SVG blocks show as code and the assistant is not invited to draw."
+  "renderSvgFiguresDescription": "Let the assistant draw diagrams, mockups, and animations as inline SVG. Off: SVG blocks show as code and the assistant is not invited to draw.",
+  "renderOpenUiBlocksLabel": "Chart and data blocks (OpenUI)",
+  "renderOpenUiBlocksDescription": "Let the assistant answer with charts and KPI cards. Blocks only display data; nothing in them sends messages or opens links. Adds about 600 tokens to every request. Off: these blocks show as code and the assistant is not invited to use them."
 }

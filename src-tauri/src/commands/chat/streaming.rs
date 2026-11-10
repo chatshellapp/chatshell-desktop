@@ -804,9 +804,9 @@ pub(crate) async fn handle_agent_streaming(
     // Route visuals to the formats desktop renders (skipped for tool-less
     // modes like translation, whose output is never rendered as a chat answer).
     if !disable_tools {
-        let svg_figures = crate::commands::svg_figures_enabled(&state_clone.db).await;
         effective_system_prompt.push_str("\n\n");
-        effective_system_prompt.push_str(&crate::commands::visual_output_instructions(svg_figures));
+        effective_system_prompt
+            .push_str(&crate::commands::visual_output_instructions(&state_clone.db).await);
     }
 
     // Where files go: deliverables vs scratch.

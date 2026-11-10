@@ -2,8 +2,14 @@ import { useMemo, type ReactNode, type ComponentProps } from 'react'
 import { MermaidBlock } from './mermaid-block'
 import { CodeBlock } from './code-block'
 import { SvgFigureBlock } from './svg-figure-block'
+import { OpenUiBlock } from './openui-block'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { RENDER_SVG_FIGURES_SETTING } from '@/lib/svg-figure'
+import {
+  isOpenUiBlocksEnabled,
+  OPENUI_FENCE_LANGUAGES,
+  RENDER_OPENUI_BLOCKS_SETTING,
+} from '@/lib/openui/settings'
 
 interface UseMarkdownComponentsOptions {
   compact?: boolean
@@ -26,6 +32,9 @@ export function useMarkdownComponents({
   const svgFigures = useSettingsStore(
     (state) => state.settings[RENDER_SVG_FIGURES_SETTING] !== 'false'
   )
+  const openUiBlocks = useSettingsStore((state) =>
+    isOpenUiBlocksEnabled(state.settings[RENDER_OPENUI_BLOCKS_SETTING])
+  )
   return useMemo(() => {
     const components = {
       code(props: CodeProps) {
@@ -44,6 +53,12 @@ export function useMarkdownComponents({
 
           if (language === 'svg' && svgFigures) {
             return <SvgFigureBlock code={codeContent} flat={flat} />
+          }
+
+          // Data blocks only in full-size transcript content, never in
+          // compact previews (reasoning, summaries).
+          if (OPENUI_FENCE_LANGUAGES.has(language.toLowerCase()) && openUiBlocks && !compact) {
+            return <OpenUiBlock code={codeContent} flat={flat} />
           }
 
           return <CodeBlock language={language} code={codeContent} flat={flat} />
