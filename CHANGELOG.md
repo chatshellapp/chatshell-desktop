@@ -8,6 +8,39 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-09
+
+### Added
+
+- Auto mode. Tool calls run in the OS sandbox (macOS Seatbelt, Linux bubblewrap) and an auto-review model judges each call before it runs, with an option to run a blocked call anyway. Reviews of a turn's tool calls run together and show as collapsible cards with outcome, risk, and rationale.
+- Ask mode also runs bash in the sandbox where one is available, with a single approval card when a command needs to reach the network or write outside the allowed folders.
+- Remembered approvals. Choose "Remember on this device" on an approval card, and review or clear what you've remembered in Settings.
+- A new Permissions section in Settings with the default permission mode, remembered approvals, bash environment variables, and this machine's sandbox status.
+- Charts and KPI cards in assistant replies: bar, line, area, pie, radar, and radial charts, drawn in a shared color palette with figures and Mermaid diagrams.
+- Each assistant message lists the files it created or modified, and you can undo a turn's file changes.
+- Type @ in the message box to mention and attach a file from the working directory.
+- Attach videos, CSV and TSV data files, and folders (as a one-level listing).
+- Scanned PDFs can be attached, and the assistant can read their pages as images.
+- Translation history, kept on this device only, with search, restore, and a toggle to stop saving.
+
+### Changed
+
+- New conversations default to Ask mode, and switching to Yolo always asks for confirmation.
+- Images are resized to fit provider limits when attached, and oversized files are rejected with a clear reason.
+- Text attachments too long to send in full include their beginning, and the assistant can read the rest on demand.
+- Long command output stays readable in later turns instead of disappearing when the reply ends.
+- The assistant keeps deliverables in your working directory and scratch files in a temporary folder.
+- Attachments of deleted messages are cleaned up on this device and in the cloud.
+
+### Fixed
+
+- The assistant can no longer read ChatShell's own data folder, and it asks before reading shell configuration files.
+- Retrying or regenerating a reply sends the original attachments and fetched pages again.
+- Images read by tools reach the model as images rather than text.
+- Dollar amounts in replies no longer render as math.
+- Translation output only follows new text once you scroll to the bottom.
+- Overlapping avatars in the sidebar no longer show a halo around them.
+
 ## [0.9.2] - 2026-11-02
 
 ### Added
