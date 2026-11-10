@@ -4,12 +4,12 @@
 
 ### Agent-Ready Built-in Tools
 
-Your AI can combine these tools to complete tasks. Choose Ask mode to approve tool calls or YOLO mode for autonomous execution:
+Your AI can combine these tools to complete tasks. Choose Ask, Auto, or Yolo mode to decide how much runs without your approval (see [Permissions and Sandbox](#permissions-and-sandbox)):
 
-- **Web Search**: Multi-engine web search (DuckDuckGo, Baidu, Yahoo) with stealth mode
+- **Web Search**: Multi-engine web search (DuckDuckGo, Bing, Baidu, Yahoo) with stealth mode
 - **Web Fetch**: Intelligent content extraction from URLs using HTTP, optional Obscura, the system WebView, and headless Chrome, or the Jina Reader API
-- **Bash**: Execute shell commands in a per-conversation working directory
-- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets)
+- **Bash**: Execute shell commands in the conversation's working directory, or in a private per-conversation scratch directory when none is set; long output is kept for later turns
+- **Read**: Read file contents from the local filesystem (text, images, PDFs with optional page ranges and page images for scans, videos as metadata and frames, Office documents: docx/xlsx/pptx with sheet and cell-range selection for spreadsheets)
 - **Edit**: Make precise text replacements in files
 - **Write**: Create or overwrite files with provided content
 - **Grep**: Search file contents with regex support
@@ -18,10 +18,17 @@ Your AI can combine these tools to complete tasks. Choose Ask mode to approve to
 
 The AI decides when and how to combine these tools to fulfill your requests.
 
-### Tool Approvals
+### Permissions and Sandbox
 
-- **Ask / YOLO Modes**: Choose the approval mode per conversation from the input toolbar
-- **Approval Controls**: Allow a tool call once, allow it for the session, or deny it
+- **Three Modes**: Choose Ask, Auto, or Yolo per conversation from the input toolbar; new conversations start in the default mode set in Settings → Permissions (Ask on fresh installs), and switching to Yolo always asks to confirm
+- **Ask**: Shell commands run inside the OS sandbox and those that stay inside it run without asking; commands that need the network or write outside the allowed folders, file edits, and other tool calls wait for approval. Without a sandbox, shell commands are confirmed too
+- **Auto**: The conversation's model reviews each action before it runs and approves the safe ones without prompting; a turn's tool calls are reviewed together. Reviews appear as cards with the outcome, risk, and rationale, and a blocked action can be run anyway. Models that cannot review fall back to Ask
+- **Yolo**: Runs everything without asking and without the sandbox; a built-in blocklist still stops catastrophic operations
+- **OS Sandbox**: macOS Seatbelt and Linux bubblewrap; Settings → Permissions shows this machine's sandbox status
+- **Approval Controls**: Allow a tool call once, allow it for the session, or deny it; sandbox cards offer running once outside the sandbox or allowing network access for the session
+- **Remembered Approvals**: Remember an approval on this device and review or clear remembered approvals in Settings; they never sync
+- **Protected Data**: The assistant cannot read ChatShell's own data folder, asks before reading shell configuration files, and the sandbox blocks access to stored credentials
+- **Bash Environment**: Commands get a minimal environment plus the variables you choose to pass through in Settings → Permissions
 - **Queued Requests**: Concurrent approval requests are presented in order; switching modes clears session grants
 
 ### Skills
@@ -83,7 +90,9 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Auto Title Generation**: Smart conversation titling
 - **Context Window Control**: Configurable message context (5, 10, 20, 50, 100, or unlimited)
 - **Automatic Context Compaction**: Compact older context as long conversations approach the model's context window
-- **Working Directory**: Per-conversation working directory for file system tools
+- **Working Directory**: Per-conversation working directory for file system tools; the assistant saves deliverables there and keeps scratch files in a temporary folder
+- **@-Mentions**: Type @ in the message box to pick a file from the working directory and attach it
+- **File Changes and Undo**: Each reply lists the files it created or modified; undo a turn's file changes to restore them (changes made by shell commands are not tracked)
 - **Persistent History**: All conversations stored locally in SQLite
 
 ### Encrypted iCloud Sync
@@ -93,9 +102,12 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Manual Controls**: Sync now, force publish this device's state, stop publishing, or delete cloud data from Settings
 - **Availability**: Requires iCloud Drive; see [sync development requirements](../CONTRIBUTING.md#testing-icloud-sync) when building from source
 
-### Sidebar Translator
+### Translator
 
-- **Quick Translation**: Translate text between languages from the sidebar
+- **Full-Page Translation**: Translate with source and result side by side
+- **Language Detection**: On-device detection picks the target language from your primary and secondary languages, which default to your system languages
+- **Keyboard Shortcuts**: Translate and copy results without leaving the keyboard
+- **Translation History**: Search, restore, and remove past translations; history stays on this device and can be turned off
 - **Continue in Conversation**: Move a translation into a conversation for follow-up questions
 
 ### Chat History Search
@@ -108,6 +120,9 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 - **Math Formulas**: Render LaTeX equations inline and in blocks with KaTeX
 - **Diagrams**: Render Mermaid flowcharts, sequence diagrams, and more directly in chat
+- **Charts and KPI Cards**: Bar, line, area, pie, radar, and radial charts and KPI cards drawn from the model's output
+- **SVG Figures**: Inline figures with animation controls, zoom, source view, copy, and save
+- **Shared Palette**: Charts, figures, and diagrams use one color palette that follows light and dark mode
 - **Syntax Highlighting**: Code blocks with language-aware highlighting and one-click copy
 
 ### Powerful Attachments
@@ -115,15 +130,20 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Drag & Drop**: Easily attach files to conversations
 - **Clipboard Paste**: Paste images directly from clipboard
 - **Smart File Detection**: Automatic type recognition with content deduplication (Blake3)
-- **Documents**: Markdown, code files (JS, TS, Python, Rust, Go, Java, C/C++, etc.), JSON, YAML, TOML, XML, SQL, shell scripts, plain text, and PDFs (text layer extracted automatically)
+- **Documents**: Markdown, code files (JS, TS, Python, Rust, Go, Java, C/C++, etc.), JSON, YAML, TOML, XML, SQL, shell scripts, and plain text; long files send their beginning and the AI reads the rest on demand
+- **PDFs**: The original file is kept alongside its extracted text; scanned PDFs attach too, and the AI can read their pages as images
+- **Data Files**: CSV and TSV, previewed by their header and first rows; with Bash enabled the AI works on a copy with shell tools
 - **Office Documents**: docx/xlsx/pptx (and macro-enabled variants) travel as binary attachments the AI reads with the Read tool; previews show the extracted text
-- **Images**: PNG, JPEG, GIF, WebP, BMP — with built-in lightbox viewer
+- **Images**: PNG, JPEG, GIF, WebP, BMP — resized to fit provider limits when attached, with built-in lightbox viewer
+- **Videos**: MP4, MOV, M4V, WebM, MKV, and AVI up to 100 MB; the AI reads metadata and frames with the Read tool when ffmpeg is installed
+- **Folders**: Attach a one-level folder listing from + → Folder
+- **Size Limits**: Oversized files are rejected with the reason and what to do instead
 - **Web Pages**: Paste URLs to automatically fetch and attach page content
 
 ### Web-Enabled Agents
 
 - **Intelligent Search Decision**: AI autonomously determines when to search the web
-- **Multi-Engine Support**: DuckDuckGo, Baidu, Yahoo
+- **Multi-Engine Support**: DuckDuckGo, Bing, Baidu, Yahoo
 - **Smart Web Fetching**: Extract and summarize content from URLs
 - **Dual Fetch Modes**: Local content extraction with browser fallbacks, or API (Jina Reader)
 - **Tiered Fetching**: Auto mode falls back from HTTP to optional Obscura, the system WebView, and then headless Chrome
