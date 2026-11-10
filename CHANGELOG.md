@@ -8,6 +8,22 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-10
+
+### Changed
+
+- Line charts fit their value axis to the data instead of starting at zero, so small movements stay visible. Bar and area charts keep a zero baseline.
+- Chart lines are drawn as straight segments between points, and single-series line charts label their first and last values.
+- Charts can show a unit, such as a currency or a short suffix, on axis ticks, tooltips, and point labels.
+- Line and area charts with dated labels space points by date and show month, year, or day ticks. Tooltips show the full date.
+
+### Fixed
+
+- Claude models now show their reasoning, and their replies are no longer cut short at 8,192 tokens.
+- Replies cut off at the output limit are saved and marked as cut off instead of ending silently.
+- Auto-review works with Claude models that reject disabling thinking, and retries with a larger budget when its verdict is cut off.
+- A long reason for Auto mode being unavailable no longer stretches the permission mode menu across the window.
+
 ## [0.10.0] - 2026-11-09
 
 ### Added
@@ -386,7 +402,8 @@ Each release section is published as the GitHub release notes, the in-app update
 - Markdown rendering with syntax highlighting and Mermaid diagrams.
 - API keys encrypted at rest.
 
-[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.0...v0.9.1
