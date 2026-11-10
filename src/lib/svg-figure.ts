@@ -22,6 +22,9 @@ export interface SvgPalette {
   success: string
   warning: string
   error: string
+  /** The six chart colors (`--chart-1`..`--chart-6`) for `--c1`..`--c6`, so
+   * figures use the same palette, in the same order, as charts and diagrams. */
+  series: string[]
   isDark: boolean
 }
 
@@ -46,7 +49,7 @@ export interface PrepareOptions {
 }
 
 /** Theme token → CSS variable it reads. */
-const PALETTE_VARIABLES: Record<Exclude<keyof SvgPalette, 'isDark'>, string> = {
+const PALETTE_VARIABLES: Record<Exclude<keyof SvgPalette, 'isDark' | 'series'>, string> = {
   fg: '--foreground',
   muted: '--muted-foreground',
   border: '--border',
@@ -57,6 +60,16 @@ const PALETTE_VARIABLES: Record<Exclude<keyof SvgPalette, 'isDark'>, string> = {
   error: '--destructive',
 }
 
+/** The visual palette, in order: cyan, pink, purple, amber, green, indigo. */
+const SERIES_VARIABLES = [
+  '--chart-1',
+  '--chart-2',
+  '--chart-3',
+  '--chart-4',
+  '--chart-5',
+  '--chart-6',
+] as const
+
 const FALLBACK_PALETTE: SvgPalette = {
   fg: '#1a1a1a',
   muted: '#737373',
@@ -66,6 +79,8 @@ const FALLBACK_PALETTE: SvgPalette = {
   success: '#16a34a',
   warning: '#d97706',
   error: '#dc2626',
+  // Empty: the core derives series colors from the accent.
+  series: [],
   isDark: false,
 }
 
@@ -109,14 +124,17 @@ export function readSvgPalette(): SvgPalette {
   if (typeof document === 'undefined') return FALLBACK_PALETTE
   const style = getComputedStyle(document.documentElement)
   const raw = Object.values(PALETTE_VARIABLES).map((name) => style.getPropertyValue(name).trim())
+  const rawSeries = SERIES_VARIABLES.map((name) => style.getPropertyValue(name).trim())
   const isDark = isDarkTheme()
-  const key = `${isDark}|${raw.join('|')}`
+  const key = `${isDark}|${raw.join('|')}|${rawSeries.join('|')}`
   if (paletteCache?.key === key) return paletteCache.palette
   const palette = { ...FALLBACK_PALETTE, isDark }
   ;(Object.keys(PALETTE_VARIABLES) as (keyof typeof PALETTE_VARIABLES)[]).forEach((token, at) => {
     const hex = cssColorToHex(raw[at])
     if (hex) palette[token] = hex
   })
+  const series = rawSeries.map(cssColorToHex)
+  palette.series = series.every((hex): hex is string => hex !== null) ? series : []
   paletteCache = { key, palette }
   return palette
 }
@@ -132,6 +150,7 @@ export function paletteKey(palette: SvgPalette): string {
     palette.success,
     palette.warning,
     palette.error,
+    palette.series.join(','),
     palette.isDark,
   ].join('|')
 }

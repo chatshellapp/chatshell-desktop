@@ -1,6 +1,6 @@
 [package]
 name = "chatshell-desktop"
-version = "0.9.2"
+version = "0.10.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"

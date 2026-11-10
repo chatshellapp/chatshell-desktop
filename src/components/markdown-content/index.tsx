@@ -8,6 +8,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import 'katex/dist/katex.min.css'
 
 import { useMarkdownComponents } from './markdown-components'
+import { escapeNonMathDollars } from './math-dollars'
 import { markdownSanitizeSchema } from './sanitize-schema'
 import type { MarkdownContentProps } from './types'
 import type { Components } from 'react-markdown'
@@ -33,7 +34,7 @@ export const MarkdownContent = memo(function MarkdownContent({
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], rehypeKatex]}
         components={markdownComponents}
       >
-        {content}
+        {escapeNonMathDollars(content)}
       </ReactMarkdown>
     </div>
   )

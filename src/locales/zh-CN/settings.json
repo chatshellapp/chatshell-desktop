@@ -17,6 +17,8 @@
   "webSearch": "网络搜索",
   "sync": "同步",
   "language": "语言",
+  "visuals": "可视化",
+  "visualsSectionDescription": "助手可在回答中内联绘制的格式。Mermaid 图表和数学公式始终会渲染。",
   "languageDescription": "选择应用程序界面的首选语言。",
   "appearance": "外观",
   "builtinToolsDescription": "内置工具提供核心功能，可增强你的 AI 助手。在此全局启用你想要使用的工具，然后可以在每个对话中进行配置。",
@@ -177,5 +179,7 @@
   "updateAutoCheckLabel": "自动检查更新",
   "updateAutoCheckDescription": "启动后不久访问一次 dl.chatshell.app 检查更新，不会发送任何使用数据。",
   "renderSvgFiguresLabel": "渲染 SVG 图示",
-  "renderSvgFiguresDescription": "允许助手以内联 SVG 绘制图表、原型和动画。关闭后，SVG 代码块将以代码显示，且不会邀请助手绘图。"
+  "renderSvgFiguresDescription": "允许助手以内联 SVG 绘制图表、原型和动画。关闭后，SVG 代码块将以代码显示，且不会邀请助手绘图。",
+  "renderOpenUiBlocksLabel": "图表与数据模块（OpenUI）",
+  "renderOpenUiBlocksDescription": "允许助手用图表和 KPI 卡片回答。模块只展示数据，不会发送消息或打开链接。每次请求约增加 600 token。关闭后，这些模块将以代码显示，且不会邀请助手使用。"
 }

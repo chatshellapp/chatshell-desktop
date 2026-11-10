@@ -801,11 +801,12 @@ pub(crate) async fn handle_agent_streaming(
         judge.set_mcp_servers(servers);
     }
 
-    // Invite inline SVG figures (skipped for tool-less modes like translation,
-    // whose output is never rendered as a chat answer).
-    if !disable_tools && crate::commands::svg_figures_enabled(&state_clone.db).await {
+    // Route visuals to the formats desktop renders (skipped for tool-less
+    // modes like translation, whose output is never rendered as a chat answer).
+    if !disable_tools {
         effective_system_prompt.push_str("\n\n");
-        effective_system_prompt.push_str(&crate::commands::svg_figure_instructions());
+        effective_system_prompt
+            .push_str(&crate::commands::visual_output_instructions(&state_clone.db).await);
     }
 
     // Where files go: deliverables vs scratch.

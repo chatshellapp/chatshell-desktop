@@ -27,6 +27,7 @@ mod sync;
 mod translation;
 mod translation_history;
 mod users;
+mod visual_output;
 
 use crate::db::Database;
 use crate::llm::capabilities::CapabilitiesCache;
@@ -105,3 +106,4 @@ pub use sync::*;
 pub use translation::*;
 pub use translation_history::*;
 pub use users::*;
+pub use visual_output::*;

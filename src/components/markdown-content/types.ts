@@ -22,3 +22,8 @@ export interface SvgFigureBlockProps {
   code: string
   flat?: boolean
 }
+
+export interface OpenUiBlockProps {
+  code: string
+  flat?: boolean
+}

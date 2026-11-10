@@ -51,6 +51,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -120,11 +121,19 @@
   --highlight: oklch(0.94 0.11 100);
   --overlay: oklch(0.145 0 0 / 0.32);
 
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Visual palette for OpenUI charts, SVG figures (--c1..--c6), and Mermaid.
+     Material Design colors in a fixed order, led by the MorphSpinner's cyan,
+     pink, and purple: cyan, pink, purple, amber, green, indigo. Light mode
+     uses shades that keep at least 3:1 contrast on white; dark mode uses the
+     spinner's bright accents. Keep the order and hues in step with iOS
+     (SvgFigureView.swift).
+     Design: internal-docs/features/visual-palette.md. */
+  --chart-1: #0097a7; /* Cyan 700 */
+  --chart-2: #d81b60; /* Pink 600 */
+  --chart-3: #8e24aa; /* Purple 600 */
+  --chart-4: #ef6c00; /* Orange 800 */
+  --chart-5: #388e3c; /* Green 700 */
+  --chart-6: #3f51b5; /* Indigo 500 */
 
   --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -176,11 +185,12 @@
   --highlight: oklch(0.45 0.1 95);
   --overlay: oklch(0 0 0 / 0.6);
 
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --chart-1: #00e5ff; /* Cyan A400 */
+  --chart-2: #ff4081; /* Pink A200 */
+  --chart-3: #e040fb; /* Purple A200 */
+  --chart-4: #ffca28; /* Amber 400 */
+  --chart-5: #66bb6a; /* Green 400 */
+  --chart-6: #8c9eff; /* Indigo A100 */
 
   --sidebar: oklch(0.175 0 0);
   --sidebar-foreground: oklch(0.97 0 0);

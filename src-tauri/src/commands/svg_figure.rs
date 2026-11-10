@@ -1,9 +1,10 @@
 //! Inline SVG figures: the Tauri surface over `chatshell_agent_core::svg_figure`.
 //!
 //! The frontend hands each ```svg fence body to [`prepare_svg_figure`] and
-//! renders the result as an isolated `<img>`; the system prompt invites
-//! figures only while [`RENDER_SVG_FIGURES_SETTING`] is on.
-//! Design: `internal-docs/features/svg-figures.md`.
+//! renders the result as an isolated `<img>`; the visual-output prompt
+//! offers figures only while [`RENDER_SVG_FIGURES_SETTING`] is on.
+//! Design: `internal-docs/features/svg-figures.md` and
+//! `internal-docs/features/visual-output-formats.md`.
 
 use crate::db::Database;
 use chatshell_agent_core::svg_figure as core;
@@ -24,6 +25,9 @@ pub struct SvgPaletteInput {
     pub success: String,
     pub warning: String,
     pub error: String,
+    /// The app's six chart colors (`--chart-1`..`--chart-6`) for `--c1`..`--c6`.
+    #[serde(default)]
+    pub series: Vec<String>,
     pub is_dark: bool,
 }
 
@@ -87,6 +91,7 @@ pub fn prepare_svg_figure(
         success: palette.success,
         warning: palette.warning,
         error: palette.error,
+        series: palette.series,
         is_dark: palette.is_dark,
     };
     let options = core::PrepareOptions {
@@ -111,11 +116,6 @@ pub(crate) async fn svg_figures_enabled(db: &Database) -> bool {
     )
 }
 
-/// The system-prompt fragment for desktop, which also renders Mermaid.
-pub(crate) fn svg_figure_instructions() -> String {
-    core::svg_figure_prompt(true)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +130,7 @@ mod tests {
             success: "#16a34a".into(),
             warning: "#d97706".into(),
             error: "#dc2626".into(),
+            series: Vec::new(),
             is_dark: false,
         }
     }
@@ -156,10 +157,5 @@ mod tests {
         )
         .expect_err("incomplete");
         assert_eq!(streaming.kind, "incomplete");
-    }
-
-    #[test]
-    fn desktop_prompt_mentions_mermaid() {
-        assert!(svg_figure_instructions().contains("```mermaid"));
     }
 }
