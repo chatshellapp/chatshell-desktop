@@ -10,6 +10,7 @@ import { createSearchActions } from './searchActions'
 
 export type { MessageStore, ConversationState }
 export { createDefaultConversationState }
+export { unconfirmedMessageIds } from './crudActions'
 
 export const useMessageStore = create<MessageStore>()(
   immer((set, get) => ({

@@ -64,9 +64,13 @@ pub async fn send_message(
     // Resend: stored attachments of the original message, re-linked to the
     // new message and projected from storage (original bytes, no IPC copy).
     reuse_attachment_ids: Option<Vec<String>>,
+    // Id for the new user message, chosen by the composer so it can render
+    // the message before this command returns. Generated here when absent.
+    message_id: Option<String>,
 ) -> Result<Message, String> {
     super::ensure_no_generation(&state, &conversation_id).await?;
     check_attachment_payload(images.as_deref(), files.as_deref())?;
+    let message_id = resolve_message_id(message_id)?;
 
     log_send_message_params(
         &conversation_id,
@@ -91,8 +95,14 @@ pub async fn send_message(
     // Save user message to database. A sibling_of_message_id creates a
     // sibling variant (non-destructive resend); None appends under the
     // active leaf.
-    let user_message =
-        save_user_message(&state, &conversation_id, &content, sibling_of_message_id).await?;
+    let user_message = save_user_message(
+        &state,
+        &conversation_id,
+        message_id,
+        &content,
+        sibling_of_message_id,
+    )
+    .await?;
 
     // Auto-add participants
     participants::ensure_participants(&state, &conversation_id, &model_db_id, &assistant_db_id)
@@ -288,9 +298,20 @@ async fn regenerate_parent(
         .ok_or_else(|| "Parent message not found".to_string())
 }
 
+/// A composer-chosen message id must be a UUID; none means generate one.
+fn resolve_message_id(message_id: Option<String>) -> Result<String, String> {
+    match message_id {
+        Some(id) => uuid::Uuid::parse_str(&id)
+            .map(|_| id.clone())
+            .map_err(|_| format!("Invalid message id: {id}")),
+        None => Ok(uuid::Uuid::now_v7().to_string()),
+    }
+}
+
 async fn save_user_message(
     state: &AppState,
     conversation_id: &str,
+    message_id: String,
     content: &str,
     sibling_of_message_id: Option<String>,
 ) -> Result<Message, String> {
@@ -316,14 +337,17 @@ async fn save_user_message(
     };
     let user_message = state
         .db
-        .create_message(CreateMessageRequest {
-            conversation_id: Some(conversation_id.to_string()),
-            parent_id,
-            sender_type: "user".to_string(),
-            sender_id: None,
-            content: content.to_string(),
-            tokens: None,
-        })
+        .create_message_with_id(
+            message_id,
+            CreateMessageRequest {
+                conversation_id: Some(conversation_id.to_string()),
+                parent_id,
+                sender_type: "user".to_string(),
+                sender_id: None,
+                content: content.to_string(),
+                tokens: None,
+            },
+        )
         .await
         .map_err(|e| {
             tracing::info!("❌ [send_message] Failed to create message: {}", e);
@@ -962,6 +986,31 @@ mod tests {
             super::super::ensure_no_generation(&state, &conv_id)
                 .await
                 .is_ok()
+        );
+    }
+
+    /// The composer renders the user message under the id it sends, so the
+    /// stored row must carry exactly that id.
+    #[tokio::test]
+    async fn save_user_message_keeps_composer_id() {
+        let (state, conv_id, _dir) = bare_state().await;
+        let id = uuid::Uuid::now_v7().to_string();
+        let message = super::save_user_message(&state, &conv_id, id.clone(), "hi", None)
+            .await
+            .unwrap();
+        assert_eq!(message.id, id);
+        assert!(state.db.get_message(&id).await.unwrap().is_some());
+    }
+
+    #[test]
+    fn resolve_message_id_validates_or_generates() {
+        let id = uuid::Uuid::now_v7().to_string();
+        assert_eq!(super::resolve_message_id(Some(id.clone())).unwrap(), id);
+        assert!(super::resolve_message_id(Some("not-a-uuid".into())).is_err());
+        let generated = super::resolve_message_id(None).unwrap();
+        assert_eq!(
+            uuid::Uuid::parse_str(&generated).unwrap().get_version_num(),
+            7
         );
     }
 

@@ -11,6 +11,36 @@ import type {
 import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'
+import { uuidv7 } from '@/lib/uuid'
+
+/**
+ * Ids of user messages shown before send_message has stored them. Anything
+ * that reads per-message data from the backend skips these until confirmed.
+ */
+export const unconfirmedMessageIds = new Set<string>()
+
+// A failed send takes its optimistic message back out. A resend had already
+// cut the original's branch from the window, so the window is reloaded.
+async function withdrawOptimisticMessage(
+  set: ImmerSet,
+  get: StoreGet,
+  conversationId: string,
+  messageId: string,
+  cutBranch: boolean
+) {
+  unconfirmedMessageIds.delete(messageId)
+  set((draft) => {
+    const convState = draft.conversationStates[conversationId]
+    if (convState) {
+      convState.messages = convState.messages.filter((m: Message) => m.id !== messageId)
+    }
+  })
+  if (cutBranch) {
+    await get()
+      .loadMessages(conversationId)
+      .catch((error) => logger.error('[messageStore] Failed to reload after failed send:', error))
+  }
+}
 
 export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCrudActions => ({
   loadMessages: async (conversationId: string) => {
@@ -178,6 +208,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       draft.error = null
     })
 
+    let optimisticMessageId: string | undefined
+    let optimisticConversationId: string | undefined
     try {
       // If no conversationId, create a new conversation first
       let targetId = conversationId
@@ -195,6 +227,33 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           callback(newConversation)
         }
       }
+
+      // Show the user message right away under the id the backend will
+      // store it with; send_message confirms it once the row exists.
+      const conversationForMessage = targetId
+      optimisticConversationId = conversationForMessage
+      optimisticMessageId = uuidv7()
+      const optimisticMessage: Message = {
+        id: optimisticMessageId,
+        conversation_id: conversationForMessage,
+        sender_type: 'user',
+        content,
+        created_at: new Date().toISOString(),
+      }
+      unconfirmedMessageIds.add(optimisticMessageId)
+      get().getConversationState(conversationForMessage) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationForMessage]
+        if (convState) {
+          // A resend replaces the original's branch: the window follows the
+          // rewound leaf, so the original and everything after it leave it.
+          if (siblingOfMessageId) {
+            const idx = convState.messages.findIndex((m: Message) => m.id === siblingOfMessageId)
+            if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
+          }
+          convState.messages.push(optimisticMessage)
+        }
+      })
 
       // A conversation drafted in the UI gets its database row on the first send
       const { useConversationStore } = await import('../conversation')
@@ -262,21 +321,20 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         reuseFetchResultIds,
         siblingOfMessageId,
         reuseAttachmentIds,
+        messageId: optimisticMessageId,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
 
-      // Add user message to the conversation. A resend replaces the
-      // original's branch: the window follows the rewound leaf, so the
-      // original and everything after it leave the window.
+      // Swap the optimistic message for the stored row (same id)
+      const confirmedId = optimisticMessageId
+      unconfirmedMessageIds.delete(confirmedId)
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
-          if (siblingOfMessageId) {
-            const idx = convState.messages.findIndex((m: Message) => m.id === siblingOfMessageId)
-            if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
-          }
-          convState.messages.push(userMessage)
+          const idx = convState.messages.findIndex((m: Message) => m.id === confirmedId)
+          if (idx >= 0) convState.messages[idx] = userMessage
+          else convState.messages.push(userMessage)
         }
         draft.isSending = false
       })
@@ -300,6 +358,15 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.error = String(error)
         draft.isSending = false
       })
+      if (optimisticMessageId && optimisticConversationId) {
+        await withdrawOptimisticMessage(
+          set,
+          get,
+          optimisticConversationId,
+          optimisticMessageId,
+          !!siblingOfMessageId
+        )
+      }
       throw error
     }
   },

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useMessageStore, createDefaultConversationState } from '../message'
+import { useMessageStore, createDefaultConversationState, unconfirmedMessageIds } from '../message'
 import type { ConversationState } from '../message'
 import { logger } from '@/lib/logger'
 import type { Message } from '@/types'
@@ -194,7 +194,42 @@ describe('message store crudActions', () => {
         contextMessageCount: 10,
         useProviderDefaults: false,
         reuseFetchResultIds: ['res-1', 'res-2'],
+        messageId: expect.any(String),
       })
+    })
+
+    it('shows the user message before send_message returns, under the id it sends', async () => {
+      const { promise, resolve } = Promise.withResolvers<Message>()
+      invokeMock.mockReturnValue(promise)
+
+      const sending = useMessageStore.getState().sendMessage('hello', 'conv-1', 'openai', 'gpt-4')
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalled())
+
+      const [, args] = invokeMock.mock.calls[0]
+      const messageId = (args as { messageId: string }).messageId
+      const pending = useMessageStore.getState().getConversationState('conv-1').messages
+      expect(pending).toHaveLength(1)
+      expect(pending[0]).toMatchObject({ id: messageId, sender_type: 'user', content: 'hello' })
+      expect(unconfirmedMessageIds.has(messageId)).toBe(true)
+
+      const stored = { ...createMockMessage(messageId, 'hello'), conversation_id: 'conv-1' }
+      resolve(stored)
+      await sending
+
+      const messages = useMessageStore.getState().getConversationState('conv-1').messages
+      expect(messages).toEqual([stored])
+      expect(unconfirmedMessageIds.has(messageId)).toBe(false)
+    })
+
+    it('withdraws the optimistic message when send_message fails', async () => {
+      invokeMock.mockRejectedValue(new Error('send failed'))
+
+      await expect(
+        useMessageStore.getState().sendMessage('hi', 'conv-1', 'openai', 'gpt-4')
+      ).rejects.toThrow('send failed')
+
+      expect(useMessageStore.getState().getConversationState('conv-1').messages).toEqual([])
+      expect(unconfirmedMessageIds.size).toBe(0)
     })
 
     it('creates a conversation first when none exists and notifies the listener', async () => {
@@ -521,12 +556,13 @@ describe('message store crudActions', () => {
 
       useMessageStore.getState().processNextPendingMessage('conv-q')
 
+      // The optimistic message lands first; wait for the stored row
       await vi.waitFor(() => {
-        expect(useMessageStore.getState().getConversationState('conv-q').messages).toHaveLength(1)
+        const messages = useMessageStore.getState().getConversationState('conv-q').messages
+        expect(messages.map((m) => m.id)).toEqual(['msg-q'])
       })
       const cs = useMessageStore.getState().getConversationState('conv-q')
       expect(cs.pendingMessages).toHaveLength(0)
-      expect(cs.messages[0].id).toBe('msg-q')
       expect(invokeMock).toHaveBeenCalledWith(
         'send_message',
         expect.objectContaining({
