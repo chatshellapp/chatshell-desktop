@@ -666,7 +666,7 @@ mod tests {
     async fn new_conversations_follow_the_default_mode_setting() {
         let (db, _dir) = test_db().await;
         let conversation_id = new_conversation(&db).await;
-        // Fresh install: no setting -> ask.
+        // No setting (unseeded database) -> fail-safe ask.
         assert_eq!(db.default_permission_mode().await, PermissionMode::Ask);
         assert_eq!(
             db.get_conversation_settings(&conversation_id)

@@ -58,7 +58,7 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ### Changed
 
-- New conversations default to Ask mode, and switching to Yolo always asks for confirmation.
+- New conversations default to Auto mode on fresh installs (Ask when the model can't review actions), and switching to Yolo always asks for confirmation.
 - Images are resized to fit provider limits when attached, and oversized files are rejected with a clear reason.
 - Text attachments too long to send in full include their beginning, and the assistant can read the rest on demand.
 - Long command output stays readable in later turns instead of disappearing when the reply ends.
