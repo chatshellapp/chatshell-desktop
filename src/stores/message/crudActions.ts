@@ -207,6 +207,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         if (convState) {
           convState.isStreaming = true
           convState.isWaitingForAI = true
+          convState.waitingSince = Date.now()
           convState.streamingContent = ''
           convState.streamingReasoningContent = ''
           convState.streamingToolCalls = {}
@@ -507,6 +508,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         }
         convState.isStreaming = true
         convState.isWaitingForAI = true
+        convState.waitingSince = Date.now()
         convState.streamingContent = ''
         convState.streamingReasoningContent = ''
         convState.streamingToolCalls = {}

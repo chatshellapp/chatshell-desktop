@@ -21,6 +21,7 @@ export function useStreamingState(conversationId: string | null) {
   )
   const isReasoningActive = useMessageStore((state) => conv(state)?.isReasoningActive ?? false)
   const isWaitingForAI = useMessageStore((state) => conv(state)?.isWaitingForAI ?? false)
+  const waitingSince = useMessageStore((state) => conv(state)?.waitingSince ?? null)
   const isStreaming = useMessageStore((state) => conv(state)?.isStreaming ?? false)
   const streamingToolCalls = useMessageStore(
     (state) => conv(state)?.streamingToolCalls ?? EMPTY_TOOL_CALLS
@@ -35,6 +36,7 @@ export function useStreamingState(conversationId: string | null) {
     streamingReasoningContent,
     isReasoningActive,
     isWaitingForAI,
+    waitingSince,
     isStreaming,
     streamingToolCalls,
     streamingImages,

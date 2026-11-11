@@ -12,19 +12,21 @@ export function formatElapsed(seconds: number): string {
 /**
  * Placeholder body of a reply that has not produced its first event: copy
  * and an elapsed timer instead of an unexplained spinner. The timer counts
- * from mount; the streaming row remounts it for every new wait.
+ * from `startedAt` (the store's wait start) so a remount, such as switching
+ * conversations and back, keeps the running total; without it, from mount.
  */
-export function WaitingForResponse() {
+export function WaitingForResponse({ startedAt }: { startedAt?: number }) {
   const { t } = useTranslation('chat')
-  const [startedAt] = useState(() => Date.now())
-  const [elapsed, setElapsed] = useState(0)
+  const [mountedAt] = useState(() => Date.now())
+  const origin = startedAt ?? mountedAt
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startedAt) / 1000))
-    }, 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [startedAt])
+  }, [])
+
+  const elapsed = Math.max(0, Math.floor((now - origin) / 1000))
 
   return (
     <div data-waiting-for-response="true" className="flex items-center gap-2 py-2 not-prose">

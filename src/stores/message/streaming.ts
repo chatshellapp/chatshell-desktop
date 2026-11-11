@@ -161,6 +161,7 @@ export const createStreamingActions = (
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState) {
+        if (isWaiting && !convState.isWaitingForAI) convState.waitingSince = Date.now()
         convState.isWaitingForAI = isWaiting
       }
     })
