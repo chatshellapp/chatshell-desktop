@@ -30,11 +30,44 @@ export function defaultPermissionMode(settings: Record<string, string>): Permiss
   return parsePermissionMode(settings[DEFAULT_PERMISSION_MODE_KEY]) ?? FAIL_SAFE_PERMISSION_MODE
 }
 
+/** Why `auto` is unavailable for a model (backend `IneligibleCause`). */
+export type AutoUnavailableCause =
+  | 'unauthorized'
+  | 'notFound'
+  | 'rateLimited'
+  | 'unreachable'
+  | 'rejected'
+  | 'outputBudget'
+  | 'noVerdict'
+  | 'cancelled'
+
+const AUTO_UNAVAILABLE_CAUSES: readonly AutoUnavailableCause[] = [
+  'unauthorized',
+  'notFound',
+  'rateLimited',
+  'unreachable',
+  'rejected',
+  'outputBudget',
+  'noVerdict',
+  'cancelled',
+]
+
+/** The i18n key (namespace `chat`) explaining why `auto` is unavailable.
+ * Never the raw provider error: an unknown cause uses the generic text. */
+export function autoUnavailableMessageKey(cause: string | null | undefined): string {
+  return cause && (AUTO_UNAVAILABLE_CAUSES as readonly string[]).includes(cause)
+    ? `permission.mode.autoUnavailableCause.${cause}`
+    : 'permission.mode.autoUnavailable'
+}
+
 /** How `auto` resolves for a model (backend `get_auto_review_status`). */
 export interface AutoReviewStatus {
   resolution: 'judged' | 'ask'
-  /** Why the auto reviewer is not used, when it is not. */
+  /** Why the auto reviewer is not used, when it is not: the technical
+   * detail (provider error text), for hover text only. */
   reason: string | null
+  /** The same as a stable cause, explained in plain words in the UI. */
+  cause: AutoUnavailableCause | null
   /** The judging model (`provider/model`). */
   judge: string | null
 }

@@ -146,8 +146,13 @@ pub struct AutoReviewStatus {
     /// `judged` (classifier, zero prompts) or `ask` (no eligible judge:
     /// the conversation runs in `ask`, jailed wherever a backend exists).
     pub resolution: &'static str,
-    /// Why the classifier is not used, when it is not.
+    /// Why the classifier is not used, when it is not: the technical
+    /// detail, for hover text and logs.
     pub reason: Option<String>,
+    /// The same, as a stable cause the UI explains in plain words
+    /// (`unauthorized`, `notFound`, `rateLimited`, `unreachable`,
+    /// `rejected`, `outputBudget`, `noVerdict`, `cancelled`).
+    pub cause: Option<&'static str>,
     /// The model that judges (`provider/model`).
     pub judge: Option<String>,
 }
@@ -227,9 +232,13 @@ pub async fn get_auto_review_status(
             AutoResolution::Judged => "judged",
             AutoResolution::Ask => "ask",
         },
+        cause: match &eligibility {
+            Eligibility::Eligible(_) => None,
+            Eligibility::Ineligible { cause, .. } => Some(cause.as_str()),
+        },
         reason: match eligibility {
             Eligibility::Eligible(_) => None,
-            Eligibility::Ineligible { reason } => Some(reason),
+            Eligibility::Ineligible { reason, .. } => Some(reason),
         },
         judge: Some(judge.label()),
     })

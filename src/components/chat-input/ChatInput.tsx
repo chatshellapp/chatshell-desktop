@@ -710,6 +710,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
             onPermissionModeSelect={handlePermissionModeSelect}
             autoAvailable={autoAvailable}
             autoUnavailableReason={autoReviewStatus?.reason ?? null}
+            autoUnavailableCause={autoReviewStatus?.cause ?? null}
             toolsDisabled={toolsDisabled}
             skillsDisabled={toolsDisabled}
             imageAttachDisabled={visionDisabled}

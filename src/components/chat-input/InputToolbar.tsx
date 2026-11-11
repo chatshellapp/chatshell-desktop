@@ -31,7 +31,11 @@ import { ModelSelectorDropdown } from './ModelSelectorDropdown'
 import type { Model } from '@/types'
 import type { Assistant } from '@/types/assistant'
 import type { PermissionMode } from '@/types'
-import { permissionModeHintKey, useSandboxAvailable } from '@/lib/permission-mode'
+import {
+  autoUnavailableMessageKey,
+  permissionModeHintKey,
+  useSandboxAvailable,
+} from '@/lib/permission-mode'
 
 interface InputToolbarProps {
   // Add attachment handlers
@@ -79,6 +83,7 @@ interface InputToolbarProps {
   autoAvailable: boolean
   /** Why the auto reviewer is unavailable, shown when `auto` is hidden. */
   autoUnavailableReason?: string | null
+  autoUnavailableCause?: string | null
   // Model capability flags
   toolsDisabled?: boolean
   skillsDisabled?: boolean
@@ -133,6 +138,7 @@ export function InputToolbar({
   onPermissionModeSelect,
   autoAvailable,
   autoUnavailableReason = null,
+  autoUnavailableCause = null,
   toolsDisabled = false,
   skillsDisabled = false,
   imageAttachDisabled = false,
@@ -359,12 +365,10 @@ export function InputToolbar({
           ))}
           {!autoAvailable && (
             <div
-              className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px] line-clamp-6 [overflow-wrap:anywhere]"
+              className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px]"
               title={autoUnavailableReason ?? undefined}
             >
-              {autoUnavailableReason
-                ? t('permission.mode.autoUnavailableReason', { reason: autoUnavailableReason })
-                : t('permission.mode.autoUnavailable')}
+              {t(autoUnavailableMessageKey(autoUnavailableCause))}
             </div>
           )}
         </DropdownMenuContent>

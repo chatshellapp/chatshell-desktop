@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import {
+  autoUnavailableMessageKey,
   displayedPermissionMode,
   permissionModeHintKey,
   useAutoReviewStatus,
@@ -17,10 +18,16 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }))
 
-const judged: AutoReviewStatus = { resolution: 'judged', reason: null, judge: 'openai/gpt' }
+const judged: AutoReviewStatus = {
+  resolution: 'judged',
+  reason: null,
+  cause: null,
+  judge: 'openai/gpt',
+}
 const ask: AutoReviewStatus = {
   resolution: 'ask',
   reason: 'The model did not return a structured verdict.',
+  cause: 'noVerdict',
   judge: 'ollama/tiny',
 }
 
@@ -80,5 +87,15 @@ describe('useAutoReviewStatus', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(result.current).toBeNull()
+  })
+})
+
+describe('autoUnavailableMessageKey', () => {
+  it('maps a known cause to its message and never to the raw reason', () => {
+    expect(autoUnavailableMessageKey('unauthorized')).toBe(
+      'permission.mode.autoUnavailableCause.unauthorized'
+    )
+    expect(autoUnavailableMessageKey(null)).toBe('permission.mode.autoUnavailable')
+    expect(autoUnavailableMessageKey('somethingNew')).toBe('permission.mode.autoUnavailable')
   })
 })

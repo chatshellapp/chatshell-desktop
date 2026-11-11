@@ -595,7 +595,7 @@ async fn run_model(
     };
     let params = match probed {
         Eligibility::Eligible(params) => params,
-        Eligibility::Ineligible { reason } => {
+        Eligibility::Ineligible { reason, .. } => {
             return Run {
                 name,
                 profile,

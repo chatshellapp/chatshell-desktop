@@ -424,9 +424,10 @@ pub async fn eligibility_for(judge: &ProviderJudge, cancel: &CancellationToken) 
                     .as_ref()
                     .map_or_else(|| "none".to_string(), |extra| extra.to_string())
             ),
-            Eligibility::Ineligible { reason } => tracing::warn!(
-                "🛡️ [auto_review] {} is not eligible as the judge: {}",
+            Eligibility::Ineligible { reason, cause } => tracing::warn!(
+                "🛡️ [auto_review] {} is not eligible as the judge ({}): {}",
                 judge.label(),
+                cause.as_str(),
                 reason
             ),
         }
@@ -460,6 +461,7 @@ where
         _ = cancel.cancelled() => {
             return Eligibility::Ineligible {
                 reason: "The capability check was cancelled.".to_string(),
+                cause: engine::IneligibleCause::Cancelled,
             };
         }
     };
@@ -788,7 +790,10 @@ mod tests {
         let other = EligibilityCache::key("test-raise", "other", None);
         ELIGIBILITY.insert(
             other.clone(),
-            Eligibility::Ineligible { reason: "x".into() },
+            Eligibility::Ineligible {
+                reason: "x".into(),
+                cause: engine::IneligibleCause::NoVerdict,
+            },
         );
         raise_budget(&other, engine::ESCALATED_OUTPUT_TOKENS);
         assert!(matches!(
@@ -1042,6 +1047,7 @@ mod tests {
             async {
                 Eligibility::Ineligible {
                     reason: "The capability check was cancelled.".into(),
+                    cause: engine::IneligibleCause::Cancelled,
                 }
             }
         })

@@ -186,7 +186,16 @@
       "yoloHint": "Run everything without asking or a sandbox",
       "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review",
       "autoUnavailable": "Auto is unavailable for this model: it cannot review actions. Conversations use Ask.",
-      "autoUnavailableReason": "Auto is unavailable for this model ({{reason}}). Conversations use Ask."
+      "autoUnavailableCause": {
+        "unauthorized": "Auto is unavailable: the provider rejected the API key or denied access to this model. Check the provider settings. Conversations use Ask.",
+        "notFound": "Auto is unavailable: the provider could not find this model. Check the model ID. Conversations use Ask.",
+        "rateLimited": "Auto is unavailable: the provider is rate limiting requests or the quota is used up. Conversations use Ask.",
+        "unreachable": "Auto is unavailable: the provider could not be reached. Conversations use Ask.",
+        "rejected": "Auto is unavailable: the provider rejected the review request. Conversations use Ask.",
+        "outputBudget": "Auto is unavailable for this model: it runs out of output before giving a verdict. Conversations use Ask.",
+        "noVerdict": "Auto is unavailable for this model: it cannot review actions. Conversations use Ask.",
+        "cancelled": "Auto availability could not be checked. Conversations use Ask."
+      }
     }
   },
   "turn": {
