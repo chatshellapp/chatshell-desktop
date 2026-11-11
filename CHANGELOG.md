@@ -8,6 +8,23 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-11
+
+### Changed
+
+- The sent message appears in the conversation immediately instead of after the send completes.
+- When Auto mode is unavailable, it stays in the permission mode menu as a disabled option with a plain explanation, such as a bad key, a missing model, or a rate limit. The provider's raw error is shown on hover.
+
+### Fixed
+
+- Replies to a conversation that runs in the background now finish correctly after switching to another conversation, instead of staying stuck in the streaming state.
+- Sending in one conversation no longer disables sending in every other conversation.
+- Switching back to a conversation that is still replying no longer hides the reply until the next reload.
+- The "Waiting for response" timer keeps counting across conversation switches instead of restarting at 0s.
+- A failed send no longer leaves the conversation stuck waiting for a reply.
+- A queued message that fails to send is kept at the head of the queue with the error and a Retry action, instead of being lost.
+- Translation output is kept intact around think tags, HTML, and model control tokens.
+
 ## [0.10.1] - 2026-11-10
 
 ### Changed
@@ -402,7 +419,8 @@ Each release section is published as the GitHub release notes, the in-app update
 - Markdown rendering with syntax highlighting and Mermaid diagrams.
 - API keys encrypted at rest.
 
-[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.1...v0.9.2
