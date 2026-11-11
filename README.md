@@ -24,7 +24,7 @@ Available for macOS, Windows, and Linux. Licensed under [Apache 2.0](LICENSE).
 Compare three robot vacuums under $400. Which should I buy?
 ```
 
-ChatShell can use its built-in search and fetch tools to read reviews and product pages, then lay out the trade-offs. New conversations start in Ask mode, which confirms file changes and risky commands before they run. Switch to Auto or Yolo in the chat input toolbar, or change the default in Settings → Permissions.
+ChatShell can use its built-in search and fetch tools to read reviews and product pages, then lay out the trade-offs. New conversations start in Auto mode, where a review model checks risky actions and runs the safe ones without asking. If the model can't review actions, the conversation uses Ask mode, which confirms file changes and risky commands before they run. Switch to Ask or Yolo in the chat input toolbar, or change the default in Settings → Permissions.
 
 ---
 
@@ -32,7 +32,7 @@ ChatShell can use its built-in search and fetch tools to read reviews and produc
 
 - **Tools work on first launch:** Web search, page fetching, file reading and editing, and shell commands are built in. Search defaults to DuckDuckGo, with all engines switchable in Settings, so there is no search API key to get. MCP servers are optional.
 - **Bring any model:** Connect cloud providers with your own API key, or run local models through Ollama or LM Studio. You pay your provider directly, per use.
-- **You decide what runs:** New conversations start in Ask mode. Shell commands run inside the OS sandbox (macOS Seatbelt, Linux bubblewrap), and anything that leaves it, edits a file, or calls another tool waits for your approval; where no sandbox is available, shell commands are confirmed too. Auto mode lets the model review each action and run the safe ones without asking. Yolo runs everything without asking or a sandbox. Catastrophic commands such as `rm -rf /` are blocked in every mode.
+- **You decide what runs:** New conversations start in Auto mode, which lets a review model check each risky action and run the safe ones without asking; if the model can't review actions, the conversation uses Ask instead. In Ask and Auto, shell commands run inside the OS sandbox (macOS Seatbelt, Linux bubblewrap). In Ask, anything that leaves it, edits a file, or calls another tool waits for your approval; where no sandbox is available, shell commands are confirmed too. Yolo runs everything without asking or a sandbox. Catastrophic commands such as `rm -rf /` are blocked in every mode.
 - **History stays on your device:** Conversations are stored in SQLite locally. Cloud providers receive what you send them; optional iCloud sync uploads encrypted copies.
 
 **When to use something else:** If you would rather not manage API keys, the official ChatGPT or Claude desktop apps give you their models on a flat subscription, with vendor features such as memory and voice. If you want a longer-established client with a larger community, try Cherry Studio, Msty, or Chatbox.

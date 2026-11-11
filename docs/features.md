@@ -20,7 +20,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 ### Permissions and Sandbox
 
-- **Three Modes**: Choose Ask, Auto, or Yolo per conversation from the input toolbar; new conversations start in the default mode set in Settings → Permissions (Ask on fresh installs), and switching to Yolo always asks to confirm
+- **Three Modes**: Choose Ask, Auto, or Yolo per conversation from the input toolbar; new conversations start in the default mode set in Settings → Permissions (Auto on fresh installs, using Ask when the model can't review actions), and switching to Yolo always asks to confirm
 - **Ask**: Shell commands run inside the OS sandbox and those that stay inside it run without asking; commands that need the network or write outside the allowed folders, file edits, and other tool calls wait for approval. Without a sandbox, shell commands are confirmed too
 - **Auto**: The conversation's model reviews each action before it runs and approves the safe ones without prompting; a turn's tool calls are reviewed together. Reviews appear as cards with the outcome, risk, and rationale, and a blocked action can be run anyway. Models that cannot review fall back to Ask
 - **Yolo**: Runs everything without asking and without the sandbox; a built-in blocklist still stops catastrophic operations
