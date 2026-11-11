@@ -25,35 +25,5 @@ pub async fn create_prompts_table(pool: &SqlitePool) -> Result<()> {
         .await
         .ok(); // Ignore errors if column already exists
 
-    // Message-Prompt junction table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS message_prompts (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            prompt_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
-            UNIQUE(message_id, prompt_id)
-        )",
-    )
-    .execute(pool)
-    .await?;
-
-    // Message-Tool junction table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS message_tools (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            tool_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE,
-            UNIQUE(message_id, tool_id)
-        )",
-    )
-    .execute(pool)
-    .await?;
-
     Ok(())
 }

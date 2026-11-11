@@ -20,7 +20,7 @@ mod translation_history;
 mod users;
 
 /// Current schema version. Increment this when adding new migrations.
-const CURRENT_SCHEMA_VERSION: i32 = 12;
+const CURRENT_SCHEMA_VERSION: i32 = 13;
 
 async fn get_user_version(pool: &SqlitePool) -> Result<i32> {
     let row: (i32,) = sqlx::query_as("PRAGMA user_version")
@@ -123,6 +123,12 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         tracing::info!("Migration to v12 completed");
     }
 
+    if current_version < 13 {
+        migrate_v12_to_v13(pool).await?;
+        set_user_version(pool, 13).await?;
+        tracing::info!("Migration to v13 completed");
+    }
+
     // Ensure columns exist (idempotent, fixes databases
     // that were bumped to a version before the columns were actually added)
     ensure_enabled_skill_ids_column(pool).await?;
@@ -223,8 +229,9 @@ async fn ensure_natural_key_unique_indexes(pool: &SqlitePool) -> Result<()> {
 
 /// Migration v10 -> v11: sync-readiness rollout, compaction events, and
 /// natural-key indexes (ADR 01 snapshot sync). This collapses what shipped
-/// as v11-v15 across local development builds into a single step; no
-/// released build ever wrote a user_version above 10. It also folds in the
+/// as v11-v15 across local development builds into a single step; when it
+/// landed, no released build had written a user_version above 10 (v0.9.x
+/// and later ship v12+). It also folds in the
 /// short-lived dev-build v12/v13: system rows seed deterministic ids at
 /// insert time (db::system_ids), and the never-shipped knowledge-base /
 /// user-relationship tables are dropped here. Databases stamped 12/13 by
@@ -298,8 +305,6 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "content_blocks",
         "message_attachments",
         "message_contexts",
-        "message_prompts",
-        "message_tools",
         "assistant_tools",
         "assistant_skills",
         "conversation_settings",
@@ -331,8 +336,6 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
         "content_blocks",
         "message_attachments",
         "message_contexts",
-        "message_prompts",
-        "message_tools",
         "assistant_tools",
         "assistant_skills",
     ] {
@@ -390,6 +393,21 @@ async fn migrate_v10_to_v11(pool: &SqlitePool) -> Result<()> {
 ///   the tree view is byte-identical to the previous linear view.
 async fn migrate_v11_to_v12(pool: &SqlitePool) -> Result<()> {
     ensure_message_tree_columns(pool).await
+}
+
+/// Migration v12 -> v13: drop the `message_prompts` / `message_tools`
+/// junction tables (canonical sync schema v6). The v1 ladder created them on
+/// every install since v0.1.x, but no feature code on any platform ever wrote
+/// or read them, so every copy is empty; they only cost cross-device schema
+/// lockstep. Fresh installs no longer create them.
+async fn migrate_v12_to_v13(pool: &SqlitePool) -> Result<()> {
+    for table in ["message_prompts", "message_tools"] {
+        sqlx::query(&format!("DROP TABLE IF EXISTS {table}"))
+            .execute(pool)
+            .await?;
+    }
+    tracing::info!("Dropped never-used message_prompts and message_tools tables");
+    Ok(())
 }
 
 /// Ensure the message-tree columns/index exist. Idempotent: repairs
@@ -792,6 +810,36 @@ mod tests {
         let ladder = table_column_map(&ladder_pool).await;
         let canonical = table_column_map(&canonical_pool).await;
         assert_eq!(ladder, canonical);
+    }
+
+    /// A released v12 database still carries the never-used junction tables
+    /// from the v1 ladder; the v13 step drops them on the next launch.
+    #[tokio::test]
+    async fn v13_drops_unused_junction_tables_from_v12_database() {
+        let pool = fresh_pool().await;
+        init_schema(&pool).await.expect("init schema");
+        for table in ["message_prompts", "message_tools"] {
+            sqlx::query(&format!(
+                "CREATE TABLE {table} (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, \
+                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', deleted_at TEXT)"
+            ))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        set_user_version(&pool, 12).await.unwrap();
+
+        init_schema(&pool).await.expect("upgrade to v13");
+
+        let remaining: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' \
+             AND name IN ('message_prompts', 'message_tools')",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(remaining.is_empty(), "left behind: {remaining:?}");
+        assert_eq!(get_user_version(&pool).await.unwrap(), 13);
     }
 
     #[tokio::test]
