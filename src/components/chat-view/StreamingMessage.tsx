@@ -49,6 +49,7 @@ export function StreamingMessage({
     streamingReasoningContent,
     isReasoningActive,
     isWaitingForAI,
+    waitingSince,
     isStreaming,
     streamingToolCalls,
     streamingImages,
@@ -351,7 +352,9 @@ export function StreamingMessage({
       userMessageAlign={CHAT_CONFIG.userMessageAlign}
       userMessageShowBackground={CHAT_CONFIG.userMessageShowBackground}
       isLoading={isWaitingForAI || !searchDecisionResolved}
-      loadingContent={isWaitingForAI ? <WaitingForResponse /> : undefined}
+      loadingContent={
+        isWaitingForAI ? <WaitingForResponse startedAt={waitingSince ?? undefined} /> : undefined
+      }
       isStreaming={isStreaming}
       headerContent={streamingHeaderContent}
       footerContent={streamingImagesContent}

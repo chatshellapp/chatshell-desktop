@@ -58,6 +58,9 @@ export interface ConversationState {
   // Whether reasoning has actually started (received first reasoning chunk)
   isReasoningActive: boolean
   isWaitingForAI: boolean
+  // When the current wait began (epoch ms); the elapsed timer reads it so it
+  // survives the waiting row remounting, e.g. on a conversation switch
+  waitingSince: number | null
   attachmentStatus: 'idle' | 'processing' | 'complete' | 'error'
   // Counter that increments to force attachment refresh
   attachmentRefreshKey: number
@@ -93,6 +96,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   streamingReasoningContent: '',
   isReasoningActive: false,
   isWaitingForAI: false,
+  waitingSince: null,
   attachmentStatus: 'idle',
   attachmentRefreshKey: 0,
   urlStatuses: {},
