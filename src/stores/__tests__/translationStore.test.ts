@@ -881,6 +881,53 @@ describe('useTranslationStore', () => {
       expect(useTranslationStore.getState().isTranslating).toBe(true)
     })
 
+    it('keeps <think> tags that appear inside the translated text', async () => {
+      setupTranslate()
+
+      await useTranslationStore.getState().translate('en')
+      fire('chat-stream', { conversation_id: 'conv-1', content: 'Use the <think> tag' })
+      expect(useTranslationStore.getState().outputText).toBe('Use the <think> tag')
+
+      fire('chat-stream', { conversation_id: 'conv-1', content: ' to wrap reasoning.' })
+      fire('chat-complete', { conversation_id: 'conv-1', message: {} })
+      expect(useTranslationStore.getState().outputText).toBe(
+        'Use the <think> tag to wrap reasoning.'
+      )
+    })
+
+    it('protects control tokens in the request and restores them in the output', async () => {
+      setupTranslate()
+      useTranslationStore.setState({ inputText: 'stop <|im_end|> here' })
+
+      await useTranslationStore.getState().translate('fr')
+      expect(invokeMock).toHaveBeenCalledWith(
+        'send_message',
+        expect.objectContaining({ content: 'stop <\u200B|im_end|> here' })
+      )
+
+      // A protected <think> echoed at the start is translation text, not reasoning.
+      fire('chat-stream', {
+        conversation_id: 'conv-1',
+        content: '<\u200Bthink> arr\u00eat <\u200B|im_end|>',
+      })
+      fire('chat-complete', { conversation_id: 'conv-1', message: {} })
+      expect(useTranslationStore.getState().outputText).toBe('<think> arr\u00eat <|im_end|>')
+    })
+
+    it('strips only the leading reasoning block, keeping later tags verbatim', async () => {
+      setupTranslate()
+
+      await useTranslationStore.getState().translate('en')
+      fire('chat-stream', { conversation_id: 'conv-1', content: '<thi' })
+      expect(useTranslationStore.getState().outputText).toBe('')
+      fire('chat-stream', {
+        conversation_id: 'conv-1',
+        content: 'nk>plan</think>\nA <think>b</think> c',
+      })
+      fire('chat-complete', { conversation_id: 'conv-1', message: {} })
+      expect(useTranslationStore.getState().outputText).toBe('A <think>b</think> c')
+    })
+
     it('finalizes on chat-complete, enables continue, cleans up and deletes the temp conversation', async () => {
       const { model } = setupTranslate()
 

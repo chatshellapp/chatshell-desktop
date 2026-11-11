@@ -5,6 +5,11 @@ export interface MarkdownContentProps {
   compact?: boolean
   /** Uniform font size — all content at the same scale regardless of element type */
   flat?: boolean
+  /**
+   * Render raw HTML as elements (default). When false, HTML is shown as
+   * literal text so no part of the content can be hidden by markup.
+   */
+  rawHtml?: boolean
 }
 
 export interface CodeBlockProps {

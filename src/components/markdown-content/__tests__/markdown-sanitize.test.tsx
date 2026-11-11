@@ -68,3 +68,28 @@ describe('MarkdownContent HTML sanitizing', () => {
     expect(sources.some((src) => src?.startsWith('javascript:'))).toBe(false)
   })
 })
+
+describe('MarkdownContent with rawHtml={false}', () => {
+  function renderLiteral(content: string): HTMLElement {
+    return render(<MarkdownContent content={content} rawHtml={false} />).container
+  }
+
+  it.each([
+    ['an unclosed comment', 'before <!-- after'],
+    ['an unclosed script', 'before\n\n<script>after'],
+    ['plaintext', 'before <plaintext> after'],
+    ['a textarea', 'before\n\n<textarea>after'],
+    ['unknown tags', 'before <think>after</think>'],
+  ])('shows text after %s verbatim', (_label, content) => {
+    const container = renderLiteral(content)
+    expect(container.textContent).toContain('after')
+    expect(container.querySelector('script, textarea, plaintext, think')).toBeNull()
+  })
+
+  it('still renders Markdown formatting', () => {
+    const container = renderLiteral('**bold** and <b>tag</b>')
+    expect(container.querySelector('strong')).toHaveTextContent('bold')
+    expect(container.querySelector('b')).toBeNull()
+    expect(container).toHaveTextContent('<b>tag</b>')
+  })
+})

@@ -996,7 +996,11 @@ function TranslationTextBody({
         dir="auto"
       >
         {text ? (
-          <MarkdownContent content={text} className="text-sm leading-7 [overflow-wrap:anywhere]" />
+          <MarkdownContent
+            content={text}
+            rawHtml={false}
+            className="text-sm leading-7 [overflow-wrap:anywhere]"
+          />
         ) : (
           <p className="text-sm text-muted-foreground">{placeholder}</p>
         )}

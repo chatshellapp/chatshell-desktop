@@ -10,18 +10,49 @@ import { useConversationStore } from './conversation'
 import { useConversationSettingsStore } from './conversationSettingsStore'
 import { useTranslationHistoryStore } from './translationHistoryStore'
 import i18n, { getCurrentLanguage } from '@/lib/i18n'
-import { parseThinkingContent } from '@/lib/utils'
 import {
   AUTO_LANGUAGE,
   getEnglishName,
   isTranslationLanguage,
   resolveDefaultLanguages,
 } from '@/lib/translationLanguages'
+import { protectSpecialTokens, restoreSpecialTokens } from '@/lib/specialTokens'
 
-function stripReasoningTags(text: string): string {
-  // Operate on the full accumulated text (not per-chunk) so tags split across
-  // stream chunks are still removed, including unclosed blocks mid-stream.
-  return parseThinkingContent(text).content
+const REASONING_TAGS = ['think', 'thinking', 'reasoning'] as const
+
+/**
+ * Strip reasoning blocks that a model emits *before* its answer.
+ *
+ * Only leading blocks are treated as reasoning. A `<think>` tag appearing later
+ * is part of the translated text itself (e.g. the source mentions the tag) and
+ * must be kept verbatim; otherwise everything after it would be swallowed.
+ *
+ * Operates on the full accumulated text (not per-chunk) so tags split across
+ * stream chunks are still handled, including unclosed blocks mid-stream.
+ */
+export function stripReasoningTags(text: string, streaming = false): string {
+  let rest = text
+  for (;;) {
+    const trimmed = rest.trimStart()
+    const lower = trimmed.toLowerCase()
+    const tag = REASONING_TAGS.find((t) => lower.startsWith(`<${t}>`))
+    if (!tag) {
+      // Hide a partially streamed opening tag (e.g. "<thi") until it resolves.
+      if (
+        streaming &&
+        trimmed.length > 0 &&
+        REASONING_TAGS.some((t) => `<${t}>`.startsWith(lower))
+      ) {
+        return ''
+      }
+      return trimmed.trimEnd()
+    }
+    const closeTag = `</${tag}>`
+    const closeIdx = lower.indexOf(closeTag, tag.length + 2)
+    // Reasoning still streaming: nothing visible yet.
+    if (closeIdx === -1) return ''
+    rest = trimmed.slice(closeIdx + closeTag.length)
+  }
 }
 
 export const TRANSLATION_SETTING_KEYS = {
@@ -472,14 +503,14 @@ export const useTranslationStore = create<TranslationStore>()(
             listen<{ conversation_id: string; content: string }>('chat-stream', (event) => {
               if (event.payload.conversation_id !== conversation.id) return
               rawOutput += event.payload.content
-              const stripped = stripReasoningTags(rawOutput)
+              const stripped = restoreSpecialTokens(stripReasoningTags(rawOutput, true))
               set((draft) => {
                 draft.outputText = stripped
               })
             }),
             listen<{ conversation_id: string; message: Message }>('chat-complete', (event) => {
               if (event.payload.conversation_id !== conversation.id) return
-              const finalOutput = stripReasoningTags(rawOutput)
+              const finalOutput = restoreSpecialTokens(stripReasoningTags(rawOutput))
               set((draft) => {
                 draft.outputText = finalOutput
                 draft.isTranslating = false
@@ -525,7 +556,7 @@ export const useTranslationStore = create<TranslationStore>()(
 
           await invoke<Message>('send_message', {
             conversationId: conversation.id,
-            content: inputText,
+            content: protectSpecialTokens(inputText),
             provider: provider.provider_type,
             model: selectedModel.model_id,
             apiKey,
