@@ -12,6 +12,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Toaster } from '@/components/ui/sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppInit } from '@/hooks/useAppInit'
+import { useChatEvents } from '@/hooks/chat-events'
 import { OnboardingDialog } from '@/components/onboarding-dialog'
 import { SyncOnboardingDialog } from '@/components/sync/sync-onboarding-dialog'
 import { SyncLockedBanner } from '@/components/sync/sync-locked-banner'
@@ -26,6 +27,10 @@ export function ChatPage() {
   // Initialize app (load agents, conversations, settings)
   const { isInitialized, error: initError, keychainAvailable } = useAppInit()
   const [showKeychainWarning, setShowKeychainWarning] = useState(true)
+
+  // Backend chat events for every conversation, independent of which one
+  // is selected or whether the chat view is mounted (translation mode)
+  useChatEvents()
 
   // Sync enablement state (ADR 04): drives the onboarding card and the
   // history-locked banner.

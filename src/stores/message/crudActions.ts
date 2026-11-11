@@ -388,10 +388,36 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   stopGeneration: async (conversationId: string) => {
     try {
       logger.info('[messageStore] Stopping generation for conversation:', conversationId)
-      await invoke('stop_generation', { conversationId })
+      const stopped = await invoke<boolean>('stop_generation', { conversationId })
+
+      get().getConversationState(conversationId) // Ensure state exists
+
+      // No run is active backend-side, so no completion event will follow:
+      // the run already ended. Settle the local streaming state and reload
+      // the window to show whatever reply it saved.
+      if (stopped === false) {
+        logger.warn('[messageStore] No active generation; settling local streaming state')
+        cleanupThrottleState(conversationId)
+        set((draft) => {
+          draft.isSending = false
+          const convState = draft.conversationStates[conversationId]
+          if (convState) {
+            convState.isStreaming = false
+            convState.isWaitingForAI = false
+            convState.isReasoningActive = false
+            convState.streamingContent = ''
+            convState.streamingReasoningContent = ''
+            convState.streamingToolCalls = {}
+            convState.streamingImages = []
+            convState.stopRequested = false
+          }
+        })
+        await get().loadMessages(conversationId)
+        get().processNextPendingMessage(conversationId)
+        return
+      }
 
       // The completion that follows is a stop, not a normal finish
-      get().getConversationState(conversationId) // Ensure state exists
       set((draft) => {
         draft.isSending = false
         const convState = draft.conversationStates[conversationId]

@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useConversationState } from '../useConversationState'
-import { useChatEvents } from '@/hooks/chat-events'
+import { useAutoReviewStore } from '@/stores/autoReviewStore'
 import { useMessageStore, createDefaultConversationState } from '@/stores/message'
 import { useConversationStore } from '@/stores/conversation'
 import type { Conversation, Message } from '@/types'
 
-vi.mock('@/hooks/chat-events', () => ({
-  useChatEvents: vi.fn(),
-}))
+const loadAutoReview = vi.fn()
 
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -38,6 +36,8 @@ describe('useConversationState', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     loadMessages.mockReset().mockResolvedValue(undefined)
+    loadAutoReview.mockReset().mockResolvedValue(undefined)
+    useAutoReviewStore.setState({ load: loadAutoReview })
 
     useMessageStore.setState({
       conversationStates: {},
@@ -80,7 +80,7 @@ describe('useConversationState', () => {
     expect(result.current.pendingSearchDecisions).toEqual({})
     expect(result.current.pendingMessages).toEqual([])
     expect(loadMessages).not.toHaveBeenCalled()
-    expect(useChatEvents).toHaveBeenCalledWith(null)
+    expect(loadAutoReview).not.toHaveBeenCalled()
   })
 
   it('loads the message window when a conversation becomes active', () => {
@@ -88,7 +88,7 @@ describe('useConversationState', () => {
     renderHook(() => useConversationState())
 
     expect(loadMessages).toHaveBeenCalledWith(CONV)
-    expect(useChatEvents).toHaveBeenCalledWith(CONV)
+    expect(loadAutoReview).toHaveBeenCalledWith(CONV)
   })
 
   it('does not reload when the active conversation object is replaced under the same id', () => {

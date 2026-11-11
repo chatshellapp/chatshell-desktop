@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore, type MessageStore } from '@/stores/message'
-import { useChatEvents } from '@/hooks/chat-events'
+import { useAutoReviewStore } from '@/stores/autoReviewStore'
 import type { Message, UrlStatus } from '@/types'
 import type { PendingMessage, RunOutcome } from '@/stores/message/types'
 
@@ -66,8 +66,11 @@ export function useConversationState() {
 
   const loadMessages = useMessageStore((state) => state.loadMessages)
 
-  // Set up event listeners for chat streaming and scraping
-  useChatEvents(conversationId)
+  // Markers of earlier turns, from this device's decision log. Chat events
+  // themselves are subscribed app-wide (useChatEvents in ChatPage).
+  useEffect(() => {
+    if (conversationId) void useAutoReviewStore.getState().load(conversationId)
+  }, [conversationId])
 
   // Load messages when the conversation changes. Keyed on the id: the
   // conversation object is replaced in place (a draft saved on its first

@@ -388,6 +388,29 @@ describe('message store crudActions', () => {
       expect(useMessageStore.getState().getConversationState('conv-1').stopRequested).toBe(true)
     })
 
+    it('settles a run that already ended backend-side and reloads its reply', async () => {
+      // The completion event was missed: the store still shows the run
+      useMessageStore.getState().setIsStreaming('conv-1', true)
+      useMessageStore.getState().setIsWaitingForAI('conv-1', true)
+      useMessageStore.getState().setStreamingContent('conv-1', 'Hi! What can I help')
+      const saved = createMockMessage('a1', 'Hi! What can I help you with today?')
+      invokeMock.mockImplementation((async (cmd: string) => {
+        if (cmd === 'stop_generation') return false
+        if (cmd === 'list_messages_by_conversation') return [saved]
+        if (cmd === 'get_sibling_groups') return []
+        return undefined
+      }) as never)
+
+      await useMessageStore.getState().stopGeneration('conv-1')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.isStreaming).toBe(false)
+      expect(cs.isWaitingForAI).toBe(false)
+      expect(cs.streamingContent).toBe('')
+      expect(cs.stopRequested).toBe(false)
+      expect(cs.messages.map((m) => m.id)).toEqual(['a1'])
+    })
+
     it('swallows backend errors without resetting the sending flag', async () => {
       useMessageStore.setState({ isSending: true })
       invokeMock.mockRejectedValue(new Error('stop refused'))
