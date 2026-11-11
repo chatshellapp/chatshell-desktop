@@ -16,7 +16,6 @@ export const useMessageStore = create<MessageStore>()(
   immer((set, get) => ({
     // Initial state
     conversationStates: {},
-    isSending: false,
     error: null,
     onNewConversationCreated: undefined,
 

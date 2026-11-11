@@ -41,7 +41,6 @@ describe('useConversationState', () => {
 
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
       loadMessages,

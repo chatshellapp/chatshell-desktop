@@ -49,9 +49,9 @@ export function useSubmitHandler({
   const addHistoryEntry = useInputHistoryStore((state) => state.addEntry)
   const enqueueMessage = useMessageStore((state) => state.enqueueMessage)
   const stopGeneration = useMessageStore((state) => state.stopGeneration)
-  const isSending = useMessageStore((state) => state.isSending)
 
-  // Get streaming state from current conversation
+  // Get send/streaming state from current conversation
+  const isSending = conversationState?.isSending || false
   const isStreaming = conversationState?.isStreaming || false
   const isWaitingForAI = conversationState?.isWaitingForAI || false
 

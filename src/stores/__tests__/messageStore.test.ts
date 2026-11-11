@@ -42,7 +42,6 @@ describe('useMessageStore', () => {
     // Reset store state to initial values
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
     })
@@ -59,8 +58,7 @@ describe('useMessageStore', () => {
     })
 
     it('should not be sending initially', () => {
-      const state = useMessageStore.getState()
-      expect(state.isSending).toBe(false)
+      expect(useMessageStore.getState().getConversationState('any').isSending).toBe(false)
     })
 
     it('should have no error initially', () => {

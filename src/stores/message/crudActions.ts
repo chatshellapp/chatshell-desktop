@@ -21,6 +21,32 @@ import { toast } from 'sonner'
  */
 export const unconfirmedMessageIds = new Set<string>()
 
+/**
+ * Messages delivered by addMessage (e.g. a chat-complete reply) while a
+ * loadMessages fetch for the same conversation is in flight. The fetch may
+ * have read the database before the row was saved, so its window would
+ * otherwise overwrite the delivered message. One map per in-flight load.
+ */
+const arrivalsDuringLoad = new Map<string, Set<Map<string, Message>>>()
+
+// Record a message delivered outside a load, for every load in flight
+function recordArrival(conversationId: string, message: Message) {
+  for (const arrivals of arrivalsDuringLoad.get(conversationId) ?? []) {
+    arrivals.set(message.id, message)
+  }
+}
+
+// Upsert by id, keeping the window's order and appending new messages
+function mergeIntoWindow(window: Message[], extra: Iterable<Message>): Message[] {
+  const merged = [...window]
+  for (const message of extra) {
+    const idx = merged.findIndex((m) => m.id === message.id)
+    if (idx >= 0) merged[idx] = message
+    else merged.push(message)
+  }
+  return merged
+}
+
 // A failed send takes its optimistic message back out. A resend had already
 // cut the original's branch from the window, so the window is reloaded.
 async function withdrawOptimisticMessage(
@@ -57,6 +83,14 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       draft.error = null
     })
 
+    const arrivals = new Map<string, Message>()
+    let loads = arrivalsDuringLoad.get(conversationId)
+    if (!loads) {
+      loads = new Set()
+      arrivalsDuringLoad.set(conversationId, loads)
+    }
+    loads.add(arrivals)
+
     try {
       // One extra row detects older messages beyond the window. Sibling
       // groups ride along but must not fail the message load (the
@@ -79,7 +113,12 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       set((draft) => {
         const convState = draft.conversationStates[conversationId]
         if (convState) {
-          convState.messages = window
+          // Keep what arrived during the fetch: replies delivered meanwhile
+          // and optimistic user messages send_message has not stored yet.
+          const unconfirmed = convState.messages.filter(
+            (m: Message) => unconfirmedMessageIds.has(m.id) && !arrivals.has(m.id)
+          )
+          convState.messages = mergeIntoWindow(window, [...unconfirmed, ...arrivals.values()])
           convState.hasOlderMessages = hasOlderMessages
           convState.isLoading = false
           // '' keys the first-turn group (messages without a parent).
@@ -99,6 +138,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         draft.error = String(error)
       })
       logger.error('Failed to load messages:', error)
+    } finally {
+      loads.delete(arrivals)
+      if (loads.size === 0) arrivalsDuringLoad.delete(conversationId)
     }
   },
 
@@ -205,10 +247,21 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     siblingOfMessageId?: string,
     reuseAttachmentIds?: string[]
   ) => {
+    // The send flag is per conversation: one conversation's send must not
+    // block the send control of another.
+    let sendingConversationId: string | undefined
+    const markSending = (id: string) => {
+      sendingConversationId = id
+      get().getConversationState(id) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[id]
+        if (convState) convState.isSending = true
+      })
+    }
     set((draft) => {
-      draft.isSending = true
       draft.error = null
     })
+    if (conversationId) markSending(conversationId)
 
     let optimisticMessageId: string | undefined
     let optimisticConversationId: string | undefined
@@ -224,6 +277,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
           req: { title: '' },
         })
         targetId = newConversation.id
+        markSending(targetId)
         logger.info('[messageStore] Created new conversation:', newConversation)
 
         // Notify via callback (avoids direct store coupling)
@@ -336,14 +390,15 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       // Swap the optimistic message for the stored row (same id)
       const confirmedId = optimisticMessageId
       unconfirmedMessageIds.delete(confirmedId)
+      recordArrival(targetId, userMessage)
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
           const idx = convState.messages.findIndex((m: Message) => m.id === confirmedId)
           if (idx >= 0) convState.messages[idx] = userMessage
           else convState.messages.push(userMessage)
+          convState.isSending = false
         }
-        draft.isSending = false
       })
 
       // Bump the conversation to the top of the sidebar list
@@ -363,7 +418,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
       set((draft) => {
         draft.error = String(error)
-        draft.isSending = false
+        const sendingState = sendingConversationId
+          ? draft.conversationStates[sendingConversationId]
+          : undefined
+        if (sendingState) sendingState.isSending = false
         const convState = optimisticConversationId
           ? draft.conversationStates[optimisticConversationId]
           : undefined
@@ -399,9 +457,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         logger.warn('[messageStore] No active generation; settling local streaming state')
         cleanupThrottleState(conversationId)
         set((draft) => {
-          draft.isSending = false
           const convState = draft.conversationStates[conversationId]
           if (convState) {
+            convState.isSending = false
             convState.isStreaming = false
             convState.isWaitingForAI = false
             convState.isReasoningActive = false
@@ -419,9 +477,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
       // The completion that follows is a stop, not a normal finish
       set((draft) => {
-        draft.isSending = false
         const convState = draft.conversationStates[conversationId]
         if (convState) {
+          convState.isSending = false
           convState.stopRequested = true
         }
       })
@@ -659,6 +717,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   addMessage: (conversationId: string, message: Message) => {
     logger.info('[messageStore] Adding message to conversation:', conversationId)
     get().getConversationState(conversationId) // Ensure state exists
+    recordArrival(conversationId, message)
 
     set((draft) => {
       const convState = draft.conversationStates[conversationId]

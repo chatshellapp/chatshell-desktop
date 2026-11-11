@@ -45,6 +45,17 @@ vi.mock('sonner', () => ({ toast: toastMocks }))
 
 const invokeMock = vi.mocked(invoke)
 
+function sending(conversationId: string) {
+  return useMessageStore.getState().getConversationState(conversationId).isSending
+}
+
+function setSending(conversationId: string) {
+  useMessageStore.getState().getConversationState(conversationId)
+  useMessageStore.setState((draft) => {
+    draft.conversationStates[conversationId].isSending = true
+  })
+}
+
 const createMockMessage = (id: string, content: string, sender_type: string = 'user'): Message => ({
   id,
   conversation_id: 'conv-1',
@@ -77,7 +88,6 @@ describe('message store crudActions', () => {
     // Reset store state to initial values
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
     })
@@ -113,7 +123,7 @@ describe('message store crudActions', () => {
 
       const pending = useMessageStore.getState().sendMessage('hello', 'conv-1', 'openai', 'gpt-4')
       // Sending flag flips on synchronously before the backend call resolves
-      expect(useMessageStore.getState().isSending).toBe(true)
+      expect(sending('conv-1')).toBe(true)
 
       // send_message goes out after the draft check
       await vi.waitFor(() =>
@@ -123,7 +133,7 @@ describe('message store crudActions', () => {
       await pending
 
       const state = useMessageStore.getState()
-      expect(state.isSending).toBe(false)
+      expect(sending('conv-1')).toBe(false)
       expect(state.error).toBeNull()
       const cs = state.getConversationState('conv-1')
       expect(cs.messages).toHaveLength(1)
@@ -261,7 +271,7 @@ describe('message store crudActions', () => {
       const cs = useMessageStore.getState().getConversationState('conv-new')
       expect(cs.messages).toHaveLength(1)
       expect(cs.messages[0].id).toBe('msg-new')
-      expect(useMessageStore.getState().isSending).toBe(false)
+      expect(cs.isSending).toBe(false)
     })
 
     it('records the error, stops sending and rethrows when send_message fails', async () => {
@@ -273,7 +283,7 @@ describe('message store crudActions', () => {
 
       const state = useMessageStore.getState()
       expect(state.error).toBe('Error: send failed')
-      expect(state.isSending).toBe(false)
+      expect(sending('conv-1')).toBe(false)
     })
 
     it('rethrows when creating a new conversation fails before sending', async () => {
@@ -285,7 +295,8 @@ describe('message store crudActions', () => {
 
       const state = useMessageStore.getState()
       expect(state.error).toBe('Error: create failed')
-      expect(state.isSending).toBe(false)
+      // No conversation exists yet, so none is left marked as sending
+      expect(Object.values(state.conversationStates).some((cs) => cs.isSending)).toBe(false)
       expect(conversationMocks.bumpConversation).not.toHaveBeenCalled()
     })
 
@@ -297,7 +308,7 @@ describe('message store crudActions', () => {
       ).rejects.toThrow('save failed')
 
       expect(invokeMock).not.toHaveBeenCalledWith('send_message', expect.anything())
-      expect(useMessageStore.getState().isSending).toBe(false)
+      expect(sending('conv-draft')).toBe(false)
     })
 
     it('leaves the waiting state when send_message fails', async () => {
@@ -376,15 +387,116 @@ describe('message store crudActions', () => {
     })
   })
 
+  describe('per-conversation send flag', () => {
+    it("does not block another conversation's send control", async () => {
+      let resolveSend!: (value: Message) => void
+      invokeMock.mockImplementation(
+        () => new Promise<Message>((resolve) => (resolveSend = resolve))
+      )
+
+      const pending = useMessageStore.getState().sendMessage('hello', 'conv-1', 'openai', 'gpt-4')
+
+      expect(sending('conv-1')).toBe(true)
+      expect(sending('conv-2')).toBe(false)
+
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith('send_message', expect.anything())
+      )
+      resolveSend(createMockMessage('msg-u', 'hello'))
+      await pending
+      expect(sending('conv-1')).toBe(false)
+    })
+  })
+
+  describe('loadMessages racing deliveries', () => {
+    // Holds list_messages_by_conversation open so a delivery can land
+    // while the window fetch is in flight
+    function holdWindowFetch(rows: Message[]) {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      invokeMock.mockImplementation((async (cmd: string) => {
+        if (cmd === 'list_messages_by_conversation') {
+          await gate
+          return rows
+        }
+        if (cmd === 'get_sibling_groups') return []
+        return undefined
+      }) as never)
+      return release
+    }
+
+    it('keeps a reply delivered while the window was being fetched', async () => {
+      const user = createMockMessage('u1', 'hi')
+      // The fetch read the database before the reply row was saved
+      const release = holdWindowFetch([user])
+
+      const load = useMessageStore.getState().loadMessages('conv-1')
+      const reply = createMockMessage('a1', 'Hi! What can I help you with today?', 'model')
+      useMessageStore.getState().addMessage('conv-1', reply)
+      release()
+      await load
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => m.id)).toEqual(['u1', 'a1'])
+    })
+
+    it('prefers the delivered copy when the fetch also returned the row', async () => {
+      const stale = createMockMessage('a1', 'old', 'model')
+      const release = holdWindowFetch([createMockMessage('u1', 'hi'), stale])
+
+      const load = useMessageStore.getState().loadMessages('conv-1')
+      useMessageStore.getState().addMessage('conv-1', { ...stale, content: 'new' })
+      release()
+      await load
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => [m.id, m.content])).toEqual([
+        ['u1', 'hi'],
+        ['a1', 'new'],
+      ])
+    })
+
+    it('keeps an optimistic user message the backend has not stored yet', async () => {
+      const release = holdWindowFetch([])
+      const load = useMessageStore.getState().loadMessages('conv-1')
+
+      unconfirmedMessageIds.add('opt-1')
+      patchConv('conv-1', { messages: [createMockMessage('opt-1', 'pending')] })
+      release()
+      await load
+      unconfirmedMessageIds.delete('opt-1')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.messages.map((m) => m.id)).toEqual(['opt-1'])
+    })
+
+    it('does not carry deliveries over to a later load', async () => {
+      const release = holdWindowFetch([])
+      const load = useMessageStore.getState().loadMessages('conv-1')
+      useMessageStore.getState().addMessage('conv-1', createMockMessage('a1', 'reply', 'model'))
+      release()
+      await load
+
+      // The row was later deleted; a fresh load must not resurrect it
+      invokeMock.mockImplementation((async (cmd: string) =>
+        cmd === 'list_messages_by_conversation' || cmd === 'get_sibling_groups'
+          ? []
+          : undefined) as never)
+      await useMessageStore.getState().loadMessages('conv-1')
+
+      expect(useMessageStore.getState().getConversationState('conv-1').messages).toEqual([])
+    })
+  })
+
   describe('stopGeneration', () => {
     it('asks the backend to stop and resets the sending flag', async () => {
-      useMessageStore.setState({ isSending: true })
+      setSending('conv-1')
       invokeMock.mockResolvedValue(undefined)
 
       await useMessageStore.getState().stopGeneration('conv-1')
 
       expect(invokeMock).toHaveBeenCalledWith('stop_generation', { conversationId: 'conv-1' })
-      expect(useMessageStore.getState().isSending).toBe(false)
+      expect(sending('conv-1')).toBe(false)
       expect(useMessageStore.getState().getConversationState('conv-1').stopRequested).toBe(true)
     })
 
@@ -412,12 +524,12 @@ describe('message store crudActions', () => {
     })
 
     it('swallows backend errors without resetting the sending flag', async () => {
-      useMessageStore.setState({ isSending: true })
+      setSending('conv-1')
       invokeMock.mockRejectedValue(new Error('stop refused'))
 
       await expect(useMessageStore.getState().stopGeneration('conv-1')).resolves.toBeUndefined()
 
-      expect(useMessageStore.getState().isSending).toBe(true)
+      expect(sending('conv-1')).toBe(true)
       expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
         '[messageStore] Failed to stop generation:',
         expect.any(Error)
@@ -713,7 +825,7 @@ describe('message store crudActions', () => {
         })
       )
       expect(conversationMocks.bumpConversation).toHaveBeenCalledWith('conv-q', 'queued hello')
-      expect(useMessageStore.getState().isSending).toBe(false)
+      expect(sending('conv-q')).toBe(false)
     })
   })
 

@@ -51,6 +51,8 @@ export interface ConversationState {
   // Whether an upward page load is in flight.
   isLoadingOlder: boolean
   isLoading: boolean
+  // send_message is in flight for this conversation (send control disabled)
+  isSending: boolean
   isStreaming: boolean
   streamingContent: string
   // Streaming reasoning/thinking content from models with GPT-5, Gemini thinking
@@ -91,6 +93,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   hasOlderMessages: false,
   isLoadingOlder: false,
   isLoading: false,
+  isSending: false,
   isStreaming: false,
   streamingContent: '',
   streamingReasoningContent: '',
@@ -116,7 +119,6 @@ export interface MessageStoreState {
   conversationStates: Record<string, ConversationState>
 
   // Global states
-  isSending: boolean
   error: string | null
 
   // Callback for inter-store communication (avoids direct store imports)
