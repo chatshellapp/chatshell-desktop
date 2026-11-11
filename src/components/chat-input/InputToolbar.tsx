@@ -345,32 +345,44 @@ export function InputToolbar({
           </InputGroupButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="min-w-[240px]">
-          {PERMISSION_MODES.filter((mode) => mode !== 'auto' || autoAvailable).map((mode) => (
-            <DropdownMenuItem
-              key={mode}
-              className="gap-2 justify-between"
-              onClick={() => onPermissionModeSelect(mode)}
-            >
-              <div className="flex items-center gap-2">
-                <PermissionModeIcon mode={mode} className="size-4" />
-                <div className="flex flex-col">
-                  <span>{t(`permission.mode.${mode}`)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t(permissionModeHintKey(mode, sandboxAvailable))}
-                  </span>
+          {PERMISSION_MODES.map((mode) => {
+            // Auto stays listed when no reviewer is available, disabled, with
+            // the reason in place of its hint (raw provider detail on hover).
+            const unavailable = mode === 'auto' && !autoAvailable
+            return (
+              <DropdownMenuItem
+                key={mode}
+                disabled={unavailable}
+                className="gap-2 justify-between data-[disabled]:pointer-events-auto data-[disabled]:cursor-default data-[disabled]:opacity-100"
+                title={unavailable ? (autoUnavailableReason ?? undefined) : undefined}
+                onClick={() => onPermissionModeSelect(mode)}
+              >
+                <div className="flex items-center gap-2">
+                  <PermissionModeIcon
+                    mode={mode}
+                    className={unavailable ? 'size-4 opacity-50' : 'size-4'}
+                  />
+                  <div className="flex flex-col">
+                    <span className={unavailable ? 'opacity-50' : undefined}>
+                      {t(`permission.mode.${mode}`)}
+                    </span>
+                    <span
+                      className={
+                        unavailable
+                          ? 'text-xs text-muted-foreground max-w-[320px]'
+                          : 'text-xs text-muted-foreground'
+                      }
+                    >
+                      {unavailable
+                        ? t(autoUnavailableMessageKey(autoUnavailableCause))
+                        : t(permissionModeHintKey(mode, sandboxAvailable))}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              {permissionMode === mode && <Check className="size-4" />}
-            </DropdownMenuItem>
-          ))}
-          {!autoAvailable && (
-            <div
-              className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px]"
-              title={autoUnavailableReason ?? undefined}
-            >
-              {t(autoUnavailableMessageKey(autoUnavailableCause))}
-            </div>
-          )}
+                {permissionMode === mode && <Check className="size-4" />}
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
 

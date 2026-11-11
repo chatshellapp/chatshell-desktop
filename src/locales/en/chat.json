@@ -185,16 +185,16 @@
       "yolo": "Yolo",
       "yoloHint": "Run everything without asking or a sandbox",
       "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review",
-      "autoUnavailable": "Auto is unavailable for this model: it cannot review actions. Conversations use Ask.",
+      "autoUnavailable": "Unavailable: this model cannot review actions. Conversations use Ask.",
       "autoUnavailableCause": {
-        "unauthorized": "Auto is unavailable: the provider rejected the API key or denied access to this model. Check the provider settings. Conversations use Ask.",
-        "notFound": "Auto is unavailable: the provider could not find this model. Check the model ID. Conversations use Ask.",
-        "rateLimited": "Auto is unavailable: the provider is rate limiting requests or the quota is used up. Conversations use Ask.",
-        "unreachable": "Auto is unavailable: the provider could not be reached. Conversations use Ask.",
-        "rejected": "Auto is unavailable: the provider rejected the review request. Conversations use Ask.",
-        "outputBudget": "Auto is unavailable for this model: it runs out of output before giving a verdict. Conversations use Ask.",
-        "noVerdict": "Auto is unavailable for this model: it cannot review actions. Conversations use Ask.",
-        "cancelled": "Auto availability could not be checked. Conversations use Ask."
+        "unauthorized": "Unavailable: the provider rejected the API key or denied access to this model. Check the provider settings. Conversations use Ask.",
+        "notFound": "Unavailable: the provider could not find this model. Check the model ID. Conversations use Ask.",
+        "rateLimited": "Unavailable: the provider is rate limiting requests or the quota is used up. Conversations use Ask.",
+        "unreachable": "Unavailable: the provider could not be reached. Conversations use Ask.",
+        "rejected": "Unavailable: the provider rejected the review request. Conversations use Ask.",
+        "outputBudget": "Unavailable: this model runs out of output before giving a verdict. Conversations use Ask.",
+        "noVerdict": "Unavailable: this model cannot review actions. Conversations use Ask.",
+        "cancelled": "Unavailable: the reviewer check did not finish. Conversations use Ask."
       }
     }
   },
