@@ -68,10 +68,8 @@ function beginStreaming() {
   useMessageStore.getState().setIsWaitingForAI(CONV, true)
 }
 
-function setupHook(id: string | null = CONV) {
-  return renderHook((convId: string | null) => useChatEvents(convId), {
-    initialProps: id,
-  })
+function setupHook() {
+  return renderHook(() => useChatEvents())
 }
 
 // The exact event set the Rust streaming pipeline emits
@@ -145,11 +143,11 @@ describe('useChatEvents', () => {
       }
     })
 
-    it('subscribes to nothing without a conversation', () => {
-      setupHook(null)
+    it('subscribes without a selected conversation', () => {
+      // Mounted app-wide: there is no conversation argument to wait for
+      setupHook()
 
-      expect(listeners.size).toBe(0)
-      expect(listen).not.toHaveBeenCalled()
+      expect(listeners.size).toBe(BACKEND_EVENTS.length)
     })
 
     it('unsubscribes every listener on unmount', async () => {
@@ -164,17 +162,40 @@ describe('useChatEvents', () => {
       }
     })
 
-    it('resubscribes when the conversation changes', async () => {
+    it('never resubscribes while mounted, even when the selection changes', async () => {
       const { rerender } = setupHook()
-      const firstConversationUnlisteners = [...unlisteners.values()]
-      rerender('conv-2')
+      useConversationStore.setState({
+        currentConversation: {
+          id: 'conv-2',
+          title: '',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      })
+      rerender()
       await Promise.resolve()
 
-      // Old conversation's listeners were torn down
-      for (const unlisten of firstConversationUnlisteners) {
-        expect(unlisten).toHaveBeenCalledTimes(1)
+      // A resubscribe opens a window in which backend events are dropped
+      expect(listen).toHaveBeenCalledTimes(BACKEND_EVENTS.length)
+      for (const unlisten of unlisteners.values()) {
+        expect(unlisten).not.toHaveBeenCalled()
       }
-      expect(listen).toHaveBeenCalledTimes(BACKEND_EVENTS.length * 2)
+    })
+
+    it('completes a background conversation that is not selected', () => {
+      setupHook()
+      useMessageStore.getState().setIsStreaming('conv-bg', true)
+      useMessageStore.getState().setIsWaitingForAI('conv-bg', true)
+
+      emit('chat-complete', {
+        conversation_id: 'conv-bg',
+        message: { ...makeMessage('msg-bg', 'done'), conversation_id: 'conv-bg' },
+      })
+
+      const bg = useMessageStore.getState().getConversationState('conv-bg')
+      expect(bg.isStreaming).toBe(false)
+      expect(bg.isWaitingForAI).toBe(false)
+      expect(bg.messages.map((m) => m.id)).toEqual(['msg-bg'])
     })
   })
 

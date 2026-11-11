@@ -37,19 +37,16 @@ import {
   useToolCallHandlers,
 } from './handlers'
 
-export function useChatEvents(conversationId: string | null) {
-  const conversationIdRef = useRef(conversationId)
-
-  // Update ref when conversationId changes
-  useEffect(() => {
-    conversationIdRef.current = conversationId
-  }, [conversationId])
-
-  // Markers of earlier turns, from this device's decision log
-  useEffect(() => {
-    if (conversationId) void useAutoReviewStore.getState().load(conversationId)
-  }, [conversationId])
-
+/**
+ * App-wide subscription to the backend's chat events. Mount it once, above
+ * anything that changes with the selected conversation: every event carries
+ * its conversation_id and is routed into that conversation's store state, so
+ * background runs keep receiving their chunks and completions. Subscribing
+ * per selected conversation dropped events emitted while the listeners were
+ * being swapped (or while the chat view was unmounted), which left a
+ * finished run stuck in the streaming state.
+ */
+export function useChatEvents() {
   // Get handlers from separated hooks
   const {
     handleStreamChunk,
@@ -80,20 +77,44 @@ export function useChatEvents(conversationId: string | null) {
     handlePermissionResolved,
   } = useToolCallHandlers()
 
+  // Listeners are registered once; they read the latest handlers through
+  // this ref so a handler identity change (e.g. a language switch) never
+  // re-subscribes and opens a window in which events are lost.
+  const handlers = {
+    handleStreamChunk,
+    handleStreamReasoningChunk,
+    handleChatComplete,
+    handleChatError,
+    handleChatWarning,
+    handleReasoningStarted,
+    handleStreamImage,
+    handleAttachmentProcessingStarted,
+    handleAttachmentProcessingComplete,
+    handleAttachmentProcessingError,
+    handleAttachmentUpdate,
+    handleSearchDecisionStarted,
+    handleSearchDecisionComplete,
+    handleConversationUpdated,
+    handleGenerationStopped,
+    handleToolCallStarted,
+    handleToolCallCompleted,
+    handleMcpAuthRequired,
+    handlePermissionRequested,
+    handlePermissionResolved,
+  }
+  const handlersRef = useRef(handlers)
   useEffect(() => {
-    if (!conversationId) return
+    handlersRef.current = handlers
+  })
 
-    logger.info('[useChatEvents] Setting up event listeners for conversation:', conversationId)
+  useEffect(() => {
+    const h = () => handlersRef.current
+    logger.info('[useChatEvents] Setting up app-wide chat event listeners')
 
     // Listen for streaming chunks
     const unlistenStream = listen<ChatStreamEvent>('chat-stream', (event) => {
       logger.info('[useChatEvents] Received chat-stream event', event.payload)
-      logger.info('[useChatEvents] Event conversation_id', {
-        eventConvId: event.payload.conversation_id,
-        current: conversationIdRef.current,
-      })
-      // Process the event for the specific conversation (no need to check if it's current)
-      handleStreamChunk(event.payload.conversation_id, event.payload.content)
+      h().handleStreamChunk(event.payload.conversation_id, event.payload.content)
     })
 
     // Listen for streaming reasoning/thinking content (from models like GPT-5, Gemini)
@@ -101,45 +122,48 @@ export function useChatEvents(conversationId: string | null) {
       'chat-stream-reasoning',
       (event) => {
         logger.info('[useChatEvents] Received chat-stream-reasoning event:', event.payload)
-        handleStreamReasoningChunk(event.payload.conversation_id, event.payload.content)
+        h().handleStreamReasoningChunk(event.payload.conversation_id, event.payload.content)
       }
     )
 
     // Listen for streaming generated images
     const unlistenStreamImage = listen<ChatStreamImageEvent>('chat-stream-image', (event) => {
       logger.info('[useChatEvents] Received chat-stream-image event:', event.payload)
-      handleStreamImage(event.payload.conversation_id, event.payload.image_url)
+      h().handleStreamImage(event.payload.conversation_id, event.payload.image_url)
     })
 
     // Listen for chat completion
     const unlistenComplete = listen<ChatCompleteEvent>('chat-complete', (event) => {
       logger.info('[useChatEvents] Received chat-complete event', event.payload)
-      logger.info('[useChatEvents] Event conversation_id', {
-        eventConvId: event.payload.conversation_id,
-        current: conversationIdRef.current,
-      })
-      // Process the event for the specific conversation (no need to check if it's current)
-      handleChatComplete(event.payload.conversation_id, event.payload.message, event.payload.error)
+      h().handleChatComplete(
+        event.payload.conversation_id,
+        event.payload.message,
+        event.payload.error
+      )
     })
 
     // Listen for chat errors (API failures)
     const unlistenChatError = listen<ChatErrorEvent>('chat-error', (event) => {
       logger.info('[useChatEvents] Received chat-error event:', event.payload)
-      handleChatError(event.payload.conversation_id, event.payload.error)
+      h().handleChatError(event.payload.conversation_id, event.payload.error)
     })
 
     // Listen for non-fatal chat warnings (e.g. images stripped from a
     // text-only model's direct input)
     const unlistenChatWarning = listen<ChatWarningEvent>('chat-warning', (event) => {
       logger.info('[useChatEvents] Received chat-warning event:', event.payload)
-      handleChatWarning(event.payload.conversation_id, event.payload.warning, event.payload.images)
+      h().handleChatWarning(
+        event.payload.conversation_id,
+        event.payload.warning,
+        event.payload.images
+      )
     })
 
     // Listen for attachment processing started
     const unlistenAttachmentStarted = listen<AttachmentProcessingStartedEvent>(
       'attachment-processing-started',
       (event) => {
-        handleAttachmentProcessingStarted(
+        h().handleAttachmentProcessingStarted(
           event.payload.conversation_id,
           event.payload.message_id,
           event.payload.urls
@@ -151,7 +175,10 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenAttachmentComplete = listen<AttachmentProcessingCompleteEvent>(
       'attachment-processing-complete',
       (event) => {
-        handleAttachmentProcessingComplete(event.payload.conversation_id, event.payload.message_id)
+        h().handleAttachmentProcessingComplete(
+          event.payload.conversation_id,
+          event.payload.message_id
+        )
       }
     )
 
@@ -159,13 +186,13 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenAttachmentError = listen<AttachmentProcessingErrorEvent>(
       'attachment-processing-error',
       (event) => {
-        handleAttachmentProcessingError(event.payload.conversation_id, event.payload.error)
+        h().handleAttachmentProcessingError(event.payload.conversation_id, event.payload.error)
       }
     )
 
     // Listen for attachment updates (new attachments added)
     const unlistenAttachmentUpdate = listen<AttachmentUpdateEvent>('attachment-update', (event) => {
-      handleAttachmentUpdate(
+      h().handleAttachmentUpdate(
         event.payload.conversation_id,
         event.payload.message_id,
         event.payload.completed_url
@@ -176,7 +203,7 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenSearchDecisionStarted = listen<SearchDecisionStartedEvent>(
       'search-decision-started',
       (event) => {
-        handleSearchDecisionStarted(event.payload.conversation_id, event.payload.message_id)
+        h().handleSearchDecisionStarted(event.payload.conversation_id, event.payload.message_id)
       }
     )
 
@@ -185,7 +212,7 @@ export function useChatEvents(conversationId: string | null) {
       'search-decision-complete',
       (event) => {
         logger.info('[useChatEvents] Received search-decision-complete event:', event.payload)
-        handleSearchDecisionComplete(event.payload.conversation_id, event.payload.message_id)
+        h().handleSearchDecisionComplete(event.payload.conversation_id, event.payload.message_id)
       }
     )
 
@@ -194,7 +221,7 @@ export function useChatEvents(conversationId: string | null) {
       'conversation-updated',
       (event) => {
         logger.info('[useChatEvents] Received conversation-updated event:', event.payload)
-        handleConversationUpdated(event.payload.conversation_id, event.payload.title)
+        h().handleConversationUpdated(event.payload.conversation_id, event.payload.title)
       }
     )
 
@@ -206,20 +233,20 @@ export function useChatEvents(conversationId: string | null) {
         // Approvals of the stopped conversation are closed backend-side;
         // other conversations' pending approvals must stay answerable.
         usePermissionStore.getState().clearConversation(event.payload.conversation_id)
-        handleGenerationStopped(event.payload.conversation_id)
+        h().handleGenerationStopped(event.payload.conversation_id)
       }
     )
 
     // Listen for reasoning started (AI begins thinking)
     const unlistenReasoningStarted = listen<ReasoningStartedEvent>('reasoning-started', (event) => {
       logger.info('[useChatEvents] Received reasoning-started event:', event.payload)
-      handleReasoningStarted(event.payload.conversation_id)
+      h().handleReasoningStarted(event.payload.conversation_id)
     })
 
     // Listen for MCP tool call started
     const unlistenToolCallStarted = listen<ToolCallStartedEvent>('tool-call-started', (event) => {
       logger.info('[useChatEvents] Received tool-call-started event:', event.payload)
-      handleToolCallStarted(
+      h().handleToolCallStarted(
         event.payload.conversation_id,
         event.payload.tool_call_id,
         event.payload.tool_name,
@@ -232,7 +259,7 @@ export function useChatEvents(conversationId: string | null) {
       'tool-call-completed',
       (event) => {
         logger.info('[useChatEvents] Received tool-call-completed event:', event.payload)
-        handleToolCallCompleted(
+        h().handleToolCallCompleted(
           event.payload.conversation_id,
           event.payload.tool_call_id,
           event.payload.tool_output
@@ -243,7 +270,7 @@ export function useChatEvents(conversationId: string | null) {
     // Listen for MCP auth required (token expired, 401 from tool call)
     const unlistenMcpAuthRequired = listen<McpAuthRequiredEvent>('mcp-auth-required', (event) => {
       logger.warn('[useChatEvents] Received mcp-auth-required event:', event.payload)
-      handleMcpAuthRequired(event.payload.server_id)
+      h().handleMcpAuthRequired(event.payload.server_id)
     })
 
     // Listen for tool approval requests (permission gate, ask mode)
@@ -251,7 +278,7 @@ export function useChatEvents(conversationId: string | null) {
       'permission-requested',
       (event) => {
         logger.info('[useChatEvents] Received permission-requested event:', event.payload)
-        handlePermissionRequested(event.payload)
+        h().handlePermissionRequested(event.payload)
       }
     )
 
@@ -268,13 +295,12 @@ export function useChatEvents(conversationId: string | null) {
     const unlistenPermissionResolved = listen<PermissionResolvedEvent>(
       'permission-resolved',
       (event) => {
-        handlePermissionResolved(event.payload.request_id)
+        h().handlePermissionResolved(event.payload.request_id)
       }
     )
 
-    // Cleanup listeners when component unmounts or conversationId changes
     return () => {
-      logger.info('[useChatEvents] Cleaning up event listeners for conversation:', conversationId)
+      logger.info('[useChatEvents] Cleaning up app-wide chat event listeners')
       unlistenStream.then((fn) => fn())
       unlistenStreamReasoning.then((fn) => fn())
       unlistenStreamImage.then((fn) => fn())
@@ -297,26 +323,5 @@ export function useChatEvents(conversationId: string | null) {
       unlistenPermissionResolved.then((fn) => fn())
       unlistenAutoReview.then((fn) => fn())
     }
-  }, [
-    conversationId,
-    handleStreamChunk,
-    handleStreamReasoningChunk,
-    handleStreamImage,
-    handleChatComplete,
-    handleChatError,
-    handleChatWarning,
-    handleAttachmentProcessingStarted,
-    handleAttachmentProcessingComplete,
-    handleAttachmentProcessingError,
-    handleAttachmentUpdate,
-    handleSearchDecisionStarted,
-    handleSearchDecisionComplete,
-    handleConversationUpdated,
-    handleGenerationStopped,
-    handleReasoningStarted,
-    handleToolCallStarted,
-    handleMcpAuthRequired,
-    handlePermissionRequested,
-    handlePermissionResolved,
-  ])
+  }, [])
 }
