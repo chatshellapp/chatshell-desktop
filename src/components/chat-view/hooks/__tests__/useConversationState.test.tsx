@@ -91,6 +91,18 @@ describe('useConversationState', () => {
     expect(useChatEvents).toHaveBeenCalledWith(CONV)
   })
 
+  it('does not reload when the active conversation object is replaced under the same id', () => {
+    useConversationStore.setState({ currentConversation: conversation })
+    renderHook(() => useConversationState())
+    expect(loadMessages).toHaveBeenCalledTimes(1)
+
+    // A draft saved on its first send (or a rename) swaps in the stored row
+    act(() => {
+      useConversationStore.setState({ currentConversation: { ...conversation, title: 'Saved' } })
+    })
+    expect(loadMessages).toHaveBeenCalledTimes(1)
+  })
+
   it('exposes the low-frequency window state for the active conversation', () => {
     useConversationStore.setState({ currentConversation: conversation })
     const messages: Message[] = [

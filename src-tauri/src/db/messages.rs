@@ -18,8 +18,18 @@ const MAX_TREE_DEPTH: i64 = 100_000;
 
 impl Database {
     pub async fn create_message(&self, req: CreateMessageRequest) -> Result<Message> {
+        self.create_message_with_id(Uuid::now_v7().to_string(), req)
+            .await
+    }
+
+    /// `create_message` with a caller-chosen id. The composer picks the id
+    /// of a user message so it can show the message before the insert lands.
+    pub async fn create_message_with_id(
+        &self,
+        id: String,
+        req: CreateMessageRequest,
+    ) -> Result<Message> {
         tracing::info!("🔒 [db] Creating message...");
-        let id = Uuid::now_v7().to_string();
         let now = Utc::now().to_rfc3339();
 
         let target_id = req.conversation_id.as_deref().unwrap_or("unknown");

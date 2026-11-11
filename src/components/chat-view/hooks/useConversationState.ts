@@ -69,12 +69,14 @@ export function useConversationState() {
   // Set up event listeners for chat streaming and scraping
   useChatEvents(conversationId)
 
-  // Load messages when conversation changes
+  // Load messages when the conversation changes. Keyed on the id: the
+  // conversation object is replaced in place (a draft saved on its first
+  // send, a rename), and reloading then would drop the optimistic message.
   useEffect(() => {
-    if (currentConversation) {
-      loadMessages(currentConversation.id)
+    if (conversationId) {
+      loadMessages(conversationId)
     }
-  }, [currentConversation, loadMessages])
+  }, [conversationId, loadMessages])
 
   return {
     // Conversation info

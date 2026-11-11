@@ -11,6 +11,38 @@ import type {
 import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'
+import { uuidv7 } from '@/lib/uuid'
+import i18n from '@/lib/i18n'
+import { toast } from 'sonner'
+
+/**
+ * Ids of user messages shown before send_message has stored them. Anything
+ * that reads per-message data from the backend skips these until confirmed.
+ */
+export const unconfirmedMessageIds = new Set<string>()
+
+// A failed send takes its optimistic message back out. A resend had already
+// cut the original's branch from the window, so the window is reloaded.
+async function withdrawOptimisticMessage(
+  set: ImmerSet,
+  get: StoreGet,
+  conversationId: string,
+  messageId: string,
+  cutBranch: boolean
+) {
+  unconfirmedMessageIds.delete(messageId)
+  set((draft) => {
+    const convState = draft.conversationStates[conversationId]
+    if (convState) {
+      convState.messages = convState.messages.filter((m: Message) => m.id !== messageId)
+    }
+  })
+  if (cutBranch) {
+    await get()
+      .loadMessages(conversationId)
+      .catch((error) => logger.error('[messageStore] Failed to reload after failed send:', error))
+  }
+}
 
 export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCrudActions => ({
   loadMessages: async (conversationId: string) => {
@@ -178,6 +210,11 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       draft.error = null
     })
 
+    let optimisticMessageId: string | undefined
+    let optimisticConversationId: string | undefined
+    // Set once this send has put the conversation into the waiting state,
+    // which a failure must then undo (no chat-complete event will arrive).
+    let turnStarted = false
     try {
       // If no conversationId, create a new conversation first
       let targetId = conversationId
@@ -196,12 +233,40 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         }
       }
 
+      // Show the user message right away under the id the backend will
+      // store it with; send_message confirms it once the row exists.
+      const conversationForMessage = targetId
+      optimisticConversationId = conversationForMessage
+      optimisticMessageId = uuidv7()
+      const optimisticMessage: Message = {
+        id: optimisticMessageId,
+        conversation_id: conversationForMessage,
+        sender_type: 'user',
+        content,
+        created_at: new Date().toISOString(),
+      }
+      unconfirmedMessageIds.add(optimisticMessageId)
+      get().getConversationState(conversationForMessage) // Ensure state exists
+      set((draft) => {
+        const convState = draft.conversationStates[conversationForMessage]
+        if (convState) {
+          // A resend replaces the original's branch: the window follows the
+          // rewound leaf, so the original and everything after it leave it.
+          if (siblingOfMessageId) {
+            const idx = convState.messages.findIndex((m: Message) => m.id === siblingOfMessageId)
+            if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
+          }
+          convState.messages.push(optimisticMessage)
+        }
+      })
+
       // A conversation drafted in the UI gets its database row on the first send
       const { useConversationStore } = await import('../conversation')
       await useConversationStore.getState().saveDraftConversation(targetId)
 
       // Set waiting state for this conversation and clear previous streaming content
       get().getConversationState(targetId) // Ensure state exists
+      turnStarted = true
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
@@ -262,21 +327,20 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         reuseFetchResultIds,
         siblingOfMessageId,
         reuseAttachmentIds,
+        messageId: optimisticMessageId,
       })
 
       logger.info('[messageStore] Received user message:', userMessage)
 
-      // Add user message to the conversation. A resend replaces the
-      // original's branch: the window follows the rewound leaf, so the
-      // original and everything after it leave the window.
+      // Swap the optimistic message for the stored row (same id)
+      const confirmedId = optimisticMessageId
+      unconfirmedMessageIds.delete(confirmedId)
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
-          if (siblingOfMessageId) {
-            const idx = convState.messages.findIndex((m: Message) => m.id === siblingOfMessageId)
-            if (idx >= 0) convState.messages = convState.messages.slice(0, idx)
-          }
-          convState.messages.push(userMessage)
+          const idx = convState.messages.findIndex((m: Message) => m.id === confirmedId)
+          if (idx >= 0) convState.messages[idx] = userMessage
+          else convState.messages.push(userMessage)
         }
         draft.isSending = false
       })
@@ -299,7 +363,23 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       set((draft) => {
         draft.error = String(error)
         draft.isSending = false
+        const convState = optimisticConversationId
+          ? draft.conversationStates[optimisticConversationId]
+          : undefined
+        if (turnStarted && convState) {
+          convState.isStreaming = false
+          convState.isWaitingForAI = false
+        }
       })
+      if (optimisticMessageId && optimisticConversationId) {
+        await withdrawOptimisticMessage(
+          set,
+          get,
+          optimisticConversationId,
+          optimisticMessageId,
+          !!siblingOfMessageId
+        )
+      }
       throw error
     }
   },
@@ -691,7 +771,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   },
 
   removePendingMessage: (conversationId: string, index: number) => {
-    get().getConversationState(conversationId)
+    const before = get().getConversationState(conversationId)
+    const removedFailed = !!before.pendingMessages[index]?.error
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState && index >= 0 && index < convState.pendingMessages.length) {
@@ -699,6 +780,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       }
     })
     logger.info('[messageStore] Removed pending message at index', { index, conversationId })
+    // The failed message was pausing the queue: let the rest go out
+    if (removedFailed && !before.isStreaming && !before.isWaitingForAI) {
+      get().processNextPendingMessage(conversationId)
+    }
   },
 
   processNextPendingMessage: (conversationId: string) => {
@@ -709,6 +794,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     if (convState.failedTurn?.kind === 'failed') return
 
     const next = convState.pendingMessages[0]
+    // A queued message that failed to send pauses the queue as well, so
+    // a send that cannot succeed is not retried after every reply.
+    if (next.error) return
     set((draft) => {
       const cs = draft.conversationStates[conversationId]
       if (cs) {
@@ -718,28 +806,56 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
     logger.info('[messageStore] Processing next pending message for conversation:', conversationId)
 
-    get().sendMessage(
-      next.content,
-      next.conversationId,
-      next.provider,
-      next.model,
-      next.apiKey,
-      next.baseUrl,
-      next.apiStyle,
-      next.includeHistory,
-      next.systemPrompt,
-      next.userPrompt,
-      next.modelDbId,
-      next.assistantDbId,
-      next.urlsToFetch,
-      next.images,
-      next.files,
-      next.searchEnabled,
-      next.parameterOverrides,
-      next.contextMessageCount,
-      next.useProviderDefaults,
-      next.reuseFetchResultIds
-    )
+    get()
+      .sendMessage(
+        next.content,
+        next.conversationId,
+        next.provider,
+        next.model,
+        next.apiKey,
+        next.baseUrl,
+        next.apiStyle,
+        next.includeHistory,
+        next.systemPrompt,
+        next.userPrompt,
+        next.modelDbId,
+        next.assistantDbId,
+        next.urlsToFetch,
+        next.images,
+        next.files,
+        next.searchEnabled,
+        next.parameterOverrides,
+        next.contextMessageCount,
+        next.useProviderDefaults,
+        next.reuseFetchResultIds
+      )
+      .catch((error) => {
+        // sendMessage already recorded the error and reset the waiting state.
+        // Put the message back, marked failed, so its content is not lost.
+        logger.error('[messageStore] Failed to send queued message:', error)
+        const message = String(error)
+        set((draft) => {
+          const cs = draft.conversationStates[conversationId]
+          if (cs) {
+            cs.pendingMessages.unshift({ ...next, error: message })
+          }
+        })
+        toast.error(i18n.t('chat:queuedSendFailed'), { description: message })
+      })
+  },
+
+  retryPendingMessage: (conversationId: string) => {
+    const convState = get().getConversationState(conversationId)
+    if (!convState.pendingMessages[0]?.error) return
+    set((draft) => {
+      const cs = draft.conversationStates[conversationId]
+      if (cs?.pendingMessages[0]) {
+        delete cs.pendingMessages[0].error
+      }
+    })
+    // While a turn is running the queue resumes when it completes
+    if (convState.isStreaming || convState.isWaitingForAI) return
+    get().processNextPendingMessage(conversationId)
   },
 
   clearPendingMessages: (conversationId: string) => {

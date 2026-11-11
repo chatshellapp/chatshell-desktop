@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, MessageResources } from '@/types'
 import { logger } from '@/lib/logger'
+import { unconfirmedMessageIds } from '@/stores/message'
 
 interface UseMessageResourcesOptions {
   messages: Message[]
@@ -40,6 +41,8 @@ export function useMessageResources({
       const lastMessage = messages[messages.length - 1]
       const idsToFetch: string[] = []
       for (const msg of messages) {
+        // Not stored yet: an empty answer now would be cached as final
+        if (unconfirmedMessageIds.has(msg.id)) continue
         // When processing just completed or refresh key changed, always
         // re-fetch for the latest message; otherwise skip anything already
         // resolved (cached resources or a known-empty result).

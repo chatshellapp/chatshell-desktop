@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@/lib/logger'
 import { useMessageResources } from '../useMessageResources'
+import { unconfirmedMessageIds } from '@/stores/message'
 import type { Message, MessageResources } from '@/types'
 
 vi.mock('@/lib/logger', () => ({
@@ -58,6 +59,20 @@ describe('useMessageResources', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(invoke).mockResolvedValue({})
+  })
+
+  it('waits for an optimistic message to be stored before fetching its resources', async () => {
+    unconfirmedMessageIds.add('m1')
+    const { rerender } = renderResources({ messages: [m1] })
+    await Promise.resolve()
+    expect(invoke).not.toHaveBeenCalled()
+
+    // Confirmed: the stored row replaces it, so the window array changes
+    unconfirmedMessageIds.delete('m1')
+    rerender({ messages: [{ ...m1 }], attachmentStatus: 'idle', attachmentRefreshKey: 0 })
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('get_message_resources_batch', { messageIds: ['m1'] })
+    )
   })
 
   it('fetches nothing for an empty message window', () => {

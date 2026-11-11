@@ -168,6 +168,9 @@ export interface PendingMessage {
   contextMessageCount?: number | null
   useProviderDefaults?: boolean
   reuseFetchResultIds?: string[]
+  // Set when sending this message failed. It stays at the head of the queue
+  // and pauses it until the user retries or removes it.
+  error?: string
 }
 
 // Parameter overrides for conversation-level settings
@@ -281,6 +284,8 @@ export interface MessageStoreCrudActions {
   enqueueMessage: (conversationId: string, message: PendingMessage) => void
   removePendingMessage: (conversationId: string, index: number) => void
   processNextPendingMessage: (conversationId: string) => void
+  // Clear the error of a failed queued message and send it when idle
+  retryPendingMessage: (conversationId: string) => void
   clearPendingMessages: (conversationId: string) => void
 }
 
