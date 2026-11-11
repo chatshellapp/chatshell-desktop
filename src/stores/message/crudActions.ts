@@ -12,6 +12,8 @@ import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
 import { logger } from '@/lib/logger'
 import { uuidv7 } from '@/lib/uuid'
+import i18n from '@/lib/i18n'
+import { toast } from 'sonner'
 
 /**
  * Ids of user messages shown before send_message has stored them. Anything
@@ -769,7 +771,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
   },
 
   removePendingMessage: (conversationId: string, index: number) => {
-    get().getConversationState(conversationId)
+    const before = get().getConversationState(conversationId)
+    const removedFailed = !!before.pendingMessages[index]?.error
     set((draft) => {
       const convState = draft.conversationStates[conversationId]
       if (convState && index >= 0 && index < convState.pendingMessages.length) {
@@ -777,6 +780,10 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       }
     })
     logger.info('[messageStore] Removed pending message at index', { index, conversationId })
+    // The failed message was pausing the queue: let the rest go out
+    if (removedFailed && !before.isStreaming && !before.isWaitingForAI) {
+      get().processNextPendingMessage(conversationId)
+    }
   },
 
   processNextPendingMessage: (conversationId: string) => {
@@ -787,6 +794,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     if (convState.failedTurn?.kind === 'failed') return
 
     const next = convState.pendingMessages[0]
+    // A queued message that failed to send pauses the queue as well, so
+    // a send that cannot succeed is not retried after every reply.
+    if (next.error) return
     set((draft) => {
       const cs = draft.conversationStates[conversationId]
       if (cs) {
@@ -820,9 +830,32 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         next.reuseFetchResultIds
       )
       .catch((error) => {
-        // sendMessage already recorded the error and reset the waiting state
+        // sendMessage already recorded the error and reset the waiting state.
+        // Put the message back, marked failed, so its content is not lost.
         logger.error('[messageStore] Failed to send queued message:', error)
+        const message = String(error)
+        set((draft) => {
+          const cs = draft.conversationStates[conversationId]
+          if (cs) {
+            cs.pendingMessages.unshift({ ...next, error: message })
+          }
+        })
+        toast.error(i18n.t('chat:queuedSendFailed'), { description: message })
       })
+  },
+
+  retryPendingMessage: (conversationId: string) => {
+    const convState = get().getConversationState(conversationId)
+    if (!convState.pendingMessages[0]?.error) return
+    set((draft) => {
+      const cs = draft.conversationStates[conversationId]
+      if (cs?.pendingMessages[0]) {
+        delete cs.pendingMessages[0].error
+      }
+    })
+    // While a turn is running the queue resumes when it completes
+    if (convState.isStreaming || convState.isWaitingForAI) return
+    get().processNextPendingMessage(conversationId)
   },
 
   clearPendingMessages: (conversationId: string) => {

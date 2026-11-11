@@ -137,6 +137,10 @@ export function ChatView() {
     },
     [conversationId, removePendingMessage]
   )
+  const retryPendingMessage = useMessageStore((state) => state.retryPendingMessage)
+  const handleRetryPending = useCallback(() => {
+    if (conversationId) retryPendingMessage(conversationId)
+  }, [conversationId, retryPendingMessage])
 
   // Show streaming message while actively streaming, waiting for AI,
   // or when there's frozen partial content from a stopped generation.
@@ -272,6 +276,8 @@ export function ChatView() {
               <PendingMessageItem
                 key={`pending-${idx}`}
                 content={pm.content}
+                error={pm.error}
+                onRetry={idx === 0 ? handleRetryPending : undefined}
                 onRemove={() => handleRemovePending(idx)}
               />
             ))}

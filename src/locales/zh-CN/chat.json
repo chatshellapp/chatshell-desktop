@@ -127,6 +127,8 @@
   "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具和技能将不会被使用。",
   "queued": "排队中",
   "removeQueued": "从队列中移除",
+  "retryQueued": "重新发送",
+  "queuedSendFailed": "排队的消息发送失败",
   "permission": {
     "title": "需要工具审批",
     "body": "助手请求执行 {{tool}}。是否允许此操作?",

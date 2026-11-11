@@ -127,6 +127,8 @@
   "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools and skills will not be used.",
   "queued": "Queued",
   "removeQueued": "Remove from queue",
+  "retryQueued": "Retry sending",
+  "queuedSendFailed": "A queued message could not be sent",
   "permission": {
     "title": "Tool approval required",
     "body": "The assistant wants to run {{tool}}. Approve this action?",
