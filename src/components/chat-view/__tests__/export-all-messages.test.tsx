@@ -97,7 +97,6 @@ describe('export all messages', () => {
 
     useMessageStore.setState({
       conversationStates: { [CONV]: state },
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
     })

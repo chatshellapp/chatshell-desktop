@@ -159,7 +159,6 @@ describe('useSubmitHandler', () => {
     useInputHistoryStore.setState({ history: [], isLoaded: false, addEntry: vi.fn() })
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       sendMessage: vi.fn().mockResolvedValue(undefined),
       enqueueMessage: vi.fn(),

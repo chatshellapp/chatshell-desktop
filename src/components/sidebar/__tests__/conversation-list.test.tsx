@@ -74,7 +74,6 @@ describe('ConversationList', () => {
     })
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
     })
     useModelStore.setState({ models: [], providers: [], isLoading: false, error: null })

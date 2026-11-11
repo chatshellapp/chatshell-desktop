@@ -279,7 +279,6 @@ describe('useMessageHandlers', () => {
 
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
       sendMessage,

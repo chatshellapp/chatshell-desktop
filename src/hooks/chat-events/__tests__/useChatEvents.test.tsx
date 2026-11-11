@@ -108,7 +108,6 @@ describe('useChatEvents', () => {
     cleanupThrottleState(CONV)
     useMessageStore.setState({
       conversationStates: {},
-      isSending: false,
       error: null,
       onNewConversationCreated: undefined,
       sendMessage: vi.fn().mockResolvedValue(undefined),

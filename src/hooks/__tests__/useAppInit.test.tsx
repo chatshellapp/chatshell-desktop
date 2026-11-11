@@ -165,7 +165,6 @@ function setupStores() {
   useAttachmentBlobStore.setState({ states: {}, refreshAfterMerge })
   useMessageStore.setState({
     conversationStates: {},
-    isSending: false,
     error: null,
     onNewConversationCreated: undefined,
   })
