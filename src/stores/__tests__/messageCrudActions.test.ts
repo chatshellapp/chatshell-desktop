@@ -295,6 +295,31 @@ describe('message store crudActions', () => {
       expect(invokeMock).not.toHaveBeenCalledWith('send_message', expect.anything())
       expect(useMessageStore.getState().isSending).toBe(false)
     })
+
+    it('leaves the waiting state when send_message fails', async () => {
+      invokeMock.mockRejectedValue(new Error('send failed'))
+
+      await expect(
+        useMessageStore.getState().sendMessage('hi', 'conv-1', 'openai', 'gpt-4')
+      ).rejects.toThrow('send failed')
+
+      const cs = useMessageStore.getState().getConversationState('conv-1')
+      expect(cs.isStreaming).toBe(false)
+      expect(cs.isWaitingForAI).toBe(false)
+    })
+
+    it('keeps the waiting state of a turn it never started', async () => {
+      patchConv('conv-draft', { isStreaming: true, isWaitingForAI: true })
+      conversationMocks.saveDraftConversation.mockRejectedValueOnce(new Error('save failed'))
+
+      await expect(
+        useMessageStore.getState().sendMessage('hi', 'conv-draft', 'openai', 'gpt-4')
+      ).rejects.toThrow('save failed')
+
+      const cs = useMessageStore.getState().getConversationState('conv-draft')
+      expect(cs.isStreaming).toBe(true)
+      expect(cs.isWaitingForAI).toBe(true)
+    })
   })
 
   describe('branch-following window', () => {
@@ -537,6 +562,29 @@ describe('message store crudActions', () => {
       expect(
         useMessageStore.getState().getConversationState('conv-q').pendingMessages
       ).toHaveLength(0)
+    })
+
+    it('processNextPendingMessage contains a failed queued send', async () => {
+      useMessageStore.getState().enqueueMessage('conv-q', {
+        content: 'queued hello',
+        conversationId: 'conv-q',
+        provider: 'openai',
+        model: 'gpt-4o',
+      })
+      invokeMock.mockRejectedValue(new Error('send failed'))
+
+      useMessageStore.getState().processNextPendingMessage('conv-q')
+
+      await vi.waitFor(() => {
+        expect(logger.error).toHaveBeenCalledWith(
+          '[messageStore] Failed to send queued message:',
+          expect.any(Error)
+        )
+      })
+      const cs = useMessageStore.getState().getConversationState('conv-q')
+      expect(cs.isStreaming).toBe(false)
+      expect(cs.isWaitingForAI).toBe(false)
+      expect(cs.messages).toEqual([])
     })
 
     it('processNextPendingMessage dequeues and dispatches via sendMessage', async () => {

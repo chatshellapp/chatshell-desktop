@@ -113,7 +113,7 @@ describe('useChatEvents', () => {
       isSending: false,
       error: null,
       onNewConversationCreated: undefined,
-      sendMessage: vi.fn(),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
     })
     useConversationStore.setState({
       conversations: [],

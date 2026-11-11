@@ -210,6 +210,9 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
     let optimisticMessageId: string | undefined
     let optimisticConversationId: string | undefined
+    // Set once this send has put the conversation into the waiting state,
+    // which a failure must then undo (no chat-complete event will arrive).
+    let turnStarted = false
     try {
       // If no conversationId, create a new conversation first
       let targetId = conversationId
@@ -261,6 +264,7 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
       // Set waiting state for this conversation and clear previous streaming content
       get().getConversationState(targetId) // Ensure state exists
+      turnStarted = true
       set((draft) => {
         const convState = draft.conversationStates[targetId]
         if (convState) {
@@ -357,6 +361,13 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       set((draft) => {
         draft.error = String(error)
         draft.isSending = false
+        const convState = optimisticConversationId
+          ? draft.conversationStates[optimisticConversationId]
+          : undefined
+        if (turnStarted && convState) {
+          convState.isStreaming = false
+          convState.isWaitingForAI = false
+        }
       })
       if (optimisticMessageId && optimisticConversationId) {
         await withdrawOptimisticMessage(
@@ -785,28 +796,33 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
 
     logger.info('[messageStore] Processing next pending message for conversation:', conversationId)
 
-    get().sendMessage(
-      next.content,
-      next.conversationId,
-      next.provider,
-      next.model,
-      next.apiKey,
-      next.baseUrl,
-      next.apiStyle,
-      next.includeHistory,
-      next.systemPrompt,
-      next.userPrompt,
-      next.modelDbId,
-      next.assistantDbId,
-      next.urlsToFetch,
-      next.images,
-      next.files,
-      next.searchEnabled,
-      next.parameterOverrides,
-      next.contextMessageCount,
-      next.useProviderDefaults,
-      next.reuseFetchResultIds
-    )
+    get()
+      .sendMessage(
+        next.content,
+        next.conversationId,
+        next.provider,
+        next.model,
+        next.apiKey,
+        next.baseUrl,
+        next.apiStyle,
+        next.includeHistory,
+        next.systemPrompt,
+        next.userPrompt,
+        next.modelDbId,
+        next.assistantDbId,
+        next.urlsToFetch,
+        next.images,
+        next.files,
+        next.searchEnabled,
+        next.parameterOverrides,
+        next.contextMessageCount,
+        next.useProviderDefaults,
+        next.reuseFetchResultIds
+      )
+      .catch((error) => {
+        // sendMessage already recorded the error and reset the waiting state
+        logger.error('[messageStore] Failed to send queued message:', error)
+      })
   },
 
   clearPendingMessages: (conversationId: string) => {
