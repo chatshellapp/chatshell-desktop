@@ -130,9 +130,10 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
             selectedAssistantId={selectedAssistant?.id}
             onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
-            onModelSettings={(model: ModelListItem) => handlers.handleModelDelete(model)}
+            onModelSettings={(model: ModelListItem) => openProviderSettings(model.providerId)}
+            onModelDelete={(model: ModelListItem) => handlers.handleModelDelete(model)}
             onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
-            onVendorSettings={() => {}}
+            onVendorSettings={(vendor) => openProviderSettings(vendor.id)}
             onAssistantClick={(assistant: AssistantListItem) =>
               handlers.handleAssistantClick(assistant)
             }
@@ -149,7 +150,9 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onAssistantDelete={(assistant: AssistantListItem) =>
               handlers.handleAssistantDelete(assistant)
             }
-            onGroupSettings={() => {}}
+            onGroupRename={(group, newName) => {
+              void handlers.handleAssistantGroupRename(group, newName)
+            }}
           />
         )
       case 'library':

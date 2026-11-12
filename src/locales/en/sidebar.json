@@ -96,5 +96,9 @@
   "translationHistoryDeleteError": "Could not update translation history.",
   "translationHistoryClear": "Clear history",
   "translationHistoryClearTitle": "Clear translation history?",
-  "translationHistoryClearDescription": "All saved translations on this device will be removed. This cannot be undone."
+  "translationHistoryClearDescription": "All saved translations on this device will be removed. This cannot be undone.",
+  "renameGroup": "Rename Group",
+  "renameGroupDescription": "All assistants in this group will move to the new name.",
+  "groupNamePlaceholder": "Group name",
+  "ungroupAssistants": "Ungroup Assistants"
 }

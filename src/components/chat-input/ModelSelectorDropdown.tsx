@@ -26,6 +26,7 @@ import {
 import { AssistantHoverCard } from '@/components/assistant-hover-card'
 import { getModelLogo } from '@/lib/model-logos'
 import { logger } from '@/lib/logger'
+import { toAssistantRequest } from '@/lib/assistant-utils'
 
 interface ModelSelectorDropdownProps {
   isOpen: boolean
@@ -154,15 +155,12 @@ export function ModelSelectorDropdown({
     const realAssistant = assistants.find((a) => a.id === assistant.id)
     if (realAssistant) {
       try {
-        await updateAssistant(realAssistant.id, {
-          name: realAssistant.name,
-          system_prompt: realAssistant.system_prompt,
-          model_id: realAssistant.model_id,
-          avatar_bg: realAssistant.avatar_bg,
-          avatar_text: realAssistant.avatar_text,
-          group_name: realAssistant.group_name,
-          is_starred: !realAssistant.is_starred,
-        })
+        await updateAssistant(
+          realAssistant.id,
+          toAssistantRequest(realAssistant, {
+            is_starred: !realAssistant.is_starred,
+          })
+        )
       } catch (error) {
         logger.error('Failed to toggle star:', error)
       }

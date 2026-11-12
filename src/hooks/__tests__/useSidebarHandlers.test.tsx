@@ -376,13 +376,53 @@ describe('useSidebarHandlers', () => {
 
       expect(updateAssistant).toHaveBeenCalledWith('assistant-1', {
         name: 'Helper',
+        role: undefined,
+        description: undefined,
         system_prompt: 'assistant system prompt',
+        user_prompt: undefined,
         model_id: 'model-1',
+        model_parameter_preset_id: undefined,
+        avatar_type: 'text',
         avatar_bg: undefined,
         avatar_text: undefined,
+        avatar_image_path: undefined,
+        avatar_image_url: undefined,
         group_name: undefined,
         is_starred: true,
       })
+    })
+
+    it('keeps every other assistant field when toggling the star', async () => {
+      const detailed: Assistant = {
+        ...assistant,
+        role: 'Chef',
+        description: 'Cooks things',
+        user_prompt: 'Hello',
+        model_parameter_preset_id: 'preset-1',
+        avatar_type: 'image',
+        avatar_image_url: 'https://example.com/a.png',
+        group_name: 'Kitchen',
+      }
+      useAssistantStore.setState({ assistants: [detailed] })
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handleAssistantStarToggle(assistantItem)
+      })
+
+      expect(updateAssistant).toHaveBeenCalledWith(
+        'assistant-1',
+        expect.objectContaining({
+          role: 'Chef',
+          description: 'Cooks things',
+          user_prompt: 'Hello',
+          model_parameter_preset_id: 'preset-1',
+          avatar_type: 'image',
+          avatar_image_url: 'https://example.com/a.png',
+          group_name: 'Kitchen',
+          is_starred: true,
+        })
+      )
     })
 
     it('does nothing for unknown assistants and logs failures silently', async () => {
@@ -401,6 +441,69 @@ describe('useSidebarHandlers', () => {
 
       expect(logger.error).toHaveBeenCalledWith('Failed to toggle star:', expect.any(Error))
       expect(toast.error).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('handleAssistantGroupRename', () => {
+    const kitchenA: Assistant = { ...assistant, id: 'a-1', group_name: 'Kitchen' }
+    const kitchenB: Assistant = { ...assistant, id: 'a-2', group_name: 'Kitchen' }
+    const other: Assistant = { ...assistant, id: 'a-3', group_name: 'Office' }
+    const kitchenGroup = { id: 'group:Kitchen', name: 'Kitchen', assistants: [] }
+
+    beforeEach(() => {
+      useAssistantStore.setState({ assistants: [kitchenA, kitchenB, other] })
+    })
+
+    it('moves every member of the group to the new name', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let ok = false
+      await act(async () => {
+        ok = await result.current.handleAssistantGroupRename(kitchenGroup, '  Pantry  ')
+      })
+
+      expect(ok).toBe(true)
+      expect(updateAssistant).toHaveBeenCalledTimes(2)
+      expect(updateAssistant).toHaveBeenCalledWith(
+        'a-1',
+        expect.objectContaining({ group_name: 'Pantry' })
+      )
+      expect(updateAssistant).toHaveBeenCalledWith(
+        'a-2',
+        expect.objectContaining({ group_name: 'Pantry' })
+      )
+      // Tool and skill links are left out so the backend keeps them
+      expect(updateAssistant.mock.calls[0][1]).not.toHaveProperty('tool_ids')
+      expect(updateAssistant.mock.calls[0][1]).not.toHaveProperty('skill_ids')
+    })
+
+    it('ungroups members when the new name is empty', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handleAssistantGroupRename(kitchenGroup, '')
+      })
+
+      expect(updateAssistant).toHaveBeenCalledWith(
+        'a-1',
+        expect.objectContaining({ group_name: undefined })
+      )
+      expect(updateAssistant).not.toHaveBeenCalledWith('a-3', expect.anything())
+    })
+
+    it('toasts and reports failure when an update fails', async () => {
+      updateAssistant.mockRejectedValue(new Error('db locked'))
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let ok = true
+      await act(async () => {
+        ok = await result.current.handleAssistantGroupRename(kitchenGroup, 'Pantry')
+      })
+
+      expect(ok).toBe(false)
+      expect(toast.error).toHaveBeenCalledWith('failedToRenameAssistantGroup', {
+        description: 'db locked',
+      })
     })
   })
 

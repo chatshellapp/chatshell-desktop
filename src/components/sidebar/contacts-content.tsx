@@ -14,13 +14,14 @@ interface ContactsContentProps {
   selectedAssistantId?: string
   onModelClick: (model: Model) => void
   onModelSettings: (model: Model) => void
+  onModelDelete: (model: Model) => void
   onModelStarToggle: (model: Model) => void
   onVendorSettings: (vendor: ModelVendor) => void
   onAssistantClick: (assistant: Assistant) => void
   onAssistantSettings: (assistant: Assistant) => void
   onAssistantStarToggle: (assistant: Assistant) => void
   onAssistantDelete: (assistant: Assistant) => void
-  onGroupSettings: (group: AssistantGroup) => void
+  onGroupRename: (group: AssistantGroup, newName: string) => void
 }
 
 export function ContactsContent({
@@ -32,13 +33,14 @@ export function ContactsContent({
   selectedAssistantId,
   onModelClick,
   onModelSettings,
+  onModelDelete,
   onModelStarToggle,
   onVendorSettings,
   onAssistantClick,
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
-  onGroupSettings,
+  onGroupRename,
 }: ContactsContentProps) {
   const { t } = useTranslation('sidebar')
 
@@ -64,6 +66,7 @@ export function ContactsContent({
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
           onModelSettings={onModelSettings}
+          onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
           onVendorSettings={onVendorSettings}
         />
@@ -76,7 +79,7 @@ export function ContactsContent({
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
-          onGroupSettings={onGroupSettings}
+          onGroupRename={onGroupRename}
         />
       </TabsContent>
       <TabsContent value="people" className="mt-2">

@@ -19,6 +19,7 @@ export function useVendorsList(): ModelVendor[] {
             id: m.id,
             name: m.name,
             modelId: m.model_id,
+            providerId: m.provider_id,
             logo: getModelLogo(m),
             isStarred: m.is_starred || false,
           }))

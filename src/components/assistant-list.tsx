@@ -6,12 +6,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, Drama, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AssistantListItem, AssistantCapabilities } from '@/components/assistant-list-item'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { RenameDialog } from '@/components/message-list-item/rename-dialog'
+import { UNGROUPED_GROUP_NAME } from '@/lib/assistant-utils'
 
 export interface Assistant {
   /**
@@ -105,9 +108,10 @@ interface AssistantListProps {
    */
   onAssistantDelete?: (assistant: Assistant) => void
   /**
-   * Click handler for group settings
+   * Rename a group, or ungroup its assistants when the new name is empty.
+   * The group menu is hidden when absent.
    */
-  onGroupSettings?: (group: AssistantGroup) => void
+  onGroupRename?: (group: AssistantGroup, newName: string) => void
   /**
    * Optional className for customization
    */
@@ -125,11 +129,12 @@ export function AssistantList({
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
-  onGroupSettings,
+  onGroupRename,
   className,
   compact = false,
 }: AssistantListProps) {
   const { t } = useTranslation('assistants')
+  const { t: tSidebar } = useTranslation('sidebar')
   // Collect all starred assistants from all groups
   const starredAssistants = React.useMemo(() => {
     const assistants: Assistant[] = []
@@ -148,7 +153,7 @@ export function AssistantList({
   // Create a virtual group for starred assistants
   const starredGroup: AssistantGroup = {
     id: 'starred',
-    name: 'Starred',
+    name: tSidebar('starred'),
     assistants: starredAssistants,
     defaultOpen: true,
   }
@@ -181,7 +186,7 @@ export function AssistantList({
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
-          onGroupSettings={onGroupSettings}
+          onGroupRename={onGroupRename}
           hideGroupMenu
           forceDefaultOpen
           compact={compact}
@@ -198,7 +203,7 @@ export function AssistantList({
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
-          onGroupSettings={onGroupSettings}
+          onGroupRename={onGroupRename}
           forceDefaultOpen={!hasStarredAssistants && index === 0}
           ignoreGroupDefault={hasStarredAssistants}
           compact={compact}
@@ -215,7 +220,7 @@ interface AssistantGroupComponentProps {
   onAssistantSettings?: (assistant: Assistant) => void
   onAssistantStarToggle?: (assistant: Assistant) => void
   onAssistantDelete?: (assistant: Assistant) => void
-  onGroupSettings?: (group: AssistantGroup) => void
+  onGroupRename?: (group: AssistantGroup, newName: string) => void
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
   ignoreGroupDefault?: boolean
@@ -229,7 +234,7 @@ function AssistantGroupComponent({
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
-  onGroupSettings,
+  onGroupRename,
   hideGroupMenu = false,
   forceDefaultOpen = false,
   ignoreGroupDefault = false,
@@ -242,8 +247,11 @@ function AssistantGroupComponent({
   const initialOpenState = forceDefaultOpen || (!ignoreGroupDefault && (group.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
+  const [showRenameDialog, setShowRenameDialog] = React.useState(false)
   const { t } = useTranslation('sidebar')
-  const { t: tCommon } = useTranslation('common')
+  const isUngrouped = group.name === UNGROUPED_GROUP_NAME
+  // The virtual "Ungrouped" bucket has no name to edit
+  const showGroupMenu = !hideGroupMenu && !isUngrouped && !!onGroupRename
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -268,14 +276,12 @@ function AssistantGroupComponent({
                 !isOpen && '-rotate-90'
               )}
             />
-            <span className="flex-1 text-left">
-              {group.name === 'Ungrouped' ? t('ungrouped') : group.name}
-            </span>
+            <span className="flex-1 text-left">{isUngrouped ? t('ungrouped') : group.name}</span>
           </Button>
         </CollapsibleTrigger>
 
         {/* Group menu button */}
-        {!hideGroupMenu && (
+        {showGroupMenu && (
           <div
             className={cn(
               'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
@@ -299,10 +305,19 @@ function AssistantGroupComponent({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
-                    onGroupSettings?.(group)
+                    setShowRenameDialog(true)
                   }}
                 >
-                  {tCommon('configuration')}
+                  {t('renameGroup')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onGroupRename?.(group, '')
+                  }}
+                >
+                  {t('ungroupAssistants')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -333,6 +348,18 @@ function AssistantGroupComponent({
           />
         ))}
       </CollapsibleContent>
+
+      {showGroupMenu && (
+        <RenameDialog
+          open={showRenameDialog}
+          onOpenChange={setShowRenameDialog}
+          currentTitle={group.name}
+          onRename={(newName) => onGroupRename?.(group, newName)}
+          title={t('renameGroup')}
+          description={t('renameGroupDescription')}
+          placeholder={t('groupNamePlaceholder')}
+        />
+      )}
     </Collapsible>
   )
 }

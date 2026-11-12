@@ -16,9 +16,23 @@ interface RenameDialogProps {
   onOpenChange: (open: boolean) => void
   currentTitle: string
   onRename: (newTitle: string) => void
+  /** Dialog title; defaults to the conversation rename title */
+  title?: string
+  /** Dialog description; defaults to the conversation rename hint */
+  description?: string
+  /** Input placeholder; defaults to the conversation title placeholder */
+  placeholder?: string
 }
 
-export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: RenameDialogProps) {
+export function RenameDialog({
+  open,
+  onOpenChange,
+  currentTitle,
+  onRename,
+  title,
+  description,
+  placeholder,
+}: RenameDialogProps) {
   const { t } = useTranslation('chat')
   const { t: tCommon } = useTranslation('common')
   const [value, setValue] = React.useState(currentTitle)
@@ -41,13 +55,13 @@ export function RenameDialog({ open, onOpenChange, currentTitle, onRename }: Ren
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>{t('renameConversation')}</DialogTitle>
-          <DialogDescription>{t('enterNewTitle')}</DialogDescription>
+          <DialogTitle>{title ?? t('renameConversation')}</DialogTitle>
+          <DialogDescription>{description ?? t('enterNewTitle')}</DialogDescription>
         </DialogHeader>
         <Input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder={t('conversationTitlePlaceholder')}
+          placeholder={placeholder ?? t('conversationTitlePlaceholder')}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()

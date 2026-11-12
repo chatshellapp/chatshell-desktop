@@ -362,7 +362,20 @@ export function AssistantDialog({
     setError(null)
 
     try {
+      // The dialog does not edit the parameter preset or image avatar, so
+      // carry them over on edit; update_assistant replaces every column.
+      const preserved: Partial<CreateAssistantRequest> =
+        mode === 'edit' && assistant
+          ? {
+              model_parameter_preset_id: assistant.model_parameter_preset_id,
+              avatar_type: assistant.avatar_type,
+              avatar_image_path: assistant.avatar_image_path,
+              avatar_image_url: assistant.avatar_image_url,
+            }
+          : {}
       const req: CreateAssistantRequest = {
+        avatar_type: 'text',
+        ...preserved,
         name: name.trim(),
         role: role.trim() || undefined,
         description: description.trim() || undefined,
@@ -371,7 +384,6 @@ export function AssistantDialog({
         model_id: selectedModelId,
         tool_ids: toolIds,
         skill_ids: skillIds,
-        avatar_type: 'text',
         avatar_bg: avatarBg,
         avatar_text: avatarText || '🧑‍💼',
         group_name: groupName.trim() || undefined,

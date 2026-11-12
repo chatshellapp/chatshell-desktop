@@ -8,9 +8,13 @@ import { useModelStore } from '@/stores/modelStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { usePromptStore } from '@/stores/promptStore'
 import type { Model as ModelListItem } from '@/components/model-list'
-import type { Assistant as AssistantListItem } from '@/components/assistant-list'
+import type {
+  Assistant as AssistantListItem,
+  AssistantGroup as AssistantGroupListItem,
+} from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
 import { logger } from '@/lib/logger'
+import { toAssistantRequest, UNGROUPED_GROUP_NAME } from '@/lib/assistant-utils'
 
 export function useSidebarHandlers() {
   const { t } = useTranslation('messages')
@@ -116,15 +120,12 @@ export function useSidebarHandlers() {
       const realAssistant = assistants.find((a) => a.id === assistant.id)
       if (realAssistant) {
         try {
-          await updateAssistant(realAssistant.id, {
-            name: realAssistant.name,
-            system_prompt: realAssistant.system_prompt,
-            model_id: realAssistant.model_id,
-            avatar_bg: realAssistant.avatar_bg,
-            avatar_text: realAssistant.avatar_text,
-            group_name: realAssistant.group_name,
-            is_starred: !realAssistant.is_starred,
-          })
+          await updateAssistant(
+            realAssistant.id,
+            toAssistantRequest(realAssistant, {
+              is_starred: !realAssistant.is_starred,
+            })
+          )
         } catch (error) {
           logger.error('Failed to toggle star:', error)
         }
@@ -171,6 +172,38 @@ export function useSidebarHandlers() {
       }
     },
     [assistants, deleteAssistant]
+  )
+
+  /**
+   * Move every assistant in a group to a new group name. An empty name
+   * ungroups them. Returns true when all updates succeeded.
+   */
+  const handleAssistantGroupRename = useCallback(
+    async (group: AssistantGroupListItem, newName: string): Promise<boolean> => {
+      const trimmed = newName.trim()
+      const targetGroupName = trimmed && trimmed !== UNGROUPED_GROUP_NAME ? trimmed : undefined
+      const members = assistants.filter(
+        (a) => (a.group_name || UNGROUPED_GROUP_NAME) === group.name
+      )
+
+      try {
+        for (const member of members) {
+          if (member.group_name === targetGroupName) continue
+          await updateAssistant(
+            member.id,
+            toAssistantRequest(member, { group_name: targetGroupName })
+          )
+        }
+        return true
+      } catch (error) {
+        logger.error('Failed to rename assistant group:', error)
+        toast.error(t('failedToRenameAssistantGroup'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+        return false
+      }
+    },
+    [assistants, updateAssistant, t]
   )
 
   const handlePromptDelete = useCallback(
@@ -267,6 +300,7 @@ export function useSidebarHandlers() {
     handleAssistantStarToggle,
     handleModelDelete,
     handleAssistantDelete,
+    handleAssistantGroupRename,
     handlePromptDelete,
     handleConversationClick,
     handleNewConversation,

@@ -95,5 +95,7 @@
   "needsModels": "需要模型",
   "modelCount": "{{count}} 个模型",
   "addModelsBeforeChatting": "至少添加一个模型后即可开始对话。",
-  "customProviderPlaceholder": "例如：我的本地 LLM"
+  "customProviderPlaceholder": "例如：我的本地 LLM",
+  "removeModel": "移除模型",
+  "confirmRemoveModel": "确定要移除 {{name}} 吗？之后可以在服务商设置中重新添加。"
 }
