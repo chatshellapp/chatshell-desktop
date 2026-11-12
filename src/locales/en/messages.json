@@ -91,5 +91,8 @@
   "apiErrorServerError": "Server Error",
   "apiErrorBadGateway": "Bad Gateway",
   "apiErrorServiceUnavailable": "Service Unavailable",
-  "apiErrorGatewayTimeout": "Gateway Timeout"
+  "apiErrorGatewayTimeout": "Gateway Timeout",
+  "failedToUsePrompt": "Failed to use prompt",
+  "failedToDuplicatePrompt": "Failed to duplicate prompt",
+  "failedToRenamePromptCategory": "Failed to rename category"
 }

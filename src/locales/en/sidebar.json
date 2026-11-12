@@ -114,5 +114,21 @@
   "modelUnavailable": "Model unavailable",
   "parameterPreset": "Parameter Preset",
   "defaultPreset": "Default",
-  "userPrompt": "User Prompt"
+  "userPrompt": "User Prompt",
+  "useInNewChat": "Use in New Chat",
+  "insertIntoChat": "Insert into Current Chat",
+  "promptCopied": "Prompt copied",
+  "failedToCopyPrompt": "Failed to copy prompt",
+  "promptContentTitle": "Content",
+  "usedInConversations": "Used in Conversations",
+  "noPromptConversations": "No conversations use this system prompt yet.",
+  "promptCopyName": "{{name}} (Copy)",
+  "uncategorized": "Uncategorized",
+  "renameCategory": "Rename Category",
+  "renameCategoryDescription": "All prompts in this category will move to the new name.",
+  "categoryNamePlaceholder": "Category name",
+  "uncategorizePrompts": "Remove Category",
+  "promptLength": "Length",
+  "updatedAt": "Updated",
+  "promptType": "Type"
 }

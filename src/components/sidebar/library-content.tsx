@@ -9,10 +9,11 @@ interface LibraryContentProps {
   promptGroups: PromptGroup[]
   selectedPromptId?: string
   onPromptClick: (prompt: Prompt) => void
+  onPromptActivate: (prompt: Prompt) => void
   onPromptSettings: (prompt: Prompt) => void
   onPromptStarToggle: (prompt: Prompt) => void
   onPromptDelete: (prompt: Prompt) => void
-  onPromptGroupSettings: (group: PromptGroup) => void
+  onPromptGroupRename: (group: PromptGroup, newName: string) => void
 }
 
 export function LibraryContent({
@@ -21,10 +22,11 @@ export function LibraryContent({
   promptGroups,
   selectedPromptId,
   onPromptClick,
+  onPromptActivate,
   onPromptSettings,
   onPromptStarToggle,
   onPromptDelete,
-  onPromptGroupSettings,
+  onPromptGroupRename,
 }: LibraryContentProps) {
   const { t } = useTranslation('sidebar')
 
@@ -41,10 +43,11 @@ export function LibraryContent({
           groups={promptGroups}
           selectedPromptId={selectedPromptId}
           onPromptClick={onPromptClick}
+          onPromptActivate={onPromptActivate}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
           onPromptDelete={onPromptDelete}
-          onGroupSettings={onPromptGroupSettings}
+          onGroupRename={onPromptGroupRename}
         />
       </TabsContent>
     </Tabs>

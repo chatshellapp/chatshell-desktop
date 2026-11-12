@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
@@ -105,6 +105,8 @@ let updateAssistant: Mock
 let createAssistant: Mock
 let deleteAssistant: Mock
 let deletePrompt: Mock
+let createPrompt: Mock
+let updatePrompt: Mock
 let resetToolsAndSkillsToGlobal: Mock
 let initSettingsFromAssistant: Mock
 let scanSkills: Mock
@@ -121,6 +123,8 @@ function setupStores() {
   createAssistant = vi.fn().mockResolvedValue({ ...assistant, id: 'assistant-copy' })
   deleteAssistant = vi.fn().mockResolvedValue(undefined)
   deletePrompt = vi.fn().mockResolvedValue(undefined)
+  createPrompt = vi.fn().mockResolvedValue({ ...prompt, id: 'prompt-copy' })
+  updatePrompt = vi.fn().mockResolvedValue(prompt)
   resetToolsAndSkillsToGlobal = vi.fn().mockResolvedValue(undefined)
   initSettingsFromAssistant = vi.fn().mockResolvedValue(undefined)
   scanSkills = vi.fn().mockResolvedValue(undefined)
@@ -167,6 +171,8 @@ function setupStores() {
     isLoading: false,
     error: null,
     deletePrompt,
+    createPrompt,
+    updatePrompt,
   })
   useConversationSettingsStore.setState({
     resetToolsAndSkillsToGlobal,
@@ -552,6 +558,161 @@ describe('useSidebarHandlers', () => {
       expect(copy).toBeNull()
       expect(toast.error).toHaveBeenCalledWith('failedToDuplicateAssistant', {
         description: 'disk full',
+      })
+    })
+  })
+
+  describe('prompt actions', () => {
+    const systemPrompt: Prompt = {
+      ...prompt,
+      id: 'prompt-sys',
+      name: 'Reviewer',
+      content: 'You review code.',
+      is_system: true,
+      category: 'Dev',
+    }
+    const draft: Conversation = { ...conversation, id: 'draft-1', title: '' }
+    let openDraftConversation: Mock
+    let setSystemPrompt: Mock
+
+    const realOpenDraftConversation = useConversationStore.getState().openDraftConversation
+    const realSetSystemPrompt = useConversationSettingsStore.getState().setSystemPrompt
+
+    afterEach(() => {
+      // Restore the real actions so later tests are unaffected
+      useConversationStore.setState({ openDraftConversation: realOpenDraftConversation })
+      useConversationSettingsStore.setState({ setSystemPrompt: realSetSystemPrompt })
+    })
+
+    beforeEach(() => {
+      openDraftConversation = vi.fn().mockResolvedValue(draft)
+      setSystemPrompt = vi.fn().mockResolvedValue(undefined)
+      useConversationStore.setState({ openDraftConversation })
+      useConversationSettingsStore.setState({ setSystemPrompt })
+      usePromptStore.setState({ prompts: [prompt, systemPrompt] })
+    })
+
+    it('starts a draft with a system prompt selected', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handlePromptUse({ id: 'prompt-sys', name: 'Reviewer', content: '' })
+      })
+
+      expect(openDraftConversation).toHaveBeenCalled()
+      expect(setSystemPrompt).toHaveBeenCalledWith('draft-1', 'existing', 'prompt-sys')
+      expect(useConversationStore.getState().pendingInput).toBeNull()
+    })
+
+    it('prefills a new draft with a user prompt', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handlePromptUse(promptItem)
+      })
+
+      expect(useConversationStore.getState().pendingInput).toBe('Summarize the following text')
+      expect(openDraftConversation).toHaveBeenCalled()
+      expect(setSystemPrompt).not.toHaveBeenCalled()
+    })
+
+    it('toasts when using a prompt fails', async () => {
+      openDraftConversation.mockRejectedValue(new Error('no model'))
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handlePromptUse({ id: 'prompt-sys', name: 'Reviewer', content: '' })
+      })
+
+      expect(toast.error).toHaveBeenCalledWith('failedToUsePrompt', { description: 'no model' })
+    })
+
+    it('inserts into the current chat without opening a draft', async () => {
+      useConversationStore.setState({ currentConversation: conversation })
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handlePromptInsert(promptItem)
+      })
+
+      expect(useConversationStore.getState().pendingInput).toBe('Summarize the following text')
+      expect(openDraftConversation).not.toHaveBeenCalled()
+    })
+
+    it('opens a draft for insert when no chat is open', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      await act(async () => {
+        await result.current.handlePromptInsert(promptItem)
+      })
+
+      expect(openDraftConversation).toHaveBeenCalled()
+    })
+
+    it('duplicates a prompt with every field', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let copy: Prompt | null = null
+      await act(async () => {
+        copy = await result.current.handlePromptDuplicate(
+          { id: 'prompt-sys', name: 'Reviewer', content: '' },
+          'Reviewer (Copy)'
+        )
+      })
+
+      expect(copy).toEqual(expect.objectContaining({ id: 'prompt-copy' }))
+      expect(createPrompt).toHaveBeenCalledWith({
+        name: 'Reviewer (Copy)',
+        content: 'You review code.',
+        description: undefined,
+        category: 'Dev',
+        is_system: true,
+      })
+    })
+
+    it('renames a category on every member and can clear it', async () => {
+      const second: Prompt = { ...systemPrompt, id: 'prompt-sys-2' }
+      usePromptStore.setState({ prompts: [prompt, systemPrompt, second] })
+      const group = { id: 'category:Dev', name: 'Dev', prompts: [] }
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let ok = false
+      await act(async () => {
+        ok = await result.current.handlePromptCategoryRename(group, ' Code ')
+      })
+      expect(ok).toBe(true)
+      expect(updatePrompt).toHaveBeenCalledTimes(2)
+      expect(updatePrompt).toHaveBeenCalledWith(
+        'prompt-sys',
+        expect.objectContaining({ category: 'Code', content: 'You review code.', is_system: true })
+      )
+
+      updatePrompt.mockClear()
+      await act(async () => {
+        await result.current.handlePromptCategoryRename(group, '')
+      })
+      expect(updatePrompt).toHaveBeenCalledWith(
+        'prompt-sys-2',
+        expect.objectContaining({ category: undefined })
+      )
+      expect(updatePrompt).not.toHaveBeenCalledWith('prompt-1', expect.anything())
+    })
+
+    it('toasts when a category rename fails', async () => {
+      updatePrompt.mockRejectedValue(new Error('locked'))
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let ok = true
+      await act(async () => {
+        ok = await result.current.handlePromptCategoryRename(
+          { id: 'category:Dev', name: 'Dev', prompts: [] },
+          'Code'
+        )
+      })
+
+      expect(ok).toBe(false)
+      expect(toast.error).toHaveBeenCalledWith('failedToRenamePromptCategory', {
+        description: 'locked',
       })
     })
   })

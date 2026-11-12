@@ -113,5 +113,21 @@
   "modelUnavailable": "模型不可用",
   "parameterPreset": "参数预设",
   "defaultPreset": "默认",
-  "userPrompt": "用户提示词"
+  "userPrompt": "用户提示词",
+  "useInNewChat": "在新对话中使用",
+  "insertIntoChat": "插入当前对话",
+  "promptCopied": "已复制提示词",
+  "failedToCopyPrompt": "复制提示词失败",
+  "promptContentTitle": "内容",
+  "usedInConversations": "使用此提示词的对话",
+  "noPromptConversations": "还没有对话使用此系统提示词。",
+  "promptCopyName": "{{name}}（副本）",
+  "uncategorized": "未分类",
+  "renameCategory": "重命名分类",
+  "renameCategoryDescription": "该分类中的所有提示词都将移动到新名称下。",
+  "categoryNamePlaceholder": "分类名称",
+  "uncategorizePrompts": "移除分类",
+  "promptLength": "长度",
+  "updatedAt": "更新时间",
+  "promptType": "类型"
 }

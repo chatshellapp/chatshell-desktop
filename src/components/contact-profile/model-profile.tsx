@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings2, Trash2 } from 'lucide-react'
+import { MessageSquarePlus, Settings2, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { ModelAvatar } from '@/components/model-avatar'
@@ -14,11 +14,11 @@ import { getModelLogo } from '@/lib/model-logos'
 import type { Model } from '@/types'
 import {
   DetailList,
-  ProfileHeader,
-  ProfilePage,
-  ProfileSection,
+  DetailHeader,
+  DetailPage,
+  DetailSection,
   RecentConversations,
-} from './profile-layout'
+} from '@/components/detail-page'
 
 interface ModelProfileProps {
   model: Model
@@ -39,8 +39,8 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
   const listItem = { id: model.id, name: model.name, modelId: model.model_id }
 
   return (
-    <ProfilePage>
-      <ProfileHeader
+    <DetailPage>
+      <DetailHeader
         avatar={
           <ModelAvatar
             logo={getModelLogo(model)}
@@ -53,9 +53,13 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
         subtitle={model.model_id}
         badges={provider && <Badge variant="secondary">{provider.name}</Badge>}
         isStarred={model.is_starred}
-        onStartChat={() => {
-          void handlers.handleModelClick(listItem)
-          onChatOpened()
+        primaryAction={{
+          label: t('startChat'),
+          icon: <MessageSquarePlus />,
+          onClick: () => {
+            void handlers.handleModelClick(listItem)
+            onChatOpened()
+          },
         }}
         onStarToggle={() => void handlers.handleModelStarToggle(listItem)}
         menuItems={
@@ -73,7 +77,7 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
         }
       />
 
-      <ProfileSection title={t('contactDetails')}>
+      <DetailSection title={t('contactDetails')}>
         <DetailList
           items={[
             { label: tCommon('name'), value: model.name },
@@ -82,9 +86,9 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
             { label: tCommon('description'), value: model.description },
           ]}
         />
-      </ProfileSection>
+      </DetailSection>
 
-      <ProfileSection title={t('recentConversations')}>
+      <DetailSection title={t('recentConversations')}>
         <RecentConversations
           conversations={conversations}
           isLoading={isLoading}
@@ -93,7 +97,7 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
             onChatOpened()
           }}
         />
-      </ProfileSection>
+      </DetailSection>
 
       <DeleteModelDialog
         open={showDeleteDialog}
@@ -104,6 +108,6 @@ export function ModelProfile({ model, onChatOpened }: ModelProfileProps) {
           void handlers.handleModelDelete(listItem)
         }}
       />
-    </ProfilePage>
+    </DetailPage>
   )
 }

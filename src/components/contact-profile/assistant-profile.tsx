@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Pencil, Trash2 } from 'lucide-react'
+import { Copy, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { AssistantAvatar } from '@/components/assistant-avatar'
@@ -18,11 +18,11 @@ import type { Assistant } from '@/types'
 import {
   CollapsibleText,
   DetailList,
-  ProfileHeader,
-  ProfilePage,
-  ProfileSection,
+  DetailHeader,
+  DetailPage,
+  DetailSection,
   RecentConversations,
-} from './profile-layout'
+} from '@/components/detail-page'
 
 interface AssistantProfileProps {
   assistant: Assistant
@@ -62,8 +62,8 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
   }
 
   return (
-    <ProfilePage>
-      <ProfileHeader
+    <DetailPage>
+      <DetailHeader
         avatar={
           <AssistantAvatar
             logo={getAssistantAvatarImage(assistant)}
@@ -77,9 +77,13 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
         subtitle={assistant.role}
         badges={<Badge variant="secondary">{groupName}</Badge>}
         isStarred={assistant.is_starred}
-        onStartChat={() => {
-          void handlers.handleAssistantClick(listItem)
-          onChatOpened()
+        primaryAction={{
+          label: t('startChat'),
+          icon: <MessageSquarePlus />,
+          onClick: () => {
+            void handlers.handleAssistantClick(listItem)
+            onChatOpened()
+          },
         }}
         onStarToggle={() => void handlers.handleAssistantStarToggle(listItem)}
         menuItems={
@@ -101,7 +105,7 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
         }
       />
 
-      <ProfileSection title={t('contactDetails')}>
+      <DetailSection title={t('contactDetails')}>
         <DetailList
           items={[
             { label: tCommon('description'), value: assistant.description },
@@ -141,21 +145,21 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
             },
           ]}
         />
-      </ProfileSection>
+      </DetailSection>
 
       {assistant.system_prompt.trim() && (
-        <ProfileSection title={tAssistants('systemPrompt')}>
+        <DetailSection title={tAssistants('systemPrompt')}>
           <CollapsibleText text={assistant.system_prompt} />
-        </ProfileSection>
+        </DetailSection>
       )}
 
       {assistant.user_prompt?.trim() && (
-        <ProfileSection title={t('userPrompt')}>
+        <DetailSection title={t('userPrompt')}>
           <CollapsibleText text={assistant.user_prompt} />
-        </ProfileSection>
+        </DetailSection>
       )}
 
-      <ProfileSection title={t('recentConversations')}>
+      <DetailSection title={t('recentConversations')}>
         <RecentConversations
           conversations={conversations}
           isLoading={isLoading}
@@ -164,7 +168,7 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
             onChatOpened()
           }}
         />
-      </ProfileSection>
+      </DetailSection>
 
       <AssistantDialog
         open={showEditDialog}
@@ -182,6 +186,6 @@ export function AssistantProfile({ assistant, onChatOpened }: AssistantProfilePr
           void handlers.handleAssistantDelete(listItem)
         }}
       />
-    </ProfilePage>
+    </DetailPage>
   )
 }

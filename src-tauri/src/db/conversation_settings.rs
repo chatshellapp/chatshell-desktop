@@ -215,6 +215,32 @@ impl Database {
     }
 
     /// Delete settings for a conversation
+    /// IDs of live conversations whose settings select this prompt as the
+    /// system or user prompt, most recently updated first.
+    pub async fn list_conversation_ids_by_prompt(
+        &self,
+        prompt_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT c.id
+             FROM conversations c
+             JOIN conversation_settings s
+               ON s.conversation_id = c.id AND s.deleted_at IS NULL
+             WHERE c.deleted_at IS NULL
+               AND ((s.system_prompt_mode = 'existing' AND s.selected_system_prompt_id = ?1)
+                 OR (s.user_prompt_mode = 'existing' AND s.selected_user_prompt_id = ?1))
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT ?2",
+        )
+        .bind(prompt_id)
+        .bind(limit)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| row.get("id")).collect())
+    }
+
     pub async fn delete_conversation_settings(&self, conversation_id: &str) -> Result<()> {
         sqlx::query(&crate::db::soft_delete::tombstone_update(
             "conversation_settings",
@@ -346,6 +372,94 @@ mod tests {
                 .map(|t| t.id),
         );
         ids
+    }
+
+    async fn new_prompt(db: &Database, name: &str, is_system: bool) -> String {
+        db.create_prompt(CreatePromptRequest {
+            name: name.to_string(),
+            content: format!("{name} content"),
+            description: None,
+            category: None,
+            is_system: Some(is_system),
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn conversation_ids_by_prompt_matches_selected_prompts_only() {
+        let (db, _dir) = test_db().await;
+        let system_prompt = new_prompt(&db, "system", true).await;
+        let user_prompt = new_prompt(&db, "user", false).await;
+
+        let with_system = new_conversation(&db).await;
+        let with_user = new_conversation(&db).await;
+        let custom_mode = new_conversation(&db).await;
+        let deleted = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &with_system,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Existing),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.update_conversation_settings(
+            &with_user,
+            UpdateConversationSettingsRequest {
+                user_prompt_mode: Some(PromptMode::Existing),
+                selected_user_prompt_id: Some(Some(user_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        // A stale id under a non-existing mode does not count as using it.
+        db.update_conversation_settings(
+            &custom_mode,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Custom),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                custom_system_prompt: Some(Some("custom".to_string())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.update_conversation_settings(
+            &deleted,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Existing),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.delete_conversation(&deleted).await.unwrap();
+
+        assert_eq!(
+            db.list_conversation_ids_by_prompt(&system_prompt, 10)
+                .await
+                .unwrap(),
+            vec![with_system]
+        );
+        assert_eq!(
+            db.list_conversation_ids_by_prompt(&user_prompt, 10)
+                .await
+                .unwrap(),
+            vec![with_user]
+        );
+        assert!(
+            db.list_conversation_ids_by_prompt("missing", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

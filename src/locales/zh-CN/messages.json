@@ -91,5 +91,8 @@
   "apiErrorServerError": "服务器错误",
   "apiErrorBadGateway": "网关错误",
   "apiErrorServiceUnavailable": "服务不可用",
-  "apiErrorGatewayTimeout": "网关超时"
+  "apiErrorGatewayTimeout": "网关超时",
+  "failedToUsePrompt": "使用提示词失败",
+  "failedToDuplicatePrompt": "复制提示词失败",
+  "failedToRenamePromptCategory": "重命名分类失败"
 }

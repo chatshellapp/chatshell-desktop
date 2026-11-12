@@ -12,9 +12,13 @@ import type {
   Assistant as AssistantListItem,
   AssistantGroup as AssistantGroupListItem,
 } from '@/components/assistant-list'
-import type { Prompt as PromptListItem } from '@/components/prompt-list'
+import type {
+  Prompt as PromptListItem,
+  PromptGroup as PromptGroupListItem,
+} from '@/components/prompt-list'
 import { logger } from '@/lib/logger'
-import type { Assistant as AssistantDB } from '@/types'
+import type { Assistant as AssistantDB, Prompt as PromptDB } from '@/types'
+import { toPromptRequest, UNCATEGORIZED_CATEGORY } from '@/lib/prompt-utils'
 import { toAssistantRequest, UNGROUPED_GROUP_NAME } from '@/lib/assistant-utils'
 
 export function useSidebarHandlers() {
@@ -34,6 +38,9 @@ export function useSidebarHandlers() {
   const deleteAssistant = useAssistantStore((state) => state.deleteAssistant)
   const prompts = usePromptStore((state) => state.prompts)
   const deletePrompt = usePromptStore((state) => state.deletePrompt)
+  const createPrompt = usePromptStore((state) => state.createPrompt)
+  const updatePrompt = usePromptStore((state) => state.updatePrompt)
+  const setPendingInput = useConversationStore((state) => state.setPendingInput)
 
   const handleModelClick = useCallback(
     async (model: ModelListItem) => {
@@ -257,6 +264,112 @@ export function useSidebarHandlers() {
     [prompts, deletePrompt]
   )
 
+  /**
+   * Start a new draft chat with a library prompt. System prompts become the
+   * draft's system prompt setting; user prompts prefill the message input.
+   */
+  const handlePromptUse = useCallback(
+    async (prompt: PromptListItem) => {
+      const realPrompt = prompts.find((p) => p.id === prompt.id)
+      if (!realPrompt) {
+        logger.error('Prompt not found:', prompt.id)
+        return
+      }
+
+      try {
+        if (realPrompt.is_system) {
+          const draft = await openDraftConversation()
+          await useConversationSettingsStore
+            .getState()
+            .setSystemPrompt(draft.id, 'existing', realPrompt.id)
+        } else {
+          setPendingInput(realPrompt.content)
+          await openDraftConversation()
+        }
+      } catch (error) {
+        logger.error('Failed to use prompt:', error)
+        toast.error(t('failedToUsePrompt'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [prompts, openDraftConversation, setPendingInput, t]
+  )
+
+  /**
+   * Put a user prompt into the current chat's input, or a new draft when no
+   * chat is open
+   */
+  const handlePromptInsert = useCallback(
+    async (prompt: PromptListItem) => {
+      const realPrompt = prompts.find((p) => p.id === prompt.id)
+      if (!realPrompt) {
+        logger.error('Prompt not found:', prompt.id)
+        return
+      }
+      setPendingInput(realPrompt.content)
+      if (!useConversationStore.getState().currentConversation) {
+        try {
+          await openDraftConversation()
+        } catch (error) {
+          logger.error('Failed to open draft for prompt insert:', error)
+        }
+      }
+    },
+    [prompts, openDraftConversation, setPendingInput]
+  )
+
+  /**
+   * Create a copy of a prompt. Returns the new prompt, or null on failure.
+   */
+  const handlePromptDuplicate = useCallback(
+    async (prompt: PromptListItem, copyName: string): Promise<PromptDB | null> => {
+      const realPrompt = prompts.find((p) => p.id === prompt.id)
+      if (!realPrompt) {
+        logger.error('Prompt not found:', prompt.id)
+        return null
+      }
+
+      try {
+        return await createPrompt(toPromptRequest(realPrompt, { name: copyName }))
+      } catch (error) {
+        logger.error('Failed to duplicate prompt:', error)
+        toast.error(t('failedToDuplicatePrompt'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+        return null
+      }
+    },
+    [prompts, createPrompt, t]
+  )
+
+  /**
+   * Move every prompt in a category to a new name. An empty name clears the
+   * category. Returns true when all updates succeeded.
+   */
+  const handlePromptCategoryRename = useCallback(
+    async (group: PromptGroupListItem, newName: string): Promise<boolean> => {
+      const trimmed = newName.trim()
+      const targetCategory = trimmed && trimmed !== UNCATEGORIZED_CATEGORY ? trimmed : undefined
+      const members = prompts.filter((p) => (p.category || UNCATEGORIZED_CATEGORY) === group.name)
+
+      try {
+        for (const member of members) {
+          if (member.category === targetCategory) continue
+          await updatePrompt(member.id, toPromptRequest(member, { category: targetCategory }))
+        }
+        return true
+      } catch (error) {
+        logger.error('Failed to rename prompt category:', error)
+        toast.error(t('failedToRenamePromptCategory'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+        return false
+      }
+    },
+    [prompts, updatePrompt, t]
+  )
+
   const handleConversationClick = useCallback(
     async (conversationId: string) => {
       try {
@@ -334,6 +447,10 @@ export function useSidebarHandlers() {
     handleAssistantGroupRename,
     handleAssistantDuplicate,
     handlePromptDelete,
+    handlePromptUse,
+    handlePromptInsert,
+    handlePromptDuplicate,
+    handlePromptCategoryRename,
     handleConversationClick,
     handleNewConversation,
     handleGenerateTitle,

@@ -141,7 +141,7 @@ pub async fn get_conversation_participant_summary(
         .map_err(|e| e.to_string())
 }
 
-/// Upper bound for the contact profile's recent conversations list
+/// Upper bound for the recent conversations lists on detail pages
 const MAX_PARTICIPANT_CONVERSATIONS: i64 = 50;
 
 #[tauri::command]
@@ -157,6 +157,22 @@ pub async fn list_conversation_ids_by_participant(
     state
         .db
         .list_conversation_ids_by_participant(&participant_type, &participant_id, limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_conversation_ids_by_prompt(
+    state: State<'_, AppState>,
+    prompt_id: String,
+    limit: Option<i64>,
+) -> Result<Vec<String>, String> {
+    let limit = limit
+        .unwrap_or(MAX_PARTICIPANT_CONVERSATIONS)
+        .clamp(1, MAX_PARTICIPANT_CONVERSATIONS);
+    state
+        .db
+        .list_conversation_ids_by_prompt(&prompt_id, limit)
         .await
         .map_err(|e| e.to_string())
 }

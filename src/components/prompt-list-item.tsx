@@ -11,7 +11,8 @@ import {
 import { MoreVertical, Star, SquareTerminal, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeletePromptDialog } from './prompt-list-item/delete-dialog'
-import { logger } from '@/lib/logger'
+import { toast } from 'sonner'
+import { copyPromptContent } from '@/lib/prompt-utils'
 import { useTranslation } from 'react-i18next'
 
 interface PromptListItemProps {
@@ -35,6 +36,10 @@ interface PromptListItemProps {
    * Click handler for the item
    */
   onClick?: () => void
+  /**
+   * Primary action on double-click or Enter; Enter falls back to onClick when absent
+   */
+  onActivate?: () => void
   /**
    * Click handler for settings button
    */
@@ -67,6 +72,7 @@ export function PromptListItem({
   isStarred = false,
   isSystem = false,
   onClick,
+  onActivate,
   onSettingsClick,
   onStarClick,
   onDeleteClick,
@@ -76,17 +82,16 @@ export function PromptListItem({
 }: PromptListItemProps) {
   const { t } = useTranslation('prompts')
   const { t: tCommon } = useTranslation('common')
+  const { t: tSidebar } = useTranslation('sidebar')
   const [isHovered, setIsHovered] = React.useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
 
   const handleCopyContent = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      // You could add a toast notification here if you have a toast system
-      logger.info('Prompt content copied to clipboard')
+    if (await copyPromptContent(content)) {
+      toast.success(tSidebar('promptCopied'))
       onCopyContent?.(content)
-    } catch (error) {
-      logger.error('Failed to copy to clipboard:', error)
+    } else {
+      toast.error(tSidebar('failedToCopyPrompt'))
     }
   }
 
@@ -98,15 +103,18 @@ export function PromptListItem({
         className
       )}
       onClick={onClick}
+      onDoubleClick={onActivate}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       tabIndex={0}
       role="button"
       size="sm"
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onClick?.()
+          if (e.key === 'Enter' && onActivate) onActivate()
+          else onClick?.()
         }
       }}
     >
@@ -169,7 +177,7 @@ export function PromptListItem({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleCopyContent()
+                    void handleCopyContent()
                   }}
                 >
                   {t('copyContent')}

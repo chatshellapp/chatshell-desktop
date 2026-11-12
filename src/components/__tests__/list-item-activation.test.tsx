@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ModelListItem } from '@/components/model-list-item'
 import { AssistantListItem } from '@/components/assistant-list-item'
+import { PromptListItem } from '@/components/prompt-list-item'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -22,6 +23,14 @@ const cases = [
     renderItem: (onClick: () => void, onActivate?: () => void) =>
       render(<AssistantListItem name="Chef" onClick={onClick} onActivate={onActivate} />),
     label: 'Chef',
+  },
+  {
+    name: 'PromptListItem',
+    renderItem: (onClick: () => void, onActivate?: () => void) =>
+      render(
+        <PromptListItem name="Summarize" content="text" onClick={onClick} onActivate={onActivate} />
+      ),
+    label: 'Summarize',
   },
 ]
 

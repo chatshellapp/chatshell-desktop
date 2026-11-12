@@ -6,6 +6,8 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
 import { ContactProfile } from '@/components/contact-profile'
 import { useSelectedContact } from '@/hooks/useContactProfile'
+import { PromptDetail } from '@/components/prompt-detail'
+import { useSelectedPrompt } from '@/hooks/usePromptGroups'
 import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
@@ -112,15 +114,19 @@ export function ChatPage() {
       : selectedContact?.kind === 'assistant'
         ? selectedContact.assistant.name
         : undefined
+  const selectedPrompt = useSelectedPrompt()
+  const showPromptDetail = activeSection === 'library' && selectedPrompt !== null
 
-  // Search, translation continuation and contact profiles can select a
+  // Search, translation continuation and detail pages can select a
   // conversation outside the conversation list; follow it there so the chat
-  // is not hidden behind the translation view or a contact profile.
+  // is not hidden behind the translation view or a detail page.
   useEffect(() => {
     return useConversationStore.subscribe((state, previous) => {
       if (state.currentConversation?.id !== previous.currentConversation?.id) {
         setActiveSection((section) =>
-          section === 'translation' || section === 'contacts' ? 'conversations' : section
+          section === 'translation' || section === 'contacts' || section === 'library'
+            ? 'conversations'
+            : section
         )
       }
     })
@@ -181,9 +187,11 @@ export function ChatPage() {
                 ? t('sidebar:translation')
                 : showContactProfile
                   ? contactName
-                  : currentConversation
-                    ? currentConversation.title || t('sidebar:newConversation')
-                    : t('chat:selectConversation')}
+                  : showPromptDetail
+                    ? selectedPrompt.name
+                    : currentConversation
+                      ? currentConversation.title || t('sidebar:newConversation')
+                      : t('chat:selectConversation')}
             </h1>
           </header>
           <SyncLockedBanner />
@@ -207,6 +215,12 @@ export function ChatPage() {
           ) : showContactProfile && selectedContact ? (
             <ContactProfile
               contact={selectedContact}
+              onChatOpened={() => setActiveSection('conversations')}
+            />
+          ) : showPromptDetail && selectedPrompt ? (
+            <PromptDetail
+              key={selectedPrompt.id}
+              prompt={selectedPrompt}
               onChatOpened={() => setActiveSection('conversations')}
             />
           ) : (

@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { useMemo } from 'react'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useModelStore } from '@/stores/modelStore'
-import { useConversationStore } from '@/stores/conversation'
 import { useContactSelectionStore, type ContactSelection } from '@/stores/contactSelectionStore'
-import { logger } from '@/lib/logger'
-import type { Assistant, Conversation, Model } from '@/types'
+import { useRelatedConversations, type RelatedConversations } from './useRelatedConversations'
+import type { Assistant, Model } from '@/types'
 
 export type ResolvedContact =
   | { kind: 'model'; model: Model }
@@ -32,49 +30,11 @@ export function useSelectedContact(): ResolvedContact | null {
 }
 
 /**
- * Conversations the contact takes part in, most recently updated first.
- * Re-queries whenever the conversation list changes so new chats show up.
+ * Conversations the contact takes part in, most recently updated first
  */
-export function useContactConversations(selection: ContactSelection | null): {
-  conversations: Conversation[]
-  isLoading: boolean
-} {
-  const allConversations = useConversationStore((state) => state.conversations)
-  const [ids, setIds] = useState<string[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const kind = selection?.kind
-  const id = selection?.id
-
-  useEffect(() => {
-    if (!kind || !id) {
-      setIds([])
-      return
-    }
-    let cancelled = false
-    setIsLoading(true)
-    invoke<string[]>('list_conversation_ids_by_participant', {
-      participantType: kind,
-      participantId: id,
-    })
-      .then((result) => {
-        if (!cancelled) setIds(result)
-      })
-      .catch((error) => {
-        logger.error('Failed to load contact conversations:', error)
-        if (!cancelled) setIds([])
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [kind, id, allConversations])
-
-  const conversations = useMemo(() => {
-    const byId = new Map(allConversations.map((c) => [c.id, c]))
-    return ids.map((cid) => byId.get(cid)).filter((c): c is Conversation => !!c)
-  }, [ids, allConversations])
-
-  return { conversations, isLoading }
+export function useContactConversations(selection: ContactSelection | null): RelatedConversations {
+  return useRelatedConversations(
+    'list_conversation_ids_by_participant',
+    selection ? { participantType: selection.kind, participantId: selection.id } : null
+  )
 }

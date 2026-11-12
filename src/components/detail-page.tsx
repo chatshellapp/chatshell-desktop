@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, MessageSquarePlus, MoreHorizontal, Star } from 'lucide-react'
+import { MessageSquare, MoreHorizontal, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -11,39 +11,54 @@ import { cn, formatConversationTimestamp } from '@/lib/utils'
 import type { Conversation } from '@/types'
 
 /**
- * Scrollable page frame shared by every contact profile
+ * Building blocks for the main-pane detail pages shown when an item is
+ * selected in a sidebar section (contact profiles, library prompts).
  */
-export function ProfilePage({ children }: { children: React.ReactNode }) {
+
+/**
+ * Scrollable page frame shared by every detail page
+ */
+export function DetailPage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex-1 overflow-y-auto" data-testid="contact-profile">
+    <div className="flex-1 overflow-y-auto" data-testid="detail-page">
       <div className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-10">{children}</div>
     </div>
   )
 }
 
-interface ProfileHeaderProps {
+export interface DetailPrimaryAction {
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+}
+
+interface DetailHeaderProps {
   avatar: React.ReactNode
   name: string
   subtitle?: string
   /** Small badges under the subtitle (provider, group, ...) */
   badges?: React.ReactNode
+  /** Main call to action, rendered as the filled button */
+  primaryAction: DetailPrimaryAction
+  /** Extra icon buttons placed between the star and the menu */
+  extraActions?: React.ReactNode
   isStarred: boolean
-  onStartChat: () => void
   onStarToggle: () => void
   /** Dropdown menu items for secondary actions */
   menuItems?: React.ReactNode
 }
 
-export function ProfileHeader({
+export function DetailHeader({
   avatar,
   name,
   subtitle,
   badges,
+  primaryAction,
+  extraActions,
   isStarred,
-  onStartChat,
   onStarToggle,
   menuItems,
-}: ProfileHeaderProps) {
+}: DetailHeaderProps) {
   const { t } = useTranslation('sidebar')
 
   return (
@@ -51,13 +66,13 @@ export function ProfileHeader({
       {avatar}
       <div className="flex min-w-0 flex-col items-center gap-1">
         <h2 className="max-w-full truncate text-2xl font-semibold">{name}</h2>
-        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+        {subtitle && <p className="max-w-lg text-sm text-muted-foreground">{subtitle}</p>}
         {badges && <div className="mt-1 flex flex-wrap justify-center gap-1.5">{badges}</div>}
       </div>
       <div className="flex items-center gap-2">
-        <Button onClick={onStartChat}>
-          <MessageSquarePlus />
-          {t('startChat')}
+        <Button onClick={primaryAction.onClick}>
+          {primaryAction.icon}
+          {primaryAction.label}
         </Button>
         <Button
           variant="outline"
@@ -70,6 +85,7 @@ export function ProfileHeader({
         >
           <Star className={cn(isStarred && 'fill-current')} />
         </Button>
+        {extraActions}
         {menuItems && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -85,7 +101,7 @@ export function ProfileHeader({
   )
 }
 
-export function ProfileSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
@@ -155,19 +171,22 @@ interface RecentConversationsProps {
   conversations: Conversation[]
   isLoading: boolean
   onOpen: (conversationId: string) => void
+  /** Text shown when the list is empty; defaults to the contact wording */
+  emptyText?: string
 }
 
 export function RecentConversations({
   conversations,
   isLoading,
   onOpen,
+  emptyText,
 }: RecentConversationsProps) {
   const { t } = useTranslation('sidebar')
 
   if (conversations.length === 0) {
     return (
       <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-        {isLoading ? t('common:loading') : t('noRecentConversations')}
+        {isLoading ? t('common:loading') : (emptyText ?? t('noRecentConversations'))}
       </p>
     )
   }

@@ -6,12 +6,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, MoreVertical, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PromptListItem } from '@/components/prompt-list-item'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { RenameDialog } from '@/components/message-list-item/rename-dialog'
+import { UNCATEGORIZED_CATEGORY } from '@/lib/prompt-utils'
 
 export interface Prompt {
   /**
@@ -69,6 +72,10 @@ interface PromptListProps {
    */
   onPromptClick?: (prompt: Prompt) => void
   /**
+   * Double-click or Enter on a prompt
+   */
+  onPromptActivate?: (prompt: Prompt) => void
+  /**
    * Click handler for prompt settings
    */
   onPromptSettings?: (prompt: Prompt) => void
@@ -81,9 +88,10 @@ interface PromptListProps {
    */
   onPromptDelete?: (prompt: Prompt) => void
   /**
-   * Click handler for group settings
+   * Rename a category, or clear it on its prompts when the new name is empty.
+   * The group menu is hidden when absent.
    */
-  onGroupSettings?: (group: PromptGroup) => void
+  onGroupRename?: (group: PromptGroup, newName: string) => void
   /**
    * Optional className for customization
    */
@@ -94,13 +102,15 @@ export function PromptList({
   groups,
   selectedPromptId,
   onPromptClick,
+  onPromptActivate,
   onPromptSettings,
   onPromptStarToggle,
   onPromptDelete,
-  onGroupSettings,
+  onGroupRename,
   className,
 }: PromptListProps) {
   const { t } = useTranslation('prompts')
+  const { t: tSidebar } = useTranslation('sidebar')
   // Collect all starred prompts from all groups
   const starredPrompts = React.useMemo(() => {
     const prompts: Prompt[] = []
@@ -119,7 +129,7 @@ export function PromptList({
   // Create a virtual group for starred prompts
   const starredGroup: PromptGroup = {
     id: 'starred',
-    name: 'Starred',
+    name: tSidebar('starred'),
     prompts: starredPrompts,
     defaultOpen: true,
   }
@@ -149,10 +159,11 @@ export function PromptList({
           group={starredGroup}
           selectedPromptId={selectedPromptId}
           onPromptClick={onPromptClick}
+          onPromptActivate={onPromptActivate}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
           onPromptDelete={onPromptDelete}
-          onGroupSettings={onGroupSettings}
+          onGroupRename={onGroupRename}
           hideGroupMenu
           forceDefaultOpen
         />
@@ -165,10 +176,11 @@ export function PromptList({
           group={group}
           selectedPromptId={selectedPromptId}
           onPromptClick={onPromptClick}
+          onPromptActivate={onPromptActivate}
           onPromptSettings={onPromptSettings}
           onPromptStarToggle={onPromptStarToggle}
           onPromptDelete={onPromptDelete}
-          onGroupSettings={onGroupSettings}
+          onGroupRename={onGroupRename}
           forceDefaultOpen={!hasStarredPrompts && index === 0}
           ignoreGroupDefault={hasStarredPrompts}
         />
@@ -181,10 +193,11 @@ interface PromptGroupComponentProps {
   group: PromptGroup
   selectedPromptId?: string
   onPromptClick?: (prompt: Prompt) => void
+  onPromptActivate?: (prompt: Prompt) => void
   onPromptSettings?: (prompt: Prompt) => void
   onPromptStarToggle?: (prompt: Prompt) => void
   onPromptDelete?: (prompt: Prompt) => void
-  onGroupSettings?: (group: PromptGroup) => void
+  onGroupRename?: (group: PromptGroup, newName: string) => void
   hideGroupMenu?: boolean
   forceDefaultOpen?: boolean
   ignoreGroupDefault?: boolean
@@ -194,10 +207,11 @@ function PromptGroupComponent({
   group,
   selectedPromptId,
   onPromptClick,
+  onPromptActivate,
   onPromptSettings,
   onPromptStarToggle,
   onPromptDelete,
-  onGroupSettings,
+  onGroupRename,
   hideGroupMenu = false,
   forceDefaultOpen = false,
   ignoreGroupDefault = false,
@@ -209,7 +223,11 @@ function PromptGroupComponent({
   const initialOpenState = forceDefaultOpen || (!ignoreGroupDefault && (group.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
-  const { t: tCommon } = useTranslation('common')
+  const [showRenameDialog, setShowRenameDialog] = React.useState(false)
+  const { t } = useTranslation('sidebar')
+  const isUncategorized = group.name === UNCATEGORIZED_CATEGORY
+  // The virtual "Uncategorized" bucket has no name to edit
+  const showGroupMenu = !hideGroupMenu && !isUncategorized && !!onGroupRename
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -227,12 +245,14 @@ function PromptGroupComponent({
             <ChevronDown
               className={cn('size-4 transition-transform duration-200', !isOpen && '-rotate-90')}
             />
-            <span className="flex-1 text-left">{group.name}</span>
+            <span className="flex-1 text-left">
+              {isUncategorized ? t('uncategorized') : group.name}
+            </span>
           </Button>
         </CollapsibleTrigger>
 
         {/* Group menu button */}
-        {!hideGroupMenu && (
+        {showGroupMenu && (
           <div
             className={cn(
               'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
@@ -256,10 +276,19 @@ function PromptGroupComponent({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
-                    onGroupSettings?.(group)
+                    setShowRenameDialog(true)
                   }}
                 >
-                  {tCommon('configuration')}
+                  {t('renameCategory')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onGroupRename?.(group, '')
+                  }}
+                >
+                  {t('uncategorizePrompts')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -277,12 +306,25 @@ function PromptGroupComponent({
             isSystem={prompt.isSystem}
             isActive={selectedPromptId === prompt.id}
             onClick={() => onPromptClick?.(prompt)}
+            onActivate={onPromptActivate ? () => onPromptActivate(prompt) : undefined}
             onSettingsClick={() => onPromptSettings?.(prompt)}
             onStarClick={() => onPromptStarToggle?.(prompt)}
             onDeleteClick={onPromptDelete ? () => onPromptDelete(prompt) : undefined}
           />
         ))}
       </CollapsibleContent>
+
+      {showGroupMenu && (
+        <RenameDialog
+          open={showRenameDialog}
+          onOpenChange={setShowRenameDialog}
+          currentTitle={group.name}
+          onRename={(newName) => onGroupRename?.(group, newName)}
+          title={t('renameCategory')}
+          description={t('renameCategoryDescription')}
+          placeholder={t('categoryNamePlaceholder')}
+        />
+      )}
     </Collapsible>
   )
 }
