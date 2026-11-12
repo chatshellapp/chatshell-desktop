@@ -12,8 +12,10 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
-const NEW_CONVERSATION_SHORTCUT =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘N' : 'Ctrl+N'
+export const IS_APPLE_PLATFORM =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+const NEW_CONVERSATION_SHORTCUT = IS_APPLE_PLATFORM ? '⌘N' : 'Ctrl+N'
 
 export interface NavItem {
   id: string
@@ -29,8 +31,6 @@ interface SidebarNavigationProps {
   onItemClick: (item: NavItem) => void
   onSettingsClick: () => void
   onNewConversation: () => void
-  /** The empty new-conversation draft is open; highlights New Chat instead of Conversations */
-  isNewConversationActive: boolean
   user: { name: string; email: string; avatar: string }
 }
 
@@ -40,7 +40,6 @@ export function SidebarNavigation({
   onItemClick,
   onSettingsClick,
   onNewConversation,
-  isNewConversationActive,
 }: SidebarNavigationProps) {
   const { t } = useTranslation()
   const settingsItem = navItems.find((item) => item.id === 'settings')
@@ -60,9 +59,7 @@ export function SidebarNavigation({
             onItemClick(item)
           }
         }}
-        isActive={
-          activeItem?.id === item.id && !(item.id === 'conversations' && isNewConversationActive)
-        }
+        isActive={activeItem?.id === item.id}
         className="px-2.5 md:px-2"
       >
         <item.icon />
@@ -82,7 +79,6 @@ export function SidebarNavigation({
                 hidden: false,
               }}
               onClick={onNewConversation}
-              isActive={isNewConversationActive}
               aria-label={t('sidebar:newConversation')}
               className="px-2.5 md:px-2"
             >

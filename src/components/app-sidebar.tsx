@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Search, SquarePen } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sidebar,
@@ -20,7 +20,7 @@ import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
 import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
-import { SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
+import { IS_APPLE_PLATFORM, SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
 import { useConversationParticipants } from '@/hooks/useConversationParticipants'
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
@@ -258,23 +258,22 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const footer = renderFooter()
 
   const { handleNewConversation } = handlers
-  const isDraftCurrent = useConversationStore(
-    (state) =>
-      state.draftConversation !== null &&
-      state.currentConversation?.id === state.draftConversation.id
-  )
   const startNewConversation = React.useCallback(() => {
     onSectionChange('conversations')
     handleNewConversation()
   }, [onSectionChange, handleNewConversation])
 
-  // Global shortcut: Cmd+N / Ctrl+N to start a new conversation
+  // Global shortcut: Cmd+N (macOS) / Ctrl+N (elsewhere) to start a new
+  // conversation. Ctrl+N is left alone on macOS, where it moves the caret
+  // down a line in text fields.
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        startNewConversation()
-      }
+      const modifier = IS_APPLE_PLATFORM ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+      if (!modifier || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'n') return
+      e.preventDefault()
+      // Do not switch conversations underneath an open dialog
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      startNewConversation()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -301,7 +300,6 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
         onNewConversation={startNewConversation}
-        isNewConversationActive={activeSection === 'conversations' && isDraftCurrent}
         user={SIDEBAR_DATA.user}
       />
 
@@ -310,29 +308,15 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           <SidebarHeader className="gap-3.5 border-b p-4">
             <div className="flex w-full items-center justify-between h-7">
               <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
-              <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => useSearchStore.getState().setOpen(true)}
-                  aria-label="Search chat history"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-                {activeItem.id === 'conversations' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0"
-                    onClick={handlers.handleNewConversation}
-                    aria-label={t('sidebar:newConversation')}
-                    title={t('sidebar:newConversation')}
-                  >
-                    <SquarePen className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => useSearchStore.getState().setOpen(true)}
+                aria-label="Search chat history"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
             </div>
           </SidebarHeader>
           <SidebarContent>
