@@ -97,17 +97,17 @@ export function ModelSelectorDropdown({
       return
     }
 
-    const wasPreviouslyAssistant = !!selectedAssistant
+    const previousAssistant = selectedAssistant
     setSelectedModel(model)
     logger.info('Selected model:', model.name)
     onOpenChange(false)
 
-    if (wasPreviouslyAssistant) {
+    if (previousAssistant) {
       const currentConversation = useConversationStore.getState().currentConversation
       if (currentConversation) {
-        await useConversationSettingsStore
-          .getState()
-          .resetToolsAndSkillsToGlobal(currentConversation.id)
+        const settingsStore = useConversationSettingsStore.getState()
+        await settingsStore.resetToolsAndSkillsToGlobal(currentConversation.id)
+        await settingsStore.clearInheritedPreset(currentConversation.id, previousAssistant)
       }
     }
   }
@@ -128,7 +128,7 @@ export function ModelSelectorDropdown({
     if (currentConversation) {
       await useConversationSettingsStore
         .getState()
-        .initSettingsFromAssistant(currentConversation.id, assistant.tool_ids, assistant.skill_ids)
+        .initSettingsFromAssistant(currentConversation.id, assistant)
     }
   }
 

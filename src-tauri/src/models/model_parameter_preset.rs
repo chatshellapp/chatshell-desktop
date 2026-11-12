@@ -125,3 +125,16 @@ pub struct UpdateModelParameterPresetRequest {
     #[ts(optional)]
     pub is_default: Option<bool>,
 }
+
+impl From<&ModelParameterPreset> for super::ModelParameters {
+    fn from(preset: &ModelParameterPreset) -> Self {
+        Self {
+            temperature: preset.temperature,
+            max_tokens: preset.max_tokens,
+            top_p: preset.top_p,
+            frequency_penalty: preset.frequency_penalty,
+            presence_penalty: preset.presence_penalty,
+            additional_params: preset.additional_params.clone(),
+        }
+    }
+}

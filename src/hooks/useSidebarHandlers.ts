@@ -54,14 +54,14 @@ export function useSidebarHandlers() {
         // The draft's settings are in place before they are adjusted below
         const targetConversation = await openDraftConversation()
 
-        const wasPreviouslyAssistant = !!useConversationStore.getState().selectedAssistant
+        const previousAssistant = useConversationStore.getState().selectedAssistant
         setSelectedModel(realModel)
 
-        // Reset tools/skills to global defaults when switching away from an assistant
-        if (wasPreviouslyAssistant) {
-          await useConversationSettingsStore
-            .getState()
-            .resetToolsAndSkillsToGlobal(targetConversation.id)
+        // Reset tools/skills and any inherited preset when switching away from an assistant
+        if (previousAssistant) {
+          const settingsStore = useConversationSettingsStore.getState()
+          await settingsStore.resetToolsAndSkillsToGlobal(targetConversation.id)
+          await settingsStore.clearInheritedPreset(targetConversation.id, previousAssistant)
         }
       } catch (error) {
         logger.error('Failed to handle model click:', error)
@@ -89,11 +89,7 @@ export function useSidebarHandlers() {
         // Initialize conversation settings with the assistant's tools and skills
         await useConversationSettingsStore
           .getState()
-          .initSettingsFromAssistant(
-            targetConversation.id,
-            realAssistant.tool_ids,
-            realAssistant.skill_ids
-          )
+          .initSettingsFromAssistant(targetConversation.id, realAssistant)
       } catch (error) {
         logger.error('Failed to handle assistant click:', error)
         toast.error(t('failedToSelectAssistant'), {

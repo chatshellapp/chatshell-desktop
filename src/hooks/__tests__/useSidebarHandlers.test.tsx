@@ -109,6 +109,7 @@ let createPrompt: Mock
 let updatePrompt: Mock
 let resetToolsAndSkillsToGlobal: Mock
 let initSettingsFromAssistant: Mock
+let clearInheritedPreset: Mock
 let scanSkills: Mock
 let startDraft: Mock
 
@@ -127,6 +128,7 @@ function setupStores() {
   updatePrompt = vi.fn().mockResolvedValue(prompt)
   resetToolsAndSkillsToGlobal = vi.fn().mockResolvedValue(undefined)
   initSettingsFromAssistant = vi.fn().mockResolvedValue(undefined)
+  clearInheritedPreset = vi.fn().mockResolvedValue(undefined)
   scanSkills = vi.fn().mockResolvedValue(undefined)
   startDraft = vi.fn().mockResolvedValue(undefined)
 
@@ -177,6 +179,7 @@ function setupStores() {
   useConversationSettingsStore.setState({
     resetToolsAndSkillsToGlobal,
     initSettingsFromAssistant,
+    clearInheritedPreset,
     startDraft,
     removeSettings: vi.fn(),
   })
@@ -234,6 +237,7 @@ describe('useSidebarHandlers', () => {
       expect(state.selectedModel?.id).toBe('model-1')
       expect(state.selectedAssistant).toBeNull()
       expect(resetToolsAndSkillsToGlobal).not.toHaveBeenCalled()
+      expect(clearInheritedPreset).not.toHaveBeenCalled()
     })
 
     it('reuses the open draft', async () => {
@@ -261,6 +265,10 @@ describe('useSidebarHandlers', () => {
 
       const state = useConversationStore.getState()
       expect(resetToolsAndSkillsToGlobal).toHaveBeenCalledWith(state.currentConversation?.id)
+      expect(clearInheritedPreset).toHaveBeenCalledWith(
+        state.currentConversation?.id,
+        expect.objectContaining({ id: 'assistant-1' })
+      )
       expect(state.selectedModel?.id).toBe('model-1')
       expect(state.selectedAssistant).toBeNull()
     })
@@ -302,8 +310,7 @@ describe('useSidebarHandlers', () => {
       expect(state.draftConversation?.id).toMatch(UUID_V7)
       expect(initSettingsFromAssistant).toHaveBeenCalledWith(
         state.draftConversation?.id,
-        ['tool-1'],
-        ['skill-1']
+        expect.objectContaining({ tool_ids: ['tool-1'], skill_ids: ['skill-1'] })
       )
       expect(createConversation).not.toHaveBeenCalled()
       expect(state.selectedAssistant?.id).toBe('assistant-1')

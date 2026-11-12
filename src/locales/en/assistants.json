@@ -78,5 +78,10 @@
   "cancel": "Cancel",
   "saving": "Saving...",
   "editDescription": "Modify the assistant configuration below.",
-  "createDescription": "Configure your new AI assistant with custom prompts and settings."
+  "createDescription": "Configure your new AI assistant with custom prompts and settings.",
+  "parameterPreset": "Parameter Preset",
+  "noPreset": "No preset (provider defaults)",
+  "presetUnavailable": "Preset unavailable",
+  "defaultPresetLabel": "default",
+  "parameterPresetDescription": "Generation parameters used in chats with this assistant. Chats can still override them."
 }

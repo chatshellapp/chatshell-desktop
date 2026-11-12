@@ -222,20 +222,20 @@ impl Database {
         if let Some(description) = &req.description {
             q = q.bind(description.clone());
         }
-        if let Some(temperature) = &req.temperature {
-            q = q.bind(temperature.clone());
+        if let Some(temperature) = req.temperature {
+            q = q.bind(temperature);
         }
-        if let Some(max_tokens) = &req.max_tokens {
-            q = q.bind(max_tokens.clone());
+        if let Some(max_tokens) = req.max_tokens {
+            q = q.bind(max_tokens);
         }
-        if let Some(top_p) = &req.top_p {
-            q = q.bind(top_p.clone());
+        if let Some(top_p) = req.top_p {
+            q = q.bind(top_p);
         }
-        if let Some(frequency_penalty) = &req.frequency_penalty {
-            q = q.bind(frequency_penalty.clone());
+        if let Some(frequency_penalty) = req.frequency_penalty {
+            q = q.bind(frequency_penalty);
         }
-        if let Some(presence_penalty) = &req.presence_penalty {
-            q = q.bind(presence_penalty.clone());
+        if let Some(presence_penalty) = req.presence_penalty {
+            q = q.bind(presence_penalty);
         }
         if let Some(additional_params) = &req.additional_params {
             let json_str = serde_json::to_string(additional_params)?;

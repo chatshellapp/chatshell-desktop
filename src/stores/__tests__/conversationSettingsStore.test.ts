@@ -654,7 +654,7 @@ describe('useConversationSettingsStore', () => {
 
       await useConversationSettingsStore
         .getState()
-        .initSettingsFromAssistant('conv-1', ['t1'], ['k1'])
+        .initSettingsFromAssistant('conv-1', { tool_ids: ['t1'], skill_ids: ['k1'] })
 
       expect(mockInvoke).toHaveBeenCalledWith('update_conversation_settings', {
         conversationId: 'conv-1',
@@ -663,6 +663,67 @@ describe('useConversationSettingsStore', () => {
       const settings = useConversationSettingsStore.getState().settings['conv-1']
       expect(settings?.enabledMcpServerIds).toEqual(['t1'])
       expect(settings?.enabledSkillIds).toEqual(['k1'])
+    })
+
+    it("makes the assistant's preset the conversation's parameter source", async () => {
+      mockInvoke.mockResolvedValue(backendResponse())
+
+      await useConversationSettingsStore.getState().initSettingsFromAssistant('conv-1', {
+        tool_ids: [],
+        skill_ids: [],
+        model_parameter_preset_id: 'preset-1',
+      })
+
+      expect(mockInvoke).toHaveBeenCalledWith('update_conversation_settings', {
+        conversationId: 'conv-1',
+        req: {
+          enabled_mcp_server_ids: [],
+          enabled_skill_ids: [],
+          selected_preset_id: 'preset-1',
+          use_provider_defaults: false,
+          use_custom_parameters: false,
+        },
+      })
+    })
+  })
+
+  describe('clearInheritedPreset', () => {
+    const assistant = { tool_ids: [], skill_ids: [], model_parameter_preset_id: 'preset-1' }
+
+    it('returns to provider defaults when the preset came from the assistant', async () => {
+      seedSettings('conv-1', { useProviderDefaults: false, selectedPresetId: 'preset-1' })
+      mockInvoke.mockResolvedValue(backendResponse())
+
+      await useConversationSettingsStore.getState().clearInheritedPreset('conv-1', assistant)
+
+      expect(mockInvoke).toHaveBeenCalledWith('update_conversation_settings', {
+        conversationId: 'conv-1',
+        req: {
+          use_provider_defaults: true,
+          use_custom_parameters: false,
+          selected_preset_id: null,
+        },
+      })
+    })
+
+    it('keeps a preset or custom values the user picked', async () => {
+      const store = useConversationSettingsStore.getState()
+
+      seedSettings('conv-1', { useProviderDefaults: false, selectedPresetId: 'other' })
+      await store.clearInheritedPreset('conv-1', assistant)
+
+      seedSettings('conv-1', {
+        useProviderDefaults: false,
+        useCustomParameters: true,
+        selectedPresetId: 'preset-1',
+      })
+      await store.clearInheritedPreset('conv-1', assistant)
+
+      // Assistants without a preset never put one in place
+      seedSettings('conv-1', { useProviderDefaults: false, selectedPresetId: 'preset-1' })
+      await store.clearInheritedPreset('conv-1', { tool_ids: [], skill_ids: [] })
+
+      expect(mockInvoke).not.toHaveBeenCalled()
     })
   })
 
@@ -734,7 +795,7 @@ describe('useConversationSettingsStore', () => {
       await store.setUserPrompt('conv-1', 'none')
       await store.setEnabledMcpServerIds('conv-1', ['s'])
       await store.setEnabledSkillIds('conv-1', ['k'])
-      await store.initSettingsFromAssistant('conv-1', ['s'], ['k'])
+      await store.initSettingsFromAssistant('conv-1', { tool_ids: ['s'], skill_ids: ['k'] })
       await store.resetToolsAndSkillsToGlobal('conv-1')
       await store.setWorkingDirectory('conv-1', '/x')
       await store.resetSettings('conv-1')
@@ -783,7 +844,7 @@ describe('useConversationSettingsStore', () => {
       await startDraft()
       await useConversationSettingsStore
         .getState()
-        .initSettingsFromAssistant('draft-1', ['assistant-tool'], [])
+        .initSettingsFromAssistant('draft-1', { tool_ids: ['assistant-tool'], skill_ids: [] })
       mockInvoke.mockResolvedValue(
         backendResponse({ conversation_id: 'draft-1', enabled_mcp_server_ids: ['g1'] })
       )

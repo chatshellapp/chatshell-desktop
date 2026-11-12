@@ -174,6 +174,12 @@ export const createActions = (set: ImmerSet, get: StoreGet): ConversationStoreAc
       settingsStore.removeSettings(previousDraftId)
     }
     await settingsStore.startDraft(draftConversation.id)
+    // A draft that reopens with the last-used assistant takes on its
+    // tools, skills and parameter preset, as picking the assistant would
+    const restoredAssistant = get().selectedAssistant
+    if (restoredAssistant) {
+      await settingsStore.initSettingsFromAssistant(draftConversation.id, restoredAssistant)
+    }
     logger.info('[conversationStore] Opened draft conversation:', draftConversation.id)
     return draftConversation
   },
