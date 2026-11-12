@@ -42,8 +42,9 @@ interface DetailHeaderProps {
   primaryAction: DetailPrimaryAction
   /** Extra icon buttons placed between the star and the menu */
   extraActions?: React.ReactNode
-  isStarred: boolean
-  onStarToggle: () => void
+  /** Star toggle is shown only when onStarToggle is provided */
+  isStarred?: boolean
+  onStarToggle?: () => void
   /** Dropdown menu items for secondary actions */
   menuItems?: React.ReactNode
 }
@@ -55,7 +56,7 @@ export function DetailHeader({
   badges,
   primaryAction,
   extraActions,
-  isStarred,
+  isStarred = false,
   onStarToggle,
   menuItems,
 }: DetailHeaderProps) {
@@ -74,17 +75,19 @@ export function DetailHeader({
           {primaryAction.icon}
           {primaryAction.label}
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onStarToggle}
-          aria-pressed={isStarred}
-          aria-label={isStarred ? t('unstar') : t('star')}
-          title={isStarred ? t('unstar') : t('star')}
-          className={cn(isStarred && 'text-star hover:text-star/80')}
-        >
-          <Star className={cn(isStarred && 'fill-current')} />
-        </Button>
+        {onStarToggle && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onStarToggle}
+            aria-pressed={isStarred}
+            aria-label={isStarred ? t('unstar') : t('star')}
+            title={isStarred ? t('unstar') : t('star')}
+            className={cn(isStarred && 'text-star hover:text-star/80')}
+          >
+            <Star className={cn(isStarred && 'fill-current')} />
+          </Button>
+        )}
         {extraActions}
         {menuItems && (
           <DropdownMenu>

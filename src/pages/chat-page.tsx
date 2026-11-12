@@ -8,6 +8,10 @@ import { ContactProfile } from '@/components/contact-profile'
 import { useSelectedContact } from '@/hooks/useContactProfile'
 import { PromptDetail } from '@/components/prompt-detail'
 import { useSelectedPrompt } from '@/hooks/usePromptGroups'
+import { PresetDetail } from '@/components/preset-detail'
+import { useSelectedPreset } from '@/hooks/usePresets'
+import { useLibrarySelectionStore } from '@/stores/librarySelectionStore'
+import { useContactSelectionStore } from '@/stores/contactSelectionStore'
 import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
@@ -114,8 +118,13 @@ export function ChatPage() {
       : selectedContact?.kind === 'assistant'
         ? selectedContact.assistant.name
         : undefined
+  const libraryTab = useLibrarySelectionStore((state) => state.activeTab)
   const selectedPrompt = useSelectedPrompt()
-  const showPromptDetail = activeSection === 'library' && selectedPrompt !== null
+  const showPromptDetail =
+    activeSection === 'library' && libraryTab === 'prompts' && selectedPrompt !== null
+  const selectedPreset = useSelectedPreset()
+  const showPresetDetail =
+    activeSection === 'library' && libraryTab === 'presets' && selectedPreset !== null
 
   // Search, translation continuation and detail pages can select a
   // conversation outside the conversation list; follow it there so the chat
@@ -189,9 +198,11 @@ export function ChatPage() {
                   ? contactName
                   : showPromptDetail
                     ? selectedPrompt.name
-                    : currentConversation
-                      ? currentConversation.title || t('sidebar:newConversation')
-                      : t('chat:selectConversation')}
+                    : showPresetDetail
+                      ? selectedPreset.name
+                      : currentConversation
+                        ? currentConversation.title || t('sidebar:newConversation')
+                        : t('chat:selectConversation')}
             </h1>
           </header>
           <SyncLockedBanner />
@@ -222,6 +233,18 @@ export function ChatPage() {
               key={selectedPrompt.id}
               prompt={selectedPrompt}
               onChatOpened={() => setActiveSection('conversations')}
+            />
+          ) : showPresetDetail && selectedPreset ? (
+            <PresetDetail
+              key={selectedPreset.id}
+              preset={selectedPreset}
+              onChatOpened={() => setActiveSection('conversations')}
+              onOpenAssistant={(assistant) => {
+                useContactSelectionStore
+                  .getState()
+                  .selectContact({ kind: 'assistant', id: assistant.id })
+                setActiveSection('contacts')
+              }}
             />
           ) : (
             <ChatView />

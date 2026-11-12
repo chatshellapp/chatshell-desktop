@@ -178,6 +178,22 @@ pub async fn list_conversation_ids_by_prompt(
 }
 
 #[tauri::command]
+pub async fn list_conversation_ids_by_preset(
+    state: State<'_, AppState>,
+    preset_id: String,
+    limit: Option<i64>,
+) -> Result<Vec<String>, String> {
+    let limit = limit
+        .unwrap_or(MAX_PARTICIPANT_CONVERSATIONS)
+        .clamp(1, MAX_PARTICIPANT_CONVERSATIONS);
+    state
+        .db
+        .list_conversation_ids_by_preset(&preset_id, limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn remove_conversation_participant(
     state: State<'_, AppState>,
     id: String,

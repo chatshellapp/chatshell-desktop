@@ -409,6 +409,7 @@ pub fn run() {
             commands::get_default_model_parameter_preset,
             commands::create_model_parameter_preset,
             commands::update_model_parameter_preset,
+            commands::set_default_model_parameter_preset,
             commands::delete_model_parameter_preset,
             // Assistant commands
             commands::create_assistant,
@@ -450,6 +451,7 @@ pub fn run() {
             commands::get_conversation_participant_summary,
             commands::list_conversation_ids_by_participant,
             commands::list_conversation_ids_by_prompt,
+            commands::list_conversation_ids_by_preset,
             commands::remove_conversation_participant,
             // Conversation Settings commands
             commands::get_conversation_settings,

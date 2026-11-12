@@ -241,6 +241,33 @@ impl Database {
         Ok(rows.iter().map(|row| row.get("id")).collect())
     }
 
+    /// IDs of live conversations whose active parameter source is this
+    /// preset, most recently updated first.
+    pub async fn list_conversation_ids_by_preset(
+        &self,
+        preset_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT c.id
+             FROM conversations c
+             JOIN conversation_settings s
+               ON s.conversation_id = c.id AND s.deleted_at IS NULL
+             WHERE c.deleted_at IS NULL
+               AND s.selected_preset_id = ?1
+               AND s.use_provider_defaults = 0
+               AND s.use_custom_parameters = 0
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT ?2",
+        )
+        .bind(preset_id)
+        .bind(limit)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| row.get("id")).collect())
+    }
+
     pub async fn delete_conversation_settings(&self, conversation_id: &str) -> Result<()> {
         sqlx::query(&crate::db::soft_delete::tombstone_update(
             "conversation_settings",
@@ -456,6 +483,59 @@ mod tests {
         );
         assert!(
             db.list_conversation_ids_by_prompt("missing", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn conversation_ids_by_preset_requires_the_preset_to_be_active() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+
+        let active = new_conversation(&db).await;
+        let overridden = new_conversation(&db).await;
+        // A conversation on provider defaults is never listed
+        new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &active,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(false),
+                selected_preset_id: Some(Some(preset.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        // A remembered preset id while custom parameters are active does not count
+        db.update_conversation_settings(
+            &overridden,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(true),
+                selected_preset_id: Some(Some(preset.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            db.list_conversation_ids_by_preset(&preset, 10)
+                .await
+                .unwrap(),
+            vec![active]
+        );
+        assert!(
+            db.list_conversation_ids_by_preset("missing", 10)
                 .await
                 .unwrap()
                 .is_empty()

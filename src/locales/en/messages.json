@@ -94,5 +94,9 @@
   "apiErrorGatewayTimeout": "Gateway Timeout",
   "failedToUsePrompt": "Failed to use prompt",
   "failedToDuplicatePrompt": "Failed to duplicate prompt",
-  "failedToRenamePromptCategory": "Failed to rename category"
+  "failedToRenamePromptCategory": "Failed to rename category",
+  "failedToUsePreset": "Failed to use preset",
+  "failedToDuplicatePreset": "Failed to duplicate preset",
+  "failedToSetDefaultPreset": "Failed to set default preset",
+  "failedToDeletePreset": "Failed to delete preset"
 }

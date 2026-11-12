@@ -64,6 +64,18 @@ pub async fn update_model_parameter_preset(
 }
 
 #[tauri::command]
+pub async fn set_default_model_parameter_preset(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<ModelParameterPreset, String> {
+    state
+        .db
+        .set_default_model_parameter_preset(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_model_parameter_preset(
     state: State<'_, AppState>,
     id: String,

@@ -29,6 +29,9 @@ import { useSearchStore } from '@/stores/searchStore'
 import { useContactSelectionStore } from '@/stores/contactSelectionStore'
 import { useLibrarySelectionStore } from '@/stores/librarySelectionStore'
 import { usePromptGroups } from '@/hooks/usePromptGroups'
+import { usePresetActions } from '@/hooks/usePresets'
+import { usePresetStore } from '@/stores/presetStore'
+import { PresetDialog } from '@/components/preset-dialog'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
@@ -39,6 +42,7 @@ import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
+import type { ModelParameterPreset } from '@/types'
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeSection: string
@@ -55,8 +59,8 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const [editingAssistant, setEditingAssistant] = React.useState<AssistantDB | null>(null)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptDB | null>(null)
   const [promptDialogMode, setPromptDialogMode] = React.useState<'create' | 'edit'>('create')
-  const [activeContactsTab, setActiveContactsTab] = React.useState('models')
-  const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
+  const activeContactsTab = useContactSelectionStore((state) => state.activeTab)
+  const setActiveContactsTab = useContactSelectionStore((state) => state.setActiveTab)
   const { setOpen, setOpenMobile } = useSidebar()
   const providerDialogOpen = useProviderSettingsStore((state) => state.open)
   const providerDialogInitialId = useProviderSettingsStore((state) => state.initialProviderId)
@@ -75,6 +79,14 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const selectContact = useContactSelectionStore((state) => state.selectContact)
   const selectedPromptId = useLibrarySelectionStore((state) => state.selectedPromptId)
   const selectPrompt = useLibrarySelectionStore((state) => state.selectPrompt)
+  const activeLibraryTab = useLibrarySelectionStore((state) => state.activeTab)
+  const setActiveLibraryTab = useLibrarySelectionStore((state) => state.setActiveTab)
+  const selectedPresetId = useLibrarySelectionStore((state) => state.selectedPresetId)
+  const selectPreset = useLibrarySelectionStore((state) => state.selectPreset)
+  const presets = usePresetStore((state) => state.presets)
+  const presetActions = usePresetActions()
+  const [presetDialogOpen, setPresetDialogOpen] = React.useState(false)
+  const [editingPreset, setEditingPreset] = React.useState<ModelParameterPreset | null>(null)
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
@@ -169,6 +181,18 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onPromptGroupRename={(group, newName) => {
               void handlers.handlePromptCategoryRename(group, newName)
             }}
+            presets={presets}
+            selectedPresetId={selectedPresetId ?? undefined}
+            onPresetClick={(preset) => selectPreset(preset.id)}
+            onPresetActivate={(preset) => {
+              void presetActions.startChatWithPreset(preset)
+              onSectionChange('conversations')
+            }}
+            onPresetSetDefault={(preset) => void presetActions.setDefaultPreset(preset)}
+            onPresetEdit={(preset) => {
+              setEditingPreset(preset)
+              setPresetDialogOpen(true)
+            }}
           />
         )
       case 'artifacts':
@@ -245,13 +269,18 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
               size="sm"
               className="w-full justify-center gap-2 h-9"
               onClick={() => {
+                if (activeLibraryTab === 'presets') {
+                  setEditingPreset(null)
+                  setPresetDialogOpen(true)
+                  return
+                }
                 setEditingPrompt(null)
                 setPromptDialogMode('create')
                 setPromptDialogOpen(true)
               }}
             >
               <Plus className="size-4" />
-              {t('sidebar:addPrompt')}
+              {activeLibraryTab === 'presets' ? t('sidebar:addPreset') : t('sidebar:addPrompt')}
             </Button>
           </div>
         )
@@ -331,6 +360,16 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         onOpenChange={setAssistantDialogOpen}
         assistant={editingAssistant}
         mode={editingAssistant ? 'edit' : 'create'}
+      />
+
+      <PresetDialog
+        open={presetDialogOpen}
+        onOpenChange={(open) => {
+          setPresetDialogOpen(open)
+          if (!open) setEditingPreset(null)
+        }}
+        preset={editingPreset}
+        onSaved={(preset) => selectPreset(preset.id)}
       />
 
       <PromptDialog

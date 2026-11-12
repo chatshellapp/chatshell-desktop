@@ -23,9 +23,7 @@ impl Database {
 
         // If this preset is being set as default, unset all other defaults
         if is_default {
-            sqlx::query("UPDATE model_parameter_presets SET is_default = 0")
-                .execute(self.pool.as_ref())
-                .await?;
+            self.clear_default_presets(&id, &now).await?;
         }
 
         sqlx::query(
@@ -170,9 +168,7 @@ impl Database {
 
         // If setting as default, unset all other defaults
         if let Some(true) = req.is_default {
-            sqlx::query("UPDATE model_parameter_presets SET is_default = 0")
-                .execute(self.pool.as_ref())
-                .await?;
+            self.clear_default_presets(id, &now).await?;
         }
 
         // Build dynamic update query based on provided fields
@@ -224,22 +220,22 @@ impl Database {
             q = q.bind(name);
         }
         if let Some(description) = &req.description {
-            q = q.bind(description);
+            q = q.bind(description.clone());
         }
-        if let Some(temperature) = req.temperature {
-            q = q.bind(temperature);
+        if let Some(temperature) = &req.temperature {
+            q = q.bind(temperature.clone());
         }
-        if let Some(max_tokens) = req.max_tokens {
-            q = q.bind(max_tokens);
+        if let Some(max_tokens) = &req.max_tokens {
+            q = q.bind(max_tokens.clone());
         }
-        if let Some(top_p) = req.top_p {
-            q = q.bind(top_p);
+        if let Some(top_p) = &req.top_p {
+            q = q.bind(top_p.clone());
         }
-        if let Some(frequency_penalty) = req.frequency_penalty {
-            q = q.bind(frequency_penalty);
+        if let Some(frequency_penalty) = &req.frequency_penalty {
+            q = q.bind(frequency_penalty.clone());
         }
-        if let Some(presence_penalty) = req.presence_penalty {
-            q = q.bind(presence_penalty);
+        if let Some(presence_penalty) = &req.presence_penalty {
+            q = q.bind(presence_penalty.clone());
         }
         if let Some(additional_params) = &req.additional_params {
             let json_str = serde_json::to_string(additional_params)?;
@@ -257,6 +253,50 @@ impl Database {
             .ok_or_else(|| anyhow::anyhow!("Failed to retrieve updated preset"))
     }
 
+    /// Unset the default flag on every other live preset, bumping
+    /// `updated_at` so the change propagates through sync.
+    async fn clear_default_presets(&self, except_id: &str, now: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE model_parameter_presets SET is_default = 0, updated_at = ?
+             WHERE is_default = 1 AND deleted_at IS NULL AND id != ?",
+        )
+        .bind(now)
+        .bind(except_id)
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
+    /// Make a preset the default for new assistants. Unlike a regular update
+    /// this is allowed for system presets, so the default can always be moved
+    /// back to a built-in preset.
+    pub async fn set_default_model_parameter_preset(
+        &self,
+        id: &str,
+    ) -> Result<ModelParameterPreset> {
+        let preset = self
+            .get_model_parameter_preset(id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Preset not found"))?;
+        if preset.is_default {
+            return Ok(preset);
+        }
+
+        let now = Utc::now().to_rfc3339();
+        self.clear_default_presets(id, &now).await?;
+        sqlx::query(
+            "UPDATE model_parameter_presets SET is_default = 1, updated_at = ? WHERE id = ?",
+        )
+        .bind(&now)
+        .bind(id)
+        .execute(self.pool.as_ref())
+        .await?;
+
+        self.get_model_parameter_preset(id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Failed to retrieve updated preset"))
+    }
+
     pub async fn delete_model_parameter_preset(&self, id: &str) -> Result<()> {
         // Check if preset is system preset (cannot be deleted)
         let preset = self
@@ -266,6 +306,12 @@ impl Database {
 
         if preset.is_system {
             return Err(anyhow::anyhow!("Cannot delete system presets"));
+        }
+
+        if preset.is_default {
+            return Err(anyhow::anyhow!(
+                "Cannot delete the default preset; set another default first"
+            ));
         }
 
         // Check if any assistants are using this preset
@@ -577,7 +623,7 @@ mod tests {
 
         let mut req = update_req();
         req.name = Some("Renamed".to_string());
-        req.temperature = Some(1.5);
+        req.temperature = Some(Some(1.5));
         let updated = db
             .update_model_parameter_preset(&preset.id, req)
             .await
@@ -693,6 +739,115 @@ mod tests {
                 .name,
             "Balanced"
         );
+    }
+
+    #[tokio::test]
+    async fn update_null_clears_fields_back_to_provider_default() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .create_model_parameter_preset(create_req("Clearable"))
+            .await
+            .unwrap();
+
+        let mut req = update_req();
+        req.temperature = Some(None);
+        req.max_tokens = Some(None);
+        req.description = Some(None);
+        let updated = db
+            .update_model_parameter_preset(&preset.id, req)
+            .await
+            .unwrap();
+
+        assert_eq!(updated.temperature, None);
+        assert_eq!(updated.max_tokens, None);
+        assert_eq!(updated.description, None);
+        // Absent fields are kept
+        assert_eq!(updated.top_p, Some(0.9));
+        assert_eq!(updated.presence_penalty, Some(0.2));
+    }
+
+    #[test]
+    fn update_request_distinguishes_absent_null_and_value() {
+        let req: UpdateModelParameterPresetRequest =
+            serde_json::from_value(json!({"temperature": null, "top_p": 0.5})).unwrap();
+        assert_eq!(req.temperature, Some(None));
+        assert_eq!(req.top_p, Some(Some(0.5)));
+        assert_eq!(req.max_tokens, None);
+        assert_eq!(req.description, None);
+    }
+
+    #[tokio::test]
+    async fn set_default_moves_flag_including_back_to_system_preset() {
+        let (db, _dir) = test_db().await;
+        let balanced = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .unwrap();
+        let mine = db
+            .create_model_parameter_preset(create_req("Mine"))
+            .await
+            .unwrap();
+
+        let updated = db
+            .set_default_model_parameter_preset(&mine.id)
+            .await
+            .unwrap();
+        assert!(updated.is_default);
+        let old = db
+            .get_model_parameter_preset(&balanced.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!old.is_default);
+        // The cleared row is stamped so sync carries the change
+        assert_ne!(old.updated_at, balanced.updated_at);
+
+        // A system preset can take the default back
+        let restored = db
+            .set_default_model_parameter_preset(&balanced.id)
+            .await
+            .unwrap();
+        assert!(restored.is_default);
+        assert_eq!(
+            db.get_default_model_parameter_preset()
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            balanced.id
+        );
+        assert!(
+            !db.get_model_parameter_preset(&mine.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_default
+        );
+    }
+
+    #[tokio::test]
+    async fn set_default_missing_preset_is_rejected() {
+        let (db, _dir) = test_db().await;
+        let err = db
+            .set_default_model_parameter_preset(&Uuid::now_v7().to_string())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Preset not found"));
+    }
+
+    #[tokio::test]
+    async fn delete_default_preset_is_rejected() {
+        let (db, _dir) = test_db().await;
+        let mut req = create_req("Default Mine");
+        req.is_default = Some(true);
+        let preset = db.create_model_parameter_preset(req).await.unwrap();
+
+        let err = db
+            .delete_model_parameter_preset(&preset.id)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Cannot delete the default preset"));
     }
 
     #[tokio::test]

@@ -94,5 +94,9 @@
   "apiErrorGatewayTimeout": "网关超时",
   "failedToUsePrompt": "使用提示词失败",
   "failedToDuplicatePrompt": "复制提示词失败",
-  "failedToRenamePromptCategory": "重命名分类失败"
+  "failedToRenamePromptCategory": "重命名分类失败",
+  "failedToUsePreset": "使用预设失败",
+  "failedToDuplicatePreset": "复制预设失败",
+  "failedToSetDefaultPreset": "设置默认预设失败",
+  "failedToDeletePreset": "删除预设失败"
 }

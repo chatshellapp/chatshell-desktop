@@ -8,6 +8,7 @@ import { useModelStore } from '@/stores/modelStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUserStore } from '@/stores/userStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { usePresetStore } from '@/stores/presetStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
@@ -56,6 +57,9 @@ export function useAppInit() {
         // Load prompts
         logger.info('Loading prompts...')
         await promptStore.loadPrompts()
+
+        // Load parameter presets (Library and chat input share them)
+        await usePresetStore.getState().loadPresets()
 
         // Load conversations
         logger.info('Loading conversations...')
@@ -116,6 +120,14 @@ export function useAppInit() {
         .catch((err) => {
           logger.error('Failed to reload conversations after sync:', err)
         })
+      // Library content is synced too: refresh prompts and presets
+      usePromptStore
+        .getState()
+        .loadPrompts()
+        .catch((err) => {
+          logger.error('Failed to reload prompts after sync:', err)
+        })
+      void usePresetStore.getState().loadPresets()
       // Self-heal (plan §5): the merge may have brought previously-gone
       // attachment blobs into the container - re-run the open conversation's
       // fetch pass.
