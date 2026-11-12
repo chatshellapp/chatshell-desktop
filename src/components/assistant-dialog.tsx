@@ -1054,12 +1054,19 @@ export function AssistantDialog({
         claude: t('claudeSkills'),
         agents: t('agentSkills'),
       }
+      // When a search is active, bulk actions only apply to the skills currently shown
+      const isFilteringSkills = skillQuery.length > 0
+      const bulkSkillIds = isFilteringSkills
+        ? filteredAllSkills.filter((s) => s.is_enabled).map((s) => s.id)
+        : globalEnabledSkillIds
       const allSkillsEnabled =
-        globalEnabledSkillIds.length > 0 &&
-        globalEnabledSkillIds.every((id) => skillIds.includes(id))
+        bulkSkillIds.length === 0 || bulkSkillIds.every((id) => skillIds.includes(id))
       const noSkillsEnabled =
-        globalEnabledSkillIds.length > 0 &&
-        !globalEnabledSkillIds.some((id) => skillIds.includes(id))
+        bulkSkillIds.length === 0 || !bulkSkillIds.some((id) => skillIds.includes(id))
+      const handleEnableShownSkills = () =>
+        setSkillIds((prev) => [...prev, ...bulkSkillIds.filter((id) => !prev.includes(id))])
+      const handleDisableShownSkills = () =>
+        setSkillIds((prev) => prev.filter((id) => !bulkSkillIds.includes(id)))
       const isSkillsDifferentFromGlobal = (() => {
         if (skillIds.length !== globalEnabledSkillIds.length) return true
         const sorted = [...skillIds].sort()
@@ -1128,22 +1135,26 @@ export function AssistantDialog({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSkillIds(globalEnabledSkillIds)}
+                onClick={handleEnableShownSkills}
                 disabled={allSkillsEnabled}
                 className="gap-1.5"
               >
                 <ToggleRight className="h-3.5 w-3.5" />
-                {t('enableAll')}
+                {isFilteringSkills
+                  ? t('common:enableShown', { count: bulkSkillIds.length })
+                  : t('enableAll')}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSkillIds([])}
+                onClick={handleDisableShownSkills}
                 disabled={noSkillsEnabled}
                 className="gap-1.5"
               >
                 <ToggleLeft className="h-3.5 w-3.5" />
-                {t('disableAll')}
+                {isFilteringSkills
+                  ? t('common:disableShown', { count: bulkSkillIds.length })
+                  : t('disableAll')}
               </Button>
               {isSkillsDifferentFromGlobal && (
                 <Button

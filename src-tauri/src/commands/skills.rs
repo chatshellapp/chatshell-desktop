@@ -58,6 +58,19 @@ pub async fn set_all_skills_enabled(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn set_skills_enabled(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    enabled: bool,
+) -> Result<Vec<Skill>, String> {
+    state
+        .db
+        .set_skills_enabled(&ids, enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Well-known external skill directories (beyond ~/.chatshell/skills)
 const EXTERNAL_SKILL_SOURCES: &[(&str, &str, &str)] = &[
     ("claude", ".claude/skills", "skill_source_claude_enabled"),

@@ -395,6 +395,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const scanSkills = useSkillStore((state) => state.scanSkills)
   const toggleSkill = useSkillStore((state) => state.toggleSkill)
   const setAllSkillsEnabled = useSkillStore((state) => state.setAllEnabled)
+  const setSkillsEnabledForIds = useSkillStore((state) => state.setEnabledForIds)
   const skillSources = useSkillStore((state) => state.sources)
   const loadSkillSources = useSkillStore((state) => state.loadSources)
   const setSkillSourceEnabled = useSkillStore((state) => state.setSourceEnabled)
@@ -939,8 +940,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         : skills
 
       const hasSkills = skills.length > 0
-      const allSkillsEnabled = hasSkills && skills.every((s) => s.is_enabled)
-      const allSkillsDisabled = hasSkills && skills.every((s) => !s.is_enabled)
+      // When a search is active, bulk actions only apply to the skills currently shown
+      const isFilteringSkills = query.length > 0
+      const bulkSkills = isFilteringSkills ? filteredSkills : skills
+      const allSkillsEnabled = bulkSkills.length === 0 || bulkSkills.every((s) => s.is_enabled)
+      const allSkillsDisabled = bulkSkills.length === 0 || bulkSkills.every((s) => !s.is_enabled)
+      const handleBulkSkillsEnabled = (enabled: boolean) => {
+        const action = isFilteringSkills
+          ? setSkillsEnabledForIds(
+              filteredSkills.map((s) => s.id),
+              enabled
+            )
+          : setAllSkillsEnabled(enabled)
+        action.catch((error) => logger.error('Failed to bulk update skills:', error))
+      }
 
       const handleOpenSkillsDirectory = async (source: string) => {
         try {
@@ -992,20 +1005,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setAllSkillsEnabled(true)}
+                    onClick={() => handleBulkSkillsEnabled(true)}
                     disabled={allSkillsEnabled}
                   >
                     <ToggleRight className="mr-2 h-4 w-4" />
-                    {t('settings:enableAll')}
+                    {isFilteringSkills
+                      ? tc('common:enableShown', { count: filteredSkills.length })
+                      : t('settings:enableAll')}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setAllSkillsEnabled(false)}
+                    onClick={() => handleBulkSkillsEnabled(false)}
                     disabled={allSkillsDisabled}
                   >
                     <ToggleLeft className="mr-2 h-4 w-4" />
-                    {t('settings:disableAll')}
+                    {isFilteringSkills
+                      ? tc('common:disableShown', { count: filteredSkills.length })
+                      : t('settings:disableAll')}
                   </Button>
                 </>
               )}

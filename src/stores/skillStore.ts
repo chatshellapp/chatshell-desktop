@@ -17,6 +17,7 @@ interface SkillState {
   deleteSkill: (id: string) => Promise<void>
   toggleSkill: (id: string) => Promise<Skill>
   setAllEnabled: (enabled: boolean) => Promise<void>
+  setEnabledForIds: (ids: string[], enabled: boolean) => Promise<void>
   readSkillContent: (path: string) => Promise<string>
   getSkillById: (id: string) => Skill | undefined
   loadSources: () => Promise<void>
@@ -121,6 +122,19 @@ export const useSkillStore = create<SkillState>()(
         })
       } catch (error) {
         logger.error('[skillStore] Failed to set all skills enabled:', error)
+        throw error
+      }
+    },
+
+    setEnabledForIds: async (ids: string[], enabled: boolean) => {
+      try {
+        const skills = await invoke<Skill[]>('set_skills_enabled', { ids, enabled })
+        logger.info('[skillStore] Set skills enabled:', { enabled, count: ids.length })
+        set((draft) => {
+          draft.skills = skills
+        })
+      } catch (error) {
+        logger.error('[skillStore] Failed to set skills enabled:', error)
         throw error
       }
     },

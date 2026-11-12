@@ -23,6 +23,8 @@
   "disable": "禁用",
   "enableAll": "全部启用",
   "disableAll": "全部禁用",
+  "enableShown": "启用显示的 {{count}} 项",
+  "disableShown": "禁用显示的 {{count}} 项",
   "search": "搜索",
   "searchPlaceholder": "搜索...",
   "noResults": "未找到结果",

@@ -282,6 +282,35 @@ describe('useSkillStore', () => {
     })
   })
 
+  describe('setEnabledForIds', () => {
+    it('sends only the given ids and replaces the list with the backend response', async () => {
+      const updated = [
+        createMockSkill({ id: 'skill-1', is_enabled: false }),
+        createMockSkill({ id: 'skill-2', is_enabled: true }),
+      ]
+      mockInvoke.mockResolvedValueOnce(updated)
+
+      await useSkillStore.getState().setEnabledForIds(['skill-1'], false)
+
+      expect(mockInvoke).toHaveBeenCalledWith('set_skills_enabled', {
+        ids: ['skill-1'],
+        enabled: false,
+      })
+      expect(useSkillStore.getState().skills).toEqual(updated)
+    })
+
+    it('propagates the error and keeps the previous list', async () => {
+      useSkillStore.setState({ skills: [createMockSkill()] })
+      mockInvoke.mockRejectedValueOnce(new Error('bulk update failed'))
+
+      await expect(useSkillStore.getState().setEnabledForIds(['skill-1'], true)).rejects.toThrow(
+        'bulk update failed'
+      )
+
+      expect(useSkillStore.getState().skills).toHaveLength(1)
+    })
+  })
+
   describe('readSkillContent', () => {
     it('returns the content without touching store state', async () => {
       mockInvoke.mockResolvedValueOnce('# My skill instructions')

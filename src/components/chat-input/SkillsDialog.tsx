@@ -91,21 +91,28 @@ export function SkillsDialog({
     onSkillIdsChange(globalEnabledIds)
   }
 
+  // When a search is active, bulk actions only apply to the skills currently shown
+  const isFiltering = query.length > 0
+  const targetIds = isFiltering
+    ? filteredSkills.filter((s) => s.is_enabled).map((s) => s.id)
+    : allAvailableIds
+
   const handleEnableAll = () => {
-    onSkillIdsChange(allAvailableIds)
+    const current = new Set(enabledSkillIds)
+    onSkillIdsChange([...enabledSkillIds, ...targetIds.filter((id) => !current.has(id))])
   }
 
   const handleDisableAll = () => {
-    onSkillIdsChange([])
+    const targets = new Set(targetIds)
+    onSkillIdsChange(enabledSkillIds.filter((id) => !targets.has(id)))
   }
 
   const hasNoSkills = skills.length === 0
 
   // Check if all available (globally enabled) skills are enabled/disabled for this conversation
-  const allEnabled =
-    allAvailableIds.length > 0 && allAvailableIds.every((id) => enabledSkillIds.includes(id))
+  const allEnabled = targetIds.length === 0 || targetIds.every((id) => enabledSkillIds.includes(id))
   const noneEnabled =
-    allAvailableIds.length > 0 && !allAvailableIds.some((id) => enabledSkillIds.includes(id))
+    targetIds.length === 0 || !targetIds.some((id) => enabledSkillIds.includes(id))
 
   const renderSkillItem = (skill: (typeof skills)[number]) => {
     const isGloballyDisabled = !skill.is_enabled
@@ -187,7 +194,9 @@ export function SkillsDialog({
               className="gap-1.5"
             >
               <ToggleRight className="h-3.5 w-3.5" />
-              {t('common:enableAll')}
+              {isFiltering
+                ? t('common:enableShown', { count: targetIds.length })
+                : t('common:enableAll')}
             </Button>
             <Button
               variant="outline"
@@ -197,7 +206,9 @@ export function SkillsDialog({
               className="gap-1.5"
             >
               <ToggleLeft className="h-3.5 w-3.5" />
-              {t('common:disableAll')}
+              {isFiltering
+                ? t('common:disableShown', { count: targetIds.length })
+                : t('common:disableAll')}
             </Button>
           </div>
         )}
