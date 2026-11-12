@@ -51,6 +51,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { logger } from '@/lib/logger'
+import { COMPOSER_FOCUS_EVENT } from '@/lib/composer-focus'
 import {
   defaultPermissionMode,
   displayedPermissionMode,
@@ -444,6 +445,22 @@ export function ChatInput(/* _props: ChatInputProps */) {
       }, 100)
     }
   }, [currentConversation])
+
+  // Explicit focus requests from other surfaces (e.g. new conversation while
+  // the empty draft is already open, where the conversation does not change)
+  useEffect(() => {
+    const onFocusRequest = () => {
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current
+        if (!textarea) return
+        textarea.focus()
+        const end = textarea.value.length
+        textarea.setSelectionRange(end, end)
+      })
+    }
+    window.addEventListener(COMPOSER_FOCUS_EVENT, onFocusRequest)
+    return () => window.removeEventListener(COMPOSER_FOCUS_EVENT, onFocusRequest)
+  }, [])
 
   // Handlers for attachment types
   const handleWebPageSelect = () => {

@@ -258,6 +258,11 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const footer = renderFooter()
 
   const { handleNewConversation } = handlers
+  const isDraftCurrent = useConversationStore(
+    (state) =>
+      state.draftConversation !== null &&
+      state.currentConversation?.id === state.draftConversation.id
+  )
   const startNewConversation = React.useCallback(() => {
     onSectionChange('conversations')
     handleNewConversation()
@@ -296,6 +301,7 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
         onNewConversation={startNewConversation}
+        isNewConversationActive={activeSection === 'conversations' && isDraftCurrent}
         user={SIDEBAR_DATA.user}
       />
 

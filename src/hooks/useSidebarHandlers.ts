@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { requestComposerFocus } from '@/lib/composer-focus'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
@@ -213,6 +214,8 @@ export function useSidebarHandlers() {
 
       // A new draft becomes current, which triggers the composer focus effect
       await openDraftConversation()
+      // Reopening the already-current draft changes nothing, so focus explicitly
+      requestComposerFocus()
     } catch (error) {
       logger.error('Failed to create new conversation:', error)
       toast.error(t('failedToCreateConversation'), {
