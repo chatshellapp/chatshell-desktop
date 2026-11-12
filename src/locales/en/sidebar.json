@@ -100,5 +100,19 @@
   "renameGroup": "Rename Group",
   "renameGroupDescription": "All assistants in this group will move to the new name.",
   "groupNamePlaceholder": "Group name",
-  "ungroupAssistants": "Ungroup Assistants"
+  "ungroupAssistants": "Ungroup Assistants",
+  "startChat": "Start Chat",
+  "star": "Star",
+  "unstar": "Unstar",
+  "moreActions": "More actions",
+  "contactDetails": "Details",
+  "recentConversations": "Recent Conversations",
+  "noRecentConversations": "No conversations yet. Start one above.",
+  "provider": "Provider",
+  "duplicate": "Duplicate",
+  "assistantCopyName": "{{name}} (Copy)",
+  "modelUnavailable": "Model unavailable",
+  "parameterPreset": "Parameter Preset",
+  "defaultPreset": "Default",
+  "userPrompt": "User Prompt"
 }

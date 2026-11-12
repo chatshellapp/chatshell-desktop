@@ -4,6 +4,8 @@ import { AlertTriangle, X } from 'lucide-react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
+import { ContactProfile } from '@/components/contact-profile'
+import { useSelectedContact } from '@/hooks/useContactProfile'
 import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
@@ -102,12 +104,24 @@ export function ChatPage() {
   }, [])
 
   const currentConversation = useConversationStore((state) => state.currentConversation)
+  const selectedContact = useSelectedContact()
+  const showContactProfile = activeSection === 'contacts' && selectedContact !== null
+  const contactName =
+    selectedContact?.kind === 'model'
+      ? selectedContact.model.name
+      : selectedContact?.kind === 'assistant'
+        ? selectedContact.assistant.name
+        : undefined
 
-  // Search and translation continuation can select a conversation outside the sidebar.
+  // Search, translation continuation and contact profiles can select a
+  // conversation outside the conversation list; follow it there so the chat
+  // is not hidden behind the translation view or a contact profile.
   useEffect(() => {
     return useConversationStore.subscribe((state, previous) => {
       if (state.currentConversation?.id !== previous.currentConversation?.id) {
-        setActiveSection((section) => (section === 'translation' ? 'conversations' : section))
+        setActiveSection((section) =>
+          section === 'translation' || section === 'contacts' ? 'conversations' : section
+        )
       }
     })
   }, [])
@@ -165,9 +179,11 @@ export function ChatPage() {
             <h1 className="min-w-0 truncate text-sm font-medium">
               {isTranslation
                 ? t('sidebar:translation')
-                : currentConversation
-                  ? currentConversation.title || t('sidebar:newConversation')
-                  : t('chat:selectConversation')}
+                : showContactProfile
+                  ? contactName
+                  : currentConversation
+                    ? currentConversation.title || t('sidebar:newConversation')
+                    : t('chat:selectConversation')}
             </h1>
           </header>
           <SyncLockedBanner />
@@ -186,7 +202,16 @@ export function ChatPage() {
               </button>
             </div>
           )}
-          {isTranslation ? <TranslationContent /> : <ChatView />}
+          {isTranslation ? (
+            <TranslationContent />
+          ) : showContactProfile && selectedContact ? (
+            <ContactProfile
+              contact={selectedContact}
+              onChatOpened={() => setActiveSection('conversations')}
+            />
+          ) : (
+            <ChatView />
+          )}
         </SidebarInset>
       </SidebarProvider>
       <Toaster position="top-center" />

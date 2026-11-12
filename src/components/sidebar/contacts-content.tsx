@@ -13,11 +13,13 @@ interface ContactsContentProps {
   selectedModelId?: string
   selectedAssistantId?: string
   onModelClick: (model: Model) => void
+  onModelActivate: (model: Model) => void
   onModelSettings: (model: Model) => void
   onModelDelete: (model: Model) => void
   onModelStarToggle: (model: Model) => void
   onVendorSettings: (vendor: ModelVendor) => void
   onAssistantClick: (assistant: Assistant) => void
+  onAssistantActivate: (assistant: Assistant) => void
   onAssistantSettings: (assistant: Assistant) => void
   onAssistantStarToggle: (assistant: Assistant) => void
   onAssistantDelete: (assistant: Assistant) => void
@@ -32,11 +34,13 @@ export function ContactsContent({
   selectedModelId,
   selectedAssistantId,
   onModelClick,
+  onModelActivate,
   onModelSettings,
   onModelDelete,
   onModelStarToggle,
   onVendorSettings,
   onAssistantClick,
+  onAssistantActivate,
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
@@ -65,6 +69,7 @@ export function ContactsContent({
           vendors={vendorsList}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
+          onModelActivate={onModelActivate}
           onModelSettings={onModelSettings}
           onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
@@ -76,6 +81,7 @@ export function ContactsContent({
           groups={assistantGroups}
           selectedAssistantId={selectedAssistantId}
           onAssistantClick={onAssistantClick}
+          onAssistantActivate={onAssistantActivate}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}

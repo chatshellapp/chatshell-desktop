@@ -99,5 +99,19 @@
   "renameGroup": "重命名分组",
   "renameGroupDescription": "该分组中的所有助手都将移动到新名称下。",
   "groupNamePlaceholder": "分组名称",
-  "ungroupAssistants": "取消分组"
+  "ungroupAssistants": "取消分组",
+  "startChat": "发起对话",
+  "star": "收藏",
+  "unstar": "取消收藏",
+  "moreActions": "更多操作",
+  "contactDetails": "详细信息",
+  "recentConversations": "最近对话",
+  "noRecentConversations": "暂无对话，点击上方按钮开始。",
+  "provider": "服务商",
+  "duplicate": "复制",
+  "assistantCopyName": "{{name}}（副本）",
+  "modelUnavailable": "模型不可用",
+  "parameterPreset": "参数预设",
+  "defaultPreset": "默认",
+  "userPrompt": "用户提示词"
 }

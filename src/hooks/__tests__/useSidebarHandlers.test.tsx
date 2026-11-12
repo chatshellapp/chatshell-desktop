@@ -102,6 +102,7 @@ let deleteConversation: Mock
 let updateModel: Mock
 let deleteModel: Mock
 let updateAssistant: Mock
+let createAssistant: Mock
 let deleteAssistant: Mock
 let deletePrompt: Mock
 let resetToolsAndSkillsToGlobal: Mock
@@ -117,6 +118,7 @@ function setupStores() {
   updateModel = vi.fn().mockResolvedValue(model)
   deleteModel = vi.fn().mockResolvedValue(undefined)
   updateAssistant = vi.fn().mockResolvedValue(assistant)
+  createAssistant = vi.fn().mockResolvedValue({ ...assistant, id: 'assistant-copy' })
   deleteAssistant = vi.fn().mockResolvedValue(undefined)
   deletePrompt = vi.fn().mockResolvedValue(undefined)
   resetToolsAndSkillsToGlobal = vi.fn().mockResolvedValue(undefined)
@@ -157,6 +159,7 @@ function setupStores() {
     isLoading: false,
     error: null,
     updateAssistant,
+    createAssistant,
     deleteAssistant,
   })
   usePromptStore.setState({
@@ -503,6 +506,52 @@ describe('useSidebarHandlers', () => {
       expect(ok).toBe(false)
       expect(toast.error).toHaveBeenCalledWith('failedToRenameAssistantGroup', {
         description: 'db locked',
+      })
+    })
+  })
+
+  describe('handleAssistantDuplicate', () => {
+    it('creates an unstarred copy that keeps tools and skills', async () => {
+      useAssistantStore.setState({
+        assistants: [{ ...assistant, is_starred: true, role: 'Chef', group_name: 'Kitchen' }],
+      })
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let copy: Assistant | null = null
+      await act(async () => {
+        copy = await result.current.handleAssistantDuplicate(assistantItem, 'Helper (Copy)')
+      })
+
+      expect(copy).toEqual(expect.objectContaining({ id: 'assistant-copy' }))
+      expect(createAssistant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Helper (Copy)',
+          role: 'Chef',
+          group_name: 'Kitchen',
+          is_starred: false,
+          tool_ids: ['tool-1'],
+          skill_ids: ['skill-1'],
+        })
+      )
+    })
+
+    it('returns null for unknown assistants and toasts on failure', async () => {
+      const { result } = renderHook(() => useSidebarHandlers())
+
+      let copy: Assistant | null = assistant
+      await act(async () => {
+        copy = await result.current.handleAssistantDuplicate({ id: 'missing', name: 'x' }, 'x')
+      })
+      expect(copy).toBeNull()
+      expect(createAssistant).not.toHaveBeenCalled()
+
+      createAssistant.mockRejectedValue(new Error('disk full'))
+      await act(async () => {
+        copy = await result.current.handleAssistantDuplicate(assistantItem, 'Copy')
+      })
+      expect(copy).toBeNull()
+      expect(toast.error).toHaveBeenCalledWith('failedToDuplicateAssistant', {
+        description: 'disk full',
       })
     })
   })

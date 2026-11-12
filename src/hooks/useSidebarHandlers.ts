@@ -14,6 +14,7 @@ import type {
 } from '@/components/assistant-list'
 import type { Prompt as PromptListItem } from '@/components/prompt-list'
 import { logger } from '@/lib/logger'
+import type { Assistant as AssistantDB } from '@/types'
 import { toAssistantRequest, UNGROUPED_GROUP_NAME } from '@/lib/assistant-utils'
 
 export function useSidebarHandlers() {
@@ -29,6 +30,7 @@ export function useSidebarHandlers() {
   const updateModel = useModelStore((state) => state.updateModel)
   const deleteModel = useModelStore((state) => state.deleteModel)
   const updateAssistant = useAssistantStore((state) => state.updateAssistant)
+  const createAssistant = useAssistantStore((state) => state.createAssistant)
   const deleteAssistant = useAssistantStore((state) => state.deleteAssistant)
   const prompts = usePromptStore((state) => state.prompts)
   const deletePrompt = usePromptStore((state) => state.deletePrompt)
@@ -206,6 +208,35 @@ export function useSidebarHandlers() {
     [assistants, updateAssistant, t]
   )
 
+  /**
+   * Create an unstarred copy of an assistant, including its tools and skills.
+   * Returns the new assistant, or null on failure.
+   */
+  const handleAssistantDuplicate = useCallback(
+    async (assistant: AssistantListItem, copyName: string): Promise<AssistantDB | null> => {
+      const realAssistant = assistants.find((a) => a.id === assistant.id)
+      if (!realAssistant) {
+        logger.error('Assistant not found:', assistant.id)
+        return null
+      }
+
+      try {
+        return await createAssistant({
+          ...toAssistantRequest(realAssistant, { name: copyName, is_starred: false }),
+          tool_ids: [...realAssistant.tool_ids],
+          skill_ids: [...realAssistant.skill_ids],
+        })
+      } catch (error) {
+        logger.error('Failed to duplicate assistant:', error)
+        toast.error(t('failedToDuplicateAssistant'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+        return null
+      }
+    },
+    [assistants, createAssistant, t]
+  )
+
   const handlePromptDelete = useCallback(
     async (prompt: PromptListItem) => {
       const realPrompt = prompts.find((p) => p.id === prompt.id)
@@ -301,6 +332,7 @@ export function useSidebarHandlers() {
     handleModelDelete,
     handleAssistantDelete,
     handleAssistantGroupRename,
+    handleAssistantDuplicate,
     handlePromptDelete,
     handleConversationClick,
     handleNewConversation,

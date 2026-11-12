@@ -77,6 +77,10 @@ interface ModelListProps {
    */
   onModelClick?: (model: Model) => void
   /**
+   * Double-click or Enter on a model
+   */
+  onModelActivate?: (model: Model) => void
+  /**
    * Click handler for model settings
    */
   onModelSettings?: (model: Model) => void
@@ -106,6 +110,7 @@ export function ModelList({
   vendors,
   selectedModelId,
   onModelClick,
+  onModelActivate,
   onModelSettings,
   onModelDelete,
   onModelStarToggle,
@@ -163,6 +168,7 @@ export function ModelList({
           vendor={starredVendor}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
+          onModelActivate={onModelActivate}
           onModelSettings={onModelSettings}
           onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
@@ -180,6 +186,7 @@ export function ModelList({
           vendor={vendor}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
+          onModelActivate={onModelActivate}
           onModelSettings={onModelSettings}
           onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
@@ -197,6 +204,7 @@ interface ModelVendorGroupProps {
   vendor: ModelVendor
   selectedModelId?: string
   onModelClick?: (model: Model) => void
+  onModelActivate?: (model: Model) => void
   onModelSettings?: (model: Model) => void
   onModelDelete?: (model: Model) => void
   onModelStarToggle?: (model: Model) => void
@@ -211,6 +219,7 @@ function ModelVendorGroup({
   vendor,
   selectedModelId,
   onModelClick,
+  onModelActivate,
   onModelSettings,
   onModelDelete,
   onModelStarToggle,
@@ -305,6 +314,7 @@ function ModelVendorGroup({
             isStarred={model.isStarred}
             isActive={selectedModelId === model.id}
             onClick={() => onModelClick?.(model)}
+            onActivate={onModelActivate ? () => onModelActivate(model) : undefined}
             onSettingsClick={onModelSettings ? () => onModelSettings(model) : undefined}
             onDeleteClick={onModelDelete ? () => onModelDelete(model) : undefined}
             onStarClick={() => onModelStarToggle?.(model)}

@@ -40,6 +40,7 @@
   "failedToDeleteModel": "Failed to delete model",
   "failedToDeleteAssistant": "Failed to delete assistant",
   "failedToRenameAssistantGroup": "Failed to rename group",
+  "failedToDuplicateAssistant": "Failed to duplicate assistant",
   "failedToDeletePrompt": "Failed to delete prompt",
   "failedToCreateConversation": "Failed to create conversation",
   "failedToGenerateTitle": "Failed to generate title",

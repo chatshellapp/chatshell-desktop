@@ -22,7 +22,7 @@ interface AssistantAvatarProps {
   /**
    * Size variant
    */
-  size?: 'xs' | 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md' | 'xl'
   /**
    * Additional className for Avatar container
    */
@@ -33,6 +33,7 @@ const sizeConfig = {
   xs: { avatar: 'size-4', fallbackText: 'text-[8px]', sparkles: 'size-2' },
   sm: { avatar: 'size-6', fallbackText: 'text-[10px]', sparkles: 'size-3' },
   md: { avatar: 'size-8', fallbackText: 'text-sm', sparkles: 'size-4' },
+  xl: { avatar: 'size-16', fallbackText: 'text-3xl', sparkles: 'size-8' },
 }
 
 export function AssistantAvatar({

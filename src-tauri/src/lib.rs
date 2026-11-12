@@ -448,6 +448,7 @@ pub fn run() {
             commands::add_conversation_participant,
             commands::list_conversation_participants,
             commands::get_conversation_participant_summary,
+            commands::list_conversation_ids_by_participant,
             commands::remove_conversation_participant,
             // Conversation Settings commands
             commands::get_conversation_settings,

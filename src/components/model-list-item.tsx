@@ -40,6 +40,10 @@ interface ModelListItemProps {
    */
   onClick?: () => void
   /**
+   * Primary action on double-click or Enter; Enter falls back to onClick when absent
+   */
+  onActivate?: () => void
+  /**
    * Click handler for the configuration menu item
    */
   onSettingsClick?: (e: React.MouseEvent) => void
@@ -72,6 +76,7 @@ export function ModelListItem({
   providerName,
   isStarred = false,
   onClick,
+  onActivate,
   onSettingsClick,
   onDeleteClick,
   onStarClick,
@@ -93,15 +98,18 @@ export function ModelListItem({
           className
         )}
         onClick={onClick}
+        onDoubleClick={onActivate}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         tabIndex={0}
         role="button"
         size="sm"
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            onClick?.()
+            if (e.key === 'Enter' && onActivate) onActivate()
+            else onClick?.()
           }
         }}
       >
@@ -150,15 +158,18 @@ export function ModelListItem({
         className
       )}
       onClick={onClick}
+      onDoubleClick={onActivate}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       tabIndex={0}
       role="button"
       size="sm"
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onClick?.()
+          if (e.key === 'Enter' && onActivate) onActivate()
+          else onClick?.()
         }
       }}
     >

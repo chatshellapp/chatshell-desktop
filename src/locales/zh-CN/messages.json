@@ -40,6 +40,7 @@
   "failedToDeleteModel": "删除模型失败",
   "failedToDeleteAssistant": "删除助手失败",
   "failedToRenameAssistantGroup": "重命名分组失败",
+  "failedToDuplicateAssistant": "复制助手失败",
   "failedToDeletePrompt": "删除提示词失败",
   "failedToCreateConversation": "创建对话失败",
   "failedToGenerateTitle": "生成标题失败",

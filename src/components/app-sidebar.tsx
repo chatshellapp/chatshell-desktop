@@ -25,8 +25,8 @@ import { useConversationParticipants } from '@/hooks/useConversationParticipants
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
-import { useConversationStore } from '@/stores/conversation'
 import { useSearchStore } from '@/stores/searchStore'
+import { useContactSelectionStore } from '@/stores/contactSelectionStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
@@ -70,8 +70,8 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const prompts = usePromptStore((state) => state.prompts)
   const ensurePromptsLoaded = usePromptStore((state) => state.ensureLoaded)
   const togglePromptStar = usePromptStore((state) => state.togglePromptStar)
-  const selectedModel = useConversationStore((state) => state.selectedModel)
-  const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+  const selectedContact = useContactSelectionStore((state) => state.selected)
+  const selectContact = useContactSelectionStore((state) => state.selectContact)
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
@@ -127,16 +127,26 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onTabChange={setActiveContactsTab}
             vendorsList={vendorsList}
             assistantGroups={assistantGroups}
-            selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
-            selectedAssistantId={selectedAssistant?.id}
-            onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
+            selectedModelId={selectedContact?.kind === 'model' ? selectedContact.id : undefined}
+            selectedAssistantId={
+              selectedContact?.kind === 'assistant' ? selectedContact.id : undefined
+            }
+            onModelClick={(model: ModelListItem) => selectContact({ kind: 'model', id: model.id })}
+            onModelActivate={(model: ModelListItem) => {
+              void handlers.handleModelClick(model)
+              onSectionChange('conversations')
+            }}
             onModelSettings={(model: ModelListItem) => openProviderSettings(model.providerId)}
             onModelDelete={(model: ModelListItem) => handlers.handleModelDelete(model)}
             onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
             onVendorSettings={(vendor) => openProviderSettings(vendor.id)}
             onAssistantClick={(assistant: AssistantListItem) =>
-              handlers.handleAssistantClick(assistant)
+              selectContact({ kind: 'assistant', id: assistant.id })
             }
+            onAssistantActivate={(assistant: AssistantListItem) => {
+              void handlers.handleAssistantClick(assistant)
+              onSectionChange('conversations')
+            }}
             onAssistantSettings={(assistant: AssistantListItem) => {
               const fullAssistant = assistants.find((a) => a.id === assistant.id)
               if (fullAssistant) {

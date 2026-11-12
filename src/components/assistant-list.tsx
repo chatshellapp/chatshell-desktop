@@ -96,6 +96,10 @@ interface AssistantListProps {
    */
   onAssistantClick?: (assistant: Assistant) => void
   /**
+   * Double-click or Enter on a assistant
+   */
+  onAssistantActivate?: (assistant: Assistant) => void
+  /**
    * Click handler for assistant settings
    */
   onAssistantSettings?: (assistant: Assistant) => void
@@ -126,6 +130,7 @@ export function AssistantList({
   groups,
   selectedAssistantId,
   onAssistantClick,
+  onAssistantActivate,
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
@@ -183,6 +188,7 @@ export function AssistantList({
           group={starredGroup}
           selectedAssistantId={selectedAssistantId}
           onAssistantClick={onAssistantClick}
+          onAssistantActivate={onAssistantActivate}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
@@ -200,6 +206,7 @@ export function AssistantList({
           group={group}
           selectedAssistantId={selectedAssistantId}
           onAssistantClick={onAssistantClick}
+          onAssistantActivate={onAssistantActivate}
           onAssistantSettings={onAssistantSettings}
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
@@ -217,6 +224,7 @@ interface AssistantGroupComponentProps {
   group: AssistantGroup
   selectedAssistantId?: string
   onAssistantClick?: (assistant: Assistant) => void
+  onAssistantActivate?: (assistant: Assistant) => void
   onAssistantSettings?: (assistant: Assistant) => void
   onAssistantStarToggle?: (assistant: Assistant) => void
   onAssistantDelete?: (assistant: Assistant) => void
@@ -231,6 +239,7 @@ function AssistantGroupComponent({
   group,
   selectedAssistantId,
   onAssistantClick,
+  onAssistantActivate,
   onAssistantSettings,
   onAssistantStarToggle,
   onAssistantDelete,
@@ -341,6 +350,7 @@ function AssistantGroupComponent({
             isStarred={assistant.isStarred}
             isActive={selectedAssistantId === assistant.id}
             onClick={() => onAssistantClick?.(assistant)}
+            onActivate={onAssistantActivate ? () => onAssistantActivate(assistant) : undefined}
             onSettingsClick={() => onAssistantSettings?.(assistant)}
             onStarClick={() => onAssistantStarToggle?.(assistant)}
             onDeleteClick={onAssistantDelete ? () => onAssistantDelete(assistant) : undefined}
