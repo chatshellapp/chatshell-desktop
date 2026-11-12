@@ -86,7 +86,7 @@ The AI decides when and how to combine these tools to fulfill your requests.
 - **Resend Messages**: Retry any user message with one click
 - **Conversation Trees**: Resend messages or regenerate replies without losing earlier branches, and switch between alternate versions with the message navigation arrows
 - **Failure Recovery**: Retry failed or stopped turns, inspect errors, and return to the previous reply when available; partial replies remain visible with their run status
-- **Message Queue**: Keep typing while the AI is responding — your messages are queued and sent in order
+- **Message Queue**: Keep typing while the AI is responding — your messages are queued and sent in order, or use Send now on a queued message to stop the current reply and send it immediately
 - **Auto Title Generation**: Smart conversation titling
 - **Context Window Control**: Configurable message context (5, 10, 20, 50, 100, or unlimited)
 - **Automatic Context Compaction**: Compact older context as long conversations approach the model's context window

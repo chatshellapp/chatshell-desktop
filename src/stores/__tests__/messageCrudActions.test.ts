@@ -788,6 +788,97 @@ describe('message store crudActions', () => {
       })
     })
 
+    it('sendPendingMessageNow sends the chosen message first when idle', async () => {
+      // Queued messages wait while a failed queued send pauses the queue
+      patchConv('conv-q', {
+        pendingMessages: [queued('first', { error: 'boom' }), queued('second'), queued('third')],
+      })
+      invokeMock.mockResolvedValue({
+        ...createMockMessage('m-3', 'third'),
+        conversation_id: 'conv-q',
+      })
+
+      await useMessageStore.getState().sendPendingMessageNow('conv-q', 2)
+
+      await vi.waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith(
+          'send_message',
+          expect.objectContaining({ conversationId: 'conv-q', content: 'third' })
+        )
+      })
+      expect(
+        useMessageStore
+          .getState()
+          .getConversationState('conv-q')
+          .pendingMessages.map((m) => [m.content, m.error])
+      ).toEqual([
+        ['first', 'boom'],
+        ['second', undefined],
+      ])
+    })
+
+    it('sendPendingMessageNow stops a running turn and moves the message to the head', async () => {
+      patchConv('conv-q', {
+        isStreaming: true,
+        pendingMessages: [queued('first'), queued('second')],
+      })
+      invokeMock.mockResolvedValue(true as never)
+
+      await useMessageStore.getState().sendPendingMessageNow('conv-q', 1)
+
+      expect(invokeMock).toHaveBeenCalledWith('stop_generation', { conversationId: 'conv-q' })
+      expect(invokeMock).not.toHaveBeenCalledWith('send_message', expect.anything())
+      const cs = useMessageStore.getState().getConversationState('conv-q')
+      expect(cs.stopRequested).toBe(true)
+      expect(cs.pendingMessages.map((m) => m.content)).toEqual(['second', 'first'])
+    })
+
+    it('sendPendingMessageNow does not stop twice while a stop is in flight', async () => {
+      patchConv('conv-q', {
+        isStreaming: true,
+        stopRequested: true,
+        pendingMessages: [queued('first'), queued('second')],
+      })
+
+      await useMessageStore.getState().sendPendingMessageNow('conv-q', 1)
+
+      expect(invokeMock).not.toHaveBeenCalledWith('stop_generation', expect.anything())
+      expect(
+        useMessageStore
+          .getState()
+          .getConversationState('conv-q')
+          .pendingMessages.map((m) => m.content)
+      ).toEqual(['second', 'first'])
+    })
+
+    it('sendPendingMessageNow moves past a failed turn', async () => {
+      patchConv('conv-q', {
+        failedTurn: { kind: 'failed', error: 'upstream 500', previousReplyId: null },
+        pendingMessages: [queued('first')],
+      })
+      invokeMock.mockResolvedValue({
+        ...createMockMessage('m-1', 'first'),
+        conversation_id: 'conv-q',
+      })
+
+      await useMessageStore.getState().sendPendingMessageNow('conv-q', 0)
+
+      await vi.waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith(
+          'send_message',
+          expect.objectContaining({ conversationId: 'conv-q', content: 'first' })
+        )
+      })
+    })
+
+    it('sendPendingMessageNow ignores invalid indices', async () => {
+      patchConv('conv-q', { isStreaming: true, pendingMessages: [queued('first')] })
+
+      await useMessageStore.getState().sendPendingMessageNow('conv-q', 3)
+
+      expect(invokeMock).not.toHaveBeenCalled()
+    })
+
     it('processNextPendingMessage dequeues and dispatches via sendMessage', async () => {
       useMessageStore.getState().enqueueMessage('conv-q', {
         content: 'queued hello',

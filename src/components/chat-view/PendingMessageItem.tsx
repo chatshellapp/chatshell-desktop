@@ -1,4 +1,4 @@
-import { RotateCcw, X } from 'lucide-react'
+import { ArrowUp, RotateCcw, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -8,10 +8,18 @@ interface PendingMessageItemProps {
   // Why sending this queued message failed; it then waits for a retry
   error?: string
   onRetry?: () => void
+  // Send this message right away, stopping the running reply if needed
+  onSendNow?: () => void
   onRemove: () => void
 }
 
-export function PendingMessageItem({ content, error, onRetry, onRemove }: PendingMessageItemProps) {
+export function PendingMessageItem({
+  content,
+  error,
+  onRetry,
+  onSendNow,
+  onRemove,
+}: PendingMessageItemProps) {
   const { t } = useTranslation('chat')
 
   return (
@@ -42,6 +50,24 @@ export function PendingMessageItem({ content, error, onRetry, onRemove }: Pendin
             </TooltipTrigger>
             <TooltipContent>
               <p>{t('retryQueued')}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {onSendNow && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={t('sendQueuedNow')}
+                onClick={onSendNow}
+              >
+                <ArrowUp className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('sendQueuedNow')}</p>
             </TooltipContent>
           </Tooltip>
         )}

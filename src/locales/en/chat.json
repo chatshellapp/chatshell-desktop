@@ -128,6 +128,7 @@
   "queued": "Queued",
   "removeQueued": "Remove from queue",
   "retryQueued": "Retry sending",
+  "sendQueuedNow": "Send now",
   "queuedSendFailed": "A queued message could not be sent",
   "permission": {
     "title": "Tool approval required",

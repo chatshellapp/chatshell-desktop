@@ -128,6 +128,7 @@
   "queued": "排队中",
   "removeQueued": "从队列中移除",
   "retryQueued": "重新发送",
+  "sendQueuedNow": "立即发送",
   "queuedSendFailed": "排队的消息发送失败",
   "permission": {
     "title": "需要工具审批",

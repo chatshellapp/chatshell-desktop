@@ -141,6 +141,13 @@ export function ChatView() {
   const handleRetryPending = useCallback(() => {
     if (conversationId) retryPendingMessage(conversationId)
   }, [conversationId, retryPendingMessage])
+  const sendPendingMessageNow = useMessageStore((state) => state.sendPendingMessageNow)
+  const handleSendPendingNow = useCallback(
+    (index: number) => {
+      if (conversationId) void sendPendingMessageNow(conversationId, index)
+    },
+    [conversationId, sendPendingMessageNow]
+  )
 
   // Show streaming message while actively streaming, waiting for AI,
   // or when there's frozen partial content from a stopped generation.
@@ -278,6 +285,7 @@ export function ChatView() {
                 content={pm.content}
                 error={pm.error}
                 onRetry={idx === 0 ? handleRetryPending : undefined}
+                onSendNow={() => handleSendPendingNow(idx)}
                 onRemove={() => handleRemovePending(idx)}
               />
             ))}

@@ -8,6 +8,10 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+### Added
+
+- Queued messages have a Send now action that stops the current reply and sends that message right away, ahead of the rest of the queue.
+
 ## [0.10.2] - 2026-11-11
 
 ### Changed

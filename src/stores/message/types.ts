@@ -292,6 +292,9 @@ export interface MessageStoreCrudActions {
   processNextPendingMessage: (conversationId: string) => void
   // Clear the error of a failed queued message and send it when idle
   retryPendingMessage: (conversationId: string) => void
+  // Move a queued message to the head of the queue and send it right away,
+  // stopping the running turn first if there is one
+  sendPendingMessageNow: (conversationId: string, index: number) => Promise<void>
   clearPendingMessages: (conversationId: string) => void
 }
 
