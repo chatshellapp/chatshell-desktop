@@ -10,6 +10,8 @@ import { PromptDetail } from '@/components/prompt-detail'
 import { useSelectedPrompt } from '@/hooks/usePromptGroups'
 import { PresetDetail } from '@/components/preset-detail'
 import { useSelectedPreset } from '@/hooks/usePresets'
+import { SkillDetail } from '@/components/skill-detail'
+import { useSelectedSkill } from '@/hooks/useSkills'
 import { useLibrarySelectionStore } from '@/stores/librarySelectionStore'
 import { useContactSelectionStore } from '@/stores/contactSelectionStore'
 import { TranslationContent } from '@/components/sidebar/translation-content'
@@ -125,6 +127,9 @@ export function ChatPage() {
   const selectedPreset = useSelectedPreset()
   const showPresetDetail =
     activeSection === 'library' && libraryTab === 'presets' && selectedPreset !== null
+  const selectedSkill = useSelectedSkill()
+  const showSkillDetail =
+    activeSection === 'library' && libraryTab === 'skills' && selectedSkill !== null
 
   // Search, translation continuation and detail pages can select a
   // conversation outside the conversation list; follow it there so the chat
@@ -200,9 +205,11 @@ export function ChatPage() {
                     ? selectedPrompt.name
                     : showPresetDetail
                       ? selectedPreset.name
-                      : currentConversation
-                        ? currentConversation.title || t('sidebar:newConversation')
-                        : t('chat:selectConversation')}
+                      : showSkillDetail
+                        ? selectedSkill.name
+                        : currentConversation
+                          ? currentConversation.title || t('sidebar:newConversation')
+                          : t('chat:selectConversation')}
             </h1>
           </header>
           <SyncLockedBanner />
@@ -246,6 +253,8 @@ export function ChatPage() {
                 setActiveSection('contacts')
               }}
             />
+          ) : showSkillDetail && selectedSkill ? (
+            <SkillDetail key={selectedSkill.id} skill={selectedSkill} />
           ) : (
             <ChatView />
           )}

@@ -46,6 +46,9 @@ export type { Skill, CreateSkillRequest, SkillSource, SkillSourceInfo } from './
 export {
   isBuiltinSkill,
   isUserSkill,
+  isChatShellSkill,
+  isSyncedSkill,
+  isSkillAvailable,
   getSkillsBySource,
   getSkillSourceLabel,
   SKILL_SOURCE_ORDER,

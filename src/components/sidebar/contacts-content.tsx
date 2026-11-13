@@ -5,6 +5,7 @@ import { ModelList, type Model, type ModelVendor } from '@/components/model-list
 import { AssistantList, type Assistant, type AssistantGroup } from '@/components/assistant-list'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { ContactsTab } from '@/stores/contactSelectionStore'
+import { FilterNoMatches } from './filter-no-matches'
 
 interface ContactsContentProps {
   activeTab: ContactsTab
@@ -25,6 +26,8 @@ interface ContactsContentProps {
   onAssistantStarToggle: (assistant: Assistant) => void
   onAssistantDelete: (assistant: Assistant) => void
   onGroupRename: (group: AssistantGroup, newName: string) => void
+  /** The header filter is active; lists arrive already filtered */
+  filterActive?: boolean
 }
 
 export function ContactsContent({
@@ -46,6 +49,7 @@ export function ContactsContent({
   onAssistantStarToggle,
   onAssistantDelete,
   onGroupRename,
+  filterActive = false,
 }: ContactsContentProps) {
   const { t } = useTranslation('sidebar')
 
@@ -70,28 +74,38 @@ export function ContactsContent({
         </TabsTrigger>
       </TabsList>
       <TabsContent value="models" className="mt-2">
-        <ModelList
-          vendors={vendorsList}
-          selectedModelId={selectedModelId}
-          onModelClick={onModelClick}
-          onModelActivate={onModelActivate}
-          onModelSettings={onModelSettings}
-          onModelDelete={onModelDelete}
-          onModelStarToggle={onModelStarToggle}
-          onVendorSettings={onVendorSettings}
-        />
+        {filterActive && vendorsList.length === 0 ? (
+          <FilterNoMatches />
+        ) : (
+          <ModelList
+            filtering={filterActive}
+            vendors={vendorsList}
+            selectedModelId={selectedModelId}
+            onModelClick={onModelClick}
+            onModelActivate={onModelActivate}
+            onModelSettings={onModelSettings}
+            onModelDelete={onModelDelete}
+            onModelStarToggle={onModelStarToggle}
+            onVendorSettings={onVendorSettings}
+          />
+        )}
       </TabsContent>
       <TabsContent value="assistants" className="mt-2">
-        <AssistantList
-          groups={assistantGroups}
-          selectedAssistantId={selectedAssistantId}
-          onAssistantClick={onAssistantClick}
-          onAssistantActivate={onAssistantActivate}
-          onAssistantSettings={onAssistantSettings}
-          onAssistantStarToggle={onAssistantStarToggle}
-          onAssistantDelete={onAssistantDelete}
-          onGroupRename={onGroupRename}
-        />
+        {filterActive && assistantGroups.length === 0 ? (
+          <FilterNoMatches />
+        ) : (
+          <AssistantList
+            filtering={filterActive}
+            groups={assistantGroups}
+            selectedAssistantId={selectedAssistantId}
+            onAssistantClick={onAssistantClick}
+            onAssistantActivate={onAssistantActivate}
+            onAssistantSettings={onAssistantSettings}
+            onAssistantStarToggle={onAssistantStarToggle}
+            onAssistantDelete={onAssistantDelete}
+            onGroupRename={onGroupRename}
+          />
+        )}
       </TabsContent>
       <TabsContent value="people" className="mt-2">
         <Empty>

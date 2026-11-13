@@ -93,6 +93,11 @@ interface PromptListProps {
    */
   onGroupRename?: (group: PromptGroup, newName: string) => void
   /**
+   * A sidebar filter is active: every group opens and the Starred group is
+   * hidden (it would repeat matches already shown in their own groups)
+   */
+  filtering?: boolean
+  /**
    * Optional className for customization
    */
   className?: string
@@ -108,6 +113,7 @@ export function PromptList({
   onPromptDelete,
   onGroupRename,
   className,
+  filtering = false,
 }: PromptListProps) {
   const { t } = useTranslation('prompts')
   const { t: tSidebar } = useTranslation('sidebar')
@@ -154,7 +160,7 @@ export function PromptList({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred prompts group first if there are any starred prompts */}
-      {hasStarredPrompts && (
+      {hasStarredPrompts && !filtering && (
         <PromptGroupComponent
           group={starredGroup}
           selectedPromptId={selectedPromptId}
@@ -172,7 +178,7 @@ export function PromptList({
       {/* Show all other prompt groups */}
       {groups.map((group, index) => (
         <PromptGroupComponent
-          key={group.id}
+          key={filtering ? `${group.id}:filtering` : group.id}
           group={group}
           selectedPromptId={selectedPromptId}
           onPromptClick={onPromptClick}
@@ -181,7 +187,7 @@ export function PromptList({
           onPromptStarToggle={onPromptStarToggle}
           onPromptDelete={onPromptDelete}
           onGroupRename={onGroupRename}
-          forceDefaultOpen={!hasStarredPrompts && index === 0}
+          forceDefaultOpen={filtering || (!hasStarredPrompts && index === 0)}
           ignoreGroupDefault={hasStarredPrompts}
         />
       ))}

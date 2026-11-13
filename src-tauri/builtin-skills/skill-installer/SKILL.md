@@ -2,6 +2,7 @@
 name: skill-installer
 description: Download and install agent skills from URLs into the ~/.chatshell/skills/ directory. This skill contains the exact workflow for parsing GitHub, GitLab, Bitbucket, and direct URLs, handling all URL variants (repo root, /tree/ directory, /blob/ file, raw content links), detecting single vs. multi-skill repos, managing conflicts with backups, and verifying installations. ALWAYS use this skill when the user shares any URL that might contain a SKILL.md or asks to install/add/download/grab/set up a skill from a link -- the skill knows the correct install path and directory structure that the agent cannot infer on its own. Also triggers when a user pastes a GitHub/GitLab/Bitbucket URL mentioning "skill" in the path.
 metadata:
+  id: 01a1d021-2139-7761-a92a-936aa0447753
   author: ChatShell
   website: https://chatshell.app
 ---
@@ -128,7 +129,11 @@ If multiple skills are found:
 Check for conflicts first. If `~/.chatshell/skills/{skill-name}/` already exists:
 1. Tell the user the skill already exists
 2. Ask whether to overwrite or skip
-3. If overwriting, back it up: `mv ~/.chatshell/skills/{skill-name} ~/.chatshell/skills/{skill-name}.bak`
+3. If overwriting, back it up into ChatShell's skill trash (a sibling folder such as `{skill-name}.bak` would be indexed as a second skill with the same name):
+   ```bash
+   mkdir -p ~/.chatshell/skills/.trash
+   mv ~/.chatshell/skills/{skill-name} ~/.chatshell/skills/.trash/{skill-name}-$(date +%Y%m%dT%H%M%S)
+   ```
 
 Install the skill:
 ```bash

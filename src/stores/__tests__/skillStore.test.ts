@@ -25,7 +25,8 @@ const createMockSkill = (overrides: Partial<Skill> = {}): Skill => ({
   name: 'pdf-reader',
   description: 'Read PDF documents',
   source: 'builtin',
-  path: '/skills/pdf-reader',
+  path: 'pdf-reader',
+  files_manifest: [],
   required_tool_ids: [],
   allow_model_invocation: true,
   allow_user_invocation: true,
@@ -41,6 +42,7 @@ const createMockSource = (overrides: Partial<SkillSourceInfo> = {}): SkillSource
   enabled: true,
   always_on: false,
   exists: true,
+  synced: true,
   ...overrides,
 })
 
@@ -286,11 +288,9 @@ describe('useSkillStore', () => {
     it('returns the content without touching store state', async () => {
       mockInvoke.mockResolvedValueOnce('# My skill instructions')
 
-      const content = await useSkillStore.getState().readSkillContent('/skills/pdf-reader/SKILL.md')
+      const content = await useSkillStore.getState().readSkillContent('skill-1')
 
-      expect(mockInvoke).toHaveBeenCalledWith('read_skill_content', {
-        path: '/skills/pdf-reader/SKILL.md',
-      })
+      expect(mockInvoke).toHaveBeenCalledWith('read_skill_content', { id: 'skill-1' })
       expect(content).toBe('# My skill instructions')
       const state = useSkillStore.getState()
       expect(state.skills).toEqual([])
@@ -301,8 +301,47 @@ describe('useSkillStore', () => {
     it('propagates the error when the file cannot be read', async () => {
       mockInvoke.mockRejectedValueOnce(new Error('file not found'))
 
-      await expect(useSkillStore.getState().readSkillContent('/missing/SKILL.md')).rejects.toThrow(
+      await expect(useSkillStore.getState().readSkillContent('missing')).rejects.toThrow(
         'file not found'
+      )
+    })
+  })
+
+  describe('createSkill', () => {
+    it('creates the folder through the backend and reloads the list', async () => {
+      const created = createMockSkill({ id: 'new', source: 'user', path: 'notes' })
+      mockInvoke.mockResolvedValueOnce(created).mockResolvedValueOnce([created])
+
+      const skill = await useSkillStore.getState().createSkill('notes', '# notes')
+
+      expect(mockInvoke).toHaveBeenNthCalledWith(1, 'create_user_skill', {
+        dirName: 'notes',
+        content: '# notes',
+      })
+      expect(mockInvoke).toHaveBeenNthCalledWith(2, 'list_skills')
+      expect(skill).toEqual(created)
+      expect(useSkillStore.getState().skills).toEqual([created])
+    })
+  })
+
+  describe('saveSkillContent', () => {
+    it('saves SKILL.md and reloads the list', async () => {
+      const saved = createMockSkill({ source: 'user', content_hash: 'h2' })
+      mockInvoke.mockResolvedValueOnce(saved).mockResolvedValueOnce([saved])
+
+      await useSkillStore.getState().saveSkillContent('skill-1', '# v2')
+
+      expect(mockInvoke).toHaveBeenNthCalledWith(1, 'save_skill_content', {
+        id: 'skill-1',
+        content: '# v2',
+      })
+      expect(useSkillStore.getState().skills).toEqual([saved])
+    })
+
+    it('propagates backend errors', async () => {
+      mockInvoke.mockRejectedValueOnce('not on this device')
+      await expect(useSkillStore.getState().saveSkillContent('skill-1', '# v2')).rejects.toBe(
+        'not on this device'
       )
     })
   })

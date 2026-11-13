@@ -78,7 +78,57 @@ pub async fn ensure_referenced_blobs_uploaded(
     )
     .fetch_all(db.pool())
     .await?;
+    let items = rows
+        .into_iter()
+        .map(|(storage_path, hash)| {
+            let src = resolve_local_path(base_dir, &storage_path);
+            (storage_path, src, hash)
+        })
+        .collect();
+    upload_blobs(cloud_dir, items, key)
+}
 
+/// Ship the files of ChatShell's own skills (one blob per manifest entry).
+/// Same rules as attachments: content-addressed, verified, encrypted, and
+/// uploaded before the snapshot that references them.
+pub async fn ensure_skill_blobs_uploaded(
+    db: &crate::db::Database,
+    cloud_dir: &Path,
+    roots: &crate::skills::SkillRoots,
+    key: &[u8; CK_LEN],
+) -> anyhow::Result<usize> {
+    let mut items = Vec::new();
+    for skill in db
+        .live_skill_file_hashes()
+        .await?
+        .into_iter()
+        .map(|(s, _)| s)
+    {
+        let Some(dir) = roots.skill_dir(crate::skills::SOURCE_USER, &skill.path) else {
+            continue;
+        };
+        for file in &skill.files_manifest {
+            let Ok(src) = crate::skills::safe_join(&dir, &file.path) else {
+                continue;
+            };
+            items.push((
+                format!("{}/{}", skill.path, file.path),
+                src,
+                file.hash.clone(),
+            ));
+        }
+    }
+    upload_blobs(cloud_dir, items, key)
+}
+
+/// Upload `(label, local source, digest)` items into the container blob
+/// store, skipping digests already present.
+fn upload_blobs(
+    cloud_dir: &Path,
+    items: Vec<(String, PathBuf, String)>,
+    key: &[u8; CK_LEN],
+) -> anyhow::Result<usize> {
+    let rows = items;
     let blobs_dir = cloud_dir.join(BLOB_DIR);
     std::fs::create_dir_all(&blobs_dir)
         .with_context(|| format!("provision {}", blobs_dir.display()))?;
@@ -87,12 +137,11 @@ pub async fn ensure_referenced_blobs_uploaded(
     let mut uploaded = 0usize;
     let mut done = 0usize;
     let mut consecutive_failures = 0usize;
-    for (storage_path, hash) in rows {
+    for (storage_path, src, hash) in rows {
         let dest = blob_path(cloud_dir, &hash);
         if dest.exists() {
             continue;
         }
-        let src = resolve_local_path(base_dir, &storage_path);
         let meta = match std::fs::metadata(&src) {
             Ok(m) => m,
             Err(err) => {
@@ -401,13 +450,14 @@ pub struct FetchOutcome {
 }
 
 /// Remove orphan blobs older than the grace period: entries in the container
-/// blob store whose digest no longer appears in any live `files` row.
+/// blob store whose digest no longer appears in any live `files` row or live
+/// skill manifest.
 pub async fn gc_orphan_blobs(
     db: &crate::db::Database,
     cloud_dir: &Path,
     grace_secs: u64,
 ) -> anyhow::Result<usize> {
-    let live: std::collections::HashSet<String> = sqlx::query_scalar(
+    let mut live: std::collections::HashSet<String> = sqlx::query_scalar(
         "SELECT DISTINCT content_hash FROM files \
          WHERE deleted_at IS NULL AND content_hash IS NOT NULL",
     )
@@ -415,6 +465,10 @@ pub async fn gc_orphan_blobs(
     .await?
     .into_iter()
     .collect();
+    // Files of live ChatShell skills are blobs too.
+    for (_, hashes) in db.live_skill_file_hashes().await? {
+        live.extend(hashes);
+    }
 
     let blobs_dir = cloud_dir.join(BLOB_DIR);
     let mut removed = 0usize;

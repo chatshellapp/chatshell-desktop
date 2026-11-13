@@ -9,6 +9,7 @@ import type en_tools from '@/locales/en/tools.json'
 import type en_prompts from '@/locales/en/prompts.json'
 import type en_attachments from '@/locales/en/attachments.json'
 import type en_messages from '@/locales/en/messages.json'
+import type en_skills from '@/locales/en/skills.json'
 
 export type Namespace = keyof typeof import('@/locales/en/common.json')
 
@@ -28,5 +29,6 @@ export type CustomTypeOptions = {
     prompts: typeof en_prompts
     attachments: typeof en_attachments
     messages: typeof en_messages
+    skills: typeof en_skills
   }
 }

@@ -97,6 +97,11 @@ interface ModelListProps {
    */
   onVendorSettings?: (vendor: ModelVendor) => void
   /**
+   * A sidebar filter is active: every group opens and the Starred group is
+   * hidden (it would repeat matches already shown in their own groups)
+   */
+  filtering?: boolean
+  /**
    * Optional className for customization
    */
   className?: string
@@ -116,6 +121,7 @@ export function ModelList({
   onModelStarToggle,
   onVendorSettings,
   className,
+  filtering = false,
   compact = false,
 }: ModelListProps) {
   const { t } = useTranslation('providers')
@@ -163,7 +169,7 @@ export function ModelList({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred models group first if there are any starred models */}
-      {hasStarredModels && (
+      {hasStarredModels && !filtering && (
         <ModelVendorGroup
           vendor={starredVendor}
           selectedModelId={selectedModelId}
@@ -182,7 +188,7 @@ export function ModelList({
       {/* Show all other vendor groups */}
       {vendors.map((vendor, index) => (
         <ModelVendorGroup
-          key={vendor.id}
+          key={filtering ? `${vendor.id}:filtering` : vendor.id}
           vendor={vendor}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
@@ -191,7 +197,7 @@ export function ModelList({
           onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
           onVendorSettings={onVendorSettings}
-          forceDefaultOpen={!hasStarredModels && index === 0}
+          forceDefaultOpen={filtering || (!hasStarredModels && index === 0)}
           ignoreVendorDefault={hasStarredModels}
           compact={compact}
         />

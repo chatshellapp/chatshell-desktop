@@ -14,6 +14,7 @@ import { usePromptStore } from '@/stores/promptStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
+import { useSkillStore } from '@/stores/skillStore'
 import type { Conversation, Model } from '@/types'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -62,7 +63,10 @@ let selectConversation: Mock
 let openDraftConversation: Mock
 let refreshAfterMerge: Mock
 let unlisten: Mock
+let skillsUnlisten: Mock
 let syncMergedHandler: ((event: { payload: number }) => void) | undefined
+let skillsChangedHandler: (() => void) | undefined
+let loadSkills: Mock
 
 function setupStores() {
   callOrder = []
@@ -97,14 +101,24 @@ function setupStores() {
   })
   refreshAfterMerge = vi.fn().mockResolvedValue(false)
   unlisten = vi.fn()
+  skillsUnlisten = vi.fn()
   syncMergedHandler = undefined
+  skillsChangedHandler = undefined
+  loadSkills = vi.fn().mockResolvedValue(undefined)
+  useSkillStore.setState({ loadSkills } as never)
 
   vi.mocked(invoke).mockReset()
   vi.mocked(invoke).mockResolvedValue(true)
   vi.mocked(listen).mockReset()
   vi.mocked(listen).mockImplementation(async (event, handler) => {
-    if (event === 'sync-merged') syncMergedHandler = handler as unknown as typeof syncMergedHandler
-    return unlisten
+    if (event === 'sync-merged') {
+      syncMergedHandler = handler as unknown as typeof syncMergedHandler
+      return unlisten
+    }
+    if (event === 'skills-changed') {
+      skillsChangedHandler = handler as unknown as typeof skillsChangedHandler
+    }
+    return skillsUnlisten
   })
 
   useSettingsStore.setState({
@@ -258,6 +272,7 @@ describe('useAppInit', () => {
 
       await waitFor(() => expect(loadConversations).toHaveBeenCalledTimes(2))
       expect(refreshAfterMerge).toHaveBeenCalledTimes(1)
+      expect(loadSkills).toHaveBeenCalledTimes(1)
     })
 
     it('logs reload and self-heal failures without breaking', async () => {
@@ -287,6 +302,7 @@ describe('useAppInit', () => {
       unmount()
 
       expect(unlisten).toHaveBeenCalledTimes(1)
+      expect(skillsUnlisten).toHaveBeenCalledTimes(1)
     })
 
     it('unsubscribes immediately when unmounted before the subscription resolves', async () => {
@@ -301,7 +317,8 @@ describe('useAppInit', () => {
         await promise
       })
 
-      expect(unlisten).toHaveBeenCalledTimes(1)
+      // Both subscriptions (sync-merged, skills-changed) resolved to it.
+      expect(unlisten).toHaveBeenCalledTimes(2)
     })
 
     it('logs a subscription failure without breaking initialization', async () => {
@@ -314,6 +331,19 @@ describe('useAppInit', () => {
         expect.any(Error)
       )
       expect(result.current.error).toBeNull()
+    })
+  })
+
+  describe('skills-changed subscription', () => {
+    it('reloads skills when the backend reconcile changed them', async () => {
+      await renderInitialized()
+      const before = loadSkills.mock.calls.length
+
+      act(() => {
+        skillsChangedHandler?.()
+      })
+
+      await waitFor(() => expect(loadSkills).toHaveBeenCalledTimes(before + 1))
     })
   })
 

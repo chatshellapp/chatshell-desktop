@@ -117,6 +117,11 @@ interface AssistantListProps {
    */
   onGroupRename?: (group: AssistantGroup, newName: string) => void
   /**
+   * A sidebar filter is active: every group opens and the Starred group is
+   * hidden (it would repeat matches already shown in their own groups)
+   */
+  filtering?: boolean
+  /**
    * Optional className for customization
    */
   className?: string
@@ -136,6 +141,7 @@ export function AssistantList({
   onAssistantDelete,
   onGroupRename,
   className,
+  filtering = false,
   compact = false,
 }: AssistantListProps) {
   const { t } = useTranslation('assistants')
@@ -183,7 +189,7 @@ export function AssistantList({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {/* Show starred assistants group first if there are any starred assistants */}
-      {hasStarredAssistants && (
+      {hasStarredAssistants && !filtering && (
         <AssistantGroupComponent
           group={starredGroup}
           selectedAssistantId={selectedAssistantId}
@@ -202,7 +208,7 @@ export function AssistantList({
       {/* Show all other assistant groups */}
       {groups.map((group, index) => (
         <AssistantGroupComponent
-          key={group.id}
+          key={filtering ? `${group.id}:filtering` : group.id}
           group={group}
           selectedAssistantId={selectedAssistantId}
           onAssistantClick={onAssistantClick}
@@ -211,7 +217,7 @@ export function AssistantList({
           onAssistantStarToggle={onAssistantStarToggle}
           onAssistantDelete={onAssistantDelete}
           onGroupRename={onGroupRename}
-          forceDefaultOpen={!hasStarredAssistants && index === 0}
+          forceDefaultOpen={filtering || (!hasStarredAssistants && index === 0)}
           ignoreGroupDefault={hasStarredAssistants}
           compact={compact}
         />

@@ -235,6 +235,10 @@ pub async fn run_sync_pass(
         tracing::info!("Sync flushed pending local writes");
     }
 
+    if outcome.rows_merged > 0 || SKILLS_PENDING_FETCH.load(std::sync::atomic::Ordering::Relaxed) {
+        reconcile_skills_after_pass(&app).await;
+    }
+
     // Opportunistic blob GC, at most once a day per process. Only after a
     // pass that shipped something - an idle up-to-date tick has no new
     // information about orphans anyway.
@@ -320,6 +324,65 @@ async fn upload_blobs_before_publish(
         && let Err(err) = blob_sync::ensure_referenced_blobs_uploaded(db, dir, attach, keys).await
     {
         tracing::warn!("Blob upload before sync failed: {err:#}");
+    }
+    if let (Some(dir), Some(keys)) = (cloud_dir.as_ref(), keys.as_ref()) {
+        match crate::skills::SkillRoots::from_app(app) {
+            Ok(roots) => {
+                if let Err(err) =
+                    blob_sync::ensure_skill_blobs_uploaded(db, dir, &roots, keys).await
+                {
+                    tracing::warn!("Skill blob upload before sync failed: {err:#}");
+                }
+            }
+            Err(err) => tracing::warn!("Skill roots unavailable: {err}"),
+        }
+    }
+}
+
+/// Container dir and content key of the installed engine, when sync is on
+/// and decryptable (what blob fetches need).
+pub fn blob_access(
+    engine: &SyncEngineHandle,
+) -> Option<(PathBuf, [u8; chatshell_agent_core::sync_crypto::CK_LEN])> {
+    let guard = engine.lock().ok()?;
+    let engine = guard.as_ref()?;
+    Some((
+        engine.cloud_dir().to_path_buf(),
+        *engine.crypto()?.current_key(),
+    ))
+}
+
+/// Set while some synced skill could not be materialized yet (its blobs had
+/// not landed in the container): later passes retry even without new rows.
+static SKILLS_PENDING_FETCH: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// After a pass: reconcile ChatShell's own skills with what peers synced
+/// (fetch new or edited skills, trash ones deleted elsewhere).
+async fn reconcile_skills_after_pass(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    let Some(state) = app.try_state::<crate::commands::AppState>() else {
+        return;
+    };
+    match crate::commands::run_skill_reconcile(&state, app).await {
+        Ok(report) => {
+            SKILLS_PENDING_FETCH.store(
+                report.pending_fetch > 0,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            if report.pending_fetch > 0 {
+                tracing::info!(
+                    "{} synced skill(s) waiting for their files",
+                    report.pending_fetch
+                );
+            }
+            if report.changed
+                && let Err(err) = app.emit("skills-changed", ())
+            {
+                tracing::warn!("Failed to emit skills-changed: {err}");
+            }
+        }
+        Err(err) => tracing::warn!("Skill reconcile after sync failed: {err}"),
     }
 }
 

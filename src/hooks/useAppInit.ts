@@ -12,6 +12,7 @@ import { usePresetStore } from '@/stores/presetStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useOnboardingStore } from '@/stores/onboardingStore'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
+import { useSkillStore } from '@/stores/skillStore'
 import { logger } from '@/lib/logger'
 import { pickDefaultModel } from '@/lib/model-setup'
 
@@ -131,6 +132,14 @@ export function useAppInit() {
       // Self-heal (plan §5): the merge may have brought previously-gone
       // attachment blobs into the container - re-run the open conversation's
       // fetch pass.
+      // Merged skill rows (synced from peers) show up in Library right
+      // away; their files follow via the backend reconcile.
+      useSkillStore
+        .getState()
+        .loadSkills()
+        .catch((err) => {
+          logger.error('Failed to reload skills after sync:', err)
+        })
       useAttachmentBlobStore
         .getState()
         .refreshAfterMerge()
@@ -144,6 +153,34 @@ export function useAppInit() {
       })
       .catch((err) => {
         logger.error('Failed to subscribe to sync-merged events:', err)
+      })
+
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+
+  // Reload skills when the backend reconcile changed them (synced skill
+  // files fetched, a peer's delete applied)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+
+    listen('skills-changed', () => {
+      useSkillStore
+        .getState()
+        .loadSkills()
+        .catch((err) => {
+          logger.error('Failed to reload skills:', err)
+        })
+    })
+      .then((fn) => {
+        if (cancelled) fn()
+        else unlisten = fn
+      })
+      .catch((err) => {
+        logger.error('Failed to subscribe to skills-changed events:', err)
       })
 
     return () => {

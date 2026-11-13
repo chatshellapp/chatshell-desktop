@@ -37,9 +37,12 @@ pub fn wipe_fragment(table: &str) -> Option<&'static str> {
              is_starred = NULL"
         }
         "skills" => {
-            "description = NULL, path = '', icon = NULL, required_tool_ids = NULL, \
+            // `path` survives the tombstone: it is how a device matches a
+            // peer's delete to its own skill folder.
+            "description = NULL, icon = NULL, required_tool_ids = NULL, \
              allow_model_invocation = NULL, allow_user_invocation = NULL, \
-             content_hash = NULL, cached_instructions = NULL, is_enabled = NULL"
+             content_hash = NULL, cached_instructions = NULL, is_enabled = NULL, \
+             files_manifest = NULL"
         }
         "tools" => {
             "type = '', endpoint = NULL, config = NULL, description = NULL, \
