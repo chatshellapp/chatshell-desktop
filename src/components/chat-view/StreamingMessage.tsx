@@ -65,8 +65,12 @@ export function StreamingMessage({
   // Combine API-provided reasoning (GPT-5, Gemini) with XML-parsed thinking
   // API reasoning takes precedence as it's the native format for reasoning models
   const combinedThinkingContent = streamingReasoningContent || parsedStreaming.thinkingContent
+  // API reasoning has no closing tag: it is over once answer text (or a tool
+  // call) starts arriving. isReasoningActive stays set for the whole stream.
+  const answerStarted = parsedStreaming.content.trim().length > 0
   const isThinkingInProgress =
-    isStreaming && (streamingReasoningContent ? true : parsedStreaming.isThinkingInProgress)
+    isStreaming &&
+    (streamingReasoningContent ? !answerStarted : parsedStreaming.isThinkingInProgress)
 
   // Get resources for the last user message (passed in by the parent; the
   // parent already searched the low-frequency messages window)
@@ -204,7 +208,7 @@ export function StreamingMessage({
           <ThinkingPreview
             key="remaining-api-reasoning"
             content={remainingReasoning}
-            isStreaming={isThinkingInProgress}
+            isStreaming={isStreaming && !finalContent.trim()}
           />
         )
       }
@@ -232,7 +236,10 @@ export function StreamingMessage({
         <ThinkingPreview
           key="thinking"
           content={combinedThinkingContent || ''}
-          isStreaming={showThinkingPlaceholder || isThinkingInProgress}
+          isStreaming={
+            !hasStreamingToolCalls &&
+            ((showThinkingPlaceholder && !answerStarted) || isThinkingInProgress)
+          }
         />
       )
     }

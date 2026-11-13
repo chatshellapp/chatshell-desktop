@@ -65,13 +65,19 @@ export function ThinkingPreview({
     if (SCROLL_UP_KEYS.has(event.key)) followRef.current = false
   }, [])
 
-  // Auto-expand when streaming starts, following from the end
+  // Auto-expand when streaming starts, following from the end; collapse as
+  // soon as thinking ends so the answer below is not pushed down by it.
+  const wasStreamingRef = useRef(isStreaming)
   useEffect(() => {
+    const wasStreaming = wasStreamingRef.current
+    wasStreamingRef.current = isStreaming
     if (isStreaming) {
       setIsExpanded(true)
       followRef.current = true
+    } else if (wasStreaming && !defaultExpanded) {
+      setIsExpanded(false)
     }
-  }, [isStreaming])
+  }, [isStreaming, defaultExpanded])
 
   // Re-expanding starts at the end again
   useLayoutEffect(() => {
