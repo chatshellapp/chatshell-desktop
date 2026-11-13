@@ -55,6 +55,24 @@ describe('ThinkingPreview', () => {
     expect(screen.getByRole('button', { name: /Thinking/ })).toBeInTheDocument()
   })
 
+  it('collapses as soon as thinking stops streaming', () => {
+    const { rerender } = render(<ThinkingPreview content={CONTENT} isStreaming />)
+    expect(screen.getByTestId('markdown-content')).toBeInTheDocument()
+
+    rerender(<ThinkingPreview content={CONTENT} isStreaming={false} />)
+
+    expect(screen.queryByTestId('markdown-content')).toBeNull()
+    expect(screen.getByRole('button', { name: /Thought process/ })).toBeInTheDocument()
+  })
+
+  it('stays expanded after streaming stops when defaultExpanded is set', () => {
+    const { rerender } = render(<ThinkingPreview content={CONTENT} isStreaming defaultExpanded />)
+
+    rerender(<ThinkingPreview content={CONTENT} isStreaming={false} defaultExpanded />)
+
+    expect(screen.getByTestId('markdown-content')).toBeInTheDocument()
+  })
+
   it('keeps a streaming preview collapsed in a compact bordered style after a manual collapse', () => {
     const { container } = render(<ThinkingPreview content={CONTENT} isStreaming />)
 
