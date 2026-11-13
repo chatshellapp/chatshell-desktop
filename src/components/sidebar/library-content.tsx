@@ -1,5 +1,8 @@
 import { SlidersHorizontal, Sparkles, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { useSkillStore } from '@/stores/skillStore'
+import { logger } from '@/lib/logger'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PromptList, type Prompt, type PromptGroup } from '@/components/prompt-list'
 import { PresetList } from '@/components/preset-list'
@@ -58,6 +61,14 @@ export function LibraryContent({
 }: LibraryContentProps) {
   const { t } = useTranslation('sidebar')
   const { t: tSkills } = useTranslation('skills')
+  const { t: tCommon } = useTranslation('common')
+  const setEnabledForIds = useSkillStore((state) => state.setEnabledForIds)
+  const handleBulkEnabled = (enabled: boolean) => {
+    setEnabledForIds(
+      skills.map((skill) => skill.id),
+      enabled
+    ).catch((error) => logger.error('Failed to bulk update skills:', error))
+  }
 
   return (
     <Tabs
@@ -97,6 +108,30 @@ export function LibraryContent({
         )}
       </TabsContent>
       <TabsContent value="skills" className="mt-2 min-w-0">
+        {skills.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkEnabled(true)}
+              disabled={skills.every((skill) => skill.is_enabled)}
+            >
+              {filterActive
+                ? tCommon('enableShown', { count: skills.length })
+                : tCommon('enableAll')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkEnabled(false)}
+              disabled={skills.every((skill) => !skill.is_enabled)}
+            >
+              {filterActive
+                ? tCommon('disableShown', { count: skills.length })
+                : tCommon('disableAll')}
+            </Button>
+          </div>
+        )}
         {filterActive && skills.length === 0 ? (
           <FilterNoMatches />
         ) : (

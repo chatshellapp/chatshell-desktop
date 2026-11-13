@@ -23,6 +23,8 @@
   "disable": "Disable",
   "enableAll": "Enable All",
   "disableAll": "Disable All",
+  "enableShown": "Enable {{count}} Shown",
+  "disableShown": "Disable {{count}} Shown",
   "search": "Search",
   "searchPlaceholder": "Search...",
   "noResults": "No results found",

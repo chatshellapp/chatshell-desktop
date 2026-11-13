@@ -581,6 +581,7 @@ pub fn run() {
             commands::delete_skill,
             commands::toggle_skill,
             commands::set_all_skills_enabled,
+            commands::set_skills_enabled,
             commands::scan_skills,
             commands::read_skill_content,
             commands::open_skill_folder,

@@ -279,6 +279,25 @@ impl Database {
         self.list_skills().await
     }
 
+    /// Set `is_enabled` on the given skills only, leaving every other skill untouched.
+    pub async fn set_skills_enabled(&self, ids: &[String], enabled: bool) -> Result<Vec<Skill>> {
+        if !ids.is_empty() {
+            let now = Utc::now().to_rfc3339();
+            let ids_json = serde_json::to_string(ids)?;
+            sqlx::query(
+                "UPDATE skills SET is_enabled = ?, updated_at = ?
+                 WHERE id IN (SELECT value FROM json_each(?))",
+            )
+            .bind(enabled as i32)
+            .bind(&now)
+            .bind(&ids_json)
+            .execute(self.pool.as_ref())
+            .await?;
+        }
+
+        self.list_skills().await
+    }
+
     pub async fn toggle_skill(&self, id: &str) -> Result<Skill> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
@@ -852,6 +871,41 @@ mod tests {
         );
         assert!(db.get_skill(&s1.id).await.unwrap().unwrap().is_enabled);
         assert!(db.get_skill(&s2.id).await.unwrap().unwrap().is_enabled);
+    }
+
+    #[tokio::test]
+    async fn set_skills_enabled_only_touches_given_ids() {
+        let (db, _dir) = test_db().await;
+        let a = db
+            .create_skill(skill_req("pdf-merge", "user"))
+            .await
+            .unwrap();
+        let b = db
+            .create_skill(skill_req("pdf-split", "user"))
+            .await
+            .unwrap();
+        let c = db.create_skill(skill_req("docx", "user")).await.unwrap();
+
+        db.set_skills_enabled(&[a.id.clone(), b.id.clone()], false)
+            .await
+            .unwrap();
+        assert!(!db.get_skill(&a.id).await.unwrap().unwrap().is_enabled);
+        assert!(!db.get_skill(&b.id).await.unwrap().unwrap().is_enabled);
+        assert!(db.get_skill(&c.id).await.unwrap().unwrap().is_enabled);
+
+        db.set_skills_enabled(std::slice::from_ref(&a.id), true)
+            .await
+            .unwrap();
+        assert!(db.get_skill(&a.id).await.unwrap().unwrap().is_enabled);
+        assert!(!db.get_skill(&b.id).await.unwrap().unwrap().is_enabled);
+
+        let all = db.set_skills_enabled(&[], false).await.unwrap();
+        assert_eq!(
+            all.len(),
+            3,
+            "empty id list is a no-op that still lists skills"
+        );
+        assert!(db.get_skill(&c.id).await.unwrap().unwrap().is_enabled);
     }
 
     #[tokio::test]

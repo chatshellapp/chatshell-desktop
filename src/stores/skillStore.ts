@@ -23,6 +23,7 @@ interface SkillState {
   openSkillFolder: (id: string) => Promise<void>
   openSourceDirectory: (source: string) => Promise<void>
 
+  setEnabledForIds: (ids: string[], enabled: boolean) => Promise<void>
   getSkillById: (id: string) => Skill | undefined
   loadSources: () => Promise<void>
   setSourceEnabled: (source: string, enabled: boolean) => Promise<void>
@@ -126,6 +127,19 @@ export const useSkillStore = create<SkillState>()(
         })
       } catch (error) {
         logger.error('[skillStore] Failed to set all skills enabled:', error)
+        throw error
+      }
+    },
+
+    setEnabledForIds: async (ids: string[], enabled: boolean) => {
+      try {
+        const skills = await invoke<Skill[]>('set_skills_enabled', { ids, enabled })
+        logger.info('[skillStore] Set skills enabled:', { enabled, count: ids.length })
+        set((draft) => {
+          draft.skills = skills
+        })
+      } catch (error) {
+        logger.error('[skillStore] Failed to set skills enabled:', error)
         throw error
       }
     },

@@ -122,6 +122,19 @@ pub async fn set_all_skills_enabled(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn set_skills_enabled(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    enabled: bool,
+) -> Result<Vec<Skill>, String> {
+    state
+        .db
+        .set_skills_enabled(&ids, enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Info about a skill source directory shown in the UI
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
