@@ -1,16 +1,45 @@
 import { useTranslation } from 'react-i18next'
 import { FileText, Loader2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import type { MentionState } from './hooks/useMentions'
 
 interface MentionPopupProps {
-  state: MentionState
+  state: MentionState | null
   onPick: (path: string) => void
+  /** The composer the popup is anchored to; must accept a ref. */
+  children: ReactNode
 }
 
-/** The @-mention file list shown above the composer. */
-export function MentionPopup({ state, onPick }: MentionPopupProps) {
+/**
+ * The @-mention file list shown above the composer. It renders in a portal so
+ * the composer's scroll container cannot clip it. Open state is owned by the
+ * mention hook; focus stays in the textarea, which handles all keys.
+ */
+export function MentionPopup({ state, onPick, children }: MentionPopupProps) {
+  return (
+    <Popover open={state !== null}>
+      <PopoverAnchor asChild>{children}</PopoverAnchor>
+      {state && (
+        <PopoverContent
+          data-testid="mention-popup"
+          side="top"
+          align="start"
+          sideOffset={8}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          className="w-(--radix-popover-trigger-width) max-w-md rounded-md p-0"
+        >
+          <MentionList state={state} onPick={onPick} />
+        </PopoverContent>
+      )}
+    </Popover>
+  )
+}
+
+function MentionList({ state, onPick }: { state: MentionState; onPick: (path: string) => void }) {
   const { t } = useTranslation('chat')
-  const body = state.noWorkingDirectory ? (
+  return state.noWorkingDirectory ? (
     <div className="px-3 py-2 text-xs text-muted-foreground">{t('mention.noWorkingDirectory')}</div>
   ) : state.loading ? (
     <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
@@ -40,13 +69,5 @@ export function MentionPopup({ state, onPick }: MentionPopupProps) {
         </li>
       ))}
     </ul>
-  )
-  return (
-    <div
-      data-testid="mention-popup"
-      className="absolute bottom-full left-0 z-50 mb-2 w-full max-w-md rounded-md border bg-popover shadow-md"
-    >
-      {body}
-    </div>
   )
 }

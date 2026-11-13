@@ -598,107 +598,108 @@ export function ChatInput(/* _props: ChatInputProps */) {
           </div>
         )}
 
-        <InputGroup className="flex-1 relative">
-          {mentionState && <MentionPopup state={mentionState} onPick={pickMention} />}
-          <AttachmentPreviewRow
-            attachments={attachments}
-            onRemove={removeAttachment}
-            onImageClick={setLightboxImageIndex}
-            onFileClick={setPreviewingFileId}
-          />
-          <InputGroupTextarea
-            ref={textareaRef}
-            placeholder={t('typeMessage')}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value)
-              syncCaret()
-            }}
-            onSelect={syncCaret}
-            onKeyDown={(e) => {
-              if (handleMentionKeyDown(e)) return
-              handleKeyDown(e)
-            }}
-            onPaste={handlePaste}
-            disabled={!selectedModel && !selectedAssistant}
-          />
-          <InputToolbar
-            onFileSelect={handleFileSelect}
-            onImageSelect={handleImageSelect}
-            onFolderSelect={handleFolderSelect}
-            onWebPageSelect={handleWebPageSelect}
-            onUserPromptSelect={() => {
-              cursorPositionRef.current = textareaRef.current?.selectionStart ?? null
-              ensurePromptsLoaded()
-              setIsUserPromptDialogOpen(true)
-            }}
-            isModelMenuOpen={isModelMenuOpen}
-            onModelMenuOpenChange={setIsModelMenuOpen}
-            activeTab={activeTab}
-            onActiveTabChange={setActiveTab}
-            isStreaming={isStreaming}
-            isWaitingForAI={isWaitingForAI}
-            isSending={isSending}
-            canSend={!!input.trim()}
-            selectedModel={selectedModel}
-            selectedAssistant={selectedAssistant}
-            onSend={handleSend}
-            onStop={handleStop}
-            onModelParametersClick={() => {
-              // Ensure settings exist before opening dialog
-              if (currentConversation) {
-                getSettings(currentConversation.id)
-              }
-              setIsModelParametersDialogOpen(true)
-            }}
-            modelParametersLabel={modelParametersLabel}
-            onContextCountClick={() => {
-              // Ensure settings exist before opening dialog
-              if (currentConversation) {
-                getSettings(currentConversation.id)
-              }
-              setIsContextCountDialogOpen(true)
-            }}
-            contextCountLabel={contextCountLabel}
-            onSystemPromptClick={() => {
-              // Ensure settings exist and prompts are loaded before opening dialog
-              if (currentConversation) {
-                getSettings(currentConversation.id)
+        <MentionPopup state={mentionState} onPick={pickMention}>
+          <InputGroup className="flex-1 relative">
+            <AttachmentPreviewRow
+              attachments={attachments}
+              onRemove={removeAttachment}
+              onImageClick={setLightboxImageIndex}
+              onFileClick={setPreviewingFileId}
+            />
+            <InputGroupTextarea
+              ref={textareaRef}
+              placeholder={t('typeMessage')}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value)
+                syncCaret()
+              }}
+              onSelect={syncCaret}
+              onKeyDown={(e) => {
+                if (handleMentionKeyDown(e)) return
+                handleKeyDown(e)
+              }}
+              onPaste={handlePaste}
+              disabled={!selectedModel && !selectedAssistant}
+            />
+            <InputToolbar
+              onFileSelect={handleFileSelect}
+              onImageSelect={handleImageSelect}
+              onFolderSelect={handleFolderSelect}
+              onWebPageSelect={handleWebPageSelect}
+              onUserPromptSelect={() => {
+                cursorPositionRef.current = textareaRef.current?.selectionStart ?? null
                 ensurePromptsLoaded()
-              }
-              setIsSystemPromptDialogOpen(true)
-            }}
-            systemPromptLabel={systemPromptLabel}
-            systemPromptDisabled={hasMessages}
-            onMcpServersClick={() => {
-              if (currentConversation) {
-                getSettings(currentConversation.id)
-                ensureMcpServersLoaded()
-              }
-              setIsMcpServersDialogOpen(true)
-            }}
-            mcpServersLabel={mcpServersLabel}
-            onSkillsClick={() => {
-              if (currentConversation) {
-                getSettings(currentConversation.id)
-                scanSkills()
-              }
-              setIsSkillsDialogOpen(true)
-            }}
-            skillsLabel={skillsLabel}
-            workingDirectory={conversationSettings?.workingDirectory}
-            onWorkingDirectorySelect={handleWorkingDirectorySelect}
-            onWorkingDirectoryClear={handleClearWorkingDirectory}
-            permissionMode={permissionMode}
-            onPermissionModeSelect={handlePermissionModeSelect}
-            autoAvailable={autoAvailable}
-            autoUnavailableReason={autoReviewStatus?.reason ?? null}
-            autoUnavailableCause={autoReviewStatus?.cause ?? null}
-            toolsDisabled={toolsDisabled}
-            skillsDisabled={toolsDisabled}
-            imageAttachDisabled={visionDisabled}
-          />
-        </InputGroup>
+                setIsUserPromptDialogOpen(true)
+              }}
+              isModelMenuOpen={isModelMenuOpen}
+              onModelMenuOpenChange={setIsModelMenuOpen}
+              activeTab={activeTab}
+              onActiveTabChange={setActiveTab}
+              isStreaming={isStreaming}
+              isWaitingForAI={isWaitingForAI}
+              isSending={isSending}
+              canSend={!!input.trim()}
+              selectedModel={selectedModel}
+              selectedAssistant={selectedAssistant}
+              onSend={handleSend}
+              onStop={handleStop}
+              onModelParametersClick={() => {
+                // Ensure settings exist before opening dialog
+                if (currentConversation) {
+                  getSettings(currentConversation.id)
+                }
+                setIsModelParametersDialogOpen(true)
+              }}
+              modelParametersLabel={modelParametersLabel}
+              onContextCountClick={() => {
+                // Ensure settings exist before opening dialog
+                if (currentConversation) {
+                  getSettings(currentConversation.id)
+                }
+                setIsContextCountDialogOpen(true)
+              }}
+              contextCountLabel={contextCountLabel}
+              onSystemPromptClick={() => {
+                // Ensure settings exist and prompts are loaded before opening dialog
+                if (currentConversation) {
+                  getSettings(currentConversation.id)
+                  ensurePromptsLoaded()
+                }
+                setIsSystemPromptDialogOpen(true)
+              }}
+              systemPromptLabel={systemPromptLabel}
+              systemPromptDisabled={hasMessages}
+              onMcpServersClick={() => {
+                if (currentConversation) {
+                  getSettings(currentConversation.id)
+                  ensureMcpServersLoaded()
+                }
+                setIsMcpServersDialogOpen(true)
+              }}
+              mcpServersLabel={mcpServersLabel}
+              onSkillsClick={() => {
+                if (currentConversation) {
+                  getSettings(currentConversation.id)
+                  scanSkills()
+                }
+                setIsSkillsDialogOpen(true)
+              }}
+              skillsLabel={skillsLabel}
+              workingDirectory={conversationSettings?.workingDirectory}
+              onWorkingDirectorySelect={handleWorkingDirectorySelect}
+              onWorkingDirectoryClear={handleClearWorkingDirectory}
+              permissionMode={permissionMode}
+              onPermissionModeSelect={handlePermissionModeSelect}
+              autoAvailable={autoAvailable}
+              autoUnavailableReason={autoReviewStatus?.reason ?? null}
+              autoUnavailableCause={autoReviewStatus?.cause ?? null}
+              toolsDisabled={toolsDisabled}
+              skillsDisabled={toolsDisabled}
+              imageAttachDisabled={visionDisabled}
+            />
+          </InputGroup>
+        </MentionPopup>
       </div>
 
       {/* Web Page URL Dialog */}
