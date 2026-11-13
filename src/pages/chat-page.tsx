@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, SquarePen, X } from 'lucide-react'
 import { MorphSpinner } from '@/components/ui/morph-spinner'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ChatView } from '@/components/chat-view'
@@ -18,7 +18,10 @@ import { TranslationContent } from '@/components/sidebar/translation-content'
 import { SearchDialog } from '@/components/search/search-dialog'
 import { useSearchStore } from '@/stores/searchStore'
 import { Separator } from '@/components/ui/separator'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { Button } from '@/components/ui/button'
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { NEW_CONVERSATION_SHORTCUT } from '@/components/sidebar/sidebar-navigation'
+import { useNewConversation } from '@/hooks/useNewConversation'
 import { Toaster } from '@/components/ui/sonner'
 import { useConversationStore } from '@/stores/conversation'
 import { useAppInit } from '@/hooks/useAppInit'
@@ -29,6 +32,26 @@ import { SyncLockedBanner } from '@/components/sync/sync-locked-banner'
 import { useSyncSetupStore } from '@/stores/syncSetupStore'
 import { toast } from 'sonner'
 import { useUpdaterStore } from '@/stores/updaterStore'
+
+/** Header shortcut for a new conversation while the list panel is collapsed */
+function CollapsedNewConversationButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation()
+  const { state } = useSidebar()
+  if (state !== 'collapsed') return null
+  const label = t('sidebar:newConversation')
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-7"
+      onClick={onClick}
+      aria-label={label}
+      title={`${label} (${NEW_CONVERSATION_SHORTCUT})`}
+    >
+      <SquarePen />
+    </Button>
+  )
+}
 
 export function ChatPage() {
   const { t } = useTranslation()
@@ -131,6 +154,12 @@ export function ChatPage() {
   const showSkillDetail =
     activeSection === 'library' && libraryTab === 'skills' && selectedSkill !== null
 
+  const openNewConversation = useNewConversation()
+  const startNewConversation = useCallback(() => {
+    setActiveSection('conversations')
+    void openNewConversation()
+  }, [openNewConversation])
+
   // Search, translation continuation and detail pages can select a
   // conversation outside the conversation list; follow it there so the chat
   // is not hidden behind the translation view or a detail page.
@@ -185,7 +214,11 @@ export function ChatPage() {
           } as React.CSSProperties
         }
       >
-        <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+        <AppSidebar
+          activeSection={activeSection}
+          onSectionChange={setActiveSection}
+          onNewConversation={startNewConversation}
+        />
         <SidebarInset className="flex min-w-0 flex-col h-screen overflow-hidden">
           <header
             className={
@@ -195,6 +228,7 @@ export function ChatPage() {
             }
           >
             <SidebarTrigger className={isTranslation ? '-ml-1 md:hidden' : '-ml-1'} />
+            {!isTranslation && <CollapsedNewConversationButton onClick={startNewConversation} />}
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <h1 className="min-w-0 truncate text-sm font-medium">
               {isTranslation
