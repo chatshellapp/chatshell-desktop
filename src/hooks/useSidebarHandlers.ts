@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { requestComposerFocus } from '@/lib/composer-focus'
+import { useNewConversation } from '@/hooks/useNewConversation'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
@@ -378,24 +378,7 @@ export function useSidebarHandlers() {
     [selectConversation]
   )
 
-  const handleNewConversation = useCallback(async () => {
-    try {
-      // Rescan skill directories so newly added skills are indexed before
-      // conversation settings (which default to all globally enabled skills) are loaded.
-      const { useSkillStore } = await import('@/stores/skillStore')
-      await useSkillStore.getState().scanSkills()
-
-      // A new draft becomes current, which triggers the composer focus effect
-      await openDraftConversation()
-      // Reopening the already-current draft changes nothing, so focus explicitly
-      requestComposerFocus()
-    } catch (error) {
-      logger.error('Failed to create new conversation:', error)
-      toast.error(t('failedToCreateConversation'), {
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [openDraftConversation])
+  const handleNewConversation = useNewConversation()
 
   const handleGenerateTitle = useCallback(
     async (conversationId: string) => {

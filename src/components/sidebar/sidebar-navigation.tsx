@@ -1,12 +1,9 @@
-import { SquarePen } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -15,7 +12,7 @@ import {
 export const IS_APPLE_PLATFORM =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
-const NEW_CONVERSATION_SHORTCUT = IS_APPLE_PLATFORM ? '⌘N' : 'Ctrl+N'
+export const NEW_CONVERSATION_SHORTCUT = IS_APPLE_PLATFORM ? '⌘N' : 'Ctrl+N'
 
 export interface NavItem {
   id: string
@@ -30,7 +27,6 @@ interface SidebarNavigationProps {
   activeItem: NavItem
   onItemClick: (item: NavItem) => void
   onSettingsClick: () => void
-  onNewConversation: () => void
   user: { name: string; email: string; avatar: string }
 }
 
@@ -39,9 +35,7 @@ export function SidebarNavigation({
   activeItem,
   onItemClick,
   onSettingsClick,
-  onNewConversation,
 }: SidebarNavigationProps) {
-  const { t } = useTranslation()
   const settingsItem = navItems.find((item) => item.id === 'settings')
   const mainItems = navItems.filter((item) => item.id !== 'settings')
 
@@ -70,24 +64,6 @@ export function SidebarNavigation({
 
   return (
     <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
-      <SidebarHeader className="px-1.5 pb-0 md:px-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip={{
-                children: `${t('sidebar:newConversation')} (${NEW_CONVERSATION_SHORTCUT})`,
-                hidden: false,
-              }}
-              onClick={onNewConversation}
-              aria-label={t('sidebar:newConversation')}
-              className="px-2.5 md:px-2"
-            >
-              <SquarePen />
-              <span>{t('sidebar:newConversation')}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent className="px-1.5 md:px-0">

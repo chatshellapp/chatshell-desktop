@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, SquarePen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { filterGroups, filterItems, normalizeQuery } from '@/lib/sidebar-filter'
@@ -22,7 +22,11 @@ import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
 import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
-import { IS_APPLE_PLATFORM, SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
+import {
+  IS_APPLE_PLATFORM,
+  NEW_CONVERSATION_SHORTCUT,
+  SidebarNavigation,
+} from '@/components/sidebar/sidebar-navigation'
 import { useConversationParticipants } from '@/hooks/useConversationParticipants'
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
@@ -39,6 +43,7 @@ import { useSkillActions } from '@/hooks/useSkills'
 import { useSkillStore } from '@/stores/skillStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
+import { hasBlockingDialog } from '@/lib/blocking-dialog'
 import { usePromptStore } from '@/stores/promptStore'
 import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
 import { SIDEBAR_DATA, getNavItems } from '@/lib/sidebar-data'
@@ -52,9 +57,16 @@ import type { ModelParameterPreset } from '@/types'
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeSection: string
   onSectionChange: (section: string) => void
+  /** Switches to the conversations section and opens a draft */
+  onNewConversation: () => void
 }
 
-export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSidebarProps) {
+export function AppSidebar({
+  activeSection,
+  onSectionChange,
+  onNewConversation,
+  ...props
+}: AppSidebarProps) {
   const { t } = useTranslation()
   const navItems = React.useMemo(() => getNavItems(t), [t])
   const activeItem = navItems.find((item) => item.id === activeSection) || navItems[0]
@@ -382,12 +394,6 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
 
   const footer = renderFooter()
 
-  const { handleNewConversation } = handlers
-  const startNewConversation = React.useCallback(() => {
-    onSectionChange('conversations')
-    handleNewConversation()
-  }, [onSectionChange, handleNewConversation])
-
   // Global shortcut: Cmd+N (macOS) / Ctrl+N (elsewhere) to start a new
   // conversation. Ctrl+N is left alone on macOS, where it moves the caret
   // down a line in text fields.
@@ -397,12 +403,12 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
       if (!modifier || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'n') return
       e.preventDefault()
       // Do not switch conversations underneath an open dialog
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
-      startNewConversation()
+      if (hasBlockingDialog()) return
+      onNewConversation()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [startNewConversation])
+  }, [onNewConversation])
 
   return (
     <Sidebar
@@ -424,7 +430,6 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           setOpenMobile(false)
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
-        onNewConversation={startNewConversation}
         user={SIDEBAR_DATA.user}
       />
 
@@ -487,6 +492,20 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
                   <X className="size-3.5" />
                 </Button>
               </div>
+            )}
+            {activeSection === 'conversations' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={onNewConversation}
+              >
+                <SquarePen className="size-4" />
+                <span>{t('sidebar:newConversation')}</span>
+                <kbd className="ml-auto font-sans text-xs text-muted-foreground">
+                  {NEW_CONVERSATION_SHORTCUT}
+                </kbd>
+              </Button>
             )}
           </SidebarHeader>
           <SidebarContent>
