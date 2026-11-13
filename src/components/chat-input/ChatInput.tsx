@@ -9,7 +9,7 @@ import {
 } from '@/components/attachment-preview'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { X, Sparkles, FolderOpen } from 'lucide-react'
+import { X, Sparkles } from 'lucide-react'
 
 import { useAttachments } from './useAttachments'
 import { useKeyboardHandlers } from './useKeyboardHandlers'
@@ -542,38 +542,9 @@ export function ChatInput(/* _props: ChatInputProps */) {
       )}
 
       <div className="flex flex-col gap-2 flex-1">
-        {/* Tags row: System Prompt + Working Directory */}
-        {(activeSystemPromptInfo || conversationSettings?.workingDirectory) && (
+        {/* Tags row: System Prompt */}
+        {activeSystemPromptInfo && (
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Working Directory Tag */}
-            {conversationSettings?.workingDirectory && (
-              <Badge
-                variant="outline"
-                className="hover:bg-accent transition-colors text-muted-foreground hover:text-foreground gap-1.5"
-              >
-                <button
-                  type="button"
-                  onClick={handleClearWorkingDirectory}
-                  className="hover:text-destructive transition-colors -ml-0.5"
-                  title={t('clearWorkingDirectory')}
-                >
-                  <X className="size-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleWorkingDirectorySelect}
-                  className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer"
-                  title={conversationSettings.workingDirectory}
-                >
-                  <FolderOpen className="size-3" />
-                  <span className="max-w-[200px] truncate">
-                    {conversationSettings.workingDirectory.split('/').pop() ||
-                      conversationSettings.workingDirectory}
-                  </span>
-                </button>
-              </Badge>
-            )}
-
             {/* System Prompt Tag */}
             {activeSystemPromptInfo &&
               (hasMessages ? (
@@ -715,7 +686,9 @@ export function ChatInput(/* _props: ChatInputProps */) {
               setIsSkillsDialogOpen(true)
             }}
             skillsLabel={skillsLabel}
+            workingDirectory={conversationSettings?.workingDirectory}
             onWorkingDirectorySelect={handleWorkingDirectorySelect}
+            onWorkingDirectoryClear={handleClearWorkingDirectory}
             permissionMode={permissionMode}
             onPermissionModeSelect={handlePermissionModeSelect}
             autoAvailable={autoAvailable}

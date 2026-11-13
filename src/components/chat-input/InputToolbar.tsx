@@ -17,11 +17,13 @@ import {
   ShieldCheck,
   ShieldOff,
   Check,
+  X,
 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -75,7 +77,9 @@ interface InputToolbarProps {
   onSkillsClick: () => void
   skillsLabel: string
   // Working Directory
+  workingDirectory?: string | null
   onWorkingDirectorySelect: () => void
+  onWorkingDirectoryClear: () => void
   // Permission mode (ask / auto / yolo)
   permissionMode: PermissionMode
   onPermissionModeSelect: (mode: PermissionMode) => void
@@ -92,6 +96,16 @@ interface InputToolbarProps {
 
 /** Modes in escalation order; only crossing into `yolo` asks to confirm. */
 const PERMISSION_MODES: PermissionMode[] = ['ask', 'auto', 'yolo']
+
+/** Last path segment, tolerating trailing and Windows-style separators. */
+function folderName(path: string): string {
+  return (
+    path
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .pop() || path
+  )
+}
 
 function PermissionModeIcon({ mode, className }: { mode: PermissionMode; className?: string }) {
   switch (mode) {
@@ -133,7 +147,9 @@ export function InputToolbar({
   mcpServersLabel,
   onSkillsClick,
   skillsLabel,
+  workingDirectory = null,
   onWorkingDirectorySelect,
+  onWorkingDirectoryClear,
   permissionMode,
   onPermissionModeSelect,
   autoAvailable,
@@ -323,13 +339,64 @@ export function InputToolbar({
               <span className="text-xs text-muted-foreground">{skillsLabel}</span>
             </DropdownMenuItem>
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
-            <FolderOpen className="size-4" />
-            <span>{t('workingDirectory')}</span>
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Working directory: icon button when unset, folder-name chip when set */}
+      {workingDirectory ? (
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <InputGroupButton
+                  variant="ghost"
+                  className="rounded-full h-7 px-2.5 gap-1.5"
+                  aria-label={t('workingDirectory')}
+                >
+                  <FolderOpen className="size-3.5" />
+                  <span className="text-xs max-w-[160px] truncate">
+                    {folderName(workingDirectory)}
+                  </span>
+                </InputGroupButton>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">{workingDirectory}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent
+            side="top"
+            align="start"
+            className="[--radius:0.95rem] min-w-[200px]"
+          >
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground max-w-[320px] break-all">
+              {workingDirectory}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onWorkingDirectorySelect} className="gap-2">
+              <FolderOpen className="size-4" />
+              <span>{t('changeWorkingDirectory')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onWorkingDirectoryClear} className="gap-2">
+              <X className="size-4" />
+              <span>{t('clearWorkingDirectory')}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <InputGroupButton
+              variant="outline"
+              className="rounded-full"
+              size="icon-xs"
+              aria-label={t('workingDirectory')}
+              onClick={onWorkingDirectorySelect}
+            >
+              <FolderOpen />
+            </InputGroupButton>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t('workingDirectory')}</TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Permission mode chip: always visible so the current mode is
           inspectable before every send */}
