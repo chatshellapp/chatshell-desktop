@@ -96,6 +96,7 @@
   "unlimited": "无限制",
   "countMsgs": "{{count}} 条",
   "clearWorkingDirectory": "清除工作目录",
+  "changeWorkingDirectory": "更改工作目录",
   "clearSystemPrompt": "清除系统提示词",
   "selectWorkingDirectoryTitle": "选择工作目录",
   "unknown": "未知",

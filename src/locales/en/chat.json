@@ -96,6 +96,7 @@
   "unlimited": "Unlimited",
   "countMsgs": "{{count}} msgs",
   "clearWorkingDirectory": "Clear working directory",
+  "changeWorkingDirectory": "Change working directory",
   "clearSystemPrompt": "Clear system prompt",
   "selectWorkingDirectoryTitle": "Select Working Directory",
   "unknown": "Unknown",
