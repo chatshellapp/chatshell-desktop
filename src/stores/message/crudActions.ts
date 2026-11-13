@@ -945,6 +945,34 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     get().processNextPendingMessage(conversationId)
   },
 
+  sendPendingMessageNow: async (conversationId: string, index: number) => {
+    const convState = get().getConversationState(conversationId)
+    if (index < 0 || index >= convState.pendingMessages.length) return
+    // Jump the queue; an explicit send also clears an earlier send error
+    set((draft) => {
+      const cs = draft.conversationStates[conversationId]
+      if (!cs) return
+      const [message] = cs.pendingMessages.splice(index, 1)
+      delete message.error
+      cs.pendingMessages.unshift(message)
+    })
+    logger.info('[messageStore] Sending queued message now', { index, conversationId })
+
+    const busy = convState.isSending || convState.isStreaming || convState.isWaitingForAI
+    if (busy) {
+      // The stop's completion (or the settle path for a run that already
+      // ended) resumes the queue, which now starts with this message
+      if (!convState.stopRequested) await get().stopGeneration(conversationId)
+      return
+    }
+    // Sending now is a decision to move past a failed turn
+    if (convState.failedTurn) {
+      get().dismissFailedTurn(conversationId)
+      return
+    }
+    get().processNextPendingMessage(conversationId)
+  },
+
   clearPendingMessages: (conversationId: string) => {
     get().getConversationState(conversationId)
     set((draft) => {
