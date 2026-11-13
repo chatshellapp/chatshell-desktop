@@ -331,6 +331,37 @@ impl Database {
         Ok(summaries)
     }
 
+    /// IDs of live conversations a model or assistant takes part in, most
+    /// recently updated first. Feeds the contact profile's recent list.
+    pub async fn list_conversation_ids_by_participant(
+        &self,
+        participant_type: &str,
+        participant_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT c.id
+             FROM conversations c
+             WHERE c.deleted_at IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM conversation_participants cp
+                   WHERE cp.conversation_id = c.id
+                     AND cp.deleted_at IS NULL
+                     AND cp.participant_type = ?
+                     AND cp.participant_id = ?
+               )
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT ?",
+        )
+        .bind(participant_type)
+        .bind(participant_id)
+        .bind(limit)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| row.get("id")).collect())
+    }
+
     pub async fn remove_conversation_participant(&self, id: &str) -> Result<()> {
         sqlx::query(&crate::db::soft_delete::tombstone_update(
             "conversation_participants",
@@ -1201,6 +1232,59 @@ mod tests {
         db.remove_conversation_participant(&Uuid::now_v7().to_string())
             .await
             .unwrap();
+    }
+
+    async fn add_typed_participant(db: &Database, conversation_id: &str, kind: &str, id: &str) {
+        db.add_conversation_participant(CreateConversationParticipantRequest {
+            conversation_id: conversation_id.to_string(),
+            participant_type: kind.to_string(),
+            participant_id: Some(id.to_string()),
+            display_name: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn conversation_ids_by_participant_orders_by_recency_and_filters() {
+        let (db, _dir) = test_db().await;
+        let older = new_conversation(&db, "older").await;
+        let newer = new_conversation(&db, "newer").await;
+        let other = new_conversation(&db, "other").await;
+        let gone = new_conversation(&db, "gone").await;
+
+        add_typed_participant(&db, &older.id, "assistant", "a-1").await;
+        add_typed_participant(&db, &newer.id, "assistant", "a-1").await;
+        add_typed_participant(&db, &other.id, "assistant", "a-2").await;
+        add_typed_participant(&db, &gone.id, "assistant", "a-1").await;
+        // Same id under a different participant type must not match.
+        add_typed_participant(&db, &other.id, "model", "a-1").await;
+        db.delete_conversation(&gone.id).await.unwrap();
+
+        // Touch `older` so it becomes the most recently updated.
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        db.update_conversation(&older.id, "older renamed")
+            .await
+            .unwrap();
+
+        let ids = db
+            .list_conversation_ids_by_participant("assistant", "a-1", 10)
+            .await
+            .unwrap();
+        assert_eq!(ids, vec![older.id.clone(), newer.id.clone()]);
+
+        let limited = db
+            .list_conversation_ids_by_participant("assistant", "a-1", 1)
+            .await
+            .unwrap();
+        assert_eq!(limited, vec![older.id.clone()]);
+
+        assert!(
+            db.list_conversation_ids_by_participant("assistant", "missing", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

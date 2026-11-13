@@ -84,6 +84,7 @@ describe('useVendorsList', () => {
       id: 'gpt-4o',
       name: 'Model gpt-4o',
       modelId: 'gpt-4o',
+      providerId: 'provider-a',
       logo: expect.any(String),
       isStarred: true,
     })

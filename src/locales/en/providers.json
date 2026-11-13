@@ -95,5 +95,7 @@
   "needsModels": "Needs models",
   "modelCount": "{{count}} models",
   "addModelsBeforeChatting": "Add at least one model to start chatting.",
-  "customProviderPlaceholder": "e.g. My Local LLM"
+  "customProviderPlaceholder": "e.g. My Local LLM",
+  "removeModel": "Remove Model",
+  "confirmRemoveModel": "Are you sure you want to remove {{name}}? You can add it again from the provider settings."
 }

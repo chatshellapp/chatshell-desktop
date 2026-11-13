@@ -196,7 +196,8 @@ export function useSubmitHandler({
       // Determine what parameters to send:
       // - useProviderDefaults: true → send flag to skip all parameters
       // - useCustomParameters: true → send custom overrides
-      // - selectedPresetId: set → let backend use assistant preset (no overrides sent)
+      // - otherwise → the backend loads the conversation's selected preset from
+      //   its saved settings, then falls back to the assistant preset
       const useProviderDefaults = settings?.useProviderDefaults ?? false
       const parameterOverrides =
         settings?.useCustomParameters && settings.parameterOverrides

@@ -31,6 +31,10 @@ export interface Model {
    */
   providerName?: string
   /**
+   * ID of the provider this model belongs to
+   */
+  providerId?: string
+  /**
    * URL or path to the model logo
    */
   logo?: string
@@ -73,9 +77,17 @@ interface ModelListProps {
    */
   onModelClick?: (model: Model) => void
   /**
+   * Double-click or Enter on a model
+   */
+  onModelActivate?: (model: Model) => void
+  /**
    * Click handler for model settings
    */
   onModelSettings?: (model: Model) => void
+  /**
+   * Called after the user confirms removing a model
+   */
+  onModelDelete?: (model: Model) => void
   /**
    * Click handler for model star toggle
    */
@@ -98,13 +110,16 @@ export function ModelList({
   vendors,
   selectedModelId,
   onModelClick,
+  onModelActivate,
   onModelSettings,
+  onModelDelete,
   onModelStarToggle,
   onVendorSettings,
   className,
   compact = false,
 }: ModelListProps) {
   const { t } = useTranslation('providers')
+  const { t: tSidebar } = useTranslation('sidebar')
   // Collect all starred models from all vendors
   const starredModels = React.useMemo(() => {
     const models: Model[] = []
@@ -123,7 +138,7 @@ export function ModelList({
   // Create a virtual vendor for starred models
   const starredVendor: ModelVendor = {
     id: 'starred',
-    name: 'Starred',
+    name: tSidebar('starred'),
     models: starredModels,
     defaultOpen: true,
   }
@@ -153,7 +168,9 @@ export function ModelList({
           vendor={starredVendor}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
+          onModelActivate={onModelActivate}
           onModelSettings={onModelSettings}
+          onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
           onVendorSettings={onVendorSettings}
           hideVendorMenu
@@ -169,7 +186,9 @@ export function ModelList({
           vendor={vendor}
           selectedModelId={selectedModelId}
           onModelClick={onModelClick}
+          onModelActivate={onModelActivate}
           onModelSettings={onModelSettings}
+          onModelDelete={onModelDelete}
           onModelStarToggle={onModelStarToggle}
           onVendorSettings={onVendorSettings}
           forceDefaultOpen={!hasStarredModels && index === 0}
@@ -185,7 +204,9 @@ interface ModelVendorGroupProps {
   vendor: ModelVendor
   selectedModelId?: string
   onModelClick?: (model: Model) => void
+  onModelActivate?: (model: Model) => void
   onModelSettings?: (model: Model) => void
+  onModelDelete?: (model: Model) => void
   onModelStarToggle?: (model: Model) => void
   onVendorSettings?: (vendor: ModelVendor) => void
   hideVendorMenu?: boolean
@@ -198,7 +219,9 @@ function ModelVendorGroup({
   vendor,
   selectedModelId,
   onModelClick,
+  onModelActivate,
   onModelSettings,
+  onModelDelete,
   onModelStarToggle,
   onVendorSettings,
   hideVendorMenu = false,
@@ -214,6 +237,8 @@ function ModelVendorGroup({
     forceDefaultOpen || (!ignoreVendorDefault && (vendor.defaultOpen ?? false))
   const [isOpen, setIsOpen] = React.useState(initialOpenState)
   const [isHovered, setIsHovered] = React.useState(false)
+  const { t } = useTranslation('common')
+  const showVendorMenu = !hideVendorMenu && !!onVendorSettings
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -243,7 +268,7 @@ function ModelVendorGroup({
         </CollapsibleTrigger>
 
         {/* Vendor menu button */}
-        {!hideVendorMenu && (
+        {showVendorMenu && (
           <div
             className={cn(
               'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity',
@@ -270,7 +295,7 @@ function ModelVendorGroup({
                     onVendorSettings?.(vendor)
                   }}
                 >
-                  Configuration
+                  {t('configuration')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -289,7 +314,9 @@ function ModelVendorGroup({
             isStarred={model.isStarred}
             isActive={selectedModelId === model.id}
             onClick={() => onModelClick?.(model)}
-            onSettingsClick={() => onModelSettings?.(model)}
+            onActivate={onModelActivate ? () => onModelActivate(model) : undefined}
+            onSettingsClick={onModelSettings ? () => onModelSettings(model) : undefined}
+            onDeleteClick={onModelDelete ? () => onModelDelete(model) : undefined}
             onStarClick={() => onModelStarToggle?.(model)}
             compact={compact}
           />

@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { InputGroup, InputGroupTextarea } from '@/components/ui/input-group'
 import {
@@ -30,6 +29,7 @@ import { SkillsDialog } from './SkillsDialog'
 import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
 import { usePromptStore } from '@/stores/promptStore'
+import { usePresetStore } from '@/stores/presetStore'
 import { useMessageStore } from '@/stores/message'
 import { useInputHistoryStore } from '@/stores/inputHistoryStore'
 import { useMcpStore } from '@/stores/mcpStore'
@@ -39,7 +39,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
 import { getContextCountOptions } from '@/types'
-import type { ModelParameterPreset, PermissionMode, PromptMode } from '@/types'
+import type { PermissionMode, PromptMode } from '@/types'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +77,6 @@ export function ChatInput(/* _props: ChatInputProps */) {
   const [previewingFileId, setPreviewingFileId] = useState<string | null>(null)
   const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null)
   // Parameter presets for displaying names
-  const [parameterPresets, setParameterPresets] = useState<ModelParameterPreset[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cursorPositionRef = useRef<number | null>(null)
 
@@ -241,18 +240,12 @@ export function ChatInput(/* _props: ChatInputProps */) {
     })
   }, [pendingInput, currentConversationId, setPendingInput])
 
-  // Load parameter presets on mount
+  // Parameter presets come from the shared store so Library edits show up here
+  const parameterPresets = usePresetStore((state) => state.presets)
+  const ensurePresetsLoaded = usePresetStore((state) => state.ensureLoaded)
   useEffect(() => {
-    const loadPresets = async () => {
-      try {
-        const presets = await invoke<ModelParameterPreset[]>('list_model_parameter_presets')
-        setParameterPresets(presets)
-      } catch (error) {
-        logger.error('Failed to load parameter presets:', error)
-      }
-    }
-    loadPresets()
-  }, [])
+    void ensurePresetsLoaded()
+  }, [ensurePresetsLoaded])
 
   // Compute display labels
   const modelParametersLabel = useMemo(() => {

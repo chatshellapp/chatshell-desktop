@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
 import {
   Dialog,
   DialogContent,
@@ -10,14 +9,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Slider } from '@/components/ui/slider'
+import { ParameterSlider } from '@/components/parameter-slider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { ModelParameterPreset, ModelParameterOverrides } from '@/types'
+import type { ModelParameterOverrides } from '@/types'
 import { PARAMETER_LIMITS } from '@/types'
 import { cn } from '@/lib/utils'
-import { logger } from '@/lib/logger'
+import { usePresetStore } from '@/stores/presetStore'
 
 interface ModelParametersDialogProps {
   isOpen: boolean
@@ -34,53 +31,6 @@ interface ModelParametersDialogProps {
   onSaveCustomParameters: (overrides: ModelParameterOverrides) => void
 }
 
-interface ParameterSliderProps {
-  label: string
-  value: number | undefined
-  onChange: (value: number) => void
-  min: number
-  max: number
-  step: number
-  defaultValue: number
-}
-
-function ParameterSlider({
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  step,
-  defaultValue,
-}: ParameterSliderProps) {
-  const currentValue = value ?? defaultValue
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">{label}</Label>
-        <Input
-          type="number"
-          value={currentValue}
-          onChange={(e) => onChange(parseFloat(e.target.value) || defaultValue)}
-          min={min}
-          max={max}
-          step={step}
-          className="w-20 h-7 text-right text-sm"
-        />
-      </div>
-      <Slider
-        value={[currentValue]}
-        onValueChange={([v]) => onChange(v)}
-        min={min}
-        max={max}
-        step={step}
-        className="w-full"
-      />
-    </div>
-  )
-}
-
 export function ModelParametersDialog({
   isOpen,
   onOpenChange,
@@ -94,7 +44,6 @@ export function ModelParametersDialog({
   onSaveCustomParameters,
 }: ModelParametersDialogProps) {
   const { t } = useTranslation(['chat', 'common'])
-  const [presets, setPresets] = useState<ModelParameterPreset[]>([])
   const [activeTab, setActiveTab] = useState<'presets' | 'custom'>(
     useCustomParameters ? 'custom' : 'presets'
   )
@@ -102,31 +51,21 @@ export function ModelParametersDialog({
   // Local state for custom parameters
   const [localOverrides, setLocalOverrides] = useState<ModelParameterOverrides>(parameterOverrides)
 
-  // Load presets on mount
+  // Presets come from the shared store; built-ins first in a fixed order,
+  // then user presets as listed
+  const storePresets = usePresetStore((state) => state.presets)
+  const ensurePresetsLoaded = usePresetStore((state) => state.ensureLoaded)
   useEffect(() => {
-    const loadPresets = async () => {
-      try {
-        const result = await invoke<ModelParameterPreset[]>('list_model_parameter_presets')
-        // Sort presets: Creative, Balanced, Precise, then others
-        const presetOrder: Record<string, number> = {
-          Creative: 0,
-          Balanced: 1,
-          Precise: 2,
-        }
-        const sorted = [...result].sort((a, b) => {
-          const orderA = presetOrder[a.name] ?? 99
-          const orderB = presetOrder[b.name] ?? 99
-          return orderA - orderB
-        })
-        setPresets(sorted)
-      } catch (error) {
-        logger.error('Failed to load presets:', error)
-      }
-    }
-    if (isOpen) {
-      loadPresets()
-    }
-  }, [isOpen])
+    if (isOpen) void ensurePresetsLoaded()
+  }, [isOpen, ensurePresetsLoaded])
+  const presets = useMemo(() => {
+    const presetOrder: Record<string, number> = { Creative: 0, Balanced: 1, Precise: 2 }
+    return [...storePresets].sort(
+      (a, b) =>
+        (a.is_system ? (presetOrder[a.name] ?? 50) : 99) -
+        (b.is_system ? (presetOrder[b.name] ?? 50) : 99)
+    )
+  }, [storePresets])
 
   // Reset local state when dialog opens
   useEffect(() => {

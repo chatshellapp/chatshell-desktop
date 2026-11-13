@@ -73,7 +73,7 @@ describe('useAssistantGroups', () => {
 
     const groups = result.current
     expect(groups.map((g) => g.name)).toEqual(['Ungrouped', 'Alpha', 'Work'])
-    expect(groups.map((g) => g.id)).toEqual(['ungrouped', 'alpha', 'work'])
+    expect(groups.map((g) => g.id)).toEqual(['group:Ungrouped', 'group:Alpha', 'group:Work'])
     expect(groups[0].assistants.map((a) => a.id)).toEqual(['a-free-1', 'a-free-2'])
     expect(groups.map((g) => g.defaultOpen)).toEqual([true, false, false])
   })
@@ -140,5 +140,74 @@ describe('useAssistantGroups', () => {
     const [assistant] = result.current[0].assistants
     expect(assistant.modelName).toBeUndefined()
     expect(assistant.capabilities?.modelLogo).toBeUndefined()
+  })
+
+  it('keeps groups whose names only differ by case and spacing distinct', () => {
+    useAssistantStore.setState({
+      assistants: [
+        makeAssistant({ id: 'a-1', group_name: 'My Group' }),
+        makeAssistant({ id: 'a-2', group_name: 'my-group' }),
+      ],
+    })
+
+    const { result } = renderHook(() => useAssistantGroups())
+
+    const ids = result.current.map((g) => g.id)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it('does not append an ellipsis to short prompts and omits the subtitle when empty', () => {
+    useAssistantStore.setState({
+      assistants: [
+        makeAssistant({ id: 'a-short', system_prompt: 'Be brief.' }),
+        makeAssistant({ id: 'a-empty', system_prompt: '' }),
+      ],
+    })
+
+    const { result } = renderHook(() => useAssistantGroups())
+    const [shortAssistant, emptyAssistant] = result.current[0].assistants
+
+    expect(shortAssistant.persona).toBe('Be brief.')
+    expect(emptyAssistant.persona).toBeUndefined()
+  })
+
+  it('uses the image avatar only when the avatar type is image', () => {
+    useAssistantStore.setState({
+      assistants: [
+        makeAssistant({
+          id: 'a-image',
+          avatar_type: 'image',
+          avatar_image_url: 'https://example.com/a.png',
+        }),
+        makeAssistant({
+          id: 'a-text',
+          avatar_type: 'text',
+          avatar_image_url: 'https://example.com/b.png',
+        }),
+      ],
+    })
+
+    const { result } = renderHook(() => useAssistantGroups())
+    const [imageAssistant, textAssistant] = result.current[0].assistants
+
+    expect(imageAssistant.logo).toBe('https://example.com/a.png')
+    expect(textAssistant.logo).toBeUndefined()
+  })
+
+  it('flags tools when the assistant has tools or skills attached', () => {
+    useAssistantStore.setState({
+      assistants: [
+        makeAssistant({ id: 'a-tools', tool_ids: ['web_fetch'] }),
+        makeAssistant({ id: 'a-skills', skill_ids: ['skill-1'] }),
+        makeAssistant({ id: 'a-none' }),
+      ],
+    })
+
+    const { result } = renderHook(() => useAssistantGroups())
+    const [withTools, withSkills, none] = result.current[0].assistants
+
+    expect(withTools.capabilities?.hasTools).toBe(true)
+    expect(withSkills.capabilities?.hasTools).toBe(true)
+    expect(none.capabilities?.hasTools).toBe(false)
   })
 })

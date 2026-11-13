@@ -785,6 +785,7 @@ async fn process_llm_request(
     // Determine model params based on settings:
     // - use_provider_defaults: true -> use empty params (provider defaults)
     // - parameter_overrides: set -> use custom overrides
+    // - conversation settings select a preset -> use that preset
     // - otherwise -> use assistant preset (if available)
     let model_params = if use_provider_defaults {
         tracing::info!("📋 [background_task] Using provider defaults (no parameters sent)");
@@ -814,8 +815,18 @@ async fn process_llm_request(
             params.top_p
         );
         params
+    } else if let Some(preset) = active_conversation_preset(&state, &conversation_id).await {
+        // The conversation selected a preset (directly, or inherited from
+        // its assistant when the assistant was picked)
+        tracing::info!(
+            "📋 [background_task] Using conversation preset '{}': temp={:?}, max_tokens={:?}",
+            preset.name,
+            preset.temperature,
+            preset.max_tokens
+        );
+        crate::models::ModelParameters::from(&preset)
     } else {
-        // Use assistant preset params (if any)
+        // Fall back to the assistant preset (if any)
         assistant_config
             .as_ref()
             .and_then(|a| a.preset.as_ref())
@@ -825,14 +836,7 @@ async fn process_llm_request(
                     preset.temperature,
                     preset.max_tokens
                 );
-                crate::models::ModelParameters {
-                    temperature: preset.temperature,
-                    max_tokens: preset.max_tokens,
-                    top_p: preset.top_p,
-                    frequency_penalty: preset.frequency_penalty,
-                    presence_penalty: preset.presence_penalty,
-                    additional_params: preset.additional_params.clone(),
-                }
+                crate::models::ModelParameters::from(preset)
             })
             .unwrap_or_default()
     };
@@ -870,6 +874,28 @@ async fn process_llm_request(
         stored_images,
     )
     .await;
+}
+
+/// The preset the conversation's saved settings select, if any. Draft
+/// settings are persisted before the first send, so this covers new chats.
+async fn active_conversation_preset(
+    state: &AppState,
+    conversation_id: &str,
+) -> Option<crate::models::ModelParameterPreset> {
+    match state
+        .db
+        .get_active_conversation_preset(conversation_id)
+        .await
+    {
+        Ok(preset) => preset,
+        Err(e) => {
+            tracing::warn!(
+                "⚠️  [background_task] Failed to load conversation preset: {}",
+                e
+            );
+            None
+        }
+    }
 }
 
 async fn get_assistant_config(

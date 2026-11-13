@@ -104,7 +104,9 @@ impl From<PermissionMode> for chatshell_agent_core::permission::PermissionMode {
 /// - Field absent in JSON → `None` (via `#[serde(default)]`)
 /// - Field present with `null` → `Some(None)` (= "clear the value")
 /// - Field present with value → `Some(Some(value))` (= "set to this value")
-fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+pub(crate) fn deserialize_double_option<'de, T, D>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
 where
     T: Deserialize<'de>,
     D: Deserializer<'de>,

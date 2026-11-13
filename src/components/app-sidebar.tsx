@@ -25,18 +25,24 @@ import { useConversationParticipants } from '@/hooks/useConversationParticipants
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
 import { useAssistantGroups } from '@/hooks/useAssistantGroups'
-import { useConversationStore } from '@/stores/conversation'
 import { useSearchStore } from '@/stores/searchStore'
+import { useContactSelectionStore } from '@/stores/contactSelectionStore'
+import { useLibrarySelectionStore } from '@/stores/librarySelectionStore'
+import { usePromptGroups } from '@/hooks/usePromptGroups'
+import { usePresetActions } from '@/hooks/usePresets'
+import { usePresetStore } from '@/stores/presetStore'
+import { PresetDialog } from '@/components/preset-dialog'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
 import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
 import { SIDEBAR_DATA, getNavItems } from '@/lib/sidebar-data'
-import type { Prompt as PromptListItem, PromptGroup } from '@/components/prompt-list'
+import type { Prompt as PromptListItem } from '@/components/prompt-list'
 import type { Model as ModelListItem } from '@/components/model-list'
 import type { Assistant as AssistantListItem } from '@/components/assistant-list'
 import type { Assistant as AssistantDB } from '@/types/assistant'
 import type { Prompt as PromptDB } from '@/types/prompt'
+import type { ModelParameterPreset } from '@/types'
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeSection: string
@@ -47,15 +53,14 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const { t } = useTranslation()
   const navItems = React.useMemo(() => getNavItems(t), [t])
   const activeItem = navItems.find((item) => item.id === activeSection) || navItems[0]
-  const [selectedPromptId, setSelectedPromptId] = React.useState<string | null>(null)
   const [settingsDialogOpen, setSettingsDialogOpen] = React.useState(false)
   const [assistantDialogOpen, setAssistantDialogOpen] = React.useState(false)
   const [promptDialogOpen, setPromptDialogOpen] = React.useState(false)
   const [editingAssistant, setEditingAssistant] = React.useState<AssistantDB | null>(null)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptDB | null>(null)
   const [promptDialogMode, setPromptDialogMode] = React.useState<'create' | 'edit'>('create')
-  const [activeContactsTab, setActiveContactsTab] = React.useState('models')
-  const [activeLibraryTab, setActiveLibraryTab] = React.useState('prompts')
+  const activeContactsTab = useContactSelectionStore((state) => state.activeTab)
+  const setActiveContactsTab = useContactSelectionStore((state) => state.setActiveTab)
   const { setOpen, setOpenMobile } = useSidebar()
   const providerDialogOpen = useProviderSettingsStore((state) => state.open)
   const providerDialogInitialId = useProviderSettingsStore((state) => state.initialProviderId)
@@ -70,41 +75,25 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const prompts = usePromptStore((state) => state.prompts)
   const ensurePromptsLoaded = usePromptStore((state) => state.ensureLoaded)
   const togglePromptStar = usePromptStore((state) => state.togglePromptStar)
-  const selectedModel = useConversationStore((state) => state.selectedModel)
-  const selectedAssistant = useConversationStore((state) => state.selectedAssistant)
+  const selectedContact = useContactSelectionStore((state) => state.selected)
+  const selectContact = useContactSelectionStore((state) => state.selectContact)
+  const selectedPromptId = useLibrarySelectionStore((state) => state.selectedPromptId)
+  const selectPrompt = useLibrarySelectionStore((state) => state.selectPrompt)
+  const activeLibraryTab = useLibrarySelectionStore((state) => state.activeTab)
+  const setActiveLibraryTab = useLibrarySelectionStore((state) => state.setActiveTab)
+  const selectedPresetId = useLibrarySelectionStore((state) => state.selectedPresetId)
+  const selectPreset = useLibrarySelectionStore((state) => state.selectPreset)
+  const presets = usePresetStore((state) => state.presets)
+  const presetActions = usePresetActions()
+  const [presetDialogOpen, setPresetDialogOpen] = React.useState(false)
+  const [editingPreset, setEditingPreset] = React.useState<ModelParameterPreset | null>(null)
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
     ensurePromptsLoaded()
   }, [ensurePromptsLoaded])
 
-  // Transform database prompts into prompt groups by category
-  const promptGroups = React.useMemo((): PromptGroup[] => {
-    const groupsMap = new Map<string, PromptGroup>()
-
-    prompts.forEach((prompt) => {
-      const category = prompt.category || 'Uncategorized'
-
-      if (!groupsMap.has(category)) {
-        groupsMap.set(category, {
-          id: category.toLowerCase().replace(/\s+/g, '-'),
-          name: category,
-          defaultOpen: true, // Set to true so groups are visible by default
-          prompts: [],
-        })
-      }
-
-      groupsMap.get(category)!.prompts.push({
-        id: prompt.id,
-        name: prompt.name,
-        content: prompt.content,
-        isStarred: prompt.is_starred,
-        isSystem: prompt.is_system,
-      })
-    })
-
-    return Array.from(groupsMap.values())
-  }, [prompts])
+  const promptGroups = usePromptGroups()
 
   const handlers = useSidebarHandlers()
 
@@ -127,15 +116,26 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onTabChange={setActiveContactsTab}
             vendorsList={vendorsList}
             assistantGroups={assistantGroups}
-            selectedModelId={selectedModel?.id || selectedAssistant?.model_id}
-            selectedAssistantId={selectedAssistant?.id}
-            onModelClick={(model: ModelListItem) => handlers.handleModelClick(model)}
-            onModelSettings={(model: ModelListItem) => handlers.handleModelDelete(model)}
-            onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
-            onVendorSettings={() => {}}
-            onAssistantClick={(assistant: AssistantListItem) =>
-              handlers.handleAssistantClick(assistant)
+            selectedModelId={selectedContact?.kind === 'model' ? selectedContact.id : undefined}
+            selectedAssistantId={
+              selectedContact?.kind === 'assistant' ? selectedContact.id : undefined
             }
+            onModelClick={(model: ModelListItem) => selectContact({ kind: 'model', id: model.id })}
+            onModelActivate={(model: ModelListItem) => {
+              void handlers.handleModelClick(model)
+              onSectionChange('conversations')
+            }}
+            onModelSettings={(model: ModelListItem) => openProviderSettings(model.providerId)}
+            onModelDelete={(model: ModelListItem) => handlers.handleModelDelete(model)}
+            onModelStarToggle={(model: ModelListItem) => handlers.handleModelStarToggle(model)}
+            onVendorSettings={(vendor) => openProviderSettings(vendor.id)}
+            onAssistantClick={(assistant: AssistantListItem) =>
+              selectContact({ kind: 'assistant', id: assistant.id })
+            }
+            onAssistantActivate={(assistant: AssistantListItem) => {
+              void handlers.handleAssistantClick(assistant)
+              onSectionChange('conversations')
+            }}
             onAssistantSettings={(assistant: AssistantListItem) => {
               const fullAssistant = assistants.find((a) => a.id === assistant.id)
               if (fullAssistant) {
@@ -149,7 +149,9 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onAssistantDelete={(assistant: AssistantListItem) =>
               handlers.handleAssistantDelete(assistant)
             }
-            onGroupSettings={() => {}}
+            onGroupRename={(group, newName) => {
+              void handlers.handleAssistantGroupRename(group, newName)
+            }}
           />
         )
       case 'library':
@@ -159,7 +161,11 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
             onTabChange={setActiveLibraryTab}
             promptGroups={promptGroups}
             selectedPromptId={selectedPromptId || undefined}
-            onPromptClick={(prompt: PromptListItem) => setSelectedPromptId(prompt.id)}
+            onPromptClick={(prompt: PromptListItem) => selectPrompt(prompt.id)}
+            onPromptActivate={(prompt: PromptListItem) => {
+              void handlers.handlePromptUse(prompt)
+              onSectionChange('conversations')
+            }}
             onPromptSettings={(prompt: PromptListItem) => {
               const fullPrompt = prompts.find((p) => p.id === prompt.id)
               if (fullPrompt) {
@@ -172,7 +178,21 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
               togglePromptStar(prompt.id)
             }}
             onPromptDelete={(prompt: PromptListItem) => handlers.handlePromptDelete(prompt)}
-            onPromptGroupSettings={() => {}}
+            onPromptGroupRename={(group, newName) => {
+              void handlers.handlePromptCategoryRename(group, newName)
+            }}
+            presets={presets}
+            selectedPresetId={selectedPresetId ?? undefined}
+            onPresetClick={(preset) => selectPreset(preset.id)}
+            onPresetActivate={(preset) => {
+              void presetActions.startChatWithPreset(preset)
+              onSectionChange('conversations')
+            }}
+            onPresetSetDefault={(preset) => void presetActions.setDefaultPreset(preset)}
+            onPresetEdit={(preset) => {
+              setEditingPreset(preset)
+              setPresetDialogOpen(true)
+            }}
           />
         )
       case 'artifacts':
@@ -249,13 +269,18 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
               size="sm"
               className="w-full justify-center gap-2 h-9"
               onClick={() => {
+                if (activeLibraryTab === 'presets') {
+                  setEditingPreset(null)
+                  setPresetDialogOpen(true)
+                  return
+                }
                 setEditingPrompt(null)
                 setPromptDialogMode('create')
                 setPromptDialogOpen(true)
               }}
             >
               <Plus className="size-4" />
-              {t('sidebar:addPrompt')}
+              {activeLibraryTab === 'presets' ? t('sidebar:addPreset') : t('sidebar:addPrompt')}
             </Button>
           </div>
         )
@@ -335,6 +360,16 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         onOpenChange={setAssistantDialogOpen}
         assistant={editingAssistant}
         mode={editingAssistant ? 'edit' : 'create'}
+      />
+
+      <PresetDialog
+        open={presetDialogOpen}
+        onOpenChange={(open) => {
+          setPresetDialogOpen(open)
+          if (!open) setEditingPreset(null)
+        }}
+        preset={editingPreset}
+        onSaved={(preset) => selectPreset(preset.id)}
       />
 
       <PromptDialog

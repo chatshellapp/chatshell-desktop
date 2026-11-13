@@ -6,11 +6,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
+import { DeleteModelDialog } from './model-list-item/delete-dialog'
 
 interface ModelListItemProps {
   /**
@@ -38,9 +40,17 @@ interface ModelListItemProps {
    */
   onClick?: () => void
   /**
-   * Click handler for settings button
+   * Primary action on double-click or Enter; Enter falls back to onClick when absent
+   */
+  onActivate?: () => void
+  /**
+   * Click handler for the configuration menu item
    */
   onSettingsClick?: (e: React.MouseEvent) => void
+  /**
+   * Called after the user confirms removal; the menu item is hidden when absent
+   */
+  onDeleteClick?: () => void
   /**
    * Click handler for star button
    */
@@ -66,7 +76,9 @@ export function ModelListItem({
   providerName,
   isStarred = false,
   onClick,
+  onActivate,
   onSettingsClick,
+  onDeleteClick,
   onStarClick,
   className,
   isActive = false,
@@ -74,6 +86,8 @@ export function ModelListItem({
 }: ModelListItemProps) {
   const { t } = useTranslation('common')
   const [isHovered, setIsHovered] = React.useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
+  const hasMenu = !!onSettingsClick || !!onDeleteClick
 
   if (compact) {
     return (
@@ -84,15 +98,18 @@ export function ModelListItem({
           className
         )}
         onClick={onClick}
+        onDoubleClick={onActivate}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         tabIndex={0}
         role="button"
         size="sm"
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            onClick?.()
+            if (e.key === 'Enter' && onActivate) onActivate()
+            else onClick?.()
           }
         }}
       >
@@ -141,15 +158,18 @@ export function ModelListItem({
         className
       )}
       onClick={onClick}
+      onDoubleClick={onActivate}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       tabIndex={0}
       role="button"
       size="sm"
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onClick?.()
+          if (e.key === 'Enter' && onActivate) onActivate()
+          else onClick?.()
         }
       }}
     >
@@ -183,30 +203,46 @@ export function ModelListItem({
             </Button>
 
             {/* Menu button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                  }}
-                >
-                  <MoreVertical className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onSettingsClick?.(e)
-                  }}
-                >
-                  {t('remove')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {hasMenu && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-7"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                    }}
+                  >
+                    <MoreVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  {onSettingsClick && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onSettingsClick(e)
+                      }}
+                    >
+                      {t('configuration')}
+                    </DropdownMenuItem>
+                  )}
+                  {onSettingsClick && onDeleteClick && <DropdownMenuSeparator />}
+                  {onDeleteClick && (
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowDeleteDialog(true)
+                      }}
+                    >
+                      {t('remove')}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </ItemHeader>
 
@@ -215,6 +251,15 @@ export function ModelListItem({
           {modelId}
         </ItemDescription>
       </ItemContent>
+
+      {onDeleteClick && (
+        <DeleteModelDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={onDeleteClick}
+          modelName={name}
+        />
+      )}
     </Item>
   )
 }

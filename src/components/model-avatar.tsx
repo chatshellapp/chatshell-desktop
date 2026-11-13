@@ -19,7 +19,7 @@ interface ModelAvatarProps {
   /**
    * Size variant
    */
-  size?: 'xxs' | 'xs' | 'sm' | 'md'
+  size?: 'xxs' | 'xs' | 'sm' | 'md' | 'xl'
   /**
    * Additional className for Avatar container
    */
@@ -31,6 +31,7 @@ const sizeConfig = {
   xs: { avatar: 'size-4', fallback: 'text-[10px]' },
   sm: { avatar: 'size-6', fallback: 'text-[10px]' },
   md: { avatar: 'size-8', fallback: 'text-xs' },
+  xl: { avatar: 'size-16', fallback: 'text-2xl' },
 }
 
 export function ModelAvatar({ logo, modelId, name, size = 'md', className }: ModelAvatarProps) {

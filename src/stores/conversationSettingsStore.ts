@@ -9,12 +9,19 @@ import type {
   ModelParameterOverrides,
   UpdateConversationSettingsRequest,
 } from '@/types'
+import type { Assistant } from '@/types'
 import { defaultPermissionMode } from '@/lib/permission-mode'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { fromBackendSettings, toBackendRequest, createDefaultConversationSettings } from '@/types'
 import { useMcpStore } from './mcpStore'
 import { useSkillStore } from './skillStore'
 import { logger } from '@/lib/logger'
+
+/** The assistant fields that seed a conversation's settings */
+export type AssistantSettingsSource = Pick<
+  Assistant,
+  'tool_ids' | 'skill_ids' | 'model_parameter_preset_id'
+>
 
 interface ConversationSettingsState {
   // Cached settings per conversation (conversationId -> settings)
@@ -103,11 +110,19 @@ interface ConversationSettingsActions {
   // Skill settings
   setEnabledSkillIds: (conversationId: string, skillIds: string[]) => Promise<void>
 
-  // Initialize settings from an assistant's configured tools and skills
+  // Initialize settings from an assistant's tools, skills and parameter
+  // preset; the preset becomes the conversation's parameter source
   initSettingsFromAssistant: (
     conversationId: string,
-    toolIds: string[],
-    skillIds: string[]
+    assistant: AssistantSettingsSource
+  ) => Promise<void>
+
+  // When switching away from an assistant, drop the preset it put in place
+  // so the conversation returns to provider defaults. A preset the user
+  // picked themselves (a different one, or custom values) is kept.
+  clearInheritedPreset: (
+    conversationId: string,
+    assistant: AssistantSettingsSource
   ) => Promise<void>
 
   // Reset tools and skills to global defaults (when switching away from an assistant)
@@ -541,21 +556,47 @@ export const useConversationSettingsStore = create<ConversationSettingsStore>()(
       }
     },
 
-    initSettingsFromAssistant: async (
-      conversationId: string,
-      toolIds: string[],
-      skillIds: string[]
-    ) => {
+    initSettingsFromAssistant: async (conversationId, assistant) => {
       try {
-        const next = await saveSettings(conversationId, {
-          enabledMcpServerIds: toolIds,
-          enabledSkillIds: skillIds,
-        })
+        const req: UpdateConversationSettingsRequest = {
+          enabledMcpServerIds: assistant.tool_ids,
+          enabledSkillIds: assistant.skill_ids,
+        }
+        if (assistant.model_parameter_preset_id) {
+          req.selectedPresetId = assistant.model_parameter_preset_id
+          req.useProviderDefaults = false
+          req.useCustomParameters = false
+        }
+        const next = await saveSettings(conversationId, req)
         set((draft) => {
           draft.settings[conversationId] = next
         })
       } catch (error) {
         logger.error('[conversationSettingsStore] Failed to init settings from assistant:', error)
+      }
+    },
+
+    clearInheritedPreset: async (conversationId, assistant) => {
+      const current = get().settings[conversationId]
+      if (
+        !current ||
+        !assistant.model_parameter_preset_id ||
+        current.useCustomParameters ||
+        current.selectedPresetId !== assistant.model_parameter_preset_id
+      ) {
+        return
+      }
+      try {
+        const next = await saveSettings(conversationId, {
+          useProviderDefaults: true,
+          useCustomParameters: false,
+          selectedPresetId: null,
+        })
+        set((draft) => {
+          draft.settings[conversationId] = next
+        })
+      } catch (error) {
+        logger.error('[conversationSettingsStore] Failed to clear inherited preset:', error)
       }
     },
 

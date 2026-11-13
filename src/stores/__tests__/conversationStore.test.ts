@@ -639,6 +639,25 @@ describe('useConversationStore participants and selection', () => {
       expect(writes()).toEqual([])
     })
 
+    it("applies a restored assistant's tools, skills and preset to the draft", async () => {
+      const assistant = {
+        ...createMockAssistant('assistant-1', 'Helper'),
+        tool_ids: ['web_fetch'],
+        model_parameter_preset_id: 'preset-1',
+      }
+      useConversationStore.setState({ lastUsedModel: null, lastUsedAssistant: assistant })
+
+      const draft = await useConversationStore.getState().openDraftConversation()
+
+      const settings = useConversationSettingsStore.getState().settings[draft.id]
+      expect(useConversationStore.getState().selectedAssistant?.id).toBe('assistant-1')
+      expect(settings.enabledMcpServerIds).toEqual(['web_fetch'])
+      expect(settings.selectedPresetId).toBe('preset-1')
+      expect(settings.useProviderDefaults).toBe(false)
+      // Still a draft: nothing is written until the first send
+      expect(writes()).toEqual([])
+    })
+
     it('keeps the open draft instead of starting another', async () => {
       const { openDraftConversation } = useConversationStore.getState()
       const first = await openDraftConversation()

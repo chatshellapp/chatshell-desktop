@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use super::conversation_settings::deserialize_double_option;
 use ts_rs::TS;
 
 /// Model Parameter Preset - Reusable configuration for LLM generation parameters
@@ -59,26 +61,80 @@ pub struct CreateModelParameterPresetRequest {
     pub is_default: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// Partial update. For the clearable fields an absent key keeps the stored
+/// value, `null` clears it (the provider default applies) and a value sets it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateModelParameterPresetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub name: Option<String>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub description: Option<String>,
+    pub description: Option<Option<String>>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub temperature: Option<f64>,
+    pub temperature: Option<Option<f64>>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub max_tokens: Option<i64>,
+    pub max_tokens: Option<Option<i64>>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub top_p: Option<f64>,
+    pub top_p: Option<Option<f64>>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub frequency_penalty: Option<f64>,
+    pub frequency_penalty: Option<Option<f64>>,
+    /// Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
-    pub presence_penalty: Option<f64>,
+    pub presence_penalty: Option<Option<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     #[ts(type = "unknown")]
     pub additional_params: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub is_default: Option<bool>,
+}
+
+impl From<&ModelParameterPreset> for super::ModelParameters {
+    fn from(preset: &ModelParameterPreset) -> Self {
+        Self {
+            temperature: preset.temperature,
+            max_tokens: preset.max_tokens,
+            top_p: preset.top_p,
+            frequency_penalty: preset.frequency_penalty,
+            presence_penalty: preset.presence_penalty,
+            additional_params: preset.additional_params.clone(),
+        }
+    }
 }

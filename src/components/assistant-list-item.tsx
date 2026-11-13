@@ -81,6 +81,10 @@ interface AssistantListItemProps {
    */
   onClick?: () => void
   /**
+   * Primary action on double-click or Enter; Enter falls back to onClick when absent
+   */
+  onActivate?: () => void
+  /**
    * Click handler for settings button
    */
   onSettingsClick?: (e: React.MouseEvent) => void
@@ -118,6 +122,7 @@ export function AssistantListItem({
   capabilities = {},
   isStarred = false,
   onClick,
+  onActivate,
   onSettingsClick,
   onStarClick,
   onDeleteClick,
@@ -153,15 +158,18 @@ export function AssistantListItem({
             className
           )}
           onClick={onClick}
+          onDoubleClick={onActivate}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           tabIndex={0}
           role="button"
           size="sm"
           onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
-              onClick?.()
+              if (e.key === 'Enter' && onActivate) onActivate()
+              else onClick?.()
             }
           }}
         >
@@ -217,15 +225,18 @@ export function AssistantListItem({
         className
       )}
       onClick={onClick}
+      onDoubleClick={onActivate}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       tabIndex={0}
       role="button"
       size="sm"
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onClick?.()
+          if (e.key === 'Enter' && onActivate) onActivate()
+          else onClick?.()
         }
       }}
     >

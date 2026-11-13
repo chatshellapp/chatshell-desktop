@@ -215,6 +215,81 @@ impl Database {
     }
 
     /// Delete settings for a conversation
+    /// IDs of live conversations whose settings select this prompt as the
+    /// system or user prompt, most recently updated first.
+    pub async fn list_conversation_ids_by_prompt(
+        &self,
+        prompt_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT c.id
+             FROM conversations c
+             JOIN conversation_settings s
+               ON s.conversation_id = c.id AND s.deleted_at IS NULL
+             WHERE c.deleted_at IS NULL
+               AND ((s.system_prompt_mode = 'existing' AND s.selected_system_prompt_id = ?1)
+                 OR (s.user_prompt_mode = 'existing' AND s.selected_user_prompt_id = ?1))
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT ?2",
+        )
+        .bind(prompt_id)
+        .bind(limit)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| row.get("id")).collect())
+    }
+
+    /// The preset a conversation's settings select as its parameter source,
+    /// or None when it uses provider defaults, custom values, no saved
+    /// settings, or a preset that no longer exists.
+    pub async fn get_active_conversation_preset(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<crate::models::ModelParameterPreset>> {
+        let row = sqlx::query(
+            "SELECT selected_preset_id FROM conversation_settings
+             WHERE conversation_id = ? AND deleted_at IS NULL
+               AND use_provider_defaults = 0 AND use_custom_parameters = 0",
+        )
+        .bind(conversation_id)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        let Some(preset_id) = row.and_then(|r| r.get::<Option<String>, _>("selected_preset_id"))
+        else {
+            return Ok(None);
+        };
+        self.get_model_parameter_preset(&preset_id).await
+    }
+
+    /// IDs of live conversations whose active parameter source is this
+    /// preset, most recently updated first.
+    pub async fn list_conversation_ids_by_preset(
+        &self,
+        preset_id: &str,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT c.id
+             FROM conversations c
+             JOIN conversation_settings s
+               ON s.conversation_id = c.id AND s.deleted_at IS NULL
+             WHERE c.deleted_at IS NULL
+               AND s.selected_preset_id = ?1
+               AND s.use_provider_defaults = 0
+               AND s.use_custom_parameters = 0
+             ORDER BY c.updated_at DESC, c.id DESC
+             LIMIT ?2",
+        )
+        .bind(preset_id)
+        .bind(limit)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.iter().map(|row| row.get("id")).collect())
+    }
+
     pub async fn delete_conversation_settings(&self, conversation_id: &str) -> Result<()> {
         sqlx::query(&crate::db::soft_delete::tombstone_update(
             "conversation_settings",
@@ -346,6 +421,241 @@ mod tests {
                 .map(|t| t.id),
         );
         ids
+    }
+
+    async fn new_prompt(db: &Database, name: &str, is_system: bool) -> String {
+        db.create_prompt(CreatePromptRequest {
+            name: name.to_string(),
+            content: format!("{name} content"),
+            description: None,
+            category: None,
+            is_system: Some(is_system),
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn conversation_ids_by_prompt_matches_selected_prompts_only() {
+        let (db, _dir) = test_db().await;
+        let system_prompt = new_prompt(&db, "system", true).await;
+        let user_prompt = new_prompt(&db, "user", false).await;
+
+        let with_system = new_conversation(&db).await;
+        let with_user = new_conversation(&db).await;
+        let custom_mode = new_conversation(&db).await;
+        let deleted = new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &with_system,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Existing),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.update_conversation_settings(
+            &with_user,
+            UpdateConversationSettingsRequest {
+                user_prompt_mode: Some(PromptMode::Existing),
+                selected_user_prompt_id: Some(Some(user_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        // A stale id under a non-existing mode does not count as using it.
+        db.update_conversation_settings(
+            &custom_mode,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Custom),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                custom_system_prompt: Some(Some("custom".to_string())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.update_conversation_settings(
+            &deleted,
+            UpdateConversationSettingsRequest {
+                system_prompt_mode: Some(PromptMode::Existing),
+                selected_system_prompt_id: Some(Some(system_prompt.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.delete_conversation(&deleted).await.unwrap();
+
+        assert_eq!(
+            db.list_conversation_ids_by_prompt(&system_prompt, 10)
+                .await
+                .unwrap(),
+            vec![with_system]
+        );
+        assert_eq!(
+            db.list_conversation_ids_by_prompt(&user_prompt, 10)
+                .await
+                .unwrap(),
+            vec![with_user]
+        );
+        assert!(
+            db.list_conversation_ids_by_prompt("missing", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn active_conversation_preset_follows_the_parameter_mode() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .unwrap();
+        let conversation = new_conversation(&db).await;
+
+        // No settings row and the default provider-defaults mode: no preset
+        assert!(
+            db.get_active_conversation_preset(&conversation)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        db.update_conversation_settings(
+            &conversation,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(false),
+                selected_preset_id: Some(Some(preset.id.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            db.get_active_conversation_preset(&conversation)
+                .await
+                .unwrap()
+                .map(|p| p.id),
+            Some(preset.id.clone())
+        );
+
+        // Custom parameters take over even though the preset id is remembered
+        db.update_conversation_settings(
+            &conversation,
+            UpdateConversationSettingsRequest {
+                use_custom_parameters: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            db.get_active_conversation_preset(&conversation)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn active_conversation_preset_ignores_deleted_presets() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .create_model_parameter_preset(crate::models::CreateModelParameterPresetRequest {
+                name: "Temp".to_string(),
+                description: None,
+                temperature: Some(0.1),
+                max_tokens: None,
+                top_p: None,
+                frequency_penalty: None,
+                presence_penalty: None,
+                additional_params: None,
+                is_default: None,
+            })
+            .await
+            .unwrap();
+        let conversation = new_conversation(&db).await;
+        db.update_conversation_settings(
+            &conversation,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(false),
+                selected_preset_id: Some(Some(preset.id.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.delete_model_parameter_preset(&preset.id).await.unwrap();
+
+        assert!(
+            db.get_active_conversation_preset(&conversation)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn conversation_ids_by_preset_requires_the_preset_to_be_active() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .get_default_model_parameter_preset()
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+
+        let active = new_conversation(&db).await;
+        let overridden = new_conversation(&db).await;
+        // A conversation on provider defaults is never listed
+        new_conversation(&db).await;
+
+        db.update_conversation_settings(
+            &active,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(false),
+                selected_preset_id: Some(Some(preset.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        // A remembered preset id while custom parameters are active does not count
+        db.update_conversation_settings(
+            &overridden,
+            UpdateConversationSettingsRequest {
+                use_provider_defaults: Some(false),
+                use_custom_parameters: Some(true),
+                selected_preset_id: Some(Some(preset.clone())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            db.list_conversation_ids_by_preset(&preset, 10)
+                .await
+                .unwrap(),
+            vec![active]
+        );
+        assert!(
+            db.list_conversation_ids_by_preset("missing", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

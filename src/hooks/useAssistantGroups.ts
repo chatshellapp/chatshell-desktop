@@ -2,6 +2,11 @@ import { useMemo } from 'react'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useModelStore } from '@/stores/modelStore'
 import { getModelLogo } from '@/lib/model-logos'
+import {
+  getAssistantAvatarImage,
+  getAssistantSubtitle,
+  UNGROUPED_GROUP_NAME,
+} from '@/lib/assistant-utils'
 import type { AssistantGroup } from '@/components/assistant-list'
 
 export function useAssistantGroups(): AssistantGroup[] {
@@ -15,7 +20,7 @@ export function useAssistantGroups(): AssistantGroup[] {
     const groupMap = new Map<string, typeof assistants>()
 
     assistants.forEach((assistant) => {
-      const groupName = assistant.group_name || 'Ungrouped'
+      const groupName = assistant.group_name || UNGROUPED_GROUP_NAME
       if (!groupMap.has(groupName)) {
         groupMap.set(groupName, [])
       }
@@ -27,8 +32,8 @@ export function useAssistantGroups(): AssistantGroup[] {
 
     // Sort groups: "Ungrouped" first, then alphabetically
     const sortedGroupNames = Array.from(groupMap.keys()).sort((a, b) => {
-      if (a === 'Ungrouped') return -1
-      if (b === 'Ungrouped') return 1
+      if (a === UNGROUPED_GROUP_NAME) return -1
+      if (b === UNGROUPED_GROUP_NAME) return 1
       return a.localeCompare(b)
     })
 
@@ -36,7 +41,8 @@ export function useAssistantGroups(): AssistantGroup[] {
       const groupAssistants = groupMap.get(groupName)!
 
       groups.push({
-        id: groupName.toLowerCase().replace(/\s+/g, '-'),
+        // Prefix the raw name so distinct names never share a key
+        id: `group:${groupName}`,
         name: groupName,
         defaultOpen: index === 0, // Open first group by default
         assistants: groupAssistants.map((a) => {
@@ -47,18 +53,16 @@ export function useAssistantGroups(): AssistantGroup[] {
             id: a.id,
             name: a.name,
             modelName: assistantModel?.name,
-            persona:
-              a.role ||
-              a.description ||
-              a.system_prompt?.substring(0, 50) + '...' ||
-              'Custom Assistant',
+            modelId: assistantModel?.model_id,
+            persona: getAssistantSubtitle(a),
+            description: a.description,
+            logo: getAssistantAvatarImage(a),
             avatarBg: a.avatar_bg || '#3b82f6',
             avatarText: a.avatar_text || a.name.charAt(0),
             capabilities: {
               modelLogo: modelLogo,
               hasModel: true,
-              hasFiles: false,
-              hasMcpServer: false,
+              hasTools: a.tool_ids.length > 0 || a.skill_ids.length > 0,
             },
             isStarred: a.is_starred || false,
           }

@@ -39,6 +39,8 @@
   "failedToSelectAssistant": "Failed to select assistant",
   "failedToDeleteModel": "Failed to delete model",
   "failedToDeleteAssistant": "Failed to delete assistant",
+  "failedToRenameAssistantGroup": "Failed to rename group",
+  "failedToDuplicateAssistant": "Failed to duplicate assistant",
   "failedToDeletePrompt": "Failed to delete prompt",
   "failedToCreateConversation": "Failed to create conversation",
   "failedToGenerateTitle": "Failed to generate title",
@@ -89,5 +91,12 @@
   "apiErrorServerError": "Server Error",
   "apiErrorBadGateway": "Bad Gateway",
   "apiErrorServiceUnavailable": "Service Unavailable",
-  "apiErrorGatewayTimeout": "Gateway Timeout"
+  "apiErrorGatewayTimeout": "Gateway Timeout",
+  "failedToUsePrompt": "Failed to use prompt",
+  "failedToDuplicatePrompt": "Failed to duplicate prompt",
+  "failedToRenamePromptCategory": "Failed to rename category",
+  "failedToUsePreset": "Failed to use preset",
+  "failedToDuplicatePreset": "Failed to duplicate preset",
+  "failedToSetDefaultPreset": "Failed to set default preset",
+  "failedToDeletePreset": "Failed to delete preset"
 }

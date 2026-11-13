@@ -55,6 +55,9 @@ import {
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react'
+import { usePresetStore } from '@/stores/presetStore'
+import { summarizePreset } from '@/lib/preset-utils'
+import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -107,6 +110,10 @@ export function AssistantDialog({
   const [isStarred, setIsStarred] = useState(false)
   const [toolIds, setToolIds] = useState<string[]>([])
   const [skillIds, setSkillIds] = useState<string[]>([])
+  // null = no preset: the provider's defaults apply
+  const [presetId, setPresetId] = useState<string | null>(null)
+  const presets = usePresetStore((state) => state.presets)
+  const ensurePresetsLoaded = usePresetStore((state) => state.ensureLoaded)
 
   // System Prompt mode state
   const [systemPromptMode, setSystemPromptMode] = useState<'existing' | 'custom'>('existing')
@@ -266,6 +273,7 @@ export function AssistantDialog({
         setIsStarred(assistant.is_starred)
         setToolIds(assistant.tool_ids || [])
         setSkillIds(assistant.skill_ids || [])
+        setPresetId(assistant.model_parameter_preset_id ?? null)
 
         // Check if system prompt matches an existing system prompt (is_system === true)
         const matchingSystemPrompt = prompts.find(
@@ -336,6 +344,8 @@ export function AssistantDialog({
         setIsStarred(false)
         setToolIds([])
         setSkillIds([])
+        // Read once so a preset reload while the dialog is open does not reset the form
+        setPresetId(usePresetStore.getState().presets.find((p) => p.is_default)?.id ?? null)
         setSystemPromptMode('existing')
         setSelectedSystemPromptId('')
         setSystemPromptSearchQuery('')
@@ -346,6 +356,10 @@ export function AssistantDialog({
       setError(null)
     }
   }, [open, mode, assistant, models, prompts, lastCreatedModelId, selectedModel, selectedAssistant])
+
+  useEffect(() => {
+    if (open) void ensurePresetsLoaded()
+  }, [open, ensurePresetsLoaded])
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -362,16 +376,28 @@ export function AssistantDialog({
     setError(null)
 
     try {
+      // The dialog does not edit the image avatar, so carry it over on edit;
+      // update_assistant replaces every column.
+      const preserved: Partial<CreateAssistantRequest> =
+        mode === 'edit' && assistant
+          ? {
+              avatar_type: assistant.avatar_type,
+              avatar_image_path: assistant.avatar_image_path,
+              avatar_image_url: assistant.avatar_image_url,
+            }
+          : {}
       const req: CreateAssistantRequest = {
+        avatar_type: 'text',
+        ...preserved,
         name: name.trim(),
         role: role.trim() || undefined,
         description: description.trim() || undefined,
         system_prompt: systemPrompt,
         user_prompt: userPrompt.trim() || undefined,
         model_id: selectedModelId,
+        model_parameter_preset_id: presetId ?? undefined,
         tool_ids: toolIds,
         skill_ids: skillIds,
-        avatar_type: 'text',
         avatar_bg: avatarBg,
         avatar_text: avatarText || '🧑‍💼',
         group_name: groupName.trim() || undefined,
@@ -884,6 +910,67 @@ export function AssistantDialog({
               </DropdownMenuContent>
             </DropdownMenu>
             <p className="text-xs text-muted-foreground">{t('selectAiModel')}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t('parameterPreset')}</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-between"
+                  data-testid="preset-picker"
+                >
+                  <span className="truncate">
+                    {presetId
+                      ? (presets.find((p) => p.id === presetId)?.name ?? t('presetUnavailable'))
+                      : t('noPreset')}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-[320px] overflow-y-auto">
+                {presets.map((preset) => (
+                  <DropdownMenuItem
+                    key={preset.id}
+                    onClick={() => setPresetId(preset.id)}
+                    className="flex items-start gap-2"
+                  >
+                    <Check
+                      className={cn(
+                        'mt-0.5 size-4 shrink-0',
+                        presetId === preset.id ? 'opacity-100' : 'opacity-0'
+                      )}
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="flex items-center gap-1.5 truncate">
+                        {preset.name}
+                        {preset.is_default && (
+                          <span className="text-[10px] text-muted-foreground">
+                            ({t('defaultPresetLabel')})
+                          </span>
+                        )}
+                      </span>
+                      {summarizePreset(preset) && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {summarizePreset(preset)}
+                        </span>
+                      )}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onClick={() => setPresetId(null)} className="flex gap-2">
+                  <Check
+                    className={cn(
+                      'size-4 shrink-0',
+                      presetId === null ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  {t('noPreset')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="text-xs text-muted-foreground">{t('parameterPresetDescription')}</p>
           </div>
         </div>
       )
