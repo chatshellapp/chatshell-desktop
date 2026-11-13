@@ -17,7 +17,12 @@ interface SkillState {
   deleteSkill: (id: string) => Promise<void>
   toggleSkill: (id: string) => Promise<Skill>
   setAllEnabled: (enabled: boolean) => Promise<void>
-  readSkillContent: (path: string) => Promise<string>
+  readSkillContent: (id: string) => Promise<string>
+  createSkill: (dirName: string, content: string) => Promise<Skill>
+  saveSkillContent: (id: string, content: string) => Promise<Skill>
+  openSkillFolder: (id: string) => Promise<void>
+  openSourceDirectory: (source: string) => Promise<void>
+
   getSkillById: (id: string) => Skill | undefined
   loadSources: () => Promise<void>
   setSourceEnabled: (source: string, enabled: boolean) => Promise<void>
@@ -125,13 +130,44 @@ export const useSkillStore = create<SkillState>()(
       }
     },
 
-    readSkillContent: async (path: string) => {
+    readSkillContent: async (id: string) => {
       try {
-        const content = await invoke<string>('read_skill_content', { path })
+        const content = await invoke<string>('read_skill_content', { id })
         return content
       } catch (error) {
         logger.error('[skillStore] Failed to read skill content:', error)
         throw error
+      }
+    },
+
+    createSkill: async (dirName: string, content: string) => {
+      const skill = await invoke<Skill>('create_user_skill', { dirName, content })
+      logger.info('[skillStore] Created skill:', skill.name)
+      await get().loadSkills()
+      return skill
+    },
+
+    saveSkillContent: async (id: string, content: string) => {
+      const skill = await invoke<Skill>('save_skill_content', { id, content })
+      logger.info('[skillStore] Saved skill:', skill.name)
+      await get().loadSkills()
+      return skill
+    },
+
+    openSkillFolder: async (id: string) => {
+      try {
+        await invoke('open_skill_folder', { id })
+      } catch (error) {
+        logger.error('[skillStore] Failed to open skill folder:', error)
+        throw error
+      }
+    },
+
+    openSourceDirectory: async (source: string) => {
+      try {
+        await invoke('open_skills_directory', { source })
+      } catch (error) {
+        logger.error('[skillStore] Failed to open skills directory:', error)
       }
     },
 

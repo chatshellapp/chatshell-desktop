@@ -160,5 +160,15 @@
   "noPresetAssistants": "No assistants use this preset.",
   "noPresetConversations": "No conversations use this preset yet.",
   "deletePreset": "Delete Preset",
-  "confirmDeletePreset": "Are you sure you want to delete {{name}}? This action cannot be undone."
+  "confirmDeletePreset": "Are you sure you want to delete {{name}}? This action cannot be undone.",
+  "searchChatHistory": "Search chat history",
+  "filterList": "Filter list",
+  "closeFilter": "Close filter",
+  "noMatches": "No matches",
+  "filterPlaceholders": {
+    "prompts": "Filter prompts...",
+    "skills": "Filter skills...",
+    "models": "Filter models...",
+    "assistants": "Filter assistants..."
+  }
 }

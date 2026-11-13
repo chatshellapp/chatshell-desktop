@@ -158,5 +158,15 @@
   "noPresetAssistants": "没有助手使用此预设。",
   "noPresetConversations": "还没有对话使用此预设。",
   "deletePreset": "删除预设",
-  "confirmDeletePreset": "确定要删除 {{name}} 吗？此操作无法撤销。"
+  "confirmDeletePreset": "确定要删除 {{name}} 吗？此操作无法撤销。",
+  "searchChatHistory": "搜索聊天记录",
+  "filterList": "筛选列表",
+  "closeFilter": "关闭筛选",
+  "noMatches": "没有匹配项",
+  "filterPlaceholders": {
+    "prompts": "筛选提示词...",
+    "skills": "筛选技能...",
+    "models": "筛选模型...",
+    "assistants": "筛选助手..."
+  }
 }

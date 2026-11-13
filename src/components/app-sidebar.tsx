@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, MessageSquarePlus, Search } from 'lucide-react'
+import { Plus, MessageSquarePlus, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { filterGroups, filterItems, normalizeQuery } from '@/lib/sidebar-filter'
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +34,9 @@ import { usePromptGroups } from '@/hooks/usePromptGroups'
 import { usePresetActions } from '@/hooks/usePresets'
 import { usePresetStore } from '@/stores/presetStore'
 import { PresetDialog } from '@/components/preset-dialog'
+import { SkillEditDialog } from '@/components/skill-edit-dialog'
+import { useSkillActions } from '@/hooks/useSkills'
+import { useSkillStore } from '@/stores/skillStore'
 import { useAssistantStore } from '@/stores/assistantStore'
 import { useTranslation } from 'react-i18next'
 import { usePromptStore } from '@/stores/promptStore'
@@ -87,13 +92,94 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const presetActions = usePresetActions()
   const [presetDialogOpen, setPresetDialogOpen] = React.useState(false)
   const [editingPreset, setEditingPreset] = React.useState<ModelParameterPreset | null>(null)
+  const skills = useSkillStore((state) => state.skills)
+  const ensureSkillsLoaded = useSkillStore((state) => state.ensureLoaded)
+  const selectedSkillId = useLibrarySelectionStore((state) => state.selectedSkillId)
+  const selectSkill = useLibrarySelectionStore((state) => state.selectSkill)
+  const skillActions = useSkillActions()
+  const [skillDialogOpen, setSkillDialogOpen] = React.useState(false)
 
   // Ensure prompts are loaded (handles HMR store reset)
   React.useEffect(() => {
     ensurePromptsLoaded()
   }, [ensurePromptsLoaded])
 
+  // Skills are scanned lazily the first time the Library needs them
+  React.useEffect(() => {
+    if (activeSection === 'library') ensureSkillsLoaded()
+  }, [activeSection, ensureSkillsLoaded])
+
   const promptGroups = usePromptGroups()
+
+  // Header filter for the Library and Contacts lists. Short lists (presets,
+  // people) have none; every other section keeps chat-history search.
+  const [filterOpen, setFilterOpen] = React.useState(false)
+  const [filterQuery, setFilterQuery] = React.useState('')
+  const usesListFilter = activeSection === 'library' || activeSection === 'contacts'
+  const filterTarget: 'prompts' | 'skills' | 'models' | 'assistants' | null =
+    activeSection === 'library'
+      ? activeLibraryTab === 'presets'
+        ? null
+        : activeLibraryTab
+      : activeSection === 'contacts'
+        ? activeContactsTab === 'people'
+          ? null
+          : activeContactsTab
+        : null
+  // A filter belongs to one list: switching section or tab clears it.
+  React.useEffect(() => {
+    setFilterOpen(false)
+    setFilterQuery('')
+  }, [activeSection, activeLibraryTab, activeContactsTab])
+  const closeFilter = () => {
+    setFilterOpen(false)
+    setFilterQuery('')
+  }
+  const query = filterOpen && filterTarget ? normalizeQuery(filterQuery) : null
+  const filterActive = query !== null
+
+  const visibleVendors = React.useMemo(
+    () =>
+      filterGroups(
+        vendorsList,
+        query,
+        (vendor) => vendor.models,
+        (vendor, models) => ({ ...vendor, models }),
+        (model) => [model.name, model.modelId, model.providerName]
+      ),
+    [vendorsList, query]
+  )
+  const visibleAssistantGroups = React.useMemo(
+    () =>
+      filterGroups(
+        assistantGroups,
+        query,
+        (group) => group.assistants,
+        (group, assistants) => ({ ...group, assistants }),
+        (assistant) => [
+          assistant.name,
+          assistant.persona,
+          assistant.description,
+          assistant.modelName,
+        ]
+      ),
+    [assistantGroups, query]
+  )
+  const visiblePromptGroups = React.useMemo(
+    () =>
+      filterGroups(
+        promptGroups,
+        query,
+        (group) => group.prompts,
+        (group, prompts) => ({ ...group, prompts }),
+        (prompt) => [prompt.name, prompt.content]
+      ),
+    [promptGroups, query]
+  )
+  const visibleSkills = React.useMemo(
+    () => filterItems(skills, query, (skill) => [skill.name, skill.description, skill.path]),
+    [skills, query]
+  )
 
   const handlers = useSidebarHandlers()
 
@@ -114,8 +200,9 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           <ContactsContent
             activeTab={activeContactsTab}
             onTabChange={setActiveContactsTab}
-            vendorsList={vendorsList}
-            assistantGroups={assistantGroups}
+            vendorsList={visibleVendors}
+            assistantGroups={visibleAssistantGroups}
+            filterActive={filterActive}
             selectedModelId={selectedContact?.kind === 'model' ? selectedContact.id : undefined}
             selectedAssistantId={
               selectedContact?.kind === 'assistant' ? selectedContact.id : undefined
@@ -159,7 +246,8 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           <LibraryContent
             activeTab={activeLibraryTab}
             onTabChange={setActiveLibraryTab}
-            promptGroups={promptGroups}
+            promptGroups={visiblePromptGroups}
+            filterActive={filterActive}
             selectedPromptId={selectedPromptId || undefined}
             onPromptClick={(prompt: PromptListItem) => selectPrompt(prompt.id)}
             onPromptActivate={(prompt: PromptListItem) => {
@@ -193,6 +281,10 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
               setEditingPreset(preset)
               setPresetDialogOpen(true)
             }}
+            skills={visibleSkills}
+            selectedSkillId={selectedSkillId ?? undefined}
+            onSkillClick={(skill) => selectSkill(skill.id)}
+            onSkillToggle={(skill) => void skillActions.toggleSkill(skill)}
           />
         )
       case 'artifacts':
@@ -274,13 +366,21 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
                   setPresetDialogOpen(true)
                   return
                 }
+                if (activeLibraryTab === 'skills') {
+                  setSkillDialogOpen(true)
+                  return
+                }
                 setEditingPrompt(null)
                 setPromptDialogMode('create')
                 setPromptDialogOpen(true)
               }}
             >
               <Plus className="size-4" />
-              {activeLibraryTab === 'presets' ? t('sidebar:addPreset') : t('sidebar:addPrompt')}
+              {activeLibraryTab === 'presets'
+                ? t('sidebar:addPreset')
+                : activeLibraryTab === 'skills'
+                  ? t('skills:newSkill')
+                  : t('sidebar:addPrompt')}
             </Button>
           </div>
         )
@@ -324,16 +424,61 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           <SidebarHeader className="gap-3.5 border-b p-4">
             <div className="flex w-full items-center justify-between h-7">
               <div className="text-foreground text-base font-medium">{activeItem?.title}</div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0"
-                onClick={() => useSearchStore.getState().setOpen(true)}
-                aria-label="Search chat history"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
+              {!usesListFilter ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => useSearchStore.getState().setOpen(true)}
+                  aria-label={t('sidebar:searchChatHistory')}
+                  title={t('sidebar:searchChatHistory')}
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+              ) : (
+                filterTarget && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => (filterOpen ? closeFilter() : setFilterOpen(true))}
+                    aria-label={t('sidebar:filterList')}
+                    aria-pressed={filterOpen}
+                    title={t('sidebar:filterList')}
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                )
+              )}
             </div>
+            {filterOpen && filterTarget && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      closeFilter()
+                    }
+                  }}
+                  placeholder={t(`sidebar:filterPlaceholders.${filterTarget}`)}
+                  aria-label={t('sidebar:filterList')}
+                  className="h-8 pl-8 pr-8 text-sm"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0.5 top-1/2 size-7 -translate-y-1/2"
+                  onClick={closeFilter}
+                  aria-label={t('sidebar:closeFilter')}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            )}
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup className="px-0">
@@ -370,6 +515,11 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
         }}
         preset={editingPreset}
         onSaved={(preset) => selectPreset(preset.id)}
+      />
+      <SkillEditDialog
+        open={skillDialogOpen}
+        onOpenChange={setSkillDialogOpen}
+        onCreated={(skill) => selectSkill(skill.id)}
       />
 
       <PromptDialog

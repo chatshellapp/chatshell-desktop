@@ -19,6 +19,21 @@ export function isUserSkill(skill: Skill): boolean {
   return skill.source !== 'builtin'
 }
 
+/** ChatShell's own skills: editable here, and synced across devices. */
+export function isChatShellSkill(skill: Skill): boolean {
+  return skill.source === 'user'
+}
+
+/** Whether a skill's row syncs across devices (mirrors the backend rule). */
+export function isSyncedSkill(skill: Skill): boolean {
+  return skill.source === 'user' || skill.source === 'builtin'
+}
+
+/** Whether the skill's files are present on this device. */
+export function isSkillAvailable(skill: Skill): boolean {
+  return Boolean(skill.local_path)
+}
+
 export function getSkillsBySource(skills: Skill[], source: SkillSource): Skill[] {
   return skills.filter((s) => s.source === source)
 }

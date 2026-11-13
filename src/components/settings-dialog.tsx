@@ -81,7 +81,6 @@ import type {
   WebFetchLocalMethod,
   LogLevel,
   Tool,
-  Skill,
   SkillSource,
 } from '@/types'
 import {
@@ -90,9 +89,7 @@ import {
   isBuiltinTool,
   sortBuiltinTools,
   isMcpTool,
-  isBuiltinSkill,
   getSkillsBySource,
-  SKILL_SOURCE_ORDER,
 } from '@/types'
 import { LLMProviderSettings } from '@/components/settings-dialog/llm-provider-settings'
 import { ObscuraInstallHint } from '@/components/settings-dialog/obscura-install-hint'
@@ -240,8 +237,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [logStorageInfo, setLogStorageInfo] = React.useState<LogStorageInfo | null>(null)
   const [logMaxTotalMb, setLogMaxTotalMbState] = React.useState<number>(50)
   const [logDiagnosing, setLogDiagnosing] = React.useState(false)
-  // Skill search state
-  const [skillSearchQuery, setSkillSearchQuery] = React.useState('')
 
   // About section state (updater store also owns the app version)
   const updaterStatus = useUpdaterStore((s) => s.status)
@@ -393,7 +388,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const skills = useSkillStore((state) => state.skills)
   const skillsLoading = useSkillStore((state) => state.isLoading)
   const scanSkills = useSkillStore((state) => state.scanSkills)
-  const toggleSkill = useSkillStore((state) => state.toggleSkill)
   const setAllSkillsEnabled = useSkillStore((state) => state.setAllEnabled)
   const skillSources = useSkillStore((state) => state.sources)
   const loadSkillSources = useSkillStore((state) => state.loadSources)
@@ -607,14 +601,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // Separate builtin tools and MCP servers
   const builtinTools = sortBuiltinTools(mcpServers.filter((s) => isBuiltinTool(s)))
   const mcpServersOnly = mcpServers.filter((s) => isMcpTool(s))
-
-  const handleToggleSkill = async (id: string) => {
-    try {
-      await toggleSkill(id)
-    } catch (error) {
-      logger.error('Failed to toggle skill:', error)
-    }
-  }
 
   const renderContent = () => {
     if (activeSection === 'llmProvider') {
@@ -929,15 +915,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
 
     if (activeSection === 'skills') {
-      const query = skillSearchQuery.toLowerCase().trim()
-      const filteredSkills = query
-        ? skills.filter(
-            (s) =>
-              s.name.toLowerCase().includes(query) ||
-              (s.description && s.description.toLowerCase().includes(query))
-          )
-        : skills
-
       const hasSkills = skills.length > 0
       const allSkillsEnabled = hasSkills && skills.every((s) => s.is_enabled)
       const allSkillsDisabled = hasSkills && skills.every((s) => !s.is_enabled)
@@ -956,36 +933,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       const skillCountBySource = (source: SkillSource | string) =>
         getSkillsBySource(skills, source as SkillSource).length
 
-      const filteredBuiltinSkills = filteredSkills.filter((s) => isBuiltinSkill(s))
-
-      const renderSkillItem = (skill: Skill) => (
-        <div
-          key={skill.id}
-          className="flex items-start justify-between gap-4 rounded-lg border p-4"
-        >
-          <div className="grid gap-1">
-            <span className="font-medium">{skill.name}</span>
-            {skill.description && (
-              <p className="text-xs text-muted-foreground line-clamp-2" title={skill.description}>
-                {skill.description}
-              </p>
-            )}
-            {skill.required_tool_ids.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t('settings:requiresTools', { count: skill.required_tool_ids.length })}
-              </p>
-            )}
-          </div>
-          <Switch checked={skill.is_enabled} onCheckedChange={() => handleToggleSkill(skill.id)} />
-        </div>
-      )
-
       const userSources = skillSources.filter((s) => s.source !== 'builtin')
 
       return (
         <div className="grid gap-6">
           <div className="grid gap-3">
             <p className="text-sm text-muted-foreground">{t('settings:skillsDescription')}</p>
+            <p className="text-sm text-muted-foreground">{t('settings:skillsManagedInLibrary')}</p>
             <div className="flex gap-2 flex-wrap">
               {hasSkills && (
                 <>
@@ -1024,6 +978,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {userSources.length > 0 && (
             <div className="grid gap-3">
               <h4 className="text-sm font-medium">{t('settings:skillSources')}</h4>
+              <p className="text-xs text-muted-foreground">
+                {t('settings:skillSourcesDescription')}
+              </p>
               <div className="grid gap-2 max-w-lg">
                 {userSources.map((src) => (
                   <div
@@ -1042,6 +999,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{src.path}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {src.synced
+                          ? t('settings:skillSourceSynced')
+                          : t('settings:skillSourceLocal')}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {src.enabled && (
@@ -1075,62 +1037,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Skill Search & List */}
-          {hasSkills ? (
-            <div className="grid gap-4 max-w-lg">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={tc('common:search')}
-                  value={skillSearchQuery}
-                  onChange={(e) => setSkillSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-
-              {filteredSkills.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
-                  {t('settings:noSkillsMatchSearch')}
-                </p>
-              ) : (
-                <div className="grid gap-6">
-                  {filteredBuiltinSkills.length > 0 && (
-                    <div className="grid gap-3">
-                      <h4 className="text-sm font-medium">{t('settings:builtInSkills')}</h4>
-                      <div className="grid gap-3">{filteredBuiltinSkills.map(renderSkillItem)}</div>
-                    </div>
-                  )}
-
-                  {SKILL_SOURCE_ORDER.filter((s) => s !== 'builtin').map((source) => {
-                    const sourceSkills = getSkillsBySource(filteredSkills, source)
-                    if (sourceSkills.length === 0) return null
-                    return (
-                      <div key={source} className="grid gap-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium">{sourceLabel(source)}</h4>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1.5 text-xs"
-                            onClick={() => handleOpenSkillsDirectory(source)}
-                          >
-                            <FolderOpen className="h-3 w-3" />
-                            {t('settings:openDirectory')}
-                          </Button>
-                        </div>
-                        <div className="grid gap-3">{sourceSkills.map(renderSkillItem)}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              {skillsLoading ? t('settings:loadingSkills') : t('settings:noSkillsAvailable')}
             </div>
           )}
         </div>

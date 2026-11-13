@@ -38,8 +38,9 @@ interface DetailHeaderProps {
   subtitle?: string
   /** Small badges under the subtitle (provider, group, ...) */
   badges?: React.ReactNode
-  /** Main call to action, rendered as the filled button */
-  primaryAction: DetailPrimaryAction
+  /** Main call to action, rendered as the filled button; omitted when the
+   * item has no common action right now (secondary ones live in the menu) */
+  primaryAction?: DetailPrimaryAction
   /** Extra icon buttons placed between the star and the menu */
   extraActions?: React.ReactNode
   /** Star toggle is shown only when onStarToggle is provided */
@@ -71,10 +72,12 @@ export function DetailHeader({
         {badges && <div className="mt-1 flex flex-wrap justify-center gap-1.5">{badges}</div>}
       </div>
       <div className="flex items-center gap-2">
-        <Button onClick={primaryAction.onClick}>
-          {primaryAction.icon}
-          {primaryAction.label}
-        </Button>
+        {primaryAction && (
+          <Button onClick={primaryAction.onClick}>
+            {primaryAction.icon}
+            {primaryAction.label}
+          </Button>
+        )}
         {onStarToggle && (
           <Button
             variant="outline"
