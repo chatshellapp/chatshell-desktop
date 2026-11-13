@@ -1,4 +1,4 @@
-import { MessageSquarePlus } from 'lucide-react'
+import { SquarePen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   Sidebar,
@@ -6,10 +6,16 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+
+export const IS_APPLE_PLATFORM =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+const NEW_CONVERSATION_SHORTCUT = IS_APPLE_PLATFORM ? '⌘N' : 'Ctrl+N'
 
 export interface NavItem {
   id: string
@@ -36,65 +42,64 @@ export function SidebarNavigation({
   onNewConversation,
 }: SidebarNavigationProps) {
   const { t } = useTranslation()
+  const settingsItem = navItems.find((item) => item.id === 'settings')
+  const mainItems = navItems.filter((item) => item.id !== 'settings')
+
+  const renderItem = (item: NavItem) => (
+    <SidebarMenuItem key={item.id}>
+      <SidebarMenuButton
+        tooltip={{
+          children: item.title,
+          hidden: false,
+        }}
+        onClick={() => {
+          if (item.id === 'settings') {
+            onSettingsClick()
+          } else {
+            onItemClick(item)
+          }
+        }}
+        isActive={activeItem?.id === item.id}
+        className="px-2.5 md:px-2"
+      >
+        <item.icon />
+        <span>{item.title}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
 
   return (
     <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
-      {/* <SidebarHeader>
+      <SidebarHeader className="px-1.5 pb-0 md:px-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-              <a href="#">
-                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <Command className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Acme Inc</span>
-                  <span className="truncate text-xs">Enterprise</span>
-                </div>
-              </a>
+            <SidebarMenuButton
+              tooltip={{
+                children: `${t('sidebar:newConversation')} (${NEW_CONVERSATION_SHORTCUT})`,
+                hidden: false,
+              }}
+              onClick={onNewConversation}
+              aria-label={t('sidebar:newConversation')}
+              className="px-2.5 md:px-2"
+            >
+              <SquarePen />
+              <span>{t('sidebar:newConversation')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarHeader> */}
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent className="px-1.5 md:px-0">
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    tooltip={{
-                      children: item.title,
-                      hidden: false,
-                    }}
-                    onClick={() => {
-                      if (item.id === 'settings') {
-                        onSettingsClick()
-                      } else {
-                        onItemClick(item)
-                      }
-                    }}
-                    isActive={activeItem?.id === item.id}
-                    className="px-2.5 md:px-2"
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <SidebarMenu>{mainItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="gap-2">
-        <button
-          onClick={onNewConversation}
-          className="mx-auto flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/85 transition-colors"
-          title={t('sidebar:newConversation')}
-        >
-          <MessageSquarePlus className="size-4" />
-        </button>
-      </SidebarFooter>
+      {settingsItem && (
+        <SidebarFooter className="px-1.5 md:px-2">
+          <SidebarMenu>{renderItem(settingsItem)}</SidebarMenu>
+        </SidebarFooter>
+      )}
     </Sidebar>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, MessageSquarePlus, Search, X } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { filterGroups, filterItems, normalizeQuery } from '@/lib/sidebar-filter'
@@ -22,7 +22,7 @@ import { ConversationList } from '@/components/sidebar/conversation-list'
 import { ContactsContent } from '@/components/sidebar/contacts-content'
 import { LibraryContent } from '@/components/sidebar/library-content'
 import { ArtifactsContent } from '@/components/sidebar/artifacts-content'
-import { SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
+import { IS_APPLE_PLATFORM, SidebarNavigation } from '@/components/sidebar/sidebar-navigation'
 import { useConversationParticipants } from '@/hooks/useConversationParticipants'
 import { useSidebarHandlers } from '@/hooks/useSidebarHandlers'
 import { useVendorsList } from '@/hooks/useVendorsList'
@@ -303,19 +303,7 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
   const renderFooter = () => {
     switch (activeItem.id) {
       case 'conversations':
-        return (
-          <div className="px-3 pt-2 pb-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-center gap-2 h-9"
-              onClick={handlers.handleNewConversation}
-            >
-              <MessageSquarePlus className="size-4" />
-              {t('sidebar:newConversation')}
-            </Button>
-          </div>
-        )
+        return null
       case 'contacts':
         switch (activeContactsTab) {
           case 'models':
@@ -392,6 +380,30 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
     return null
   }
 
+  const footer = renderFooter()
+
+  const { handleNewConversation } = handlers
+  const startNewConversation = React.useCallback(() => {
+    onSectionChange('conversations')
+    handleNewConversation()
+  }, [onSectionChange, handleNewConversation])
+
+  // Global shortcut: Cmd+N (macOS) / Ctrl+N (elsewhere) to start a new
+  // conversation. Ctrl+N is left alone on macOS, where it moves the caret
+  // down a line in text fields.
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const modifier = IS_APPLE_PLATFORM ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+      if (!modifier || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'n') return
+      e.preventDefault()
+      // Do not switch conversations underneath an open dialog
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      startNewConversation()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [startNewConversation])
+
   return (
     <Sidebar
       collapsible="icon"
@@ -412,10 +424,7 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
           setOpenMobile(false)
         }}
         onSettingsClick={() => setSettingsDialogOpen(true)}
-        onNewConversation={() => {
-          onSectionChange('conversations')
-          handlers.handleNewConversation()
-        }}
+        onNewConversation={startNewConversation}
         user={SIDEBAR_DATA.user}
       />
 
@@ -485,7 +494,7 @@ export function AppSidebar({ activeSection, onSectionChange, ...props }: AppSide
               <SidebarGroupContent>{renderContent()}</SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
-          <SidebarFooter className="border-t">{renderFooter()}</SidebarFooter>
+          {footer && <SidebarFooter className="border-t">{footer}</SidebarFooter>}
         </Sidebar>
       )}
 
