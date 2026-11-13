@@ -3,4 +3,8 @@
 /**
  * Info about a skill source directory shown in the UI
  */
-export type SkillSourceInfo = { source: string, path: string, enabled: boolean, always_on: boolean, exists: boolean, };
+export type SkillSourceInfo = { source: string, path: string, enabled: boolean, always_on: boolean, exists: boolean, 
+/**
+ * Whether skills of this source sync across devices.
+ */
+synced: boolean, };

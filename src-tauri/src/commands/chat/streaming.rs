@@ -127,6 +127,22 @@ pub(crate) async fn handle_agent_streaming(
         path: String,
     }
     let mut skill_entries: Vec<SkillEntry> = Vec::new();
+    // `skills.path` is relative to the source root; only skills whose files
+    // are on this device can be offered (a synced skill may still be
+    // fetching).
+    let skill_roots = crate::skills::SkillRoots::from_app(&app).ok();
+    let local_skill_md = |skill: &crate::models::Skill| -> Option<String> {
+        let md = skill_roots
+            .as_ref()?
+            .local_skill_md(&skill.source, &skill.path);
+        if md.is_none() {
+            tracing::info!(
+                "📋 [agent_streaming] Skill '{}' has no files on this device; skipping",
+                skill.name
+            );
+        }
+        md.map(|p| p.to_string_lossy().to_string())
+    };
 
     if disable_tools {
         tracing::info!(
@@ -161,10 +177,9 @@ pub(crate) async fn handle_agent_streaming(
                     }
                     for skill_id in &skill_ids {
                         if let Ok(Some(skill)) = state_clone.db.get_skill(skill_id).await
-                            && skill.is_enabled
+                            && skill.offered_to_model()
+                            && let Some(skill_md_path) = local_skill_md(&skill)
                         {
-                            let skill_md_path =
-                                format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
                             tracing::info!(
                                 "📋 [agent_streaming] Adding skill '{}' to catalog (path: {})",
                                 skill.name,
@@ -222,9 +237,9 @@ pub(crate) async fn handle_agent_streaming(
                 for skill_id in &settings.enabled_skill_ids {
                     match state_clone.db.get_skill(skill_id).await {
                         Ok(Some(skill)) => {
-                            if skill.is_enabled {
-                                let skill_md_path =
-                                    format!("{}/SKILL.md", skill.path.trim_end_matches('/'));
+                            if skill.offered_to_model()
+                                && let Some(skill_md_path) = local_skill_md(&skill)
+                            {
                                 // Avoid duplicates (skill may already be in catalog from assistant)
                                 if !skill_entries.iter().any(|e| e.path == skill_md_path) {
                                     tracing::info!(

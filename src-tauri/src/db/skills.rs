@@ -8,7 +8,20 @@ use crate::models::{CreateSkillRequest, Skill};
 
 impl Database {
     pub async fn create_skill(&self, req: CreateSkillRequest) -> Result<Skill> {
-        let id = Uuid::now_v7().to_string();
+        self.create_skill_with_id(None, req).await
+    }
+
+    /// Create a skill under an explicit id (builtin skills declare a stable
+    /// id so every device indexes them under the same row), or a fresh
+    /// UUID v7 when `id` is `None`.
+    pub async fn create_skill_with_id(
+        &self,
+        id: Option<&str>,
+        req: CreateSkillRequest,
+    ) -> Result<Skill> {
+        let id = id
+            .map(str::to_string)
+            .unwrap_or_else(|| Uuid::now_v7().to_string());
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
         let allow_model = req.allow_model_invocation.unwrap_or(true);
@@ -17,12 +30,14 @@ impl Database {
             .required_tool_ids
             .as_ref()
             .map(|ids| serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_string()));
+        let manifest_json = manifest_json(&req);
 
         sqlx::query(
             "INSERT INTO skills (id, name, description, source, path, icon,
              required_tool_ids, allow_model_invocation, allow_user_invocation,
-             content_hash, cached_instructions, is_enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             content_hash, cached_instructions, is_enabled, files_manifest,
+             created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(&req.name)
@@ -36,6 +51,7 @@ impl Database {
         .bind(&req.content_hash)
         .bind(&req.cached_instructions)
         .bind(is_enabled as i32)
+        .bind(&manifest_json)
         .bind(&now)
         .bind(&now)
         .execute(self.pool.as_ref())
@@ -100,6 +116,18 @@ impl Database {
     }
 
     pub async fn update_skill(&self, id: &str, req: CreateSkillRequest) -> Result<Skill> {
+        self.write_skill(id, req, false).await
+    }
+
+    /// Overwrite a skill row and clear its tombstone. The UNIQUE
+    /// (name, source) key stays held by a tombstone, so a skill that comes
+    /// back (re-created folder, edit newer than a remote delete) must revive
+    /// its old row instead of inserting a new one.
+    pub async fn revive_skill(&self, id: &str, req: CreateSkillRequest) -> Result<Skill> {
+        self.write_skill(id, req, true).await
+    }
+
+    async fn write_skill(&self, id: &str, req: CreateSkillRequest, revive: bool) -> Result<Skill> {
         let now = Utc::now().to_rfc3339();
         let is_enabled = req.is_enabled.unwrap_or(true);
         let allow_model = req.allow_model_invocation.unwrap_or(true);
@@ -108,13 +136,16 @@ impl Database {
             .required_tool_ids
             .as_ref()
             .map(|ids| serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_string()));
+        let manifest_json = manifest_json(&req);
+        let revive_clause = if revive { ", deleted_at = NULL" } else { "" };
 
-        sqlx::query(
+        sqlx::query(&format!(
             "UPDATE skills SET name = ?, description = ?, source = ?, path = ?, icon = ?,
              required_tool_ids = ?, allow_model_invocation = ?, allow_user_invocation = ?,
-             content_hash = ?, cached_instructions = ?, is_enabled = ?, updated_at = ?
-             WHERE id = ?",
-        )
+             content_hash = ?, cached_instructions = ?, is_enabled = ?, files_manifest = ?,
+             updated_at = ?{revive_clause}
+             WHERE id = ?"
+        ))
         .bind(&req.name)
         .bind(&req.description)
         .bind(&req.source)
@@ -126,6 +157,7 @@ impl Database {
         .bind(&req.content_hash)
         .bind(&req.cached_instructions)
         .bind(is_enabled as i32)
+        .bind(&manifest_json)
         .bind(&now)
         .bind(id)
         .execute(self.pool.as_ref())
@@ -134,6 +166,85 @@ impl Database {
         self.get_skill(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Skill not found"))
+    }
+
+    /// Every row of one source, tombstones included, as `(skill, deleted)`.
+    /// The reconciler needs tombstones to tell "deleted on a peer" from
+    /// "never seen".
+    pub async fn list_skills_with_tombstones(&self, source: &str) -> Result<Vec<(Skill, bool)>> {
+        let rows = sqlx::query("SELECT * FROM skills WHERE source = ? ORDER BY name ASC")
+            .bind(source)
+            .fetch_all(self.pool.as_ref())
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let deleted: Option<String> = row.get("deleted_at");
+                (Self::skill_from_row(row), deleted.is_some())
+            })
+            .collect())
+    }
+
+    // ========================================================================
+    // Device-local skill state (data.local.db, never synced)
+    // ========================================================================
+
+    /// `skill_id -> content hash` of the files this device last had in sync
+    /// with the row: the common ancestor that tells a local edit from a
+    /// remote one, and a local delete from a not-yet-fetched skill.
+    pub async fn get_skill_local_hashes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT skill_id, content_hash FROM skill_local_state")
+                .fetch_all(self.local_pool())
+                .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    pub async fn set_skill_local_hash(&self, skill_id: &str, content_hash: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO skill_local_state (skill_id, content_hash, updated_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(skill_id) DO UPDATE SET
+               content_hash = excluded.content_hash, updated_at = excluded.updated_at",
+        )
+        .bind(skill_id)
+        .bind(content_hash)
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.local_pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn clear_skill_local_hash(&self, skill_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM skill_local_state WHERE skill_id = ?")
+            .bind(skill_id)
+            .execute(self.local_pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Blob digests referenced by live ChatShell skills (blob upload + GC).
+    pub async fn live_skill_file_hashes(&self) -> Result<Vec<(Skill, Vec<String>)>> {
+        let rows = sqlx::query(
+            "SELECT * FROM skills WHERE deleted_at IS NULL AND source = 'user' \
+             AND files_manifest IS NOT NULL",
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        Ok(rows
+            .iter()
+            .map(Self::skill_from_row)
+            .map(|skill| {
+                let hashes = skill
+                    .files_manifest
+                    .iter()
+                    .map(|f| f.hash.clone())
+                    .collect();
+                (skill, hashes)
+            })
+            .collect())
     }
 
     pub async fn delete_skill(&self, id: &str) -> Result<()> {
@@ -159,7 +270,7 @@ impl Database {
 
     pub async fn set_all_skills_enabled(&self, enabled: bool) -> Result<Vec<Skill>> {
         let now = Utc::now().to_rfc3339();
-        sqlx::query("UPDATE skills SET is_enabled = ?, updated_at = ?")
+        sqlx::query("UPDATE skills SET is_enabled = ?, updated_at = ? WHERE deleted_at IS NULL")
             .bind(enabled as i32)
             .bind(&now)
             .execute(self.pool.as_ref())
@@ -300,6 +411,17 @@ impl Database {
     /// Upsert a skill by (name, source) composite key.
     /// Different sources can have skills with the same name.
     pub async fn upsert_skill_by_name_and_source(&self, req: CreateSkillRequest) -> Result<Skill> {
+        // A tombstone still holds the UNIQUE (name, source) key: revive it.
+        let tombstone: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM skills WHERE name = ? AND source = ? AND deleted_at IS NOT NULL",
+        )
+        .bind(&req.name)
+        .bind(&req.source)
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        if let Some(id) = tombstone {
+            return self.revive_skill(&id, req).await;
+        }
         if let Some(existing) = self
             .get_skill_by_name_and_source(&req.name, &req.source)
             .await?
@@ -330,24 +452,41 @@ impl Database {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
 
+        let files_manifest: Vec<crate::skills::SkillFile> = row
+            .get::<Option<String>, _>("files_manifest")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        // Tombstones null their flags (soft_delete), so read them as
+        // optional: the reconciler lists tombstoned rows too.
+        let flag = |col: &str| row.get::<Option<i32>, _>(col).unwrap_or(1) != 0;
+
         Skill {
             id: row.get("id"),
             name: row.get("name"),
             description: row.get("description"),
             source: row.get("source"),
             path: row.get("path"),
+            local_path: None,
+            files_manifest,
             icon: row.get("icon"),
             required_tool_ids,
-            allow_model_invocation: row.get::<i32, _>("allow_model_invocation") != 0,
-            allow_user_invocation: row.get::<i32, _>("allow_user_invocation") != 0,
+            allow_model_invocation: flag("allow_model_invocation"),
+            allow_user_invocation: flag("allow_user_invocation"),
             content_hash: row.get("content_hash"),
             cached_instructions: row.get("cached_instructions"),
-            is_enabled: row.get::<i32, _>("is_enabled") != 0,
+            is_enabled: flag("is_enabled"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         }
     }
 }
+/// JSON for the `files_manifest` column (NULL when the request has none).
+fn manifest_json(req: &CreateSkillRequest) -> Option<String> {
+    req.files_manifest
+        .as_ref()
+        .map(|files| serde_json::to_string(files).unwrap_or_else(|_| "[]".to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +513,7 @@ mod tests {
             content_hash: Some("hash-v1".to_string()),
             cached_instructions: Some("Instructions v1".to_string()),
             is_enabled: Some(true),
+            files_manifest: None,
         }
     }
 
@@ -477,6 +617,7 @@ mod tests {
                 content_hash: None,
                 cached_instructions: None,
                 is_enabled: None,
+                files_manifest: None,
             })
             .await
             .unwrap();
@@ -601,6 +742,7 @@ mod tests {
                     content_hash: Some("hash-v2".to_string()),
                     cached_instructions: Some("Instructions v2".to_string()),
                     is_enabled: Some(false),
+                    files_manifest: None,
                 },
             )
             .await

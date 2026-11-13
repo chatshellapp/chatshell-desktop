@@ -17,6 +17,7 @@ pub async fn create_skills_table(pool: &SqlitePool) -> Result<()> {
             content_hash TEXT,
             cached_instructions TEXT,
             is_enabled INTEGER DEFAULT 1,
+            files_manifest TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(name, source)
@@ -40,5 +41,21 @@ pub async fn create_skills_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+/// Device-local reconcile state for ChatShell's own skills (created in
+/// `data.local.db`, never synced): the content hash of the files this device
+/// last had in sync with the skill row.
+pub async fn create_skill_local_state_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS skill_local_state (
+            skill_id TEXT PRIMARY KEY,
+            content_hash TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }

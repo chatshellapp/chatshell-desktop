@@ -141,6 +141,7 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     ensure_conversation_timestamps(pool).await?;
     ensure_search_result_items_column(pool).await?;
     ensure_message_tree_columns(pool).await?;
+    ensure_skill_files_manifest_column(pool).await?;
 
     Ok(())
 }
@@ -159,7 +160,27 @@ pub async fn init_local_schema(pool: &SqlitePool) -> Result<()> {
     .await?;
     prompt_history::create_prompt_history_table(pool).await?;
     translation_history::create_translation_history_table(pool).await?;
+    skills::create_skill_local_state_table(pool).await?;
 
+    Ok(())
+}
+
+/// Ensure `skills.files_manifest` exists (the per-file list ChatShell's own
+/// skills sync their files by). Idempotent.
+async fn ensure_skill_files_manifest_column(pool: &SqlitePool) -> Result<()> {
+    let columns = sqlx::query("PRAGMA table_info(skills)")
+        .fetch_all(pool)
+        .await?;
+    let has_column = columns.iter().any(|row| {
+        row.try_get::<String, _>("name")
+            .is_ok_and(|name| name == "files_manifest")
+    });
+    if !has_column {
+        sqlx::query("ALTER TABLE skills ADD COLUMN files_manifest TEXT")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added files_manifest column to skills table");
+    }
     Ok(())
 }
 
