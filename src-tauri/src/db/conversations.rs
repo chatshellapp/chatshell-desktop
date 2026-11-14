@@ -4,6 +4,12 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::Database;
+
+/// Title of the throwaway conversation the translation panel streams
+/// through (`translationStore.ts`). It lives only for one translation and
+/// is tombstoned when the stream ends; it never belongs in a conversation
+/// list on any device.
+pub const TRANSLATION_SCRATCH_TITLE: &str = "__translation__";
 use crate::models::{
     Conversation, ConversationParticipant, CreateConversationParticipantRequest,
     CreateConversationRequest, Message, ParticipantSummary,
@@ -98,9 +104,10 @@ impl Database {
                      ORDER BY m.created_at DESC, m.id DESC LIMIT 1)
                 ) as last_message
              FROM conversations c 
-             WHERE c.deleted_at IS NULL
+             WHERE c.deleted_at IS NULL AND c.title <> ?
              ORDER BY c.updated_at DESC",
         )
+        .bind(TRANSLATION_SCRATCH_TITLE)
         .fetch_all(self.pool.as_ref())
         .await?;
 
@@ -141,6 +148,23 @@ impl Database {
     /// their child rows (tool outputs dominate the bulk) are wiped
     /// tombstones too, so a deleted conversation actually reclaims snapshot
     /// space instead of shipping dead payload forever.
+    /// Tombstone translation scratch conversations a previous session left
+    /// behind (the app quit or reloaded mid-translation, so the panel's
+    /// delete never ran). Runs at startup, before any sync pass, so the
+    /// tombstones ship and peers drop the copies they already received.
+    pub async fn sweep_translation_scratch_conversations(&self) -> Result<usize> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM conversations WHERE title = ? AND deleted_at IS NULL",
+        )
+        .bind(TRANSLATION_SCRATCH_TITLE)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        for id in &ids {
+            self.delete_conversation(id).await?;
+        }
+        Ok(ids.len())
+    }
+
     pub async fn delete_conversation(&self, id: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         sqlx::query("DELETE FROM messages_fts WHERE conversation_id = ?")
@@ -924,6 +948,42 @@ mod tests {
                 .await
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn translation_scratch_is_hidden_and_swept() {
+        let (db, _dir) = test_db().await;
+        let kept = new_conversation(&db, "real chat").await;
+        let scratch = new_conversation(&db, TRANSLATION_SCRATCH_TITLE).await;
+        add_message(&db, &scratch.id, "text to translate").await;
+
+        let listed: Vec<String> = db
+            .list_conversations()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(listed, vec![kept.id.clone()]);
+
+        assert_eq!(
+            db.sweep_translation_scratch_conversations().await.unwrap(),
+            1
+        );
+        assert!(db.get_conversation(&scratch.id).await.unwrap().is_none());
+        assert!(db.get_conversation(&kept.id).await.unwrap().is_some());
+        let live_messages: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND deleted_at IS NULL",
+        )
+        .bind(&scratch.id)
+        .fetch_one(db.pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(live_messages, 0, "scratch messages are tombstoned too");
+        assert_eq!(
+            db.sweep_translation_scratch_conversations().await.unwrap(),
+            0
         );
     }
 
