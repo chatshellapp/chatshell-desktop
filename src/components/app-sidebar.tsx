@@ -315,7 +315,23 @@ export function AppSidebar({
   const renderFooter = () => {
     switch (activeItem.id) {
       case 'conversations':
-        return null
+        return (
+          <div className="px-3 pt-2 pb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-center gap-2 h-9"
+              onClick={onNewConversation}
+              title={`${t('sidebar:newConversation')} (${NEW_CONVERSATION_SHORTCUT})`}
+            >
+              <SquarePen data-icon="inline-start" />
+              <span>{t('sidebar:newConversation')}</span>
+              <kbd className="font-sans text-xs text-muted-foreground">
+                {NEW_CONVERSATION_SHORTCUT}
+              </kbd>
+            </Button>
+          </div>
+        )
       case 'contacts':
         switch (activeContactsTab) {
           case 'models':
@@ -492,20 +508,6 @@ export function AppSidebar({
                   <X className="size-3.5" />
                 </Button>
               </div>
-            )}
-            {activeSection === 'conversations' && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start"
-                onClick={onNewConversation}
-              >
-                <SquarePen className="size-4" />
-                <span>{t('sidebar:newConversation')}</span>
-                <kbd className="ml-auto font-sans text-xs text-muted-foreground">
-                  {NEW_CONVERSATION_SHORTCUT}
-                </kbd>
-              </Button>
             )}
           </SidebarHeader>
           <SidebarContent>
