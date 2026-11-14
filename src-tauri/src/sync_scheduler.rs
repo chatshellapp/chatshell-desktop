@@ -338,25 +338,39 @@ pub fn spawn(
 /// the last pass. Blob upload runs inside the pass (blobs-before-snapshots).
 /// Bounded so quitting never hangs on a slow or dataless container.
 pub fn run_exit_pass(engine: SyncEngineHandle, db: crate::db::Database, app: tauri::AppHandle) {
-    // Blocking lock is fine here: this runs on the main thread at exit,
-    // after the event loop stopped, and waiting out an in-flight pass is
-    // exactly what a final pass should do.
-    let present = engine.lock().map(|g| g.is_some()).unwrap_or(false);
-    if !present {
-        return;
-    }
-    let result = tauri::async_runtime::block_on(tokio::time::timeout(
-        TERMINAL_PASS_TIMEOUT,
-        crate::sync::run_sync_pass(engine, db, app, true),
-    ));
+    let result = run_exit_task(TERMINAL_PASS_TIMEOUT, move || {
+        // Include lock contention in the deadline. The pass also takes
+        // synchronous locks and does file I/O before its first await, so
+        // keep the whole pass off the main thread.
+        let present = engine.lock().map(|g| g.is_some()).unwrap_or(false);
+        if !present {
+            return Ok(None);
+        }
+        tauri::async_runtime::block_on(crate::sync::run_sync_pass(engine, db, app, true))
+    });
     match result {
-        Ok(Ok(Some(outcome))) => {
+        Ok(Ok(Ok(Some(outcome)))) => {
             tracing::info!("Exit sync pass: {}", outcome.action);
         }
-        Ok(Ok(None)) => {}
-        Ok(Err(err)) => tracing::warn!("Exit sync pass failed: {err:#}"),
+        Ok(Ok(Ok(None))) => {}
+        Ok(Ok(Err(err))) => tracing::warn!("Exit sync pass failed: {err:#}"),
+        Ok(Err(err)) => tracing::warn!("Exit sync task failed: {err}"),
         Err(_) => tracing::warn!("Exit sync pass exceeded {TERMINAL_PASS_TIMEOUT:?}"),
     }
+}
+
+/// Wait from a synchronous exit callback without letting blocking work
+/// prevent the deadline from being polled. Timed-out work may keep running
+/// on the blocking pool until the process exits.
+fn run_exit_task<T: Send + 'static>(
+    timeout: Duration,
+    task: impl FnOnce() -> T + Send + 'static,
+) -> Result<tauri::Result<T>, tokio::time::error::Elapsed> {
+    tauri::async_runtime::block_on(async {
+        // Construct the timer after entering the runtime; constructing it
+        // as a block_on argument panics on the macOS main thread.
+        tokio::time::timeout(timeout, tauri::async_runtime::spawn_blocking(task)).await
+    })
 }
 
 /// Register NSWorkspace sleep/wake observers feeding the scheduler. Must be
@@ -413,6 +427,35 @@ pub fn install_power_observers(triggers: SyncTriggers) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exit_task_runs_without_an_ambient_runtime() {
+        assert!(tokio::runtime::Handle::try_current().is_err());
+        let result = run_exit_task(Duration::from_secs(5), || {
+            tauri::async_runtime::block_on(async {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                42
+            })
+        });
+        assert_eq!(result.unwrap().unwrap(), 42);
+    }
+
+    #[test]
+    fn exit_task_timeout_includes_lock_contention() {
+        let lock = std::sync::Arc::new(std::sync::Mutex::new(()));
+        let guard = lock.lock().unwrap();
+        let task_lock = lock.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+
+        let result = run_exit_task(Duration::from_millis(30), move || {
+            let _guard = task_lock.lock().unwrap();
+            let _ = done_tx.send(());
+        });
+
+        drop(guard);
+        done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(result.is_err());
+    }
 
     #[test]
     fn publish_throttle_sits_below_the_tick() {
