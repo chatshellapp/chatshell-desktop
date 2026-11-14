@@ -483,6 +483,9 @@ export const useTranslationStore = create<TranslationStore>()(
         })
 
         try {
+          // Scratch conversation, tombstoned when the stream ends. The title is
+          // the sentinel `TRANSLATION_SCRATCH_TITLE` (src-tauri db/conversations.rs):
+          // lists hide it and startup sweeps leftovers, so keep them in sync.
           const conversation = await invoke<{ id: string }>('create_conversation', {
             req: { title: '__translation__' },
           })

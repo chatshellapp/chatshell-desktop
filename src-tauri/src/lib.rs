@@ -179,6 +179,16 @@ pub fn run() {
                     .expect("FATAL: Failed to backfill FTS search index");
             });
 
+            rt.block_on(async {
+                match db.sweep_translation_scratch_conversations().await {
+                    Ok(n) if n > 0 => {
+                        tracing::info!("Removed {n} leftover translation scratch conversation(s)")
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("Translation scratch sweep failed: {e:#}"),
+                }
+            });
+
             // Master-key adoption repair: when the iCloud-synchronizable
             // item replaced a different local key, re-encrypt rows that
             // still carry the old key's ciphertext so peers can open them
