@@ -61,7 +61,7 @@
   "openDirectory": "Open Directory",
   "rescan": "Rescan",
   "loadingSkills": "Loading skills...",
-  "noSkillsAvailable": "No skills available. Place SKILL.md files in ~/.chatshell/skills/ or enable additional skill sources above.",
+  "noSkillsAvailable": "No skills available. Create a skill with New Skill, ask the assistant to create one, or enable additional skill sources above.",
   "noSkillsMatchSearch": "No skills match your search.",
   "skillsManagedInLibrary": "Browse, create and edit skills in Library > Skills. ChatShell's own skills sync across your devices; skills from other agents stay on this device.",
   "skillSourceSynced": "Synced across devices",

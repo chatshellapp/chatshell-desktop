@@ -1,6 +1,6 @@
 ---
 name: skill-installer
-description: Download and install agent skills from URLs into the ~/.chatshell/skills/ directory. This skill contains the exact workflow for parsing GitHub, GitLab, Bitbucket, and direct URLs, handling all URL variants (repo root, /tree/ directory, /blob/ file, raw content links), detecting single vs. multi-skill repos, managing conflicts with backups, and verifying installations. ALWAYS use this skill when the user shares any URL that might contain a SKILL.md or asks to install/add/download/grab/set up a skill from a link -- the skill knows the correct install path and directory structure that the agent cannot infer on its own. Also triggers when a user pastes a GitHub/GitLab/Bitbucket URL mentioning "skill" in the path.
+description: Download and install agent skills from URLs into the shared ~/.agents/skills/ directory. This skill contains the exact workflow for parsing GitHub, GitLab, Bitbucket, and direct URLs, handling all URL variants (repo root, /tree/ directory, /blob/ file, raw content links), detecting single vs. multi-skill repos, managing conflicts with backups, and verifying installations. ALWAYS use this skill when the user shares any URL that might contain a SKILL.md or asks to install/add/download/grab/set up a skill from a link -- the skill knows the correct install path and directory structure that the agent cannot infer on its own. Also triggers when a user pastes a GitHub/GitLab/Bitbucket URL mentioning "skill" in the path.
 metadata:
   id: 01a1d021-2139-7761-a92a-936aa0447753
   author: ChatShell
@@ -9,7 +9,9 @@ metadata:
 
 # Skill Installer
 
-Install skills from URLs into `~/.chatshell/skills/`. A "skill" is a directory containing a `SKILL.md` file, plus optional supporting files (`scripts/`, `references/`, `assets/`, etc.).
+Install skills from URLs into `~/.agents/skills/`. A "skill" is a directory containing a `SKILL.md` file, plus optional supporting files (`scripts/`, `references/`, `assets/`, etc.).
+
+`~/.agents/skills/` is shared with other agents on this computer, and skills installed there stay on this device: ChatShell does not sync them to the user's other devices. Never install into ChatShell's own skills folder; that folder holds only skills the user creates in ChatShell.
 
 ## Step 1: Classify the URL
 
@@ -126,19 +128,20 @@ If multiple skills are found:
 
 ## Step 4: Install
 
-Check for conflicts first. If `~/.chatshell/skills/{skill-name}/` already exists:
-1. Tell the user the skill already exists
+Check for conflicts first. If `~/.agents/skills/{skill-name}/` already exists:
+1. Tell the user the skill already exists. It may have been installed by another agent, so never replace it without asking
 2. Ask whether to overwrite or skip
-3. If overwriting, back it up into ChatShell's skill trash (a sibling folder such as `{skill-name}.bak` would be indexed as a second skill with the same name):
+3. If overwriting, back it up outside `~/.agents/skills/` (agents index every folder in it, so a backup such as `{skill-name}.bak` inside it would show up as a second skill with the same name):
    ```bash
-   mkdir -p ~/.chatshell/skills/.trash
-   mv ~/.chatshell/skills/{skill-name} ~/.chatshell/skills/.trash/{skill-name}-$(date +%Y%m%dT%H%M%S)
+   mkdir -p ~/.agents/.skill-backups
+   mv ~/.agents/skills/{skill-name} ~/.agents/.skill-backups/{skill-name}-$(date +%Y%m%dT%H%M%S)
    ```
 
 Install the skill:
 ```bash
-mkdir -p ~/.chatshell/skills/{skill-name}
-cp -r {source_dir}/* ~/.chatshell/skills/{skill-name}/
+mkdir -p ~/.agents/skills/{skill-name}
+cp -R {source_dir}/. ~/.agents/skills/{skill-name}/
+rm -rf ~/.agents/skills/{skill-name}/.git
 ```
 
 Clean up temp files:
@@ -148,15 +151,16 @@ rm -rf "$TMPDIR"
 
 ## Step 5: Verify and report
 
-1. Confirm `~/.chatshell/skills/{skill-name}/SKILL.md` exists
+1. Confirm `~/.agents/skills/{skill-name}/SKILL.md` exists
 2. Read its frontmatter to extract name and description
 3. List all installed files
 
 Report to the user:
 - Skill name and description (from frontmatter)
-- Install path: `~/.chatshell/skills/{skill-name}/`
+- Install path: `~/.agents/skills/{skill-name}/`
 - List of files installed
-- The skill is now available for auto-detection by the agent
+- The skill is now available for auto-detection by the agent on this computer only; it is not synced to the user's other devices
+- If it does not appear in ChatShell, the user can turn on the `~/.agents/skills` source in ChatShell's skill settings
 
 ## Error Handling
 

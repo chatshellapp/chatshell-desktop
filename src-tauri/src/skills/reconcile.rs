@@ -22,8 +22,8 @@
 //!   | tombstoned | present | F == L: deleted on a peer, trash folder; else revive |
 //!   | none       | present | new local skill, index it                      |
 //!
-//! Folders ChatShell removes or replaces are moved to `.trash` below the
-//! user root, never deleted outright.
+//! Folders ChatShell removes or replaces are moved to the skills trash next
+//! to the user root (kept private from the agent), never deleted outright.
 
 use anyhow::{Context, Result};
 use chatshell_agent_core::sync_crypto::{CK_LEN, SyncCryptoError};

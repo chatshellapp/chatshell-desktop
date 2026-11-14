@@ -65,10 +65,10 @@ pub async fn update_skill(
         .map_err(|e| e.to_string())
 }
 
-/// Delete one of ChatShell's own skills: its folder moves to
-/// `~/.chatshell/skills/.trash` and the tombstone syncs, so peers trash
-/// their copy too. Builtin and external skills are not ChatShell's to
-/// delete (disable them, or remove them in their own directory).
+/// Delete one of ChatShell's own skills: its folder moves to the skills
+/// trash (in the app data directory) and the tombstone syncs, so peers
+/// trash their copy too. Builtin and external skills are not ChatShell's
+/// to delete (disable them, or remove them in their own directory).
 #[tauri::command]
 pub async fn delete_skill(
     state: State<'_, AppState>,

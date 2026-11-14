@@ -61,7 +61,7 @@
   "openDirectory": "打开目录",
   "rescan": "重新扫描",
   "loadingSkills": "加载技能中...",
-  "noSkillsAvailable": "没有可用的技能。将 SKILL.md 文件放入 ~/.chatshell/skills/ 或启用上方的其他技能来源。",
+  "noSkillsAvailable": "没有可用的技能。点击“新建技能”创建，让助手为你创建，或启用上方的其他技能来源。",
   "noSkillsMatchSearch": "没有匹配搜索的技能。",
   "skillsManagedInLibrary": "在「知识库 > 技能」中浏览、创建和编辑技能。ChatShell 自己的技能会在你的设备间同步；来自其他代理的技能仅保留在本设备。",
   "skillSourceSynced": "跨设备同步",

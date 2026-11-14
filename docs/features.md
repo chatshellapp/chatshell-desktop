@@ -35,8 +35,8 @@ The AI decides when and how to combine these tools to fulfill your requests.
 
 - **Prompt + Tools**: Bundle instructions with required tools for specialized capabilities
 - **Progressive Disclosure**: Skill names and short descriptions appear in the discovery catalog; full instructions are loaded when a skill is invoked
-- **Custom Skills**: Create your own skills (`~/.chatshell/skills/<skill-name>/SKILL.md`)
-- **Install from URL**: Paste a GitHub, GitLab, or Bitbucket link into the chat to install skills automatically
+- **Custom Skills**: Create your own skills in Settings → Skills, or ask the assistant to write one. They live in ChatShell's skills folder inside its app data directory and sync to your other devices; the assistant can read and write that folder, but not the rest of ChatShell's data
+- **Install from URL**: Paste a GitHub, GitLab, or Bitbucket link into the chat to install skills into `~/.agents/skills/` (shared with other agents, kept on this computer, not synced)
 - **Invocation Control**: Choose whether the AI or the user triggers each skill
 - **Auto-Discovery**: Skill Scanner finds skills from multiple configured directories
 - **Per-Conversation Selection**: Enable different skills for different conversations

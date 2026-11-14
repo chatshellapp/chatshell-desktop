@@ -107,6 +107,11 @@ pub fn run() {
             // conversations, settings): file tools refuse it and the bash
             // sandbox denies it.
             chatshell_agent_core::path_policy::register_private_dir(&app_data_dir);
+            // Except ChatShell's own skills folder: the agent reads skills
+            // (and runs their scripts) from there, and may create them.
+            chatshell_agent_core::path_policy::register_private_exception(
+                &crate::skills::user_root(&app_data_dir),
+            );
 
             // Initialize logger first
             let log_dir = app_data_dir.join("logs");
