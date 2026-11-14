@@ -47,22 +47,32 @@ pub fn with_local_path(mut skill: Skill, roots: &SkillRoots) -> Skill {
 #[tauri::command]
 pub async fn create_skill(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     req: CreateSkillRequest,
 ) -> Result<Skill, String> {
-    state.db.create_skill(req).await.map_err(|e| e.to_string())
+    let roots = SkillRoots::from_app(&app)?;
+    let skill = state
+        .db
+        .create_skill(req)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(with_local_path(skill, &roots))
 }
 
 #[tauri::command]
 pub async fn update_skill(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     id: String,
     req: CreateSkillRequest,
 ) -> Result<Skill, String> {
-    state
+    let roots = SkillRoots::from_app(&app)?;
+    let skill = state
         .db
         .update_skill(&id, req)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(with_local_path(skill, &roots))
 }
 
 /// Delete one of ChatShell's own skills: its folder moves to the skills
@@ -106,33 +116,49 @@ pub async fn delete_skill(
 }
 
 #[tauri::command]
-pub async fn toggle_skill(state: State<'_, AppState>, id: String) -> Result<Skill, String> {
-    state.db.toggle_skill(&id).await.map_err(|e| e.to_string())
+pub async fn toggle_skill(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<Skill, String> {
+    let roots = SkillRoots::from_app(&app)?;
+    let skill = state
+        .db
+        .toggle_skill(&id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(with_local_path(skill, &roots))
 }
 
 #[tauri::command]
 pub async fn set_all_skills_enabled(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     enabled: bool,
 ) -> Result<Vec<Skill>, String> {
-    state
+    let roots = SkillRoots::from_app(&app)?;
+    let skills = state
         .db
         .set_all_skills_enabled(enabled)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(with_local_paths(skills, &roots))
 }
 
 #[tauri::command]
 pub async fn set_skills_enabled(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     ids: Vec<String>,
     enabled: bool,
 ) -> Result<Vec<Skill>, String> {
-    state
+    let roots = SkillRoots::from_app(&app)?;
+    let skills = state
         .db
         .set_skills_enabled(&ids, enabled)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(with_local_paths(skills, &roots))
 }
 
 /// Info about a skill source directory shown in the UI
