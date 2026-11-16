@@ -1,6 +1,8 @@
 ---
 name: skill-installer
 description: Download and install agent skills from URLs into the shared ~/.agents/skills/ directory. This skill contains the exact workflow for parsing GitHub, GitLab, Bitbucket, and direct URLs, handling all URL variants (repo root, /tree/ directory, /blob/ file, raw content links), detecting single vs. multi-skill repos, managing conflicts with backups, and verifying installations. ALWAYS use this skill when the user shares any URL that might contain a SKILL.md or asks to install/add/download/grab/set up a skill from a link -- the skill knows the correct install path and directory structure that the agent cannot infer on its own. Also triggers when a user pastes a GitHub/GitLab/Bitbucket URL mentioning "skill" in the path.
+required_tools:
+  - builtin-bash
 metadata:
   id: 01a1d021-2139-7761-a92a-936aa0447753
   author: ChatShell
