@@ -594,6 +594,92 @@ async fn process_llm_request(
         .iter()
         .any(|id| id == BUILTIN_WEB_SEARCH_ID || id == BUILTIN_WEB_FETCH_ID);
 
+    // Store the user's attachments first: they depend on nothing below,
+    // and the chat shows them only once stored, so they must not wait on
+    // the search decision or URL fetching.
+    // Resend: re-link the original message's stored attachments; the
+    // whole turn is then projected from storage below.
+    for (order, attachment_id) in reuse_attachment_ids.iter().enumerate() {
+        match state
+            .db
+            .link_message_attachment(&user_message_id, attachment_id, Some(order as i32))
+            .await
+        {
+            Ok(()) => {
+                let _ = app.emit(
+                    "attachment-update",
+                    serde_json::json!({
+                        "message_id": user_message_id,
+                        "conversation_id": conversation_id,
+                        "attachment_id": attachment_id,
+                    }),
+                );
+            }
+            Err(e) => tracing::error!("Failed to re-link attachment {}: {}", attachment_id, e),
+        }
+    }
+    let project_from_storage = reuse_persisted_turn || !reuse_attachment_ids.is_empty();
+
+    // Parse and store fresh attachments, or (regenerate, resend)
+    // load the stored turn's attachments so the model sees the same content.
+    let (user_images, user_files, stored_files, stored_images) = if project_from_storage {
+        // Fresh attachments sent alongside reused ones are stored first, so
+        // the storage load below includes them.
+        let fresh_images = attachment_processing::parse_image_attachments(images);
+        let fresh_files = attachment_processing::parse_file_attachments(files);
+        attachment_processing::store_file_attachments(
+            &state,
+            &app,
+            &fresh_files,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        attachment_processing::store_image_attachments(
+            &state,
+            &app,
+            &fresh_images,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        let turn = match crate::storage::get_attachments_dir(&app) {
+            Ok(dir) => {
+                attachment_processing::load_persisted_turn(&state.db, &dir, &user_message_id).await
+            }
+            Err(e) => {
+                tracing::error!("Attachments directory unavailable: {e}");
+                attachment_processing::PersistedTurn::default()
+            }
+        };
+        (
+            turn.images,
+            turn.files,
+            turn.stored_files,
+            turn.stored_images,
+        )
+    } else {
+        let user_images = attachment_processing::parse_image_attachments(images);
+        let user_files = attachment_processing::parse_file_attachments(files);
+        let stored_files = attachment_processing::store_file_attachments(
+            &state,
+            &app,
+            &user_files,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        let stored_images = attachment_processing::store_image_attachments(
+            &state,
+            &app,
+            &user_images,
+            &user_message_id,
+            &conversation_id,
+        )
+        .await;
+        (user_images, user_files, stored_files, stored_images)
+    };
+
     // Step 1: Process search if enabled
     let search_result = if search_enabled {
         search_processing::process_search_decision(
@@ -660,89 +746,6 @@ async fn process_llm_request(
         processed_content.push_str("\n\n---\n");
         processed_content.push_str(serp_context);
     }
-
-    // Resend: re-link the original message's stored attachments; the
-    // whole turn is then projected from storage below.
-    for (order, attachment_id) in reuse_attachment_ids.iter().enumerate() {
-        match state
-            .db
-            .link_message_attachment(&user_message_id, attachment_id, Some(order as i32))
-            .await
-        {
-            Ok(()) => {
-                let _ = app.emit(
-                    "attachment-update",
-                    serde_json::json!({
-                        "message_id": user_message_id,
-                        "conversation_id": conversation_id,
-                        "attachment_id": attachment_id,
-                    }),
-                );
-            }
-            Err(e) => tracing::error!("Failed to re-link attachment {}: {}", attachment_id, e),
-        }
-    }
-    let project_from_storage = reuse_persisted_turn || !reuse_attachment_ids.is_empty();
-
-    // Steps 4-5: parse and store fresh attachments, or (regenerate, resend)
-    // load the stored turn's attachments so the model sees the same content.
-    let (user_images, user_files, stored_files, stored_images) = if project_from_storage {
-        // Fresh attachments sent alongside reused ones are stored first, so
-        // the storage load below includes them.
-        let fresh_images = attachment_processing::parse_image_attachments(images);
-        let fresh_files = attachment_processing::parse_file_attachments(files);
-        attachment_processing::store_file_attachments(
-            &state,
-            &app,
-            &fresh_files,
-            &user_message_id,
-            &conversation_id,
-        )
-        .await;
-        attachment_processing::store_image_attachments(
-            &state,
-            &app,
-            &fresh_images,
-            &user_message_id,
-            &conversation_id,
-        )
-        .await;
-        let turn = match crate::storage::get_attachments_dir(&app) {
-            Ok(dir) => {
-                attachment_processing::load_persisted_turn(&state.db, &dir, &user_message_id).await
-            }
-            Err(e) => {
-                tracing::error!("Attachments directory unavailable: {e}");
-                attachment_processing::PersistedTurn::default()
-            }
-        };
-        (
-            turn.images,
-            turn.files,
-            turn.stored_files,
-            turn.stored_images,
-        )
-    } else {
-        let user_images = attachment_processing::parse_image_attachments(images);
-        let user_files = attachment_processing::parse_file_attachments(files);
-        let stored_files = attachment_processing::store_file_attachments(
-            &state,
-            &app,
-            &user_files,
-            &user_message_id,
-            &conversation_id,
-        )
-        .await;
-        let stored_images = attachment_processing::store_image_attachments(
-            &state,
-            &app,
-            &user_images,
-            &user_message_id,
-            &conversation_id,
-        )
-        .await;
-        (user_images, user_files, stored_files, stored_images)
-    };
 
     // Large attachments are projected as a path manifest only when the
     // conversation can actually fetch them back with the read tool.

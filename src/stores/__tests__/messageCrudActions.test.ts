@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useMessageStore, createDefaultConversationState, unconfirmedMessageIds } from '../message'
+import { toLocalAttachments } from '../message/crudActions'
 import type { ConversationState } from '../message'
 import type { PendingMessage } from '../message/types'
 import { logger } from '@/lib/logger'
@@ -233,6 +234,102 @@ describe('message store crudActions', () => {
       const messages = useMessageStore.getState().getConversationState('conv-1').messages
       expect(messages).toEqual([stored])
       expect(unconfirmedMessageIds.has(messageId)).toBe(false)
+    })
+
+    it('keeps the sent attachments in memory for the optimistic message', async () => {
+      const { promise, resolve } = Promise.withResolvers<Message>()
+      invokeMock.mockReturnValue(promise)
+
+      const sending = useMessageStore
+        .getState()
+        .sendMessage(
+          'see attached',
+          'conv-1',
+          'openai',
+          'gpt-4',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          [{ name: 'pic.png', base64: 'aGVsbG8=', mimeType: 'image/png' }],
+          [{ name: 'doc.txt', content: 'héllo', mimeType: 'text/plain' }]
+        )
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalled())
+
+      const messageId = (invokeMock.mock.calls[0][1] as { messageId: string }).messageId
+      const local = useMessageStore.getState().getConversationState('conv-1').localAttachments[
+        messageId
+      ]
+      expect(local.map((a) => [a.name, a.mimeType, a.size])).toEqual([
+        ['doc.txt', 'text/plain', 6],
+        ['pic.png', 'image/png', 5],
+      ])
+      expect(local[0].content).toBe('héllo')
+      expect(local[1].dataUrl).toBe('data:image/png;base64,aGVsbG8=')
+
+      resolve({ ...createMockMessage(messageId, 'see attached'), conversation_id: 'conv-1' })
+      await sending
+      // Kept after confirmation: the stored rows are written later
+      expect(
+        useMessageStore.getState().getConversationState('conv-1').localAttachments[messageId]
+      ).toHaveLength(2)
+    })
+
+    it('drops the in-memory attachments of a failed send', async () => {
+      invokeMock.mockRejectedValue(new Error('send failed'))
+
+      await expect(
+        useMessageStore
+          .getState()
+          .sendMessage(
+            'hi',
+            'conv-1',
+            'openai',
+            'gpt-4',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            [{ name: 'pic.png', base64: 'aGVsbG8=', mimeType: 'image/png' }]
+          )
+      ).rejects.toThrow('send failed')
+
+      expect(useMessageStore.getState().getConversationState('conv-1').localAttachments).toEqual({})
+    })
+
+    it('drops in-memory attachments only once all of them are stored', () => {
+      const local = toLocalAttachments('m1', [
+        { name: 'a.png', base64: 'aGk=', mimeType: 'image/png' },
+        { name: 'b.png', base64: 'aGk=', mimeType: 'image/png' },
+      ])
+      patchConv('conv-1', { localAttachments: { m1: local } })
+      const store = useMessageStore.getState()
+
+      store.reconcileLocalAttachments('conv-1', 'm1', 1)
+      expect(store.getConversationState('conv-1').localAttachments.m1).toHaveLength(2)
+
+      store.reconcileLocalAttachments('conv-1', 'm1', 2)
+      expect(useMessageStore.getState().getConversationState('conv-1').localAttachments).toEqual({})
+    })
+
+    it('sizes base64 attachments by their decoded bytes', () => {
+      const [file, image] = toLocalAttachments(
+        'm1',
+        [{ name: 'x.png', base64: 'data:image/png;base64,aGVsbG8hIQ==', mimeType: 'image/png' }],
+        [{ name: 'x.pdf', content: '', base64: 'aGVsbG8=', mimeType: 'application/pdf' }]
+      )
+      expect(file).toMatchObject({ size: 5, base64: 'aGVsbG8=', content: undefined })
+      expect(image).toMatchObject({ size: 7, dataUrl: 'data:image/png;base64,aGVsbG8hIQ==' })
     })
 
     it('withdraws the optimistic message when send_message fails', async () => {

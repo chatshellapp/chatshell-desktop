@@ -84,6 +84,23 @@ export interface ConversationState {
   streamingImages: string[]
   // Messages queued while AI is still streaming
   pendingMessages: PendingMessage[]
+  // Attachments of just-sent user messages as sent: messageId -> list.
+  // Shown until the stored attachment rows have been fetched.
+  localAttachments: Record<string, LocalAttachment[]>
+}
+
+// A user message attachment held in memory until its stored row arrives
+export interface LocalAttachment {
+  id: string
+  name: string
+  mimeType: string
+  // Size in bytes
+  size: number
+  // Image as a data URL
+  dataUrl?: string
+  // File text, or base64 bytes of a binary document
+  content?: string
+  base64?: string
 }
 
 // Default state for a new conversation
@@ -111,6 +128,7 @@ export const createDefaultConversationState = (): ConversationState => ({
   streamingToolCalls: {},
   streamingImages: [],
   pendingMessages: [],
+  localAttachments: {},
 })
 
 // Message store state (without actions)
@@ -168,7 +186,7 @@ export interface PendingMessage {
   assistantDbId?: string
   urlsToFetch?: string[]
   images?: { name: string; base64: string; mimeType: string }[]
-  files?: { name: string; content: string; mimeType: string }[]
+  files?: { name: string; content: string; base64?: string; mimeType: string }[]
   searchEnabled?: boolean
   parameterOverrides?: SendMessageParameterOverrides
   contextMessageCount?: number | null
@@ -209,7 +227,7 @@ export interface MessageStoreCrudActions {
     assistantDbId?: string,
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
-    files?: { name: string; content: string; mimeType: string }[],
+    files?: { name: string; content: string; base64?: string; mimeType: string }[],
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
@@ -236,7 +254,7 @@ export interface MessageStoreCrudActions {
     assistantDbId?: string,
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
-    files?: { name: string; content: string; mimeType: string }[],
+    files?: { name: string; content: string; base64?: string; mimeType: string }[],
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
@@ -290,6 +308,13 @@ export interface MessageStoreCrudActions {
   enqueueMessage: (conversationId: string, message: PendingMessage) => void
   removePendingMessage: (conversationId: string, index: number) => void
   processNextPendingMessage: (conversationId: string) => void
+  // Drop a message's local attachments once at least as many stored ones
+  // have been fetched for it
+  reconcileLocalAttachments: (
+    conversationId: string,
+    messageId: string,
+    storedCount: number
+  ) => void
   // Clear the error of a failed queued message and send it when idle
   retryPendingMessage: (conversationId: string) => void
   // Move a queued message to the head of the queue and send it right away,

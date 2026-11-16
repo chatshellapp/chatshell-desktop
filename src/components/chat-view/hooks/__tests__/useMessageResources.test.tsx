@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@/lib/logger'
 import { useMessageResources } from '../useMessageResources'
-import { unconfirmedMessageIds } from '@/stores/message'
+import { unconfirmedMessageIds, useMessageStore } from '@/stores/message'
 import type { Message, MessageResources } from '@/types'
 
 vi.mock('@/lib/logger', () => ({
@@ -59,6 +59,23 @@ describe('useMessageResources', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(invoke).mockResolvedValue({})
+  })
+
+  it('drops the in-memory attachments once the stored ones are fetched', async () => {
+    const msg = { ...makeMessage('m1'), conversation_id: 'conv-r' }
+    useMessageStore.getState().getConversationState('conv-r')
+    useMessageStore.setState((s) => {
+      s.conversationStates['conv-r'].localAttachments.m1 = [
+        { id: 'local-m1-file-0', name: 'a.txt', mimeType: 'text/plain', size: 1, content: 'a' },
+      ]
+    })
+    vi.mocked(invoke).mockResolvedValue({ m1: resourcesFor('m1') })
+
+    renderResources({ messages: [msg] })
+
+    await waitFor(() =>
+      expect(useMessageStore.getState().getConversationState('conv-r').localAttachments).toEqual({})
+    )
   })
 
   it('waits for an optimistic message to be stored before fetching its resources', async () => {

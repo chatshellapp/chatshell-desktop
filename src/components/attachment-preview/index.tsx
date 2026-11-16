@@ -43,6 +43,7 @@ export function AttachmentPreview({
   pendingSearchDecision,
   allImages,
   currentImageIndex,
+  localData,
 }: AttachmentPreviewProps) {
   // Pending search decision state
   if (pendingSearchDecision) {
@@ -74,6 +75,7 @@ export function AttachmentPreview({
           fileAttachment={userAttachment as FileAttachment}
           allImages={allImages}
           currentImageIndex={currentImageIndex}
+          localData={localData}
         />
       )
     }
