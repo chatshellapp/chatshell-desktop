@@ -242,7 +242,7 @@ export function ChatPage() {
                       : showSkillDetail
                         ? selectedSkill.name
                         : currentConversation
-                          ? currentConversation.title || t('sidebar:newConversation')
+                          ? currentConversation.title || t('chat:newConversation')
                           : t('chat:selectConversation')}
             </h1>
           </header>

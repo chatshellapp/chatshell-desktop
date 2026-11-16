@@ -81,7 +81,6 @@ function ConversationRow({
   onEditTitle,
   onDelete,
 }: ConversationRowProps) {
-  const { t } = useTranslation('sidebar')
   const { t: tChat } = useTranslation('chat')
   const getModelById = useModelStore((state) => state.getModelById)
   // Primitive selector: the row re-renders only when this conversation's
@@ -110,7 +109,7 @@ function ConversationRow({
       : conversation.last_message
     : tChat('noMessages')
 
-  const placeholderTitle = t('newConversation')
+  const placeholderTitle = tChat('newConversation')
 
   return (
     <MessageListItem

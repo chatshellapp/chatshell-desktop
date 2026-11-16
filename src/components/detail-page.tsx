@@ -209,7 +209,7 @@ export function RecentConversations({
             <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium">
-                {conversation.title || t('newConversation')}
+                {conversation.title || t('chat:newConversation')}
               </span>
               {conversation.last_message && (
                 <span className="truncate text-xs text-muted-foreground">
