@@ -99,9 +99,8 @@ export function useMessageHandlers({
           messageId,
         })
 
-        const reuseAttachmentIds = resources.attachments
-          .filter((a) => a.type === 'file')
-          .map((a) => a.id)
+        const reusedAttachments = resources.attachments.filter((a) => a.type === 'file')
+        const reuseAttachmentIds = reusedAttachments.map((a) => a.id)
         const reuseFetchResultIds = resources.contexts
           .filter((c) => c.type === 'fetch_result' && c.source_type === 'user_link')
           .map((c) => c.id)
@@ -155,7 +154,8 @@ export function useMessageHandlers({
           contextMessageCount,
           useProviderDefaults,
           reuseFetchResultIds.length > 0 ? reuseFetchResultIds : undefined,
-          reuseAttachmentIds.length > 0 ? reuseAttachmentIds : undefined
+          reuseAttachmentIds.length > 0 ? reuseAttachmentIds : undefined,
+          reusedAttachments.length > 0 ? reusedAttachments : undefined
         )
         requestSentMessageScroll(
           currentConversation.id,

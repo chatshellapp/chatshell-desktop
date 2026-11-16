@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Message, MessageResources } from '@/types'
 import { logger } from '@/lib/logger'
-import { unconfirmedMessageIds } from '@/stores/message'
+import { unconfirmedMessageIds, useMessageStore } from '@/stores/message'
 
 interface UseMessageResourcesOptions {
   messages: Message[]
@@ -70,6 +70,18 @@ export function useMessageResources({
         }
         if (Object.keys(fetched).length > 0) {
           setMessageResources((prev) => ({ ...prev, ...fetched }))
+          // Stored attachments replace the in-memory ones of a just-sent message
+          const store = useMessageStore.getState()
+          for (const msg of messages) {
+            const stored = fetched[msg.id]
+            if (stored && msg.conversation_id) {
+              store.reconcileLocalAttachments(
+                msg.conversation_id,
+                msg.id,
+                stored.attachments.length
+              )
+            }
+          }
         }
       } catch (e) {
         logger.error('Failed to fetch message resources (batch)', e)

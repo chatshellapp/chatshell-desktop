@@ -28,7 +28,26 @@ import { CHAT_CONFIG, formatTimestamp } from './utils'
 import type { DisplayInfo } from './hooks'
 import { GeneratedImageGallery } from './GeneratedImageGallery'
 import { RunOutcomeFooter } from './FailedTurn'
-import type { RunOutcome } from '@/stores/message/types'
+import type { LocalAttachment, RunOutcome } from '@/stores/message/types'
+import { useMessageStore } from '@/stores/message'
+import type { UserAttachment } from '@/types'
+
+const EMPTY_LOCAL_ATTACHMENTS: LocalAttachment[] = []
+
+// A not-yet-stored attachment in the shape of a stored one
+function localAsUserAttachment(local: LocalAttachment, createdAt: string): UserAttachment {
+  if (local.stored) return local.stored
+  return {
+    type: 'file',
+    id: local.id,
+    file_name: local.name,
+    file_size: local.size,
+    mime_type: local.mimeType,
+    storage_path: '',
+    content_hash: '',
+    created_at: createdAt,
+  }
+}
 
 /**
  * Rough height placeholder for a row that has never rendered (CJK/latin
@@ -135,7 +154,18 @@ export const MessageItem = memo(function MessageItem({
   }
 
   // Separate user vs assistant attachments
-  const userAttachments = isUserMessage ? resources.attachments : []
+  const storedUserAttachments = isUserMessage ? resources.attachments : []
+  // Just sent: show the attachments as sent until their stored rows arrive
+  const localAttachments = useMessageStore((state) =>
+    isUserMessage && message.conversation_id
+      ? (state.conversationStates[message.conversation_id]?.localAttachments[message.id] ??
+        EMPTY_LOCAL_ATTACHMENTS)
+      : EMPTY_LOCAL_ATTACHMENTS
+  )
+  const showLocalAttachments = localAttachments.length > storedUserAttachments.length
+  const userAttachments: UserAttachment[] = showLocalAttachments
+    ? localAttachments.map((local) => localAsUserAttachment(local, message.created_at))
+    : storedUserAttachments
   const assistantImageAttachments = isAssistantMessage
     ? resources.attachments.filter((a) => a.type === 'file' && a.mime_type?.startsWith('image/'))
     : []
@@ -288,11 +318,20 @@ export const MessageItem = memo(function MessageItem({
               const imageAttachments = userAttachments.filter(
                 (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
               )
-              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => ({
-                id: a.id,
-                fileName: a.file_name,
-                storagePath: a.storage_path,
-              }))
+              // In-memory attachments only; reused ones load from storage
+              const localById = new Map(
+                showLocalAttachments
+                  ? localAttachments
+                      .filter((local) => !local.stored)
+                      .map((local) => [local.id, local])
+                  : []
+              )
+              const allImages: ImageAttachmentData[] = imageAttachments.map((a) => {
+                const local = localById.get(a.id)
+                return local
+                  ? { id: a.id, fileName: a.file_name, base64: local.dataUrl }
+                  : { id: a.id, fileName: a.file_name, storagePath: a.storage_path }
+              })
 
               return userAttachments.map((attachment) => {
                 const isImage =
@@ -307,6 +346,7 @@ export const MessageItem = memo(function MessageItem({
                     userAttachment={attachment}
                     allImages={isImage ? allImages : undefined}
                     currentImageIndex={imageIndex}
+                    localData={localById.get(attachment.id)}
                   />
                 )
               })

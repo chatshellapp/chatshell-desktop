@@ -10,6 +10,16 @@ export interface ImageAttachmentData {
   base64?: string
 }
 
+/** In-memory data of a user attachment that is not stored yet */
+export interface AttachmentLocalData {
+  /** Image as a data URL */
+  dataUrl?: string
+  /** File text */
+  content?: string
+  /** Base64 bytes of a binary document */
+  base64?: string
+}
+
 export interface AttachmentPreviewProps {
   /** User attachment (files, user links) */
   userAttachment?: UserAttachment
@@ -29,6 +39,8 @@ export interface AttachmentPreviewProps {
   allImages?: ImageAttachmentData[]
   /** Current image index in allImages array */
   currentImageIndex?: number
+  /** In-memory data when userAttachment is not stored yet */
+  localData?: AttachmentLocalData
 }
 
 /** Props for FilePreviewDialog - supports both storage paths and in-memory content */

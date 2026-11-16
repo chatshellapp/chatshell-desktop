@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/markdown-content'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
 import type { FileAttachment } from '@/types'
-import type { FilePreviewDialogProps, ImageAttachmentData } from './types'
+import type { FilePreviewDialogProps, AttachmentLocalData, ImageAttachmentData } from './types'
 import { formatFileSize, isMarkdownFile } from './utils'
 import { ImageLightbox } from './image-lightbox'
 import { isBinaryDocument, isVideoFile } from '@/lib/document-files'
@@ -162,10 +162,13 @@ export function FileAttachmentPreview({
   fileAttachment,
   allImages,
   currentImageIndex,
+  localData,
 }: {
   fileAttachment: FileAttachment
   allImages?: ImageAttachmentData[]
   currentImageIndex?: number
+  // In-memory bytes of an attachment not stored yet (just sent)
+  localData?: AttachmentLocalData
 }) {
   const { t } = useTranslation(['attachments'])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -206,10 +209,11 @@ export function FileAttachmentPreview({
       {
         id: fileAttachment.id,
         fileName: fileAttachment.file_name,
-        storagePath: fileAttachment.storage_path,
+        storagePath: localData ? undefined : fileAttachment.storage_path,
+        base64: localData?.dataUrl,
       },
     ]
-  }, [allImages, fileAttachment])
+  }, [allImages, fileAttachment, localData])
 
   const lightboxIndex = currentImageIndex ?? 0
 
@@ -263,7 +267,9 @@ export function FileAttachmentPreview({
           isOpen={isDialogOpen}
           onClose={() => setIsDialogOpen(false)}
           fileName={fileAttachment.file_name}
-          storagePath={fileAttachment.storage_path}
+          storagePath={localData ? undefined : fileAttachment.storage_path}
+          content={localData?.content}
+          base64={localData?.base64}
           mimeType={fileAttachment.mime_type}
           size={fileAttachment.file_size}
         />

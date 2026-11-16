@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Message, Conversation, SiblingGroup } from '@/types'
+import type { Message, Conversation, SiblingGroup, UserAttachment } from '@/types'
 import type {
   ImmerSet,
   StoreGet,
@@ -7,6 +7,7 @@ import type {
   SendMessageParameterOverrides,
   PendingMessage,
   RunOutcome,
+  LocalAttachment,
 } from './types'
 import { MESSAGES_PAGE_SIZE } from './types'
 import { cleanupThrottleState } from './throttle'
@@ -20,6 +21,54 @@ import { toast } from 'sonner'
  * that reads per-message data from the backend skips these until confirmed.
  */
 export const unconfirmedMessageIds = new Set<string>()
+
+// Decoded size of base64 data (with or without a data-URL prefix)
+function base64ByteLength(data: string): number {
+  const raw = data.slice(data.indexOf(',') + 1)
+  const padding = raw.endsWith('==') ? 2 : raw.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((raw.length * 3) / 4) - padding)
+}
+
+// The attachments of a send as the chat shows them before they are stored
+export function toLocalAttachments(
+  messageId: string,
+  images: { name: string; base64: string; mimeType: string }[] = [],
+  files: { name: string; content: string; base64?: string; mimeType: string }[] = [],
+  reused: UserAttachment[] = []
+): LocalAttachment[] {
+  // The backend re-links reused attachments before storing fresh ones
+  const local: LocalAttachment[] = reused.map((stored) => ({
+    id: stored.id,
+    name: stored.file_name,
+    mimeType: stored.mime_type,
+    size: stored.file_size,
+    stored,
+  }))
+  files.forEach((file, i) => {
+    local.push({
+      id: `local-${messageId}-file-${i}`,
+      name: file.name,
+      mimeType: file.mimeType,
+      size: file.base64
+        ? base64ByteLength(file.base64)
+        : new TextEncoder().encode(file.content).length,
+      content: file.base64 ? undefined : file.content,
+      base64: file.base64,
+    })
+  })
+  images.forEach((image, i) => {
+    local.push({
+      id: `local-${messageId}-image-${i}`,
+      name: image.name,
+      mimeType: image.mimeType,
+      size: base64ByteLength(image.base64),
+      dataUrl: image.base64.startsWith('data:')
+        ? image.base64
+        : `data:${image.mimeType};base64,${image.base64}`,
+    })
+  })
+  return local
+}
 
 /**
  * Messages delivered by addMessage (e.g. a chat-complete reply) while a
@@ -61,6 +110,8 @@ async function withdrawOptimisticMessage(
     const convState = draft.conversationStates[conversationId]
     if (convState) {
       convState.messages = convState.messages.filter((m: Message) => m.id !== messageId)
+      delete convState.localAttachments[messageId]
+      delete convState.urlStatuses[messageId]
     }
   })
   if (cutBranch) {
@@ -238,14 +289,15 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     assistantDbId?: string,
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
-    files?: { name: string; content: string; mimeType: string }[],
+    files?: { name: string; content: string; base64?: string; mimeType: string }[],
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
     siblingOfMessageId?: string,
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    reusedAttachments?: UserAttachment[]
   ) => {
     // The send flag is per conversation: one conversation's send must not
     // block the send control of another.
@@ -300,10 +352,27 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         created_at: new Date().toISOString(),
       }
       unconfirmedMessageIds.add(optimisticMessageId)
+      // Stored attachments only show once the backend has written them
+      const localAttachments = toLocalAttachments(
+        optimisticMessageId,
+        images,
+        files,
+        reusedAttachments
+      )
       get().getConversationState(conversationForMessage) // Ensure state exists
       set((draft) => {
         const convState = draft.conversationStates[conversationForMessage]
         if (convState) {
+          if (localAttachments.length > 0 && optimisticMessageId) {
+            convState.localAttachments[optimisticMessageId] = localAttachments
+          }
+          // Attached links show as being fetched right away; the backend's
+          // processing events take over once it starts fetching them.
+          if (urlsToFetch?.length && optimisticMessageId) {
+            convState.urlStatuses[optimisticMessageId] = Object.fromEntries(
+              urlsToFetch.map((url) => [url, 'fetching' as const])
+            )
+          }
           // A resend replaces the original's branch: the window follows the
           // rewound leaf, so the original and everything after it leave it.
           if (siblingOfMessageId) {
@@ -541,13 +610,14 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     assistantDbId?: string,
     urlsToFetch?: string[],
     images?: { name: string; base64: string; mimeType: string }[],
-    files?: { name: string; content: string; mimeType: string }[],
+    files?: { name: string; content: string; base64?: string; mimeType: string }[],
     searchEnabled?: boolean,
     parameterOverrides?: SendMessageParameterOverrides,
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    reusedAttachments?: UserAttachment[]
   ) => {
     await get().sendMessage(
       content,
@@ -571,7 +641,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       useProviderDefaults,
       reuseFetchResultIds,
       siblingOfMessageId,
-      reuseAttachmentIds
+      reuseAttachmentIds,
+      reusedAttachments
     )
   },
 
@@ -774,6 +845,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         convState.isStreaming = false
         convState.isWaitingForAI = false
         convState.streamingContent = ''
+        // A turn that ended early never finishes fetching its links
+        convState.urlStatuses = {}
       }
     })
     // A regenerate that produced nothing left the backend leaf on the
@@ -929,6 +1002,14 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         })
         toast.error(i18n.t('chat:queuedSendFailed'), { description: message })
       })
+  },
+
+  reconcileLocalAttachments: (conversationId: string, messageId: string, storedCount: number) => {
+    const local = get().conversationStates[conversationId]?.localAttachments[messageId]
+    if (!local || storedCount < local.length) return
+    set((draft) => {
+      delete draft.conversationStates[conversationId]?.localAttachments[messageId]
+    })
   },
 
   retryPendingMessage: (conversationId: string) => {
