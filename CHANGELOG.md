@@ -8,9 +8,42 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-16
+
 ### Added
 
 - Queued messages have a Send now action that stops the current reply and sends that message right away, ahead of the rest of the queue.
+- Contacts open a profile page before starting a chat, with details, badges, and recent conversations. Double-click or press Enter to start a chat right away.
+- Prompts in the Library open a detail page with the full content, the conversations that use it, and copy, star, edit, duplicate, and delete actions. Use in New Chat sets a system prompt or fills the message box with a user prompt.
+- A Presets tab in the Library to create, edit, duplicate, delete, and set the default model parameter preset, with each parameter optionally left to the provider default.
+- Assistants can pick a parameter preset, and the selected preset is now actually sent to the model.
+- Skills move from Settings to Library > Skills, with a detail page showing SKILL.md, files, and status badges. Settings keeps skill sources, rescan, and enable or disable all.
+- ChatShell's own skills sync across devices together with their files.
+- Enable All and Disable All apply only to the skills shown when a search is active.
+- The sidebar search filters the current list in Library and Contacts.
+
+### Changed
+
+- The New Conversation button sits at the top of the conversation list and shows its shortcut. An icon button appears in the header while the list is collapsed.
+- The working directory has its own control in the chat toolbar instead of living in the conversation settings menu.
+- Anthropic models are fetched from the Anthropic API, and new providers no longer start with a built-in model list.
+- ChatShell's own skills are stored in the app data folder, and the skill installer installs into the shared `~/.agents/skills`. Skills in `~/.chatshell/skills` are moved over automatically.
+- Sent images, files, and links, including those of a resent message, appear immediately instead of after the backend stores or fetches them.
+- Untitled conversations read "New conversation".
+
+### Fixed
+
+- Starring an assistant no longer wipes its role, description, user prompt, parameter preset, and image avatar.
+- Removing a model asks for confirmation, and contact menus that did nothing are now wired up or hidden.
+- Skills are no longer deleted for every device when one device lacks a skill's folder.
+- Enable All and Disable All no longer mark every skill as downloading.
+- Skills marked as hidden from the model are no longer offered to it.
+- Image attachments work with every OpenAI-compatible provider, such as MiniMax.
+- The thinking card collapses once the answer starts streaming, and scrolling up in it no longer jumps back to the end.
+- The @-mention popup is no longer clipped by the message box.
+- Cmd/Ctrl+N keeps working after the first use.
+- Leftover translation conversations no longer show up in the conversation list or sync to other devices.
+- Quitting during sync no longer crashes, and shutdown no longer hangs on blocking work.
 
 ## [0.10.2] - 2026-11-11
 
@@ -423,7 +456,8 @@ Each release section is published as the GitHub release notes, the in-app update
 - Markdown rendering with syntax highlighting and Mermaid diagrams.
 - API keys encrypted at rest.
 
-[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.9.2...v0.10.0
