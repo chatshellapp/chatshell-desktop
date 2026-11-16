@@ -36,6 +36,7 @@ const EMPTY_LOCAL_ATTACHMENTS: LocalAttachment[] = []
 
 // A not-yet-stored attachment in the shape of a stored one
 function localAsUserAttachment(local: LocalAttachment, createdAt: string): UserAttachment {
+  if (local.stored) return local.stored
   return {
     type: 'file',
     id: local.id,
@@ -317,8 +318,13 @@ export const MessageItem = memo(function MessageItem({
               const imageAttachments = userAttachments.filter(
                 (a) => a.type === 'file' && a.mime_type?.startsWith('image/')
               )
+              // In-memory attachments only; reused ones load from storage
               const localById = new Map(
-                showLocalAttachments ? localAttachments.map((local) => [local.id, local]) : []
+                showLocalAttachments
+                  ? localAttachments
+                      .filter((local) => !local.stored)
+                      .map((local) => [local.id, local])
+                  : []
               )
               const allImages: ImageAttachmentData[] = imageAttachments.map((a) => {
                 const local = localById.get(a.id)

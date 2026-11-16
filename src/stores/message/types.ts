@@ -1,4 +1,4 @@
-import type { Message, Conversation } from '@/types'
+import type { Message, Conversation, UserAttachment } from '@/types'
 import type { Draft } from 'immer'
 
 // Streaming tool call (before saved to DB)
@@ -101,6 +101,8 @@ export interface LocalAttachment {
   // File text, or base64 bytes of a binary document
   content?: string
   base64?: string
+  // A stored attachment reused by a resend: shown from storage as is
+  stored?: UserAttachment
 }
 
 // Default state for a new conversation
@@ -234,7 +236,9 @@ export interface MessageStoreCrudActions {
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
     siblingOfMessageId?: string,
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    // Stored rows of the reused attachments, shown before they are re-linked
+    reusedAttachments?: UserAttachment[]
   ) => Promise<void>
   // Non-destructive resend: same as sendMessage but the new user message
   // becomes a sibling variant of `siblingOfMessageId`.
@@ -260,7 +264,8 @@ export interface MessageStoreCrudActions {
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    reusedAttachments?: UserAttachment[]
   ) => Promise<void>
   // Regenerate an assistant reply as a sibling variant of the same user
   // message (backend rewinds the active leaf and re-runs generation).

@@ -354,6 +354,8 @@ describe('useMessageHandlers', () => {
       // Only user-provided link contexts are reused, not search results
       expect(args[20]).toEqual(['ctx-user-link'])
       expect(args[21]).toEqual([imageAttachment.id, textAttachment.id])
+      // The stored rows ride along so the resent message shows them at once
+      expect(args[22]).toEqual([imageAttachment, textAttachment])
       expect(toast.error).not.toHaveBeenCalled()
     })
 

@@ -80,6 +80,22 @@ describe('just-sent user attachments', () => {
     expect(screen.getByText('notes.txt')).toBeInTheDocument()
   })
 
+  it('shows the reused attachments of a resend from storage before they are re-linked', () => {
+    const reused = stored('reused.png')
+    useMessageStore.getState().getConversationState(CONV)
+    useMessageStore.setState((s) => {
+      s.conversationStates[CONV].localAttachments[message.id] = toLocalAttachments(
+        message.id,
+        [],
+        [],
+        [reused]
+      )
+    })
+    renderItem()
+
+    expect(screen.getByText('reused.png')).toBeInTheDocument()
+  })
+
   it('switches to the stored attachments once all of them are fetched', () => {
     seedLocal()
     renderItem({

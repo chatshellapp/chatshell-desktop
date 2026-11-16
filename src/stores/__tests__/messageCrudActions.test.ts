@@ -322,6 +322,70 @@ describe('message store crudActions', () => {
       expect(useMessageStore.getState().getConversationState('conv-1').localAttachments).toEqual({})
     })
 
+    it('shows attached links as being fetched right away, and withdraws that on failure', async () => {
+      const { promise, reject } = Promise.withResolvers<Message>()
+      invokeMock.mockReturnValue(promise)
+      const urls = ['https://a.example/page', 'https://b.example/']
+
+      const sending = useMessageStore
+        .getState()
+        .sendMessage(
+          'read these',
+          'conv-1',
+          'openai',
+          'gpt-4',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          urls
+        )
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalled())
+
+      const messageId = (invokeMock.mock.calls[0][1] as { messageId: string }).messageId
+      expect(useMessageStore.getState().getConversationState('conv-1').urlStatuses).toEqual({
+        [messageId]: { [urls[0]]: 'fetching', [urls[1]]: 'fetching' },
+      })
+
+      reject(new Error('send failed'))
+      await expect(sending).rejects.toThrow('send failed')
+      expect(useMessageStore.getState().getConversationState('conv-1').urlStatuses).toEqual({})
+    })
+
+    it('a turn that ends early stops showing its links as being fetched', () => {
+      patchConv('conv-1', { urlStatuses: { m1: { 'https://a.example/': 'fetching' } } })
+
+      useMessageStore.getState().failTurn('conv-1', 'failed', 'boom')
+
+      expect(useMessageStore.getState().getConversationState('conv-1').urlStatuses).toEqual({})
+    })
+
+    it('lists reused stored attachments first, as stored rows', () => {
+      const reused = {
+        type: 'file' as const,
+        id: 'att-1',
+        file_name: 'old.png',
+        file_size: 9,
+        mime_type: 'image/png',
+        storage_path: '/store/old.png',
+        content_hash: 'h',
+        created_at: '2026-01-01T00:00:00Z',
+      }
+      const local = toLocalAttachments(
+        'm1',
+        [{ name: 'new.png', base64: 'aGk=', mimeType: 'image/png' }],
+        [],
+        [reused]
+      )
+      expect(local.map((a) => a.name)).toEqual(['old.png', 'new.png'])
+      expect(local[0]).toMatchObject({ id: 'att-1', size: 9, stored: reused })
+      expect(local[1].stored).toBeUndefined()
+    })
+
     it('sizes base64 attachments by their decoded bytes', () => {
       const [file, image] = toLocalAttachments(
         'm1',

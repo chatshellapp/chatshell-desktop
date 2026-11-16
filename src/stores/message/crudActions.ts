@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Message, Conversation, SiblingGroup } from '@/types'
+import type { Message, Conversation, SiblingGroup, UserAttachment } from '@/types'
 import type {
   ImmerSet,
   StoreGet,
@@ -33,9 +33,17 @@ function base64ByteLength(data: string): number {
 export function toLocalAttachments(
   messageId: string,
   images: { name: string; base64: string; mimeType: string }[] = [],
-  files: { name: string; content: string; base64?: string; mimeType: string }[] = []
+  files: { name: string; content: string; base64?: string; mimeType: string }[] = [],
+  reused: UserAttachment[] = []
 ): LocalAttachment[] {
-  const local: LocalAttachment[] = []
+  // The backend re-links reused attachments before storing fresh ones
+  const local: LocalAttachment[] = reused.map((stored) => ({
+    id: stored.id,
+    name: stored.file_name,
+    mimeType: stored.mime_type,
+    size: stored.file_size,
+    stored,
+  }))
   files.forEach((file, i) => {
     local.push({
       id: `local-${messageId}-file-${i}`,
@@ -103,6 +111,7 @@ async function withdrawOptimisticMessage(
     if (convState) {
       convState.messages = convState.messages.filter((m: Message) => m.id !== messageId)
       delete convState.localAttachments[messageId]
+      delete convState.urlStatuses[messageId]
     }
   })
   if (cutBranch) {
@@ -287,7 +296,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
     siblingOfMessageId?: string,
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    reusedAttachments?: UserAttachment[]
   ) => {
     // The send flag is per conversation: one conversation's send must not
     // block the send control of another.
@@ -343,13 +353,25 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       }
       unconfirmedMessageIds.add(optimisticMessageId)
       // Stored attachments only show once the backend has written them
-      const localAttachments = toLocalAttachments(optimisticMessageId, images, files)
+      const localAttachments = toLocalAttachments(
+        optimisticMessageId,
+        images,
+        files,
+        reusedAttachments
+      )
       get().getConversationState(conversationForMessage) // Ensure state exists
       set((draft) => {
         const convState = draft.conversationStates[conversationForMessage]
         if (convState) {
           if (localAttachments.length > 0 && optimisticMessageId) {
             convState.localAttachments[optimisticMessageId] = localAttachments
+          }
+          // Attached links show as being fetched right away; the backend's
+          // processing events take over once it starts fetching them.
+          if (urlsToFetch?.length && optimisticMessageId) {
+            convState.urlStatuses[optimisticMessageId] = Object.fromEntries(
+              urlsToFetch.map((url) => [url, 'fetching' as const])
+            )
           }
           // A resend replaces the original's branch: the window follows the
           // rewound leaf, so the original and everything after it leave it.
@@ -594,7 +616,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
     contextMessageCount?: number | null,
     useProviderDefaults?: boolean,
     reuseFetchResultIds?: string[],
-    reuseAttachmentIds?: string[]
+    reuseAttachmentIds?: string[],
+    reusedAttachments?: UserAttachment[]
   ) => {
     await get().sendMessage(
       content,
@@ -618,7 +641,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
       useProviderDefaults,
       reuseFetchResultIds,
       siblingOfMessageId,
-      reuseAttachmentIds
+      reuseAttachmentIds,
+      reusedAttachments
     )
   },
 
@@ -821,6 +845,8 @@ export const createCrudActions = (set: ImmerSet, get: StoreGet): MessageStoreCru
         convState.isStreaming = false
         convState.isWaitingForAI = false
         convState.streamingContent = ''
+        // A turn that ended early never finishes fetching its links
+        convState.urlStatuses = {}
       }
     })
     // A regenerate that produced nothing left the backend leaf on the
