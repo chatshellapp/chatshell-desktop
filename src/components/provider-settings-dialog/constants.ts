@@ -1,4 +1,4 @@
-import type { LLMProvider, ModelItem } from './types'
+import type { LLMProvider } from './types'
 
 export const CUSTOM_PROVIDER: LLMProvider = {
   id: 'custom',
@@ -66,179 +66,6 @@ export const BUILTIN_PROVIDERS: LLMProvider[] = [
   { id: 'ovms', name: 'OVMS', baseUrl: 'http://localhost:8000/v1' },
 ]
 
-/**
- * Default models pre-populated for each provider so users don't have to
- * configure them manually. Users can still delete or add more models.
- * Aggregators like OpenRouter have more defaults.
- */
-export const DEFAULT_PROVIDER_MODELS: Record<
-  string,
-  Array<{ modelId: string; displayName: string }>
-> = {
-  openai: [
-    { modelId: 'gpt-5.2', displayName: 'GPT-5.2' },
-    { modelId: 'gpt-5-mini', displayName: 'GPT-5 Mini' },
-    { modelId: 'gpt-5-nano', displayName: 'GPT-5 Nano' },
-  ],
-  azure: [
-    { modelId: 'gpt-5.2', displayName: 'GPT-5.2' },
-    { modelId: 'gpt-5-mini', displayName: 'GPT-5 Mini' },
-    { modelId: 'gpt-5-nano', displayName: 'GPT-5 Nano' },
-  ],
-  anthropic: [
-    { modelId: 'claude-opus-4-6', displayName: 'Claude Opus 4.6' },
-    { modelId: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
-    { modelId: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5' },
-  ],
-  gemini: [
-    { modelId: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro Preview' },
-    { modelId: 'gemini-3-flash-preview', displayName: 'Gemini 3 Flash Preview' },
-  ],
-  openrouter: [
-    { modelId: 'openai/gpt-5.2', displayName: 'OpenAI: GPT-5.2' },
-    { modelId: 'openai/gpt-5-mini', displayName: 'OpenAI: GPT-5 Mini' },
-    { modelId: 'openai/gpt-5-nano', displayName: 'OpenAI: GPT-5 Nano' },
-    { modelId: 'anthropic/claude-opus-4-6', displayName: 'Anthropic: Claude Opus 4.6' },
-    { modelId: 'anthropic/claude-sonnet-4-6', displayName: 'Anthropic: Claude Sonnet 4.6' },
-    { modelId: 'anthropic/claude-haiku-4-5', displayName: 'Anthropic: Claude Haiku 4.5' },
-    { modelId: 'google/gemini-3.1-pro-preview', displayName: 'Google: Gemini 3.1 Pro Preview' },
-    { modelId: 'google/gemini-3-flash-preview', displayName: 'Google: Gemini 3 Flash Preview' },
-    { modelId: 'minimax/minimax-m2.5', displayName: 'MiniMax: MiniMax M2.5' },
-    { modelId: 'moonshotai/kimi-k2.5', displayName: 'MoonshotAI: Kimi K2.5' },
-    { modelId: 'deepseek/deepseek-v3.2', displayName: 'DeepSeek: DeepSeek V3.2' },
-    { modelId: 'deepseek/deepseek-r1', displayName: 'DeepSeek: DeepSeek R1' },
-  ],
-  deepseek: [
-    { modelId: 'deepseek-chat', displayName: 'DeepSeek Chat' },
-    { modelId: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner' },
-  ],
-  groq: [
-    { modelId: 'groq/compound', displayName: 'Groq: Compound' },
-    { modelId: 'openai/gpt-oss-120b', displayName: 'OpenAI: GPT-OSS 120B' },
-  ],
-  mistral: [
-    { modelId: 'mistral-large-latest', displayName: 'Mistral Large' },
-    { modelId: 'mistral-small-latest', displayName: 'Mistral Small' },
-    { modelId: 'codestral-latest', displayName: 'Codestral' },
-  ],
-  perplexity: [
-    { modelId: 'sonar', displayName: 'Sonar' },
-    { modelId: 'sonar-pro', displayName: 'Sonar Pro' },
-    { modelId: 'sonar-reasoning', displayName: 'Sonar Reasoning' },
-  ],
-  together: [
-    { modelId: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', displayName: 'Llama 3.3 70B Turbo' },
-    { modelId: 'Qwen/Qwen2.5-72B-Instruct-Turbo', displayName: 'Qwen 2.5 72B Turbo' },
-    { modelId: 'deepseek-ai/DeepSeek-V3', displayName: 'DeepSeek V3' },
-  ],
-  xai: [
-    { modelId: 'grok-4-1-fast-reasoning', displayName: 'Grok 4.1 Fast Reasoning' },
-    { modelId: 'grok-4-1-fast-non-reasoning', displayName: 'Grok 4.1 Fast Non-Reasoning' },
-  ],
-  cohere: [
-    { modelId: 'command-r-plus', displayName: 'Command R+' },
-    { modelId: 'command-r', displayName: 'Command R' },
-  ],
-  moonshot: [{ modelId: 'kimi-k2.5', displayName: 'Kimi K2.5' }],
-  hyperbolic: [
-    { modelId: 'meta-llama/Llama-3.3-70B-Instruct', displayName: 'Llama 3.3 70B' },
-    { modelId: 'deepseek-ai/DeepSeek-V3', displayName: 'DeepSeek V3' },
-  ],
-  galadriel: [{ modelId: 'llama3.3:70b', displayName: 'Llama 3.3 70B' }],
-  minimax: [{ modelId: 'minimax-m2.5', displayName: 'MiniMax M2.5' }],
-  minimax_cn: [{ modelId: 'MiniMax-M2.5', displayName: 'MiniMax M2.5' }],
-  mira: [{ modelId: 'mira/llama-3.1-70b', displayName: 'Llama 3.1 70B' }],
-  // International
-  github_models: [{ modelId: 'gpt-4o', displayName: 'GPT-4o' }],
-  fireworks: [
-    {
-      modelId: 'accounts/fireworks/models/llama-v3-70b-instruct',
-      displayName: 'Llama 3 70B Instruct',
-    },
-  ],
-  nvidia: [{ modelId: 'meta/llama-3.1-405b-instruct', displayName: 'Llama 3.1 405B Instruct' }],
-  cerebras: [
-    { modelId: 'gpt-oss-120b', displayName: 'GPT OSS 120B' },
-    { modelId: 'qwen-3-235b-a22b-instruct-2507', displayName: 'Qwen 3 235B Instruct' },
-  ],
-  zenmux: [
-    { modelId: 'openai/gpt-5.2', displayName: 'OpenAI: GPT-5.2' },
-    { modelId: 'anthropic/claude-sonnet-4-6', displayName: 'Anthropic: Claude Sonnet 4.6' },
-    { modelId: 'google/gemini-3.1-pro-preview', displayName: 'Google: Gemini 3.1 Pro Preview' },
-  ],
-  // Chinese AI
-  zai: [
-    { modelId: 'glm-5.3', displayName: 'GLM-5.3' },
-    { modelId: 'glm-5.3-flash', displayName: 'GLM-5.3 Flash' },
-    { modelId: 'glm-5.2', displayName: 'GLM-5.2' },
-  ],
-  zhipu: [
-    { modelId: 'glm-5', displayName: 'GLM-5' },
-    { modelId: 'glm-4.7', displayName: 'GLM-4.7' },
-    { modelId: 'glm-4.6', displayName: 'GLM-4.6' },
-    { modelId: 'glm-4.5-flash', displayName: 'GLM-4.5 Flash' },
-  ],
-  yi: [{ modelId: 'yi-lightning', displayName: 'Yi Lightning' }],
-  baichuan: [
-    { modelId: 'Baichuan4', displayName: 'Baichuan 4' },
-    { modelId: 'Baichuan4-Turbo', displayName: 'Baichuan 4 Turbo' },
-    { modelId: 'Baichuan3-Turbo', displayName: 'Baichuan 3 Turbo' },
-  ],
-  dashscope: [
-    { modelId: 'qwen3.5-plus', displayName: 'Qwen 3.5 Plus' },
-    { modelId: 'qwen3-max', displayName: 'Qwen 3 Max' },
-    { modelId: 'qwen-max', displayName: 'Qwen Max' },
-    { modelId: 'qwen-plus', displayName: 'Qwen Plus' },
-    { modelId: 'qwen-flash', displayName: 'Qwen Flash' },
-  ],
-  stepfun: [
-    { modelId: 'step-1-8k', displayName: 'Step 1 8K' },
-    { modelId: 'step-1-flash', displayName: 'Step 1 Flash' },
-  ],
-  doubao: [
-    { modelId: 'doubao-seed-1-8-251228', displayName: 'Doubao Seed 1.8' },
-    { modelId: 'doubao-1-5-pro-32k-250115', displayName: 'Doubao 1.5 Pro 32K' },
-    { modelId: 'doubao-1-5-lite-32k-250115', displayName: 'Doubao 1.5 Lite 32K' },
-    { modelId: 'deepseek-v3-250324', displayName: 'DeepSeek V3' },
-  ],
-  tokenhub: [
-    { modelId: 'hy4-preview', displayName: 'Hunyuan Hy4 Preview' },
-    { modelId: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' },
-    { modelId: 'glm-5.3', displayName: 'GLM-5.3' },
-    { modelId: 'kimi-k3.1-pro', displayName: 'Kimi K3.1 Pro' },
-  ],
-  baidu_cloud: [
-    { modelId: 'ernie-4.0-8k-latest', displayName: 'ERNIE 4.0' },
-    { modelId: 'ernie-4.0-turbo-8k-latest', displayName: 'ERNIE 4.0 Turbo' },
-    { modelId: 'deepseek-r1', displayName: 'DeepSeek R1' },
-    { modelId: 'deepseek-v3', displayName: 'DeepSeek V3' },
-  ],
-  siliconflow: [
-    { modelId: 'deepseek-ai/DeepSeek-V3.2', displayName: 'DeepSeek V3.2' },
-    { modelId: 'Qwen/Qwen3-8B', displayName: 'Qwen 3 8B' },
-  ],
-  modelscope: [
-    { modelId: 'Qwen/Qwen2.5-72B-Instruct', displayName: 'Qwen 2.5 72B Instruct' },
-    { modelId: 'deepseek-ai/DeepSeek-R1', displayName: 'DeepSeek R1' },
-    { modelId: 'deepseek-ai/DeepSeek-V3', displayName: 'DeepSeek V3' },
-  ],
-  mimo: [{ modelId: 'mimo-v2-flash', displayName: 'MiMo V2 Flash' }],
-}
-
-/**
- * Get default ModelItem list for a provider type.
- * Each item gets a unique timestamp-based ID for the UI.
- */
-export function getDefaultModelsForProvider(providerType: string): ModelItem[] {
-  const defaults = DEFAULT_PROVIDER_MODELS[providerType]
-  if (!defaults || defaults.length === 0) return []
-  return defaults.map((m, i) => ({
-    id: `default-${Date.now()}-${i}`,
-    displayName: m.displayName,
-    modelId: m.modelId,
-  }))
-}
-
 export const LLM_PROVIDERS: LLMProvider[] = [...BUILTIN_PROVIDERS]
 
 // Providers that support auto-fetching models via API
@@ -259,7 +86,9 @@ const FETCH_SUPPORTED_PROVIDERS = new Set([
   'mira',
   'galadriel',
   'cohere',
+  'anthropic',
   'custom',
+  'custom_anthropic',
   'custom_openai',
   // International
   'github_models',

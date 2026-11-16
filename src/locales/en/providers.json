@@ -88,7 +88,6 @@
   "fetchModels.openrouterApiKeyRequired": "OpenRouter API key is required. Please enter your API key above.",
   "fetchModels.apiKeyRequired": "API key is required. Please enter your API key above.",
   "fetchModels.baseUrlRequiredCustom": "Base URL is required for custom providers.",
-  "fetchModels.anthropicNotSupported": "Automatic model fetching is not supported for Anthropic-compatible providers. Please add models manually.",
   "fetchModels.baseUrlRequired": "Base URL is required for {{provider}}.",
   "fetchModels.apiKeyRequiredForProvider": "{{provider}} API key is required. Please enter your API key above.",
   "fetchModels.modelFetchingNotSupported": "Model fetching is not yet supported for {{provider}}. Please add models manually.",

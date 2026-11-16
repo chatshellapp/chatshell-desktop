@@ -24,14 +24,15 @@ interface UseFetchModelsParams {
 }
 
 // Providers that use the original dedicated fetch commands
-const DEDICATED_FETCH_PROVIDERS = new Set(['openai', 'openrouter', 'ollama'])
+const DEDICATED_FETCH_PROVIDERS = new Set(['openai', 'openrouter', 'ollama', 'anthropic'])
 
 // Local providers that don't require API keys for model fetching
 const LOCAL_PROVIDERS = new Set(['lmstudio', 'gpustack', 'ovms'])
 
 /**
  * Handles fetching models from provider APIs.
- * Uses dedicated commands for OpenAI/OpenRouter/Ollama,
+ * Uses dedicated commands for OpenAI/OpenRouter/Ollama and Anthropic
+ * (including Anthropic-compatible custom providers),
  * and a generic OpenAI-compatible command for all other providers.
  */
 export function useFetchModels({
@@ -85,8 +86,25 @@ export function useFetchModels({
           apiKey,
           baseUrl: apiBaseUrl,
         })
+      } else if (providerId === 'anthropic') {
+        if (!apiKey) {
+          throw new Error(
+            i18n.t('fetchModels.apiKeyRequiredForProvider', { provider: selectedProvider.name })
+          )
+        }
+        const baseUrl = apiBaseUrl || selectedProvider.baseUrl || undefined
+        fetchedModels = await invoke<ModelInfo[]>('fetch_anthropic_models', { apiKey, baseUrl })
       } else if (providerId === 'custom_anthropic' || providerId === 'custom') {
-        throw new Error(i18n.t('fetchModels.anthropicNotSupported'))
+        if (!apiKey) {
+          throw new Error(i18n.t('fetchModels.apiKeyRequired'))
+        }
+        if (!apiBaseUrl) {
+          throw new Error(i18n.t('fetchModels.baseUrlRequiredCustom'))
+        }
+        fetchedModels = await invoke<ModelInfo[]>('fetch_anthropic_models', {
+          apiKey,
+          baseUrl: apiBaseUrl,
+        })
       } else if (LOCAL_PROVIDERS.has(providerId)) {
         const baseUrl = apiBaseUrl || selectedProvider.baseUrl
         if (!baseUrl) {

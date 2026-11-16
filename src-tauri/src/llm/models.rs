@@ -175,6 +175,106 @@ pub async fn fetch_openai_compatible_models(
     Ok(models)
 }
 
+// Anthropic Models Response (GET /v1/models, cursor-paginated)
+#[derive(Debug, Deserialize)]
+struct AnthropicModelsResponse {
+    data: Vec<AnthropicModel>,
+    #[serde(default)]
+    has_more: bool,
+    last_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicModel {
+    id: String,
+    display_name: Option<String>,
+}
+
+const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
+const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const ANTHROPIC_MODELS_PAGE_LIMIT: u32 = 1000;
+/// Guard against a misbehaving proxy that keeps reporting `has_more`.
+const ANTHROPIC_MODELS_MAX_PAGES: usize = 20;
+
+/// Build the models endpoint the same way the chat client builds
+/// `/v1/messages`: the base URL is the API root, with or without a trailing
+/// `/v1` (proxies are often configured either way).
+fn anthropic_models_url(base_url: Option<&str>) -> String {
+    let base = base_url
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .unwrap_or(ANTHROPIC_DEFAULT_BASE_URL)
+        .trim_end_matches('/');
+    let base = base.strip_suffix("/v1").unwrap_or(base);
+    format!("{base}/v1/models")
+}
+
+/// Fetch available models from Anthropic or an Anthropic-compatible API.
+/// Authenticates with `x-api-key` + `anthropic-version` and follows the
+/// `has_more` / `last_id` cursor until every page is read.
+pub async fn fetch_anthropic_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>> {
+    let client = create_http_client();
+    let url = anthropic_models_url(base_url.as_deref());
+
+    let mut models = Vec::new();
+    let mut after_id: Option<String> = None;
+
+    for _ in 0..ANTHROPIC_MODELS_MAX_PAGES {
+        let mut page_url = reqwest::Url::parse(&url)?;
+        {
+            let mut query = page_url.query_pairs_mut();
+            query.append_pair("limit", &ANTHROPIC_MODELS_PAGE_LIMIT.to_string());
+            if let Some(cursor) = &after_id {
+                query.append_pair("after_id", cursor);
+            }
+        }
+
+        let response = client
+            .get(page_url)
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", ANTHROPIC_API_VERSION)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "[HTTP {}] Failed to fetch Anthropic models: {}",
+                status.as_u16(),
+                body
+            ));
+        }
+
+        let page: AnthropicModelsResponse = response.json().await?;
+        models.extend(page.data.into_iter().map(|m| {
+            let name = m
+                .display_name
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| format_model_display_name(&m.id));
+            ModelInfo {
+                id: m.id,
+                name,
+                description: None,
+                context_length: None,
+                pricing: None,
+            }
+        }));
+
+        match (page.has_more, page.last_id) {
+            (true, Some(last_id)) if after_id.as_deref() != Some(last_id.as_str()) => {
+                after_id = Some(last_id);
+            }
+            _ => break,
+        }
+    }
+
+    Ok(models)
+}
+
 /// Fetch available models from OpenRouter
 pub async fn fetch_openrouter_models(
     api_key: String,
@@ -559,6 +659,140 @@ mod tests {
             "got: {msg}"
         );
         assert!(msg.contains("denied"), "got: {msg}");
+    }
+
+    /// Serve one `200 OK` response per body, in order, on a single port,
+    /// capturing each raw request (for paginated endpoints).
+    async fn serve_model_pages(bodies: Vec<&'static str>) -> (String, Arc<Mutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let sink = captured.clone();
+        tokio::spawn(async move {
+            for body in bodies {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let n = socket.read(&mut chunk).await.unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..n]);
+                    if find_subsequence(&request, b"\r\n\r\n").is_some() {
+                        break;
+                    }
+                }
+                sink.lock()
+                    .unwrap()
+                    .push(String::from_utf8_lossy(&request).to_string());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        (format!("http://{address}"), captured)
+    }
+
+    #[test]
+    fn anthropic_models_url_accepts_root_or_v1_base_urls() {
+        assert_eq!(
+            anthropic_models_url(None),
+            "https://api.anthropic.com/v1/models"
+        );
+        assert_eq!(
+            anthropic_models_url(Some("  ")),
+            "https://api.anthropic.com/v1/models"
+        );
+        assert_eq!(
+            anthropic_models_url(Some("https://proxy.example.com/")),
+            "https://proxy.example.com/v1/models"
+        );
+        assert_eq!(
+            anthropic_models_url(Some("https://proxy.example.com/anthropic/v1/")),
+            "https://proxy.example.com/anthropic/v1/models"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_anthropic_models_sends_anthropic_headers_and_uses_display_names() {
+        let body = r#"{"data":[
+            {"type":"model","id":"claude-opus-5-5","display_name":"Claude Opus 5.5","created_at":"2026-01-01T00:00:00Z"},
+            {"type":"model","id":"claude-haiku-5-5","display_name":""}
+        ],"has_more":false,"first_id":"claude-opus-5-5","last_id":"claude-haiku-5-5"}"#;
+        let (base_url, captured) = serve_models("200 OK", body).await;
+
+        let models = fetch_anthropic_models("test-key".to_string(), Some(base_url))
+            .await
+            .expect("fetch should succeed");
+
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["claude-opus-5-5", "claude-haiku-5-5"]);
+        assert_eq!(models[0].name, "Claude Opus 5.5");
+        assert_eq!(
+            models[1].name,
+            format_model_display_name("claude-haiku-5-5")
+        );
+
+        let request = captured_request(&captured);
+        assert!(
+            request.starts_with("GET /v1/models?limit=1000 "),
+            "got: {request}"
+        );
+        let lower = request.to_lowercase();
+        assert!(lower.contains("x-api-key: test-key"), "got: {request}");
+        assert!(
+            lower.contains("anthropic-version: 2023-06-01"),
+            "got: {request}"
+        );
+        assert!(!lower.contains("authorization:"), "got: {request}");
+    }
+
+    #[tokio::test]
+    async fn fetch_anthropic_models_follows_pagination_cursor() {
+        let (base_url, captured) = serve_model_pages(vec![
+            r#"{"data":[{"id":"model-a","display_name":"Model A"}],"has_more":true,"last_id":"model-a"}"#,
+            r#"{"data":[{"id":"model-b","display_name":"Model B"}],"has_more":false,"last_id":"model-b"}"#,
+        ])
+        .await;
+
+        let models = fetch_anthropic_models("k".to_string(), Some(format!("{base_url}/v1")))
+            .await
+            .expect("fetch should succeed");
+
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["model-a", "model-b"]);
+
+        let requests = captured.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests[1].starts_with("GET /v1/models?limit=1000&after_id=model-a "),
+            "got: {}",
+            requests[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_anthropic_models_surfaces_http_error() {
+        let (base_url, _) = serve_models(
+            "401 Unauthorized",
+            r#"{"type":"error","error":{"type":"authentication_error"}}"#,
+        )
+        .await;
+
+        let err = fetch_anthropic_models("k".to_string(), Some(base_url))
+            .await
+            .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(msg.contains("[HTTP 401]"), "got: {msg}");
+        assert!(
+            msg.contains("Failed to fetch Anthropic models"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("authentication_error"), "got: {msg}");
     }
 
     #[tokio::test]
