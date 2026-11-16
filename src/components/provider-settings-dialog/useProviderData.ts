@@ -3,7 +3,6 @@ import { useModelStore } from '@/stores/modelStore'
 import type { Provider } from '@/types'
 import type { LLMProvider, ModelItem } from './types'
 import { isCustomProviderType } from './types'
-import { getDefaultModelsForProvider } from './constants'
 
 export interface UseProviderDataReturn {
   existingProvider: Provider | null
@@ -113,7 +112,7 @@ export function useProviderData({
       setProviderName('')
       setApiStyle('chat_completions')
       setCompatibilityType('openai')
-      setModels(getDefaultModelsForProvider(selectedProvider.id))
+      setModels([])
     }
   }, [
     selectedProvider,

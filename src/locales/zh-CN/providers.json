@@ -88,7 +88,6 @@
   "fetchModels.openrouterApiKeyRequired": "OpenRouter API 密钥是必填项。请在上方输入你的 API 密钥。",
   "fetchModels.apiKeyRequired": "API 密钥是必填项。请在上方输入你的 API 密钥。",
   "fetchModels.baseUrlRequiredCustom": "自定义提供商需要填写基础 URL。",
-  "fetchModels.anthropicNotSupported": "Anthropic 兼容的提供商不支持自动获取模型。请手动添加模型。",
   "fetchModels.baseUrlRequired": "{{provider}} 需要填写基础 URL。",
   "fetchModels.apiKeyRequiredForProvider": "{{provider}} API 密钥是必填项。请在上方输入你的 API 密钥。",
   "fetchModels.modelFetchingNotSupported": "{{provider}} 暂不支持自动获取模型。请手动添加模型。",

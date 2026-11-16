@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import type { LLMProvider, ModelItem } from './types'
 import { isCustomProvider } from './types'
-import { DEFAULT_PROVIDER_MODELS } from './constants'
 
 type CheckStatus = 'idle' | 'checking' | 'success' | 'failed'
 
@@ -20,27 +19,9 @@ interface CheckApiResult {
   error: string | null
 }
 
-function getTestModelId(
-  selectedProvider: LLMProvider,
-  compatibilityType: string,
-  models: ModelItem[]
-): string | null {
-  if (models.length > 0) {
-    return models[models.length - 1].modelId
-  }
-
-  const providerType = isCustomProvider(selectedProvider)
-    ? compatibilityType === 'anthropic'
-      ? 'custom_anthropic'
-      : 'custom_openai'
-    : selectedProvider.id
-
-  const defaults = DEFAULT_PROVIDER_MODELS[providerType]
-  if (defaults && defaults.length > 0) {
-    return defaults[defaults.length - 1].modelId
-  }
-
-  return null
+/** The model the API check sends "hi" to: the last model in the list. */
+function getTestModelId(models: ModelItem[]): string | null {
+  return models.length > 0 ? models[models.length - 1].modelId : null
 }
 
 interface ProviderFormProps {
@@ -103,7 +84,7 @@ export function ProviderForm({
         : 'custom_openai'
       : selectedProvider.id
 
-    const testModelId = getTestModelId(selectedProvider, compatibilityType, models)
+    const testModelId = getTestModelId(models)
     if (!testModelId) {
       setCheckStatus('failed')
       setCheckError(t('noModelForTesting'))

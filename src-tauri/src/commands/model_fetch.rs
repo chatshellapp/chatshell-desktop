@@ -34,6 +34,17 @@ pub async fn fetch_ollama_models(base_url: String) -> Result<Vec<ModelInfo>, Str
         .map_err(|e| e.to_string())
 }
 
+/// Model fetch for Anthropic and custom Anthropic-compatible providers.
+#[tauri::command]
+pub async fn fetch_anthropic_models(
+    api_key: String,
+    base_url: Option<String>,
+) -> Result<Vec<ModelInfo>, String> {
+    llm::models::fetch_anthropic_models(api_key, base_url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Generic model fetch for providers with OpenAI-compatible /models endpoint.
 /// Supports: deepseek, groq, together, xai, moonshot, perplexity, hyperbolic, mistral, mira,
 /// galadriel, cohere

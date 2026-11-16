@@ -47,6 +47,7 @@ function mockBackend({ models, providers }: { models: Model[]; providers: Provid
       case 'list_providers':
         return [...providers]
       case 'fetch_provider_models':
+      case 'fetch_anthropic_models':
         return [{ id: 'acme-1', name: 'Acme One' }]
       case 'is_keychain_available':
         return true
@@ -204,8 +205,17 @@ describe.each(['dialog', 'settings'] as const)('Add Provider in %s', (entryPoint
     fireEvent.click(screen.getByRole('radio', { name: 'Anthropic Compatible' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save Configuration' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument())
+    // Saved with zero models: the Anthropic model fetch opens right away.
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith('fetch_anthropic_models', {
+        apiKey: provider.api_key,
+        baseUrl: provider.base_url,
+      })
+    )
     expect(mockedInvoke).toHaveBeenCalledWith('create_provider', expect.anything())
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Provider' }))
 
