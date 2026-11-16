@@ -925,7 +925,6 @@ pub fn create_provider_agent(
                 base_url.unwrap_or(default_url),
                 model_id,
                 config,
-                provider_type,
             )
         }
         provider_catalog::Wire::Anthropic => {
@@ -975,17 +974,11 @@ fn create_openai_compat_agent(
     base_url: &str,
     model_id: &str,
     config: &AgentConfig,
-    provider_type: &str,
 ) -> Result<Agent> {
     let http_client = create_http_client();
     let client = crate::llm::openai_compat::client(base_url, api_key, http_client)?;
 
     let model = crate::llm::openai_compat::CompletionModel::new(client, model_id);
-    let model = if provider_catalog::is_string_content_only(provider_type) {
-        model.with_string_content_only()
-    } else {
-        model
-    };
     Ok(build_agent(rig::agent::AgentBuilder::new(model), config))
 }
 
