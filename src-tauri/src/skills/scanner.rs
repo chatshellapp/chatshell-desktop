@@ -477,6 +477,15 @@ Do something useful."#;
         assert!(body.contains("Do something useful."));
     }
 
+    /// The installer only works through the terminal; declaring it keeps
+    /// devices without one (iOS) from offering the skill.
+    #[test]
+    fn test_skill_installer_requires_bash() {
+        let content = include_str!("../../builtin-skills/skill-installer/SKILL.md");
+        let (fm, _) = parse_frontmatter(content);
+        assert_eq!(fm.required_tools, Some(vec!["builtin-bash".to_string()]));
+    }
+
     #[test]
     fn test_parse_frontmatter_with_list() {
         let content = r#"---
