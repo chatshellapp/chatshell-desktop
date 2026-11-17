@@ -43,7 +43,7 @@ function figureTitle(source: string): string | null {
 }
 
 const actionButton =
-  'flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors'
+  'flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors'
 
 export function SvgFigureBlock({ code, flat = false }: SvgFigureBlockProps) {
   const { t } = useTranslation(['attachments'])
@@ -129,7 +129,7 @@ export function SvgFigureBlock({ code, flat = false }: SvgFigureBlockProps) {
     return (
       <div className={flat ? '' : 'my-2'} data-testid="svg-figure-fallback">
         <div className="flex items-center gap-2 px-1 pb-1 text-xs text-muted-foreground">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+          <AlertTriangle className="h-3.5 w-3.5 text-warning" />
           <span>{t('attachments:svgFigureFailed')}</span>
         </div>
         <CodeBlock language="svg" code={code} flat={flat} />

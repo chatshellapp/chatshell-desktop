@@ -33,6 +33,7 @@ import {
   ToggleRight,
   LogIn,
   ChartColumn,
+  Paintbrush,
 } from 'lucide-react'
 
 import { invoke } from '@tauri-apps/api/core'
@@ -106,6 +107,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { BuiltinToolIcon } from '@/components/builtin-tool-icon'
 import { SyncSettingsSection } from '@/components/sync/sync-settings-section'
 import { VisualsSettings } from '@/components/settings-dialog/visuals-settings'
+import { AppearanceSettings } from '@/components/settings-dialog/appearance-settings'
 import { McpServerConfigModal } from '@/components/mcp-server-config-modal'
 
 // Translation key per fetch strategy. Record<> forces exhaustiveness: adding
@@ -132,6 +134,7 @@ const data = {
     { name: 'skills', icon: Zap },
     { name: 'webFetch', icon: FileDown },
     { name: 'webSearch', icon: Search },
+    { name: 'appearance', icon: Paintbrush },
     { name: 'visuals', icon: ChartColumn },
     { name: 'sync', icon: Cloud },
     { name: 'language', icon: Globe },
@@ -139,7 +142,6 @@ const data = {
     { name: 'about', icon: Heart },
     // { name: 'Navigation', icon: Menu },
     // { name: 'Home', icon: Home },
-    // { name: 'Appearance', icon: Paintbrush },
     // { name: 'Messages & media', icon: MessageCircle },
     // { name: 'Language & region', icon: Globe },
     // { name: 'Accessibility', icon: Keyboard },
@@ -1398,6 +1400,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         </div>
       )
+    }
+
+    if (activeSection === 'appearance') {
+      return <AppearanceSettings />
     }
 
     if (activeSection === 'visuals') {
