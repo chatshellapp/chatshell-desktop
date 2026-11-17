@@ -14,7 +14,60 @@ use tokio::time::timeout;
 use ts_rs::TS;
 
 /// Default OAuth client ID for ChatShell (public client, no secret)
-const MCP_OAUTH_CLIENT_ID: &str = "chatshell-desktop";
+const MCP_OAUTH_CLIENT_ID: &str = oauth::FALLBACK_CLIENT_ID;
+
+/// `McpTokenStore` backed by the `tools` table: refreshed grants are written
+/// with the same columns and config JSON shape `complete_mcp_oauth` uses, so
+/// they sync to other devices like a fresh sign-in.
+pub struct DbMcpTokenStore {
+    db: crate::db::Database,
+}
+
+impl DbMcpTokenStore {
+    pub fn new(db: crate::db::Database) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::mcp::McpTokenStore for DbMcpTokenStore {
+    async fn load(&self, server_id: &str) -> anyhow::Result<Tool> {
+        self.db.get_tool(server_id).await
+    }
+
+    async fn save_grant(
+        &self,
+        server_id: &str,
+        token: crate::mcp::TokenUpdate,
+        metadata: OAuthMetadata,
+    ) -> anyhow::Result<Tool> {
+        match token {
+            crate::mcp::TokenUpdate::Keep => {}
+            crate::mcp::TokenUpdate::Set(encrypted) => {
+                self.db
+                    .set_tool_auth_token(server_id, Some(&encrypted))
+                    .await?
+            }
+            crate::mcp::TokenUpdate::Clear => self.db.set_tool_auth_token(server_id, None).await?,
+        }
+        let tool = self.db.get_tool(server_id).await?;
+        let mut config = tool.parse_mcp_config().unwrap_or_else(McpConfig::http);
+        config.oauth_metadata = Some(metadata);
+        self.db
+            .update_tool(
+                server_id,
+                CreateToolRequest {
+                    name: tool.name.clone(),
+                    r#type: tool.r#type.clone(),
+                    endpoint: tool.endpoint.clone(),
+                    config: Some(config.to_json()?),
+                    description: tool.description.clone(),
+                    is_enabled: Some(tool.is_enabled),
+                },
+            )
+            .await
+    }
+}
 
 /// State for a pending OAuth flow (stored in AppState.pending_oauth)
 pub struct PendingOAuthState {
@@ -52,6 +105,8 @@ pub struct OAuthMetadataDto {
     pub client_id: Option<String>,
     pub scopes: Option<Vec<String>>,
     pub token_expires_at: Option<i64>,
+    #[serde(default)]
+    pub token_endpoint: Option<String>,
     pub is_authorized: bool,
 }
 
@@ -76,6 +131,7 @@ impl From<McpConfig> for McpServerConfig {
                 client_id: m.client_id,
                 scopes: m.scopes,
                 token_expires_at: m.token_expires_at,
+                token_endpoint: m.token_endpoint,
                 is_authorized: m.is_authorized,
             }),
             headers: config.headers,
@@ -104,6 +160,7 @@ impl From<McpServerConfig> for McpConfig {
                 client_id: m.client_id,
                 scopes: m.scopes,
                 token_expires_at: m.token_expires_at,
+                token_endpoint: m.token_endpoint,
                 is_authorized: m.is_authorized,
             }),
             headers: config.headers,
@@ -558,6 +615,7 @@ pub async fn complete_mcp_oauth(
         client_id: Some(pending.client_id),
         scopes: Some(pending.discovery.scopes_supported),
         token_expires_at: expires_at,
+        token_endpoint: Some(pending.discovery.token_endpoint),
         is_authorized: true,
     });
     tool.config = Some(config.to_json().map_err(|e| e.to_string())?);
@@ -642,6 +700,7 @@ pub async fn revoke_mcp_oauth(state: State<'_, AppState>, server_id: String) -> 
                 client_id: meta.client_id.clone(),
                 scopes: meta.scopes.clone(),
                 token_expires_at: None,
+                token_endpoint: meta.token_endpoint.clone(),
                 is_authorized: false,
             });
         }

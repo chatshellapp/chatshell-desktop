@@ -54,6 +54,7 @@ export function McpServersDialog({
   const connectionStatus = useMcpStore((state) => state.connectionStatus)
   const serverTools = useMcpStore((state) => state.serverTools)
   const connectionErrors = useMcpStore((state) => state.connectionErrors)
+  const needsAuth = useMcpStore((state) => state.needsAuth)
   const startOAuth = useMcpStore((state) => state.startOAuth)
   const loadServers = useMcpStore((state) => state.loadServers)
   const [expandedToolsId, setExpandedToolsId] = React.useState<string | null>(null)
@@ -185,6 +186,11 @@ export function McpServersDialog({
               >
                 {tool.name}
               </Label>
+              {isMcp && needsAuth[tool.id] && (
+                <span className="text-xs text-warning bg-warning/10 px-1.5 py-0.5 rounded shrink-0">
+                  {t('signInExpired')}
+                </span>
+              )}
             </div>
             {tool.description && (
               <p className="text-xs text-muted-foreground max-w-[280px]">{tool.description}</p>

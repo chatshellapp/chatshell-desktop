@@ -166,7 +166,10 @@ pub async fn register_client(
         redirect_uris: vec![redirect_uri.to_string()],
         client_name: "ChatShell Desktop".to_string(),
         token_endpoint_auth_method: "none".to_string(),
-        grant_types: vec!["authorization_code".to_string()],
+        grant_types: vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ],
         response_types: vec!["code".to_string()],
     };
     let resp = client
@@ -370,6 +373,138 @@ pub async fn exchange_code(
             .map(|t| t.secret().to_string()),
         expires_in_secs: expires_in,
     })
+}
+
+/// Client id used when the authorization server offers no dynamic
+/// registration.
+pub const FALLBACK_CLIENT_ID: &str = "chatshell-desktop";
+
+/// Deadline for one refresh-token POST (and for the legacy token-endpoint
+/// lookup). A hung authorization server must not stall a send.
+pub const REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Why a refresh-token grant produced no tokens.
+#[derive(Debug, thiserror::Error)]
+pub enum RefreshError {
+    /// The authorization server definitively refused the grant
+    /// (`invalid_grant`, `invalid_client`, `unauthorized_client`): the stored
+    /// grant can never be refreshed again and the user must sign in.
+    #[error("authorization server rejected the refresh token ({code}){}", .description.as_deref().map(|d| format!(": {d}")).unwrap_or_default())]
+    Rejected {
+        code: String,
+        description: Option<String>,
+    },
+    /// Network failure, timeout, or a server error that says nothing about
+    /// the grant itself. The stored grant stays as it is.
+    #[error("token refresh failed: {0}")]
+    Transient(String),
+}
+
+/// OAuth error codes that mean the refresh token (or the client it was
+/// issued to) is dead, as opposed to a temporary failure.
+const DEFINITIVE_REFRESH_ERRORS: &[&str] =
+    &["invalid_grant", "invalid_client", "unauthorized_client"];
+
+/// RFC 8707 resource indicator for an MCP endpoint, as sent at sign-in.
+pub fn resource_uri_for(endpoint: &str) -> Result<String> {
+    normalize_resource_uri(endpoint)
+}
+
+/// Redeem a refresh token (RFC 6749 §6) as a public client: `client_id`
+/// only, no secret. `refresh_token` in the result is `None` when the server
+/// did not rotate it; callers keep the stored one in that case.
+pub async fn refresh_access_token(
+    client: &reqwest::Client,
+    token_endpoint: &str,
+    client_id: &str,
+    refresh_token: &str,
+    resource: Option<&str>,
+) -> std::result::Result<OAuthTokens, RefreshError> {
+    let mut form: Vec<(&str, &str)> = vec![
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+        ("client_id", client_id),
+    ];
+    if let Some(resource) = resource {
+        form.push(("resource", resource));
+    }
+
+    // Built before the request so the (non-Send) serializer is not held
+    // across the await below.
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(&form)
+        .finish();
+    let resp = client
+        .post(token_endpoint)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
+        .body(body)
+        .timeout(REFRESH_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| RefreshError::Transient(e.to_string()))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| RefreshError::Transient(e.to_string()))?;
+    let json: Option<serde_json::Value> = serde_json::from_str(&body).ok();
+
+    if !status.is_success() {
+        let code = json
+            .as_ref()
+            .and_then(|j| j["error"].as_str())
+            .map(str::to_string);
+        let description = json
+            .as_ref()
+            .and_then(|j| j["error_description"].as_str())
+            .map(str::to_string);
+        return Err(match code {
+            Some(code) if DEFINITIVE_REFRESH_ERRORS.contains(&code.as_str()) => {
+                RefreshError::Rejected { code, description }
+            }
+            other => RefreshError::Transient(format!(
+                "{}: {}",
+                status,
+                other
+                    .or(description)
+                    .unwrap_or_else(|| body.trim().chars().take(300).collect())
+            )),
+        });
+    }
+
+    let json = json.ok_or_else(|| RefreshError::Transient("token response is not JSON".into()))?;
+    let access_token = json["access_token"]
+        .as_str()
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| RefreshError::Transient("token response has no access_token".into()))?
+        .to_string();
+    let refresh_token = json["refresh_token"]
+        .as_str()
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    let expires_in_secs = json["expires_in"]
+        .as_u64()
+        .or_else(|| json["expires_in"].as_str().and_then(|s| s.parse().ok()));
+
+    Ok(OAuthTokens {
+        access_token,
+        refresh_token,
+        expires_in_secs,
+    })
+}
+
+/// Token endpoint for grants stored before `token_endpoint` was persisted:
+/// one RFC 8414 (then OIDC) metadata fetch from the stored issuer.
+pub async fn fetch_token_endpoint(client: &reqwest::Client, issuer: &str) -> Result<String> {
+    tokio::time::timeout(REFRESH_TIMEOUT, fetch_as_metadata(client, issuer))
+        .await
+        .map_err(|_| anyhow::anyhow!("Timed out fetching Authorization Server Metadata"))?
+        .map(|m| m.token_endpoint)
 }
 
 /// Callback server: binds to 127.0.0.1:0, returns (port, receiver for (code, state))
@@ -1086,7 +1221,7 @@ mod tests {
         assert_eq!(body["token_endpoint_auth_method"], "none");
         assert_eq!(
             body["grant_types"],
-            serde_json::json!(["authorization_code"])
+            serde_json::json!(["authorization_code", "refresh_token"])
         );
         assert_eq!(body["response_types"], serde_json::json!(["code"]));
         assert_eq!(
@@ -1281,5 +1416,153 @@ mod tests {
         let (code, state) = rx.await.unwrap();
         assert_eq!(code, "auth+code");
         assert_eq!(state, "st-123");
+    }
+
+    // ---- refresh_access_token ----
+
+    #[tokio::test]
+    async fn refresh_posts_refresh_grant_and_parses_rotated_tokens() {
+        let (base, log) = spawn_stub(1, |_base, _req| {
+            StubResponse::json(
+                r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":"1800"}"#,
+            )
+        })
+        .await;
+
+        let client = reqwest::Client::new();
+        let tokens = refresh_access_token(
+            &client,
+            &format!("{base}/token"),
+            "client-abc",
+            "rt-old",
+            Some("https://res.example.com"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokens.access_token, "at-new");
+        assert_eq!(tokens.refresh_token.as_deref(), Some("rt-new"));
+        assert_eq!(tokens.expires_in_secs, Some(1800));
+
+        let requests = log.lock().unwrap();
+        let form = decode_form(&requests[0].body);
+        assert_eq!(
+            form.get("grant_type").map(String::as_str),
+            Some("refresh_token")
+        );
+        assert_eq!(
+            form.get("refresh_token").map(String::as_str),
+            Some("rt-old")
+        );
+        assert_eq!(
+            form.get("client_id").map(String::as_str),
+            Some("client-abc")
+        );
+        assert_eq!(
+            form.get("resource").map(String::as_str),
+            Some("https://res.example.com")
+        );
+        assert!(!form.contains_key("client_secret"));
+    }
+
+    #[tokio::test]
+    async fn refresh_without_rotation_returns_no_refresh_token() {
+        let (base, _log) = spawn_stub(1, |_base, _req| {
+            StubResponse::json(r#"{"access_token":"at-new"}"#)
+        })
+        .await;
+
+        let tokens = refresh_access_token(
+            &reqwest::Client::new(),
+            &format!("{base}/token"),
+            "client-abc",
+            "rt-old",
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokens.access_token, "at-new");
+        assert_eq!(tokens.refresh_token, None);
+        assert_eq!(tokens.expires_in_secs, None);
+    }
+
+    #[tokio::test]
+    async fn refresh_invalid_grant_is_rejected() {
+        let (base, _log) = spawn_stub(1, |_base, _req| {
+            StubResponse::status(400)
+                .header("Content-Type", "application/json")
+                .body(r#"{"error":"invalid_grant","error_description":"expired"}"#)
+        })
+        .await;
+
+        let err = refresh_access_token(
+            &reqwest::Client::new(),
+            &format!("{base}/token"),
+            "client-abc",
+            "rt-old",
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(&err, RefreshError::Rejected { code, .. } if code == "invalid_grant"),
+            "got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_server_error_is_transient() {
+        let (base, _log) = spawn_stub(1, |_base, _req| {
+            StubResponse::status(503).body("maintenance")
+        })
+        .await;
+
+        let err = refresh_access_token(
+            &reqwest::Client::new(),
+            &format!("{base}/token"),
+            "client-abc",
+            "rt-old",
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, RefreshError::Transient(_)), "got: {err:?}");
+    }
+
+    #[tokio::test]
+    async fn refresh_unreachable_endpoint_is_transient() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        let err = refresh_access_token(
+            &reqwest::Client::new(),
+            &format!("http://{addr}/token"),
+            "client-abc",
+            "rt-old",
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, RefreshError::Transient(_)), "got: {err:?}");
+    }
+
+    #[tokio::test]
+    async fn fetch_token_endpoint_reads_as_metadata() {
+        let (base, _log) = spawn_stub(1, |base, _req| {
+            StubResponse::json(format!(
+                r#"{{"issuer":"{base}","authorization_endpoint":"{base}/authorize","token_endpoint":"{base}/token"}}"#
+            ))
+        })
+        .await;
+
+        let endpoint = fetch_token_endpoint(&reqwest::Client::new(), &base)
+            .await
+            .unwrap();
+        assert_eq!(endpoint, format!("{base}/token"));
     }
 }

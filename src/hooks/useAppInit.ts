@@ -140,6 +140,14 @@ export function useAppInit() {
         .catch((err) => {
           logger.error('Failed to reload skills after sync:', err)
         })
+      // A peer may have refreshed or re-signed-in an MCP server that needs
+      // sign-in here: reconnecting clears its banner on success.
+      useMcpStore
+        .getState()
+        .recheckNeedsAuth()
+        .catch((err) => {
+          logger.error('Failed to recheck MCP sign-in after sync:', err)
+        })
       useAttachmentBlobStore
         .getState()
         .refreshAfterMerge()

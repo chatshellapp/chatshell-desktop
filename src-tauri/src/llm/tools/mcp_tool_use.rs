@@ -31,7 +31,16 @@ pub enum McpToolUseError {
     CallFailed(String),
     #[error("MCP tool call blocked: {0}")]
     Blocked(String),
+    #[error(
+        "MCP server '{server}' rejected ChatShell's credentials; the user must sign in to it \
+         again in ChatShell. Do not retry this call. ({detail})"
+    )]
+    AuthRequired { server: String, detail: String },
 }
+
+/// Called with the server name when a call fails because the MCP server
+/// rejected our credentials (a transport-level 401, never tool output).
+pub type McpAuthFailureNotifier = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Debug, Deserialize)]
 pub struct McpToolUseArgs {
@@ -47,11 +56,22 @@ pub type McpClientMap = Arc<RwLock<HashMap<String, (String, Peer<RoleClient>)>>>
 #[derive(Clone)]
 pub struct McpToolUseTool {
     clients: McpClientMap,
+    on_auth_failure: Option<McpAuthFailureNotifier>,
 }
 
 impl McpToolUseTool {
     pub fn new(clients: McpClientMap) -> Self {
-        Self { clients }
+        Self {
+            clients,
+            on_auth_failure: None,
+        }
+    }
+
+    /// Report auth-classified call failures (the streaming layer drops the
+    /// cached connection and surfaces the needs-sign-in state).
+    pub fn with_auth_failure_notifier(mut self, notifier: McpAuthFailureNotifier) -> Self {
+        self.on_auth_failure = Some(notifier);
+        self
     }
 }
 
@@ -195,6 +215,23 @@ impl Tool for McpToolUseTool {
         let result = match client.call_tool(params).await {
             Ok(r) => r,
             Err(e) => {
+                // Only this arm (a transport/protocol failure) can mean the
+                // server rejected our credentials; `is_error` results below
+                // are the tool's own output and are never classified.
+                if crate::mcp::auth_error::is_service_auth_error(&e) {
+                    tracing::warn!(
+                        "🔐 [mcp_tool_use] Server '{}' rejected credentials: {}",
+                        args.server,
+                        e
+                    );
+                    if let Some(notify) = &self.on_auth_failure {
+                        notify(&args.server);
+                    }
+                    return Err(McpToolUseError::AuthRequired {
+                        server: args.server.clone(),
+                        detail: e.to_string(),
+                    });
+                }
                 return Err(McpToolUseError::CallFailed(format!(
                     "Tool returned an error: {e}"
                 )));

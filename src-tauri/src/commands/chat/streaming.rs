@@ -73,8 +73,6 @@ struct AgentStreamContext {
     disable_tools: bool,
     stored_images: Vec<StoredImage>,
     supports_vision: Option<bool>,
-    /// MCP tool name -> server DB id (auth-error re-probing).
-    mcp_tool_name_to_server_id: Arc<HashMap<String, String>>,
     /// MCP tool name -> user-visible server name (display names).
     mcp_tool_name_to_server_name: Arc<HashMap<String, String>>,
 }
@@ -719,95 +717,123 @@ pub(crate) async fn handle_agent_streaming(
     // Collect MCP server IDs (non-builtin tools)
     let mcp_server_ids: Vec<String> = collect_mcp_server_ids(&all_enabled_tool_ids);
     // Load MCP tools from enabled servers and build McpSchemaTool + McpToolUseTool
-    let (mcp_tool_name_to_server_id, mcp_tool_name_to_server_name): (
-        Arc<HashMap<String, String>>,
-        Arc<HashMap<String, String>>,
-    ) = if !mcp_server_ids.is_empty() {
+    let mcp_tool_name_to_server_name: Arc<HashMap<String, String>> = if !mcp_server_ids.is_empty() {
         let loaded = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
         if let Some(loaded) = loaded {
-            for server_id in &loaded.auth_failed_server_ids {
+            for (server_id, server_name) in &loaded.needs_auth {
                 tracing::warn!(
-                    "🔐 [agent_streaming] MCP server {} failed auth, emitting mcp-auth-required",
+                    "🔐 [agent_streaming] MCP server {} needs sign-in, emitting mcp-auth-required",
                     server_id
                 );
                 let payload = serde_json::json!({
                     "conversation_id": conversation_id_clone,
                     "server_id": server_id,
+                    "server_name": server_name,
                 });
                 let _ = app.emit("mcp-auth-required", payload);
             }
-
-            if loaded.server_tools.iter().any(|(t, _)| !t.is_empty()) {
-                let total: usize = loaded.server_tools.iter().map(|(t, _)| t.len()).sum();
-                tracing::info!(
-                    "🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)",
-                    total,
-                    loaded.server_tools.len()
+            // Servers that connected this send: the frontend clears any
+            // needs-sign-in state for them (e.g. a silent refresh worked).
+            if !loaded.server_name_to_id.is_empty() {
+                let mut connected: Vec<&String> = loaded.server_name_to_id.values().collect();
+                connected.sort();
+                let _ = app.emit(
+                    "mcp-servers-connected",
+                    serde_json::json!({
+                        "conversation_id": conversation_id_clone,
+                        "server_ids": connected,
+                    }),
                 );
+            }
 
-                let mcp_tools_dir = app
-                    .path()
-                    .app_cache_dir()
-                    .map(|d| d.join("mcp-tools"))
-                    .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
-                if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
-                    tracing::warn!("⚠️ [agent_streaming] Failed to create mcp-tools dir: {}", e);
+            let total: usize = loaded.server_tools.iter().map(|(t, _)| t.len()).sum();
+            tracing::info!(
+                "🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)",
+                total,
+                loaded.server_tools.len()
+            );
+
+            let mcp_tools_dir = app
+                .path()
+                .app_cache_dir()
+                .map(|d| d.join("mcp-tools"))
+                .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
+            if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
+                tracing::warn!("⚠️ [agent_streaming] Failed to create mcp-tools dir: {}", e);
+            }
+
+            let mut client_map: HashMap<String, (String, Peer<RoleClient>)> = HashMap::new();
+            let mut server_catalogs: Vec<McpServerCatalog> = Vec::new();
+
+            for (tools, client) in &loaded.server_tools {
+                if tools.is_empty() {
+                    continue;
                 }
+                let server_name = tools
+                    .first()
+                    .and_then(|t| loaded.tool_name_to_server_name.get(&t.name.to_string()))
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string());
 
-                let mut client_map: HashMap<String, (String, Peer<RoleClient>)> = HashMap::new();
-                let mut server_catalogs: Vec<McpServerCatalog> = Vec::new();
-
-                for (tools, client) in &loaded.server_tools {
-                    if tools.is_empty() {
-                        continue;
+                match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
+                    Ok(_server_dir) => {
+                        let mut catalog_tools: Vec<(String, String)> = Vec::new();
+                        for tool in tools {
+                            let desc = tool.description.as_deref().unwrap_or("No description");
+                            let key = format!("{}/{}", server_name, tool.name);
+                            client_map.insert(key, (server_name.clone(), client.clone()));
+                            catalog_tools.push((tool.name.to_string(), desc.to_string()));
+                        }
+                        server_catalogs.push(McpServerCatalog {
+                            name: server_name,
+                            tools: catalog_tools,
+                        });
                     }
-                    let server_name = tools
-                        .first()
-                        .and_then(|t| loaded.tool_name_to_server_name.get(&t.name.to_string()))
-                        .cloned()
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
-                        Ok(_server_dir) => {
-                            let mut catalog_tools: Vec<(String, String)> = Vec::new();
-                            for tool in tools {
-                                let desc = tool.description.as_deref().unwrap_or("No description");
-                                let key = format!("{}/{}", server_name, tool.name);
-                                client_map.insert(key, (server_name.clone(), client.clone()));
-                                catalog_tools.push((tool.name.to_string(), desc.to_string()));
-                            }
-                            server_catalogs.push(McpServerCatalog {
-                                name: server_name,
-                                tools: catalog_tools,
-                            });
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "⚠️ [agent_streaming] Failed to sync tool definitions \
-                                 for server '{}': {}",
-                                server_name,
-                                e
-                            );
-                        }
+                    Err(e) => {
+                        tracing::warn!(
+                            "⚠️ [agent_streaming] Failed to sync tool definitions \
+                             for server '{}': {}",
+                            server_name,
+                            e
+                        );
                     }
                 }
+            }
 
-                config = config
-                    .with_mcp_schema_tool(McpSchemaTool::new(
+            // Name failed servers to the model by cause. When every selected
+            // server failed, register `mcp_schema` alone (no `mcp_tool_use`,
+            // which would dead-end every call) so the model still learns why.
+            let needs_auth_names: Vec<String> =
+                loaded.needs_auth.iter().map(|(_, n)| n.clone()).collect();
+            if !server_catalogs.is_empty()
+                || !needs_auth_names.is_empty()
+                || !loaded.unreachable.is_empty()
+            {
+                config = config.with_mcp_schema_tool(
+                    McpSchemaTool::new(
                         server_catalogs,
                         mcp_tools_dir.to_string_lossy().to_string(),
-                    ))
-                    .with_mcp_tool_use(McpToolUseTool::new(Arc::new(RwLock::new(client_map))));
+                    )
+                    .with_unavailable(needs_auth_names, loaded.unreachable.clone()),
+                );
             }
-            (
-                Arc::new(loaded.tool_name_to_server_id),
-                Arc::new(loaded.tool_name_to_server_name),
-            )
+            if !client_map.is_empty() {
+                config = config.with_mcp_tool_use(
+                    McpToolUseTool::new(Arc::new(RwLock::new(client_map)))
+                        .with_auth_failure_notifier(mcp_auth_failure_notifier(
+                            app.clone(),
+                            conversation_id_clone.clone(),
+                            state_clone.mcp_manager.clone(),
+                            loaded.server_name_to_id.clone(),
+                        )),
+                );
+            }
+            Arc::new(loaded.tool_name_to_server_name)
         } else {
-            (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
+            Arc::new(HashMap::new())
         }
     } else {
-        (Arc::new(HashMap::new()), Arc::new(HashMap::new()))
+        Arc::new(HashMap::new())
     };
     if let Some(judge) = &judge_session {
         let mut servers: Vec<String> = mcp_tool_name_to_server_name.values().cloned().collect();
@@ -843,7 +869,9 @@ pub(crate) async fn handle_agent_streaming(
         effective_system_prompt.push_str("\n\n");
         effective_system_prompt.push_str(prompts::SKILL_INSTRUCTIONS);
     }
-    if config.mcp_schema_tool.is_some() {
+    // Workflow instructions only when MCP tools can actually be called; an
+    // all-failed run carries just the `mcp_schema` notice.
+    if config.mcp_tool_use.is_some() {
         effective_system_prompt.push_str("\n\n");
         effective_system_prompt.push_str(prompts::MCP_INSTRUCTIONS);
     }
@@ -922,7 +950,6 @@ pub(crate) async fn handle_agent_streaming(
             disable_tools,
             stored_images,
             supports_vision: capabilities.supports_vision,
-            mcp_tool_name_to_server_id,
             mcp_tool_name_to_server_name,
         },
     )
@@ -955,7 +982,6 @@ async fn run_agent_stream<R: tauri::Runtime>(
         disable_tools,
         stored_images,
         supports_vision,
-        mcp_tool_name_to_server_id,
         mcp_tool_name_to_server_name,
     } = ctx;
 
@@ -1099,9 +1125,7 @@ async fn run_agent_stream<R: tauri::Runtime>(
     let conversation_id_for_stream = conversation_id_clone.clone();
     let app_for_stream = app.clone();
     let cancel_token_for_callback = cancel_token.clone();
-    let mcp_tool_map_for_callback = mcp_tool_name_to_server_id.clone();
     let mcp_server_name_map_for_callback = mcp_tool_name_to_server_name.clone();
-    let mcp_manager_for_callback = state_clone.mcp_manager.clone();
 
     // Stream using the agent
     let response = stream_chat_with_agent(
@@ -1251,26 +1275,9 @@ async fn run_agent_stream<R: tauri::Runtime>(
                     {
                         *output = Some(result_info.tool_output.clone());
 
-                        // Detect 401 auth errors from MCP tool calls (uses original name)
-                        if is_auth_error(&result_info.tool_output)
-                            && let Some(server_id) = mcp_tool_map_for_callback.get(name.as_str()) {
-                                tracing::warn!(
-                                    "🔐 [agent_streaming] MCP tool '{}' returned auth error, server: {}",
-                                    name, server_id
-                                );
-                                let server_id = server_id.clone();
-                                let app_handle = app_for_stream.clone();
-                                let conv_id = conversation_id_for_stream.clone();
-                                let manager = mcp_manager_for_callback.clone();
-                                tokio::spawn(async move {
-                                    manager.disconnect(&server_id).await;
-                                    let payload = serde_json::json!({
-                                        "conversation_id": conv_id,
-                                        "server_id": server_id,
-                                    });
-                                    let _ = app_handle.emit("mcp-auth-required", payload);
-                                });
-                            }
+                        // Auth failures are reported by `mcp_tool_use` itself
+                        // (transport-level 401 only, via its notifier); tool
+                        // output text is never classified here.
 
                         // Build display name for frontend (name may be composite "server/tool" in lazy-load)
                         let display_name =
@@ -1817,15 +1824,46 @@ async fn run_agent_stream<R: tauri::Runtime>(
     }
 }
 
+/// Mid-run auth failure from `mcp_tool_use`: drop the dead cached
+/// connection (the next send reconnects, refreshing once) and tell the
+/// frontend the server needs sign-in.
+fn mcp_auth_failure_notifier<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    conversation_id: String,
+    manager: Arc<crate::mcp::McpConnectionManager>,
+    server_name_to_id: HashMap<String, String>,
+) -> crate::llm::tools::McpAuthFailureNotifier {
+    Arc::new(move |server_name: &str| {
+        let Some(server_id) = server_name_to_id.get(server_name).cloned() else {
+            return;
+        };
+        let server_name = server_name.to_string();
+        let app = app.clone();
+        let conversation_id = conversation_id.clone();
+        let manager = manager.clone();
+        tokio::spawn(async move {
+            manager.disconnect(&server_id).await;
+            let payload = serde_json::json!({
+                "conversation_id": conversation_id,
+                "server_id": server_id,
+                "server_name": server_name,
+            });
+            let _ = app.emit("mcp-auth-required", payload);
+        });
+    })
+}
+
 /// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.
 struct LoadedMcpTools {
     server_tools: Vec<(Vec<RmcpTool>, Peer<RoleClient>)>,
-    /// Maps MCP tool name (e.g. "search") to the DB tool ID of the MCP server that provides it.
-    tool_name_to_server_id: HashMap<String, String>,
     /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
     tool_name_to_server_name: HashMap<String, String>,
-    /// Server IDs that failed to connect due to auth errors (401/Unauthorized).
-    auth_failed_server_ids: Vec<String>,
+    /// Servers that need the user to sign in again: (DB id, name).
+    needs_auth: Vec<(String, String)>,
+    /// Names of servers that failed for any other reason.
+    unreachable: Vec<String>,
+    /// Connected server name -> DB id (for mid-run auth failures).
+    server_name_to_id: HashMap<String, String>,
 }
 
 /// Load MCP tools by their tool IDs.
@@ -1865,37 +1903,39 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
         }
     };
 
-    // Detect auth failures (401/Unauthorized) from connection errors
-    let auth_failed_server_ids: Vec<String> = result
-        .failures
-        .iter()
-        .filter(|f| is_auth_error(&f.error))
-        .map(|f| f.tool_id.clone())
-        .collect();
+    // Split failures by cause: rejected credentials (after any silent
+    // refresh) vs. everything else.
+    let mut needs_auth = Vec::new();
+    let mut unreachable = Vec::new();
+    for failure in &result.failures {
+        if failure.needs_auth {
+            needs_auth.push((failure.tool_id.clone(), failure.tool_name.clone()));
+        } else {
+            unreachable.push(failure.tool_name.clone());
+        }
+    }
 
-    if !auth_failed_server_ids.is_empty() {
+    if !needs_auth.is_empty() {
         tracing::warn!(
-            "🔐 [mcp] {} server(s) failed with auth errors: {:?}",
-            auth_failed_server_ids.len(),
-            auth_failed_server_ids
+            "🔐 [mcp] {} server(s) need sign-in: {:?}",
+            needs_auth.len(),
+            needs_auth
         );
     }
 
-    if result.connections.is_empty() && auth_failed_server_ids.is_empty() {
+    if result.connections.is_empty() && result.failures.is_empty() {
         return None;
     }
 
-    let mut tool_name_to_server_id = HashMap::new();
     let mut tool_name_to_server_name = HashMap::new();
+    let mut server_name_to_id = HashMap::new();
     let mut server_tools = Vec::new();
 
     for (conn, tools) in result.connections {
+        server_name_to_id.insert(conn.tool.name.clone(), conn.tool.id.clone());
         for t in &tools {
             let key = format!("{}/{}", conn.tool.name, t.name);
-            tool_name_to_server_id.insert(key.clone(), conn.tool.id.clone());
             tool_name_to_server_name.insert(key, conn.tool.name.clone());
-            // Also insert raw key so non-lazy path (direct rmcp_tools) auth lookup still works
-            tool_name_to_server_id.insert(t.name.to_string(), conn.tool.id.clone());
             tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
         }
         server_tools.push((tools, conn.client));
@@ -1903,9 +1943,10 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
 
     Some(LoadedMcpTools {
         server_tools,
-        tool_name_to_server_id,
         tool_name_to_server_name,
-        auth_failed_server_ids,
+        needs_auth,
+        unreachable,
+        server_name_to_id,
     })
 }
 
@@ -1947,17 +1988,6 @@ fn sanitize_server_name(name: &str) -> String {
         })
         .collect();
     s.trim_matches('-').to_string()
-}
-
-/// Check if a tool output looks like an HTTP 401 authentication error.
-fn is_auth_error(output: &str) -> bool {
-    let lower = output.to_lowercase();
-    (lower.contains("401") && (lower.contains("unauthorized") || lower.contains("http")))
-        || (lower.contains("unauthorized") && lower.contains("error"))
-        || lower.contains("token expired")
-        || lower.contains("token has expired")
-        || lower.contains("invalid_token")
-        || lower.contains("authentication required")
 }
 
 /// Map the compile-time OS constant onto the label used in the environment
@@ -2239,31 +2269,6 @@ mod tests {
             "mcp__My-Server__search"
         );
         assert_eq!(mcp_display_name_from_stored("read", &map), "read");
-    }
-
-    #[test]
-    fn is_auth_error_matches_each_disjunct() {
-        // 401 + unauthorized/http
-        assert!(is_auth_error("HTTP 401 Unauthorized"));
-        assert!(is_auth_error("request failed with 401 over http"));
-        // 401 alone is not enough
-        assert!(!is_auth_error("401"));
-        // http alone (e.g. 500) is not enough
-        assert!(!is_auth_error("http 500 internal server error"));
-
-        // unauthorized + error
-        assert!(is_auth_error("Unauthorized error"));
-        // permission-style errors are not auth errors
-        assert!(!is_auth_error("permission error"));
-
-        // token variants (case-insensitive)
-        assert!(is_auth_error("Token Expired"));
-        assert!(is_auth_error("the token has expired, please log in"));
-        assert!(is_auth_error("invalid_token"));
-        assert!(is_auth_error("Authentication required"));
-
-        assert!(!is_auth_error("everything went fine"));
-        assert!(!is_auth_error(""));
     }
 
     #[test]
@@ -2572,14 +2577,13 @@ mod tests {
 
     /// Every event `run_agent_stream` can emit (the streaming half of the
     /// frontend wire contract; the other events come from sibling modules).
-    const STREAM_EVENTS: [&str; 10] = [
+    const STREAM_EVENTS: [&str; 9] = [
         "chat-stream",
         "reasoning-started",
         "chat-stream-reasoning",
         "tool-call-started",
         "tool-call-completed",
         "chat-stream-image",
-        "mcp-auth-required",
         "chat-error",
         "chat-warning",
         "chat-complete",
@@ -2851,7 +2855,6 @@ mod tests {
             disable_tools: false,
             stored_images: vec![],
             supports_vision: None,
-            mcp_tool_name_to_server_id: Arc::new(HashMap::new()),
             mcp_tool_name_to_server_name: Arc::new(HashMap::new()),
         }
     }
@@ -3421,7 +3424,6 @@ mod tests {
             disable_tools: false,
             stored_images: vec![],
             supports_vision: None,
-            mcp_tool_name_to_server_id: Arc::new(HashMap::new()),
             mcp_tool_name_to_server_name: Arc::new(HashMap::new()),
         };
         run_pipeline(

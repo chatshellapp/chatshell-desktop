@@ -387,6 +387,12 @@ pub fn run() {
                 sync_scheduler::install_power_observers(triggers.clone());
                 app.manage(triggers);
             }
+            // Refreshed MCP OAuth grants are persisted through the DB.
+            app_state
+                .mcp_manager
+                .set_token_store(Arc::new(commands::mcp::DbMcpTokenStore::new(
+                    app_state.db.clone(),
+                )));
             // Grab handle before app_state is moved into managed state
             let manager_for_sweep = app_state.bash_session_manager.clone();
             app.manage(app_state);

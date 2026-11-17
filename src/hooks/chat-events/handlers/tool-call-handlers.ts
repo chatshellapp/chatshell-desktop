@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useMessageStore } from '@/stores/message'
 import { useMcpStore } from '@/stores/mcpStore'
-import type { PermissionRequestedEvent } from '../types'
+import type { McpAuthRequiredEvent, PermissionRequestedEvent } from '../types'
 import { usePermissionStore } from '@/stores/permissionStore'
 import { logger } from '@/lib/logger'
 
@@ -32,9 +32,13 @@ export function useToolCallHandlers() {
     },
     []
   )
-  const handleMcpAuthRequired = useCallback((serverId: string) => {
-    logger.warn('[useToolCallHandlers] MCP auth required for server:', serverId)
-    useMcpStore.getState().probeEndpoint(serverId)
+  const handleMcpAuthRequired = useCallback((event: McpAuthRequiredEvent) => {
+    logger.warn('[useToolCallHandlers] MCP auth required for server:', event.server_id)
+    // Silent refresh already failed in the backend: surface the sign-in
+    // prompt in this conversation, and probe for the OAuth discovery data
+    // the re-authorize flow needs.
+    useMcpStore.getState().reportNeedsAuth(event.conversation_id, event.server_id)
+    useMcpStore.getState().probeEndpoint(event.server_id)
   }, [])
 
   const handlePermissionRequested = useCallback((request: PermissionRequestedEvent) => {

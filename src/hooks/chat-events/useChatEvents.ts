@@ -17,6 +17,7 @@ import type {
   ConversationUpdatedEvent,
   GenerationStoppedEvent,
   McpAuthRequiredEvent,
+  McpServersConnectedEvent,
   PermissionRequestedEvent,
   PermissionResolvedEvent,
   ReasoningStartedEvent,
@@ -25,6 +26,7 @@ import type {
   ToolCallCompletedEvent,
 } from './types'
 import { usePermissionStore } from '@/stores/permissionStore'
+import { useMcpStore } from '@/stores/mcpStore'
 import { useAutoReviewStore, type AutoReviewDecidedEvent } from '@/stores/autoReviewStore'
 import { toast } from 'sonner'
 import i18n from '@/lib/i18n'
@@ -270,8 +272,17 @@ export function useChatEvents() {
     // Listen for MCP auth required (token expired, 401 from tool call)
     const unlistenMcpAuthRequired = listen<McpAuthRequiredEvent>('mcp-auth-required', (event) => {
       logger.warn('[useChatEvents] Received mcp-auth-required event:', event.payload)
-      h().handleMcpAuthRequired(event.payload.server_id)
+      h().handleMcpAuthRequired(event.payload)
     })
+
+    // Servers that connected for a send: clears their needs-sign-in state
+    // (a silent refresh may have recovered them).
+    const unlistenMcpServersConnected = listen<McpServersConnectedEvent>(
+      'mcp-servers-connected',
+      (event) => {
+        useMcpStore.getState().markServersConnected(event.payload.server_ids)
+      }
+    )
 
     // Listen for tool approval requests (permission gate, ask mode)
     const unlistenPermissionRequested = listen<PermissionRequestedEvent>(
@@ -319,6 +330,7 @@ export function useChatEvents() {
       unlistenToolCallStarted.then((fn) => fn())
       unlistenToolCallCompleted.then((fn) => fn())
       unlistenMcpAuthRequired.then((fn) => fn())
+      unlistenMcpServersConnected.then((fn) => fn())
       unlistenPermissionRequested.then((fn) => fn())
       unlistenPermissionResolved.then((fn) => fn())
       unlistenAutoReview.then((fn) => fn())

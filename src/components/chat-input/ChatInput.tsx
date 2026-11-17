@@ -25,6 +25,7 @@ import { UserPromptQuickSelectDialog } from './UserPromptQuickSelectDialog'
 import { MentionPopup } from './MentionPopup'
 import { useMentions } from './hooks'
 import { McpServersDialog } from './McpServersDialog'
+import { McpAuthBanner } from './McpAuthBanner'
 import { SkillsDialog } from './SkillsDialog'
 import { useConversationStore } from '@/stores/conversation'
 import { useConversationSettingsStore } from '@/stores/conversationSettingsStore'
@@ -353,7 +354,19 @@ export function ChatInput(/* _props: ChatInputProps */) {
   // Handler to change enabled MCP server IDs
   const handleMcpServerIdsChange = (serverIds: string[]) => {
     if (currentConversation) {
+      const previous = conversationSettings?.enabledMcpServerIds ?? []
       setEnabledMcpServerIds(currentConversation.id, serverIds)
+      // Keep the sign-in banner in step with the selection: deselecting
+      // hides a server, re-selecting one that is still expired shows it.
+      const mcp = useMcpStore.getState()
+      for (const id of previous) {
+        if (!serverIds.includes(id)) mcp.clearAuthReport(currentConversation.id, id)
+      }
+      for (const id of serverIds) {
+        if (!previous.includes(id) && mcp.needsAuth[id]) {
+          mcp.reportNeedsAuth(currentConversation.id, id)
+        }
+      }
     }
   }
 
@@ -597,6 +610,8 @@ export function ChatInput(/* _props: ChatInputProps */) {
               ))}
           </div>
         )}
+
+        {currentConversation && <McpAuthBanner conversationId={currentConversation.id} />}
 
         <MentionPopup state={mentionState} onPick={pickMention}>
           <InputGroup className="flex-1 relative">

@@ -90,6 +90,7 @@ const BACKEND_EVENTS = [
   'conversation-updated',
   'generation-stopped',
   'mcp-auth-required',
+  'mcp-servers-connected',
   'permission-requested',
   'permission-resolved',
   'reasoning-started',
@@ -672,6 +673,37 @@ describe('useChatEvents', () => {
       emit('mcp-auth-required', { conversation_id: CONV, server_id: 'server-1' })
 
       expect(probeEndpoint).toHaveBeenCalledWith('server-1')
+    })
+
+    it('reports the server as needing sign-in in that conversation', () => {
+      setupHook()
+      useMcpStore.setState({ needsAuth: {}, authReports: {}, connectionStatus: {} })
+
+      emit('mcp-auth-required', {
+        conversation_id: CONV,
+        server_id: 'server-1',
+        server_name: 'GitHub',
+      })
+
+      const state = useMcpStore.getState()
+      expect(state.needsAuth['server-1']).toBe(true)
+      expect(state.authReports[CONV]).toEqual(['server-1'])
+      expect(state.connectionStatus['server-1']).toBe('needs_auth')
+    })
+
+    it('clears needs-sign-in when a later send connects the server', () => {
+      setupHook()
+      useMcpStore.setState({
+        needsAuth: { 'server-1': true },
+        authReports: { [CONV]: ['server-1'] },
+        connectionStatus: { 'server-1': 'needs_auth' },
+      })
+
+      emit('mcp-servers-connected', { conversation_id: CONV, server_ids: ['server-1'] })
+
+      const state = useMcpStore.getState()
+      expect(state.needsAuth['server-1']).toBeUndefined()
+      expect(state.connectionStatus['server-1']).toBe('connected')
     })
   })
 })

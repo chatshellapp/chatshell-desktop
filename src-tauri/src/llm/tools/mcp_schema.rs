@@ -33,6 +33,10 @@ pub struct McpServerCatalog {
 pub struct McpSchemaTool {
     catalog: Vec<McpServerCatalog>,
     schema_dir: String,
+    /// Selected servers that need the user to sign in again.
+    needs_auth: Vec<String>,
+    /// Selected servers that could not be reached this run.
+    unreachable: Vec<String>,
 }
 
 impl McpSchemaTool {
@@ -40,7 +44,17 @@ impl McpSchemaTool {
         Self {
             catalog,
             schema_dir,
+            needs_auth: Vec::new(),
+            unreachable: Vec::new(),
         }
+    }
+
+    /// Name the selected servers that failed this run, so the model reports
+    /// the real cause instead of acting as if they were never selected.
+    pub fn with_unavailable(mut self, needs_auth: Vec<String>, unreachable: Vec<String>) -> Self {
+        self.needs_auth = needs_auth;
+        self.unreachable = unreachable;
+        self
     }
 }
 
@@ -87,6 +101,19 @@ impl Tool for McpSchemaTool {
             ));
         }
         desc.push_str("</available_mcp_tools>");
+        if !self.needs_auth.is_empty() {
+            desc.push_str(&format!(
+                "\n\nRequires sign-in: {}. These servers rejected ChatShell's credentials; \
+                 their tools are unavailable until the user signs in to them again in ChatShell.",
+                self.needs_auth.join(", ")
+            ));
+        }
+        if !self.unreachable.is_empty() {
+            desc.push_str(&format!(
+                "\n\nNot reachable right now: {}.",
+                self.unreachable.join(", ")
+            ));
+        }
         desc
     }
 
@@ -207,6 +234,23 @@ mod tests {
         assert!(desc.contains("tool_0"));
         assert!(!desc.contains("tool_70"), "beyond the per-server cap");
         assert!(desc.contains("+20 more"), "overflow indicated");
+    }
+
+    #[test]
+    fn description_names_unavailable_servers_by_cause() {
+        let tool = McpSchemaTool::new(vec![], "/tmp".to_string())
+            .with_unavailable(vec!["github".into()], vec!["slow".into()]);
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(desc.contains("Requires sign-in: github."), "{desc}");
+        assert!(desc.contains("Not reachable right now: slow."), "{desc}");
+    }
+
+    #[test]
+    fn description_omits_notices_when_all_servers_connected() {
+        let tool = McpSchemaTool::new(vec![server("srv", vec![("a", "")])], "/tmp".to_string());
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(!desc.contains("Requires sign-in"));
+        assert!(!desc.contains("Not reachable"));
     }
     #[tokio::test]
     async fn oversized_schema_is_capped_with_notice() {

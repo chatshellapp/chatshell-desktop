@@ -103,6 +103,11 @@ pub struct OAuthMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub token_expires_at: Option<i64>,
+    /// Token endpoint learned at sign-in (RFC 8414), used for refresh-token
+    /// grants without re-running discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub token_endpoint: Option<String>,
     pub is_authorized: bool,
 }
 

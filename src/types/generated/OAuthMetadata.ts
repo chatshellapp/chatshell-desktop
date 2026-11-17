@@ -3,4 +3,9 @@
 /**
  * OAuth metadata stored after discovery/authorization (in config JSON)
  */
-export type OAuthMetadata = { authorization_server_url: string, client_id?: string, scopes?: Array<string>, token_expires_at?: number, is_authorized: boolean, };
+export type OAuthMetadata = { authorization_server_url: string, client_id?: string, scopes?: Array<string>, token_expires_at?: number, 
+/**
+ * Token endpoint learned at sign-in (RFC 8414), used for refresh-token
+ * grants without re-running discovery.
+ */
+token_endpoint?: string, is_authorized: boolean, };

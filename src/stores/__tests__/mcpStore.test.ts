@@ -274,4 +274,53 @@ describe('useMcpStore', () => {
       expect(useMcpStore.getState().servers).toHaveLength(0)
     })
   })
+
+  describe('needs-auth banner state', () => {
+    beforeEach(() => {
+      useMcpStore.setState({ needsAuth: {}, authReports: {}, connectionStatus: {} })
+    })
+
+    it('reports a server once per conversation and flags it', () => {
+      const store = useMcpStore.getState()
+      store.reportNeedsAuth('conv-1', 'server-1')
+      store.reportNeedsAuth('conv-1', 'server-1')
+
+      const state = useMcpStore.getState()
+      expect(state.authReports['conv-1']).toEqual(['server-1'])
+      expect(state.authReports['conv-2']).toBeUndefined()
+      expect(state.needsAuth['server-1']).toBe(true)
+      expect(state.connectionStatus['server-1']).toBe('needs_auth')
+    })
+
+    it('dismissing clears the report but keeps the needs-auth flag', () => {
+      const store = useMcpStore.getState()
+      store.reportNeedsAuth('conv-1', 'server-1')
+      store.clearAuthReport('conv-1', 'server-1')
+
+      const state = useMcpStore.getState()
+      expect(state.authReports['conv-1']).toEqual([])
+      expect(state.needsAuth['server-1']).toBe(true)
+    })
+
+    it('a successful connect clears the needs-auth flag', async () => {
+      useMcpStore.getState().reportNeedsAuth('conv-1', 'server-1')
+      mockInvoke.mockResolvedValueOnce(undefined).mockResolvedValueOnce([{ name: 'search' }])
+
+      await useMcpStore.getState().connectServer('server-1')
+
+      const state = useMcpStore.getState()
+      expect(state.needsAuth['server-1']).toBeUndefined()
+      expect(state.connectionStatus['server-1']).toBe('connected')
+    })
+
+    it('rechecking after sync reloads only when a server needs sign-in', async () => {
+      mockInvoke.mockResolvedValue([])
+      await useMcpStore.getState().recheckNeedsAuth()
+      expect(mockInvoke).not.toHaveBeenCalled()
+
+      useMcpStore.getState().reportNeedsAuth('conv-1', 'server-1')
+      await useMcpStore.getState().recheckNeedsAuth()
+      expect(mockInvoke).toHaveBeenCalledWith('list_mcp_servers')
+    })
+  })
 })

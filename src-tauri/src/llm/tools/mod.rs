@@ -41,7 +41,7 @@ mod web_search;
 
 pub use image_question::VisionQuestionResponder;
 pub use mcp_schema::{McpSchemaTool, McpServerCatalog};
-pub use mcp_tool_use::McpToolUseTool;
+pub use mcp_tool_use::{McpAuthFailureNotifier, McpToolUseTool};
 pub use skill::{SkillCatalogEntry, SkillTool};
 pub use web_fetch::{HttpUrlByteFetcher, WebFetchArgs, WebFetchTool};
 pub use web_search::{WebSearchArgs, WebSearchTool};

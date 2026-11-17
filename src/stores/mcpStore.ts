@@ -38,6 +38,15 @@ interface McpState {
   // Per-server probe/discovery state
   probeResults: Record<string, ProbeResult>
 
+  // Servers whose credentials were rejected (after any silent refresh).
+  // Kept apart from connectionStatus so a reconnect in progress does not
+  // hide the sign-in prompt; cleared by a successful connect.
+  needsAuth: Record<string, boolean>
+  // conversationId -> server ids the backend reported as needing sign-in
+  // during that conversation (drives the in-chat banner; dismissing removes
+  // the entry until the next report)
+  authReports: Record<string, string[]>
+
   // Actions
   loadServers: () => Promise<void>
   ensureLoaded: () => Promise<void>
@@ -73,6 +82,13 @@ interface McpState {
   checkOAuthStatus: (serverId: string) => Promise<OAuthStatusResult>
   revokeOAuth: (serverId: string) => Promise<void>
   setBearerToken: (serverId: string, token: string) => Promise<void>
+
+  // Needs-auth surfacing (in-chat banner)
+  reportNeedsAuth: (conversationId: string, serverId: string) => void
+  markServersConnected: (serverIds: string[]) => void
+  clearAuthReport: (conversationId: string, serverId: string) => void
+  reauthorize: (serverId: string) => Promise<void>
+  recheckNeedsAuth: () => Promise<void>
 }
 
 export const useMcpStore = create<McpState>()(
@@ -87,6 +103,8 @@ export const useMcpStore = create<McpState>()(
     serverTools: {},
     connectionErrors: {},
     probeResults: {},
+    needsAuth: {},
+    authReports: {},
 
     loadServers: async () => {
       set((draft) => {
@@ -208,6 +226,7 @@ export const useMcpStore = create<McpState>()(
         set((draft) => {
           draft.servers = draft.servers.filter((s: Tool) => s.id !== id)
           draft.isLoading = false
+          delete draft.needsAuth[id]
         })
       } catch (error) {
         logger.error('[mcpStore] Failed to delete MCP server:', error)
@@ -346,6 +365,7 @@ export const useMcpStore = create<McpState>()(
         set((draft) => {
           draft.connectionStatus[id] = 'connected'
           draft.serverTools[id] = tools
+          delete draft.needsAuth[id]
         })
       } catch (error) {
         logger.error('[mcpStore] Failed to connect to server:', { id, error })
@@ -375,6 +395,7 @@ export const useMcpStore = create<McpState>()(
           draft.probeResults[id] = result
           if (result.status === 'needs_oauth') {
             draft.connectionStatus[id] = 'needs_auth'
+            draft.needsAuth[id] = true
           }
         })
         return result
@@ -425,6 +446,53 @@ export const useMcpStore = create<McpState>()(
 
     setBearerToken: async (serverId: string, token: string) => {
       await invoke('set_mcp_bearer_token', { serverId, token })
+    },
+
+    reportNeedsAuth: (conversationId: string, serverId: string) => {
+      set((draft) => {
+        draft.connectionStatus[serverId] = 'needs_auth'
+        draft.needsAuth[serverId] = true
+        const reported = draft.authReports[conversationId] ?? []
+        if (!reported.includes(serverId)) {
+          draft.authReports[conversationId] = [...reported, serverId]
+        }
+      })
+    },
+
+    // A send connected these servers (possibly after a silent refresh).
+    markServersConnected: (serverIds: string[]) => {
+      if (!serverIds.some((id) => get().needsAuth[id])) return
+      set((draft) => {
+        for (const id of serverIds) {
+          if (!draft.needsAuth[id]) continue
+          delete draft.needsAuth[id]
+          draft.connectionStatus[id] = 'connected'
+        }
+      })
+    },
+
+    clearAuthReport: (conversationId: string, serverId: string) => {
+      set((draft) => {
+        const reported = draft.authReports[conversationId]
+        if (!reported) return
+        draft.authReports[conversationId] = reported.filter((id) => id !== serverId)
+      })
+    },
+
+    // Sign in again from the chat; the completion flow already drops the
+    // cached connection, and a successful reconnect clears needsAuth.
+    reauthorize: async (serverId: string) => {
+      await get().startOAuth(serverId)
+      await get().loadServers()
+      await get().connectServer(serverId)
+    },
+
+    // A sync may have delivered a usable grant from another device:
+    // reloading reconnects every needs-auth server, and a successful
+    // connect clears its banner.
+    recheckNeedsAuth: async () => {
+      if (Object.keys(get().needsAuth).length === 0) return
+      await get().loadServers()
     },
   }))
 )

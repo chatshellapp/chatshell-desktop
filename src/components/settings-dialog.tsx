@@ -406,6 +406,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const loadMcpServers = useMcpStore((state) => state.loadServers)
   const connectServer = useMcpStore((state) => state.connectServer)
   const connectionStatus = useMcpStore((state) => state.connectionStatus)
+  const mcpNeedsAuth = useMcpStore((state) => state.needsAuth)
   const serverTools = useMcpStore((state) => state.serverTools)
   const connectionErrors = useMcpStore((state) => state.connectionErrors)
   const probeResults = useMcpStore((state) => state.probeResults)
@@ -790,6 +791,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                               {serverTransport === 'http' ? 'HTTP' : 'STDIO'}
                             </span>
+                            {mcpNeedsAuth[server.id] && (
+                              <span className="text-xs text-warning bg-warning/10 px-1.5 py-0.5 rounded shrink-0">
+                                {t('tools:signInExpired')}
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs text-muted-foreground truncate font-mono">
                             {serverTransport === 'http'

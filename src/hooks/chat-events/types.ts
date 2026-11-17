@@ -44,6 +44,14 @@ export interface ToolCallCompletedEvent {
 export interface McpAuthRequiredEvent {
   conversation_id: string
   server_id: string
+  /** User-visible server name (absent from older payloads). */
+  server_name?: string
+}
+
+/** MCP servers that connected for a send (clears needs-sign-in state). */
+export interface McpServersConnectedEvent {
+  conversation_id: string
+  server_ids: string[]
 }
 
 // Tool approval gate events
