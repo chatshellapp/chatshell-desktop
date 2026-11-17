@@ -463,8 +463,8 @@ impl Database {
     }
 
     /// Switch the conversation's active branch. Lands on the NEWEST LEAF of
-    /// the branch containing `message_id` (cherry-studio invariant: the
-    /// active node is always a leaf), so switching to an old variant shows
+    /// the branch containing `message_id` (the active node is
+    /// always a leaf), so switching to an old variant shows
     /// its full continuation.
     pub async fn set_active_message(
         &self,

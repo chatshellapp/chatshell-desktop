@@ -6,7 +6,6 @@
 // Blocks only display: nothing in them sends a message, opens a link, or
 // calls a tool. The only interaction is local to the view (tooltips, and the
 // total tiles that switch the plotted series).
-// Design: internal-docs/features/openui-blocks.md.
 
 import { createElement } from 'react'
 import { createLibrary, defineComponent } from '@openuidev/react-lang'

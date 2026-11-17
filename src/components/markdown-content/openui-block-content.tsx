@@ -3,7 +3,6 @@
 // CSS variables in light and dark mode. Nothing in a block acts: no
 // `onAction`, state callbacks, or tool provider are passed to the renderer.
 // Loaded lazily by `openui-block.tsx`, so Recharts loads on first use.
-// Design: internal-docs/features/openui-blocks.md.
 
 import { Component, useCallback, useState, type ErrorInfo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'

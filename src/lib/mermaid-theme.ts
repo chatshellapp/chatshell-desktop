@@ -7,7 +7,6 @@
  * needs hex colors; the palette comes from `readSvgPalette`, already in hex.
  * Boxes get a light tint of a palette color with a full-strength border, so
  * labels in the foreground color stay readable.
- * Design: internal-docs/features/visual-palette.md.
  */
 import { cssColorToHex, type SvgPalette } from './svg-figure'
 

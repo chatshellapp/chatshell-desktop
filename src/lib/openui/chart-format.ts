@@ -2,7 +2,6 @@
 // and numbers, so the chart reads two hints from them: an optional `unit`
 // (an ISO currency code or a short suffix) and labels that are all ISO dates,
 // which turn a line or area chart's x-axis into a time axis.
-// Design: internal-docs/features/openui-blocks.md.
 
 export interface ValueFormat {
   /** A value as the tooltip and point labels show it: "$350.69", "19.8%". */

@@ -3,7 +3,6 @@
 // from the app's --chart-1..6 palette. Colors and config keys never come
 // from the model: series are keyed s0, s1, ... and slices p0, p1, ..., so
 // model text never reaches the <style> tag ChartContainer writes.
-// Design: internal-docs/features/openui-blocks.md.
 
 import { useState } from 'react'
 import {

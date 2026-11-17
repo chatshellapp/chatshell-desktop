@@ -3,8 +3,6 @@
 //! The frontend hands each ```svg fence body to [`prepare_svg_figure`] and
 //! renders the result as an isolated `<img>`; the visual-output prompt
 //! offers figures only while [`RENDER_SVG_FIGURES_SETTING`] is on.
-//! Design: `internal-docs/features/svg-figures.md` and
-//! `internal-docs/features/visual-output-formats.md`.
 
 use crate::db::Database;
 use chatshell_agent_core::svg_figure as core;

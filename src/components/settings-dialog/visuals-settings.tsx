@@ -1,7 +1,6 @@
 // Settings > Visuals: which visual formats the assistant may draw inline in
 // its answers. Each switch both renders its fences and tells the model it may
 // use them (see `commands::visual_output`). Mermaid and math always render.
-// Design: internal-docs/features/visual-output-formats.md.
 
 import { useTranslation } from 'react-i18next'
 

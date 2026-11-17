@@ -3,7 +3,6 @@
 // plain cards, like the chart blocks. The trend arrow follows
 // the sign of the change; the badge stays neutral because "down" is good
 // news for some metrics (churn) and bad for others (revenue).
-// Design: internal-docs/features/openui-blocks.md.
 
 import { TrendingDown, TrendingUp } from 'lucide-react'
 

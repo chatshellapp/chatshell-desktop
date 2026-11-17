@@ -6,7 +6,6 @@
  * not reach, so the core bakes theme colors into the SVG. The palette is read
  * from the live CSS variables and converted to hex with a 1px canvas (the
  * variables are `oklch(...)`, which the core does not parse).
- * Design: internal-docs/features/svg-figures.md.
  */
 import { useSyncExternalStore } from 'react'
 import { invoke } from '@tauri-apps/api/core'

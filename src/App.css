@@ -126,8 +126,7 @@
      pink, and purple: cyan, pink, purple, amber, green, indigo. Light mode
      uses shades that keep at least 3:1 contrast on white; dark mode uses the
      spinner's bright accents. Keep the order and hues in step with iOS
-     (SvgFigureView.swift).
-     Design: internal-docs/features/visual-palette.md. */
+     (SvgFigureView.swift). */
   --chart-1: #0097a7; /* Cyan 700 */
   --chart-2: #d81b60; /* Pink 600 */
   --chart-3: #8e24aa; /* Purple 600 */

@@ -1,8 +1,6 @@
 //! The visual-output system-prompt fragment for desktop: which formats the
 //! model may use, built by `chatshell_agent_core::visual_output` from what
 //! this client renders and what the user turned on.
-//! Design: `internal-docs/features/visual-output-formats.md` and
-//! `internal-docs/features/openui-blocks.md`.
 
 use crate::db::Database;
 use chatshell_agent_core::visual_output::{VisualCapabilities, visual_output_prompt};
