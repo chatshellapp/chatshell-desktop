@@ -20,6 +20,7 @@ import {
   emptyPresetForm,
   formToCreateRequest,
   formToUpdateRequest,
+  parseAdditionalParams,
   PRESET_PARAMETERS,
   presetToForm,
   type PresetFormValues,
@@ -64,9 +65,15 @@ export function PresetDialog({ open, onOpenChange, preset, onSaved }: PresetDial
       return { ...current, parameters }
     })
 
+  const additionalValid = parseAdditionalParams(form.additionalParams).ok
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       setError(tCommon('nameIsRequired'))
+      return
+    }
+    if (!additionalValid) {
+      setError(t('additionalParametersInvalid'))
       return
     }
     setIsSaving(true)
@@ -142,6 +149,27 @@ export function PresetDialog({ open, onOpenChange, preset, onSaved }: PresetDial
             })}
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="preset-additional">{t('additionalParametersJson')}</Label>
+            <Textarea
+              id="preset-additional"
+              value={form.additionalParams}
+              onChange={(e) => setForm({ ...form, additionalParams: e.target.value })}
+              placeholder='{"reasoning_effort": "low"}'
+              rows={4}
+              spellCheck={false}
+              className="font-mono text-xs"
+              aria-invalid={!additionalValid}
+            />
+            <p
+              className={
+                additionalValid ? 'text-xs text-muted-foreground' : 'text-xs text-destructive'
+              }
+            >
+              {additionalValid ? t('additionalParametersHint') : t('additionalParametersInvalid')}
+            </p>
+          </div>
+
           {!isEdit && (
             <div className="flex items-center gap-2">
               <Switch id="preset-default" checked={makeDefault} onCheckedChange={setMakeDefault} />
@@ -156,7 +184,7 @@ export function PresetDialog({ open, onOpenChange, preset, onSaved }: PresetDial
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             {tCommon('cancel')}
           </Button>
-          <Button onClick={() => void handleSave()} disabled={isSaving}>
+          <Button onClick={() => void handleSave()} disabled={isSaving || !additionalValid}>
             {isSaving && <Loader2 className="animate-spin" />}
             {tCommon('save')}
           </Button>

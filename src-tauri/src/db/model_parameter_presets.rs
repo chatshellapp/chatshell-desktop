@@ -238,7 +238,10 @@ impl Database {
             q = q.bind(presence_penalty);
         }
         if let Some(additional_params) = &req.additional_params {
-            let json_str = serde_json::to_string(additional_params)?;
+            let json_str = additional_params
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?;
             q = q.bind(json_str);
         }
         if let Some(is_default) = req.is_default {
@@ -774,6 +777,61 @@ mod tests {
         assert_eq!(req.top_p, Some(Some(0.5)));
         assert_eq!(req.max_tokens, None);
         assert_eq!(req.description, None);
+    }
+
+    #[test]
+    fn update_request_distinguishes_absent_null_and_value_for_additional_params() {
+        let cleared: UpdateModelParameterPresetRequest =
+            serde_json::from_value(json!({"additional_params": null})).unwrap();
+        assert_eq!(cleared.additional_params, Some(None));
+        let set: UpdateModelParameterPresetRequest =
+            serde_json::from_value(json!({"additional_params": {"seed": 1}})).unwrap();
+        assert_eq!(set.additional_params, Some(Some(json!({"seed": 1}))));
+        let absent: UpdateModelParameterPresetRequest = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(absent.additional_params, None);
+    }
+
+    #[tokio::test]
+    async fn update_sets_keeps_and_clears_additional_params() {
+        let (db, _dir) = test_db().await;
+        let preset = db
+            .create_model_parameter_preset(create_req("Extra"))
+            .await
+            .unwrap();
+        assert_eq!(
+            preset.additional_params,
+            Some(json!({"seed": 42, "stop": ["\n\n"]}))
+        );
+
+        let mut req = update_req();
+        req.additional_params = Some(Some(json!({"reasoning_effort": "low"})));
+        let updated = db
+            .update_model_parameter_preset(&preset.id, req)
+            .await
+            .unwrap();
+        assert_eq!(
+            updated.additional_params,
+            Some(json!({"reasoning_effort": "low"}))
+        );
+
+        let mut keep = update_req();
+        keep.name = Some("Renamed".to_string());
+        let kept = db
+            .update_model_parameter_preset(&preset.id, keep)
+            .await
+            .unwrap();
+        assert_eq!(
+            kept.additional_params,
+            Some(json!({"reasoning_effort": "low"}))
+        );
+
+        let mut clear = update_req();
+        clear.additional_params = Some(None);
+        let cleared = db
+            .update_model_parameter_preset(&preset.id, clear)
+            .await
+            .unwrap();
+        assert_eq!(cleared.additional_params, None);
     }
 
     #[tokio::test]

@@ -155,7 +155,34 @@ describe('PresetDialog', () => {
         max_tokens: null,
         frequency_penalty: null,
         presence_penalty: null,
+        additional_params: null,
       })
+    )
+  })
+
+  it('edits additional parameters as JSON and blocks invalid input', async () => {
+    render(
+      <PresetDialog
+        open
+        onOpenChange={vi.fn()}
+        preset={make('p-2', { name: 'Extra', additional_params: { seed: 7 } })}
+      />
+    )
+
+    const field = screen.getByLabelText('additionalParametersJson')
+    expect(field).toHaveValue('{\n  "seed": 7\n}')
+
+    fireEvent.change(field, { target: { value: '[1, 2]' } })
+    expect(screen.getByText('additionalParametersInvalid')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'save' })).toBeDisabled()
+
+    fireEvent.change(field, { target: { value: '{"reasoning_effort": "low"}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'save' }))
+    await waitFor(() =>
+      expect(updatePreset).toHaveBeenCalledWith(
+        'p-2',
+        expect.objectContaining({ additional_params: { reasoning_effort: 'low' } })
+      )
     )
   })
 

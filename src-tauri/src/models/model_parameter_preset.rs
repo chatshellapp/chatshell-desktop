@@ -117,10 +117,15 @@ pub struct UpdateModelParameterPresetRequest {
     )]
     #[ts(optional)]
     pub presence_penalty: Option<Option<f64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Provider-specific JSON object. Absent keeps, null clears, value sets
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option"
+    )]
     #[ts(optional)]
     #[ts(type = "unknown")]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<Option<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub is_default: Option<bool>,
