@@ -3,6 +3,7 @@ import {
   emptyPresetForm,
   formToCreateRequest,
   formToUpdateRequest,
+  parseAdditionalParams,
   presetToCopyRequest,
   presetToForm,
   summarizePreset,
@@ -33,6 +34,7 @@ describe('preset-utils', () => {
       name: 'Review',
       description: 'Careful',
       parameters: { temperature: 0, max_tokens: 2048, frequency_penalty: 0.1 },
+      additionalParams: '{\n  "seed": 7\n}',
     })
   })
 
@@ -41,12 +43,37 @@ describe('preset-utils', () => {
       name: '  New  ',
       description: '  ',
       parameters: { temperature: 0.3 },
+      additionalParams: '',
     })
     expect(req).toEqual({ name: 'New', description: undefined, temperature: 0.3 })
   })
 
+  it('sends additional parameters on create when the field holds an object', () => {
+    const req = formToCreateRequest({
+      name: 'New',
+      description: '',
+      parameters: {},
+      additionalParams: ' {"reasoning_effort": "low"} ',
+    })
+    expect(req.additional_params).toEqual({ reasoning_effort: 'low' })
+  })
+
+  it('accepts only an empty field or a JSON object as additional parameters', () => {
+    expect(parseAdditionalParams('')).toEqual({ ok: true, value: null })
+    expect(parseAdditionalParams('  \n ')).toEqual({ ok: true, value: null })
+    expect(parseAdditionalParams('{"seed": 1}')).toEqual({ ok: true, value: { seed: 1 } })
+    for (const bad of ['[1]', '"text"', '3', 'null', '{seed: 1}', '{']) {
+      expect(parseAdditionalParams(bad)).toEqual({ ok: false })
+    }
+  })
+
   it('sends null for unset parameters on update so they are cleared', () => {
-    const req = formToUpdateRequest({ name: 'X', description: '', parameters: { top_p: 0.5 } })
+    const req = formToUpdateRequest({
+      name: 'X',
+      description: '',
+      parameters: { top_p: 0.5 },
+      additionalParams: '',
+    })
     expect(req).toEqual({
       name: 'X',
       description: null,
@@ -55,10 +82,18 @@ describe('preset-utils', () => {
       max_tokens: null,
       frequency_penalty: null,
       presence_penalty: null,
+      additional_params: null,
     })
-    // Untouched by the form, so the backend keeps them
-    expect(req).not.toHaveProperty('additional_params')
+    // Untouched by the form, so the backend keeps it
     expect(req).not.toHaveProperty('is_default')
+
+    const withExtra = formToUpdateRequest({
+      name: 'X',
+      description: '',
+      parameters: {},
+      additionalParams: '{"seed": 2}',
+    })
+    expect(withExtra.additional_params).toEqual({ seed: 2 })
   })
 
   it('copies every parameter but never the default flag', () => {
