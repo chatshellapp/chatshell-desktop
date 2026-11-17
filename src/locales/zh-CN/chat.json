@@ -188,7 +188,7 @@
       "autoHint": "由 AI 审核员批准安全操作,无需确认",
       "yolo": "自由执行",
       "yoloHint": "不再逐项询问,也不使用沙盒",
-      "autoDefaultHint": "由 AI 审核员批准安全操作;模型无法审核时改为询问",
+      "autoDefaultHint": "由 AI 审核员批准安全操作；模型无法审核时改为询问。审核员为当前对话模型，除非在辅助模型中设置了审核模型。",
       "autoUnavailable": "不可用:此模型无法审核操作。对话将使用询问模式。",
       "autoUnavailableCause": {
         "unauthorized": "不可用:服务商拒绝了 API 密钥或无权访问此模型。请检查服务商设置。对话将使用询问模式。",

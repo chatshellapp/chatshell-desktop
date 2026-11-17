@@ -188,7 +188,7 @@
       "autoHint": "An AI reviewer approves safe actions, no prompts",
       "yolo": "Yolo",
       "yoloHint": "Run everything without asking or a sandbox",
-      "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review",
+      "autoDefaultHint": "An AI reviewer approves safe actions; falls back to asking when the model cannot review. The reviewer is the conversation model unless a review model is set in Auxiliary Models.",
       "autoUnavailable": "Unavailable: this model cannot review actions. Conversations use Ask.",
       "autoUnavailableCause": {
         "unauthorized": "Unavailable: the provider rejected the API key or denied access to this model. Check the provider settings. Conversations use Ask.",

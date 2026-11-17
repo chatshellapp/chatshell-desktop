@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import {
   autoUnavailableMessageKey,
   displayedPermissionMode,
+  invalidateAutoReviewStatus,
   permissionModeHintKey,
   useAutoReviewStatus,
   type AutoReviewStatus,
@@ -79,6 +80,17 @@ describe('useAutoReviewStatus', () => {
     )
     rerender({ model: null })
     expect(result.current).toBeNull()
+  })
+
+  it('asks again when the review model setting changes', async () => {
+    invoke.mockResolvedValue(judged)
+    const { result } = renderHook(() => useAutoReviewStatus('model-r'))
+    await waitFor(() => expect(result.current).toEqual(judged))
+    const calls = invoke.mock.calls.length
+    invoke.mockResolvedValue(ask)
+    invalidateAutoReviewStatus()
+    await waitFor(() => expect(result.current).toEqual(ask))
+    expect(invoke.mock.calls.length).toBe(calls + 1)
   })
 
   it('treats a failed status call as unknown', async () => {

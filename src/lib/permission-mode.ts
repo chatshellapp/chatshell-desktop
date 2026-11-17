@@ -105,16 +105,40 @@ export function loadAutoReviewStatus(
   )
 }
 
+/** Setting key of the optional dedicated review model (a model row id);
+ * unset or stale means the conversation model reviews. */
+export const AUTO_REVIEW_MODEL_KEY = 'auto_review_model_id'
+
+/** Bumped when the review model setting changes: every mounted status
+ * hook asks again (the reviewer, not the chat model, changed). */
+let reviewerVersion = 0
+const reviewerListeners = new Set<() => void>()
+
+/** Re-resolve the auto-review status (the review model setting changed). */
+export function invalidateAutoReviewStatus(): void {
+  reviewerVersion += 1
+  reviewerListeners.forEach((notify) => notify())
+}
+
 /** React hook: auto-review status of the selected model (`null` until
  * known). A change of model re-checks its capability; the first look at
- * a model uses the backend's cache. */
+ * a model uses the backend's cache. A change of the review model setting
+ * asks again (`invalidateAutoReviewStatus`). */
 export function useAutoReviewStatus(modelDbId: string | null | undefined): AutoReviewStatus | null {
   const [status, setStatus] = useState<AutoReviewStatus | null>(null)
   const [previous, setPrevious] = useState<string | null | undefined>(modelDbId)
+  const [version, setVersion] = useState(reviewerVersion)
   if (previous !== modelDbId) {
     setPrevious(modelDbId)
     setStatus(null)
   }
+  useEffect(() => {
+    const notify = () => setVersion(reviewerVersion)
+    reviewerListeners.add(notify)
+    return () => {
+      reviewerListeners.delete(notify)
+    }
+  }, [])
   useEffect(() => {
     if (!modelDbId) return
     let active = true
@@ -126,7 +150,7 @@ export function useAutoReviewStatus(modelDbId: string | null | undefined): AutoR
     return () => {
       active = false
     }
-  }, [modelDbId])
+  }, [modelDbId, version])
   return status
 }
 
