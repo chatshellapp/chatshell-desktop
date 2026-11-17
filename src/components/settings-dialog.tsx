@@ -97,6 +97,7 @@ import { PermissionsSettings } from '@/components/settings-dialog/permissions-se
 import { ReleaseNotes } from '@/components/settings-dialog/release-notes'
 import { fetchModelCapabilities, invalidateCapabilitiesCache } from '@/hooks/useModelCapabilities'
 import { invalidateVisionFallbackStatus } from '@/hooks/useVisionFallbackStatus'
+import { AUTO_REVIEW_MODEL_KEY, invalidateAutoReviewStatus } from '@/lib/permission-mode'
 import { logger } from '@/lib/logger'
 import appIcon from '@/assets/app-icon.png'
 import { changeLanguage, supportedLanguages, getCurrentLanguage } from '@/lib/i18n'
@@ -218,6 +219,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = React.useState('llmProvider')
   const [auxTinyModelId, setAuxTinyModelId] = React.useState('')
   const [auxVisionModelId, setAuxVisionModelId] = React.useState('')
+  const [autoReviewModelId, setAutoReviewModelId] = React.useState('')
   const [searchProviderId, setSearchProviderId] = React.useState<SearchProviderId>('duckduckgo')
 
   // Web Fetch state
@@ -422,6 +424,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         if (auxTinyValue) setAuxTinyModelId(auxTinyValue)
         const auxVisionValue = await getSetting('aux_vision_model_id')
         if (auxVisionValue) setAuxVisionModelId(auxVisionValue)
+        const autoReviewValue = await getSetting(AUTO_REVIEW_MODEL_KEY)
+        if (autoReviewValue) setAutoReviewModelId(autoReviewValue)
 
         const searchProviderValue = await getSetting('search_provider')
         if (searchProviderValue) {
@@ -484,6 +488,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       await saveSetting('aux_tiny_model_id', modelId)
     } catch (error) {
       logger.error('Failed to save auxiliary tiny model setting:', error)
+    }
+  }
+
+  const handleSaveAutoReviewModel = async (modelId: string) => {
+    setAutoReviewModelId(modelId)
+    try {
+      await saveSetting(AUTO_REVIEW_MODEL_KEY, modelId)
+      // The input bar's Auto status depends on which model reviews.
+      invalidateAutoReviewStatus()
+    } catch (error) {
+      logger.error('Failed to save auto-review model setting:', error)
     }
   }
 
@@ -595,6 +610,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }
 
   const selectedTinyModel = auxTinyModelId ? getModelById(auxTinyModelId) : undefined
+
+  const selectedAutoReviewModel = autoReviewModelId ? getModelById(autoReviewModelId) : undefined
   const selectedVisionModel = auxVisionModelId ? getModelById(auxVisionModelId) : undefined
   const selectedSearchProvider = searchProviders.find((p) => p.id === searchProviderId)
 
@@ -1102,6 +1119,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             handleSaveAuxVisionModel,
             t('chooseModelForVision'),
             true
+          )}
+          {renderPicker(
+            'aux-auto-review-model',
+            t('auxAutoReviewModel'),
+            selectedAutoReviewModel,
+            handleSaveAutoReviewModel,
+            t('chooseModelForAutoReview')
           )}
         </div>
       )
