@@ -105,9 +105,48 @@ describe('buildConversationAvatars', () => {
       expect(avatars).toEqual([{ type: 'text', text: 'Z', fallback: 'Z' }])
     })
 
-    it('skips model participants whose model cannot be found', () => {
+    it('renders a deleted model from its retained identity', () => {
       const avatars = buildConversationAvatars(
-        [makeParticipant({ participant_type: 'model', participant_id: 'missing' })],
+        [makeParticipant({ participant_type: 'model', participant_id: 'model-1' })],
+        () => makeModel({ is_deleted: true })
+      )
+
+      expect(avatars).toEqual([{ type: 'image', imageUrl: gptAvatar, fallback: 'G' }])
+    })
+
+    it('falls back to the participant display name logo when the model is missing', () => {
+      const avatars = buildConversationAvatars(
+        [
+          makeParticipant({
+            participant_type: 'model',
+            participant_id: 'missing',
+            display_name: 'GPT-4o',
+          }),
+        ],
+        () => undefined
+      )
+
+      expect(avatars).toEqual([{ type: 'image', imageUrl: gptAvatar, fallback: 'G' }])
+    })
+
+    it('falls back to a display name letter when the missing model has no logo', () => {
+      const avatars = buildConversationAvatars(
+        [
+          makeParticipant({
+            participant_type: 'model',
+            participant_id: 'missing',
+            display_name: 'zephyr-custom',
+          }),
+        ],
+        () => undefined
+      )
+
+      expect(avatars).toEqual([{ type: 'text', text: 'Z', fallback: 'Z' }])
+    })
+
+    it('skips a missing model without any display name', () => {
+      const avatars = buildConversationAvatars(
+        [makeParticipant({ participant_type: 'model', participant_id: 'missing', display_name: '' })],
         () => undefined
       )
 

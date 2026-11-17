@@ -277,17 +277,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_model_tombstones_wipes_payload_and_hides() {
+    async fn delete_model_tombstones_keeps_identity_and_hides() {
         let (db, _dir) = test_db().await;
         let created = db.create_model(req("gpt-x")).await.unwrap();
 
         db.delete_model(&created.id).await.unwrap();
 
-        // Row survives as an identity-skeleton tombstone (merge propagation)
-        // and disappears from the canonical live listing.
+        // Row survives as a tombstone that keeps the model identity (name +
+        // model_id render avatars for conversations that reference it) and
+        // disappears from the canonical live listing.
         let (name, model_id, is_deleted, deleted_at) = raw_row(&db, &created.id).await;
-        assert_eq!(name, "");
-        assert_eq!(model_id, "");
+        assert_eq!(name, "Model gpt-x");
+        assert_eq!(model_id, "gpt-x");
         assert_eq!(is_deleted, 1);
         assert!(deleted_at.is_some(), "tombstone timestamp must be set");
         assert!(db.list_models().await.unwrap().is_empty());
@@ -316,19 +317,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_model_after_tombstone_reuses_deterministic_id() {
+    async fn create_model_after_tombstone_restores_same_row() {
         let (db, _dir) = test_db().await;
         let first = db.create_model(req("gpt-x")).await.unwrap();
         db.delete_model(&first.id).await.unwrap();
 
-        // The tombstone wipe blanked model_id, so the natural-key lookups
-        // cannot match it; re-adding the same logical model computes the
-        // same DETERMINISTIC id, replaces the dead row, and one live row
-        // remains (cross-device adds converge on the same id).
+        // The tombstone keeps model_id, so the (provider_id, model_id)
+        // natural-key lookup finds it and re-adding the same logical model
+        // restores that row in place: conversations referencing the id
+        // reattach to the live model, and one live row remains.
         let second = db.create_model(req("gpt-x")).await.unwrap();
         assert_eq!(
             second.id, first.id,
-            "deterministic id is the model identity"
+            "re-adding restores the tombstoned row"
         );
 
         let (_, _, is_deleted, deleted_at) = raw_row(&db, &first.id).await;

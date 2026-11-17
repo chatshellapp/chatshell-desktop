@@ -1,4 +1,4 @@
-import { getModelLogo } from '@/lib/model-logos'
+import { getModelLogo, getModelLogoById } from '@/lib/model-logos'
 import type { ParticipantSummary, Model } from '@/types'
 import type { AvatarData } from '@/components/message-list-item'
 
@@ -30,24 +30,28 @@ export function buildConversationAvatars(
         })
       }
     } else if (participant.participant_type === 'model' && participant.participant_id) {
+      // The store includes deleted models (their tombstones keep name and
+      // model_id). When the row is unavailable (e.g. not synced yet), fall
+      // back to the display name snapshotted on the participant.
       const model = getModelById(participant.participant_id)
-      if (model) {
-        const modelLogo = getModelLogo(model)
-        if (modelLogo) {
-          avatars.push({
-            type: 'image',
-            imageUrl: modelLogo,
-            fallback: model.name.charAt(0).toUpperCase(),
-          })
-        } else {
-          // Don't set backgroundColor - let the Avatar use its default bg-muted styling
-          // This matches the behavior of ModelAvatar component
-          avatars.push({
-            type: 'text',
-            text: model.name.charAt(0).toUpperCase(),
-            fallback: model.name.charAt(0).toUpperCase(),
-          })
-        }
+      const name = model?.name || participant.display_name
+      if (!name) return
+      const modelLogo = model ? getModelLogo(model) : getModelLogoById(name)
+      const initial = name.charAt(0).toUpperCase()
+      if (modelLogo) {
+        avatars.push({
+          type: 'image',
+          imageUrl: modelLogo,
+          fallback: initial,
+        })
+      } else {
+        // Don't set backgroundColor - let the Avatar use its default bg-muted styling
+        // This matches the behavior of ModelAvatar component
+        avatars.push({
+          type: 'text',
+          text: initial,
+          fallback: initial,
+        })
       }
     } else if (participant.participant_type === 'user') {
       if (participant.avatar_type === 'image') {

@@ -91,11 +91,13 @@ pub fn wipe_fragment(table: &str) -> Option<&'static str> {
             "display_name = NULL, role = NULL, status = NULL, joined_at = '', \
              left_at = NULL, last_read_at = NULL, metadata = NULL"
         }
+        // `name` and `model_id` survive the tombstone: conversations and
+        // messages keep referencing a deleted model, and its identity (not
+        // private) is what renders their avatars and sender names. Keeping
+        // `model_id` also lets the (provider_id, model_id) natural-key
+        // lookup restore the row when the model is added again.
         // `is_deleted` is the legacy visibility flag; keep it consistent.
-        "models" => {
-            "name = '', model_id = '', description = NULL, is_starred = NULL, \
-             is_deleted = 1"
-        }
+        "models" => "description = NULL, is_starred = NULL, is_deleted = 1",
         // Wiping storage_path/content_hash lets the blob GC reclaim the
         // bytes once the tombstone is older than the grace period.
         "files" => {
