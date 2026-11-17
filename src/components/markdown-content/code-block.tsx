@@ -1,13 +1,15 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Check, Copy } from 'lucide-react'
+import { useResolvedTheme } from '@/lib/theme'
 import type { CodeBlockProps } from './types'
 
 export function CodeBlock({ language, code, flat = false }: CodeBlockProps) {
   const { t } = useTranslation(['common', 'attachments'])
   const [copied, setCopied] = useState(false)
+  const isDark = useResolvedTheme() === 'dark'
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(code)
@@ -53,12 +55,12 @@ export function CodeBlock({ language, code, flat = false }: CodeBlockProps) {
       </div>
       <SyntaxHighlighter
         language={language || 'text'}
-        style={oneLight}
+        style={isDark ? oneDark : oneLight}
         customStyle={{
           margin: 0,
           borderRadius: 0,
           fontSize: flat ? '0.75rem' : '0.875rem',
-          background: '#fafafa',
+          background: isDark ? 'var(--card)' : '#fafafa',
         }}
         showLineNumbers={code.split('\n').length > 3}
         lineNumberStyle={{ userSelect: 'none', MozUserSelect: 'none', WebkitUserSelect: 'none' }}

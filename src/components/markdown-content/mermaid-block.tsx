@@ -147,23 +147,20 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
   // Show error only when not waiting and no successful render exists
   if (error && !isWaiting && !svg) {
     return (
-      <div className="my-2 border border-amber-500/50 rounded-md overflow-hidden isolate">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/50">
+      <div className="my-2 border border-warning/50 rounded-md overflow-hidden isolate">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-warning/10 border-b border-warning/50">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <span className="text-xs text-amber-700 font-medium">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <span className="text-xs text-warning font-medium">
               {t('attachments:failedToRenderDiagram')}
             </span>
           </div>
-          <button
-            onClick={handleRetry}
-            className="text-xs text-amber-700 hover:text-amber-900 hover:underline"
-          >
+          <button onClick={handleRetry} className="text-xs text-warning hover:underline">
             {t('retry')}
           </button>
         </div>
-        <div className="p-3 bg-amber-50/50">
-          <pre className="text-xs text-amber-800 whitespace-pre-wrap font-mono break-words max-h-20 overflow-y-auto">
+        <div className="p-3 bg-warning/5">
+          <pre className="text-xs text-warning whitespace-pre-wrap font-mono break-words max-h-20 overflow-y-auto">
             {error}
           </pre>
           <details className="mt-2">
@@ -219,7 +216,7 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
             aria-label={copied ? t('attachments:copied') : t('attachments:copyCode')}
             title={t('attachments:copyCode')}
           >
@@ -237,7 +234,7 @@ export function MermaidBlock({ code, flat = false }: MermaidBlockProps) {
           </button>
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-black/5 rounded transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
             aria-label={t('attachments:downloadSvg')}
             title={t('attachments:downloadSvg')}
           >

@@ -4,10 +4,9 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Light-only: the app currently never applies the Tailwind `.dark`
-         class (light UI on every launch), so declaring dark support here
-         would flash a dark splash/canvas before the light app mounts. -->
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Applies the saved theme (the `.dark` class) before first paint. -->
+    <script src="/theme-init.js"></script>
     <title>ChatShell</title>
     <style>
       /*
@@ -20,6 +19,9 @@
        */
       html {
         background-color: oklch(1 0 0);
+      }
+      html.dark {
+        background-color: oklch(0.145 0 0);
       }
       #splash {
         position: fixed;

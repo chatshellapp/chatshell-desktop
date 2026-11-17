@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import '@/lib/i18n'
+import { initTheme } from '@/lib/theme'
 import { useConversationStore } from '@/stores/conversation'
 import { useMessageStore } from '@/stores/message'
 import { useRunFoldStore } from '@/stores/runFoldStore'
@@ -14,6 +15,8 @@ if (import.meta.env.DEV) {
     __chatshellTest: { useConversationStore, useMessageStore, useRunFoldStore },
   })
 }
+
+initTheme()
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
