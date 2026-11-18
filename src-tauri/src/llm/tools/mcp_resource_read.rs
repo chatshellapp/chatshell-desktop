@@ -10,8 +10,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chatshell_agent_core::mcp::{read_resource_with_options, render_read_resource_result};
-use chatshell_agent_core::permission::file_uri_path;
+use chatshell_agent_core::mcp::{
+    read_resource_with_options, render_read_resource_result, scan_resource_uri,
+};
 use chatshell_agent_core::tools::SpillTarget;
 use rig::agent::tool::Tool;
 use rmcp::service::ServiceError;
@@ -19,7 +20,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::McpClientEntry;
-use super::path_policy;
 
 #[derive(Debug, thiserror::Error)]
 pub enum McpResourceReadError {
@@ -67,17 +67,6 @@ impl McpResourceReadTool {
         self.spill = Some(target);
         self
     }
-}
-
-/// INV-1: scan the URI like an MCP argument, and resolve `file://` URIs
-/// through the read path policy.
-fn scan_resource_uri(uri: &str) -> Result<(), String> {
-    path_policy::check_blocked_path(uri)?;
-    if let Some(path) = file_uri_path(uri) {
-        path_policy::check_blocked_path(&path.to_string_lossy())?;
-        path_policy::check_read(&path, None)?;
-    }
-    Ok(())
 }
 
 impl Tool for McpResourceReadTool {
@@ -139,30 +128,5 @@ impl Tool for McpResourceReadTool {
             })?;
 
         Ok(render_read_resource_result(&result, self.spill.as_ref()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn plain_uris_pass() {
-        assert!(scan_resource_uri("mem://notes/today").is_ok());
-        assert!(scan_resource_uri("https://example.com/doc").is_ok());
-    }
-
-    #[test]
-    fn file_uri_of_a_denied_path_is_blocked() {
-        let home = dirs::home_dir().unwrap();
-        let uri = url::Url::from_file_path(home.join(".ssh/id_rsa"))
-            .unwrap()
-            .to_string();
-        assert!(scan_resource_uri(&uri).is_err());
-    }
-
-    #[test]
-    fn blocked_path_inside_a_custom_scheme_is_caught() {
-        assert!(scan_resource_uri("~/.ssh/id_rsa").is_err());
     }
 }
