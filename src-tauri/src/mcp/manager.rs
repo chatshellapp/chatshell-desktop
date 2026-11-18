@@ -3,15 +3,19 @@
 //! Manages connections to MCP servers via Streamable HTTP and STDIO transports.
 
 use anyhow::{Context, Result};
-use rmcp::model::{ClientCapabilities, ClientInfo, Implementation, Tool as McpTool};
-use rmcp::service::{Peer, RunningService};
+use rmcp::handler::client::progress::ProgressDispatcher;
+use rmcp::model::Tool as McpTool;
+use rmcp::service::Peer;
 use rmcp::transport::TokioChildProcess;
 use rmcp::{RoleClient, ServiceExt};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
 
-use chatshell_agent_core::mcp::{self as core_mcp, connect_http_service};
+use chatshell_agent_core::mcp::{
+    self as core_mcp, ChatShellClientHandler, McpCallOptions, McpNotificationSink,
+    connect_http_service, list_all_tools_bounded,
+};
 
 use super::auth_error;
 use super::oauth::{self, RefreshError};
@@ -62,7 +66,81 @@ enum RefreshFailure {
 }
 
 /// Type alias for the running MCP client service
-type McpRunningService = RunningService<RoleClient, ClientInfo>;
+type McpRunningService = core_mcp::McpClientService;
+
+/// A server's tool list changed (`notifications/tools/list_changed`) and the
+/// cached connection now holds the re-listed tools.
+pub struct McpToolsChanged {
+    pub server_id: String,
+    pub server_name: String,
+    pub tools: Vec<McpTool>,
+}
+
+/// Called after a list_changed refresh (the app layer rewrites the
+/// definition files and notifies the frontend).
+pub type McpToolsChangedHook = Arc<dyn Fn(McpToolsChanged) + Send + Sync>;
+
+type ConnectionMap = Arc<RwLock<HashMap<String, McpServerConnection>>>;
+
+/// Re-lists a server's tools when it reports a change, updating the cached
+/// connection in place. Holds the cache weakly so a dropped manager does not
+/// stay alive through a connection's handler.
+struct ListChangedSink {
+    connections: Weak<RwLock<HashMap<String, McpServerConnection>>>,
+    server_id: String,
+    server_name: String,
+    hook: Option<McpToolsChangedHook>,
+}
+
+impl McpNotificationSink for ListChangedSink {
+    fn tools_list_changed(&self) {
+        let Some(connections) = self.connections.upgrade() else {
+            return;
+        };
+        let server_id = self.server_id.clone();
+        let server_name = self.server_name.clone();
+        let hook = self.hook.clone();
+        tokio::spawn(async move {
+            let Some(peer) = connections
+                .read()
+                .await
+                .get(&server_id)
+                .map(|c| c.client.clone())
+            else {
+                return;
+            };
+            let tools = match list_all_tools_bounded(&peer, &server_name).await {
+                Ok(tools) => tools,
+                Err(e) => {
+                    tracing::warn!(
+                        "⚠️ Re-listing tools for '{}' after list_changed failed: {e:#}",
+                        server_name
+                    );
+                    return;
+                }
+            };
+            {
+                let mut map = connections.write().await;
+                let Some(conn) = map.get_mut(&server_id) else {
+                    return;
+                };
+                conn.mcp_tools = tools.clone();
+            }
+            tracing::info!(
+                "🔄 MCP server '{}' tool list refreshed: {} tool(s)",
+                server_name,
+                tools.len()
+            );
+            if let Some(hook) = hook {
+                hook(McpToolsChanged {
+                    server_id,
+                    server_name,
+                    tools,
+                });
+            }
+        });
+    }
+}
 
 /// Represents an active connection to an MCP server
 /// Note: This struct is Clone but the running_service is wrapped in Arc for shared ownership.
@@ -74,6 +152,8 @@ pub struct McpServerConnection {
     pub mcp_tools: Vec<McpTool>,
     /// The client peer for calling tools (derived from running_service)
     pub client: Peer<RoleClient>,
+    /// Deadline settings for `tools/call` on this server.
+    pub call_options: McpCallOptions,
     /// The running service that keeps the connection alive
     /// IMPORTANT: This MUST be kept alive for the connection to work.
     /// Dropping this will cancel the background transport task.
@@ -86,8 +166,19 @@ impl Clone for McpServerConnection {
             tool: self.tool.clone(),
             mcp_tools: self.mcp_tools.clone(),
             client: self.client.clone(),
+            call_options: self.call_options,
             _running_service: Arc::clone(&self._running_service),
         }
+    }
+}
+
+impl McpServerConnection {
+    /// Routes `notifications/progress` to in-flight calls on this server.
+    pub fn progress_dispatcher(&self) -> ProgressDispatcher {
+        self._running_service
+            .service()
+            .progress_dispatcher()
+            .clone()
     }
 }
 
@@ -111,7 +202,9 @@ pub struct ConnectMultipleResult {
 #[derive(Default)]
 pub struct McpConnectionManager {
     /// Cache of active connections by tool ID
-    connections: Arc<RwLock<HashMap<String, McpServerConnection>>>,
+    connections: ConnectionMap,
+    /// Called after a server-reported tool list change was applied.
+    tools_changed_hook: std::sync::RwLock<Option<McpToolsChangedHook>>,
     /// Where refreshed OAuth grants are persisted. Unset in tests and
     /// before app setup; without it no refresh is attempted.
     token_store: std::sync::RwLock<Option<Arc<dyn McpTokenStore>>>,
@@ -131,6 +224,29 @@ impl McpConnectionManager {
     /// Install the persistence seam used for OAuth refresh.
     pub fn set_token_store(&self, store: Arc<dyn McpTokenStore>) {
         *self.token_store.write().unwrap_or_else(|e| e.into_inner()) = Some(store);
+    }
+
+    /// Install the hook run after a `tools/list_changed` refresh.
+    pub fn set_tools_changed_hook(&self, hook: McpToolsChangedHook) {
+        *self
+            .tools_changed_hook
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(hook);
+    }
+
+    fn handler_for(&self, tool: &Tool) -> ChatShellClientHandler {
+        let sink = ListChangedSink {
+            connections: Arc::downgrade(&self.connections),
+            server_id: tool.id.clone(),
+            server_name: tool.name.clone(),
+            hook: self
+                .tools_changed_hook
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+        };
+        ChatShellClientHandler::new(&tool.name, Some(Arc::new(sink)))
+            .with_client_version(env!("CARGO_PKG_VERSION"))
     }
 
     fn token_store(&self) -> Option<Arc<dyn McpTokenStore>> {
@@ -326,11 +442,12 @@ impl McpConnectionManager {
     }
 
     /// Create the standard client info for MCP connections
-    fn create_client_info() -> ClientInfo {
-        ClientInfo::new(
-            ClientCapabilities::default(),
-            Implementation::new("chatshell", env!("CARGO_PKG_VERSION")),
-        )
+    #[cfg(test)]
+    fn create_client_info() -> rmcp::model::ClientInfo {
+        use rmcp::ClientHandler;
+        ChatShellClientHandler::new("test", None)
+            .with_client_version(env!("CARGO_PKG_VERSION"))
+            .get_info()
     }
 
     /// Resolve HTTP auth header from the tool's encrypted `auth_token` column.
@@ -385,6 +502,7 @@ impl McpConnectionManager {
         endpoint: &str,
         auth_header: Option<String>,
         custom_headers: Option<&HashMap<String, String>>,
+        handler: ChatShellClientHandler,
     ) -> Result<McpRunningService> {
         tracing::info!("🌐 Connecting via HTTP to: {}", endpoint);
 
@@ -393,11 +511,15 @@ impl McpConnectionManager {
             auth_token: auth_header,
             custom_headers: custom_headers.cloned().unwrap_or_default(),
         };
-        connect_http_service(&config).await
+        connect_http_service(&config, handler).await
     }
 
     /// Connect to an MCP server via STDIO transport
-    async fn connect_stdio(&self, config: &McpConfig) -> Result<McpRunningService> {
+    async fn connect_stdio(
+        &self,
+        config: &McpConfig,
+        handler: ChatShellClientHandler,
+    ) -> Result<McpRunningService> {
         let command_str = config
             .command
             .as_ref()
@@ -497,8 +619,7 @@ impl McpConnectionManager {
         tracing::info!("✅ Created STDIO transport for MCP server");
 
         // Connect using the transport
-        let client_info = Self::create_client_info();
-        let running_service = client_info
+        let running_service = handler
             .serve(transport)
             .await
             .context("Failed to establish MCP connection via STDIO")?;
@@ -595,13 +716,20 @@ impl McpConnectionManager {
                     },
                     custom_headers.map(|h| h.len()).unwrap_or(0)
                 );
-                self.connect_http(endpoint, auth_header, custom_headers)
-                    .await?
+                self.connect_http(
+                    endpoint,
+                    auth_header,
+                    custom_headers,
+                    self.handler_for(tool),
+                )
+                .await?
             }
             McpTransportType::Stdio => {
-                let mcp_config =
-                    config.ok_or_else(|| anyhow::anyhow!("STDIO transport requires a config"))?;
-                self.connect_stdio(&mcp_config).await?
+                let mcp_config = config
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("STDIO transport requires a config"))?;
+                self.connect_stdio(mcp_config, self.handler_for(tool))
+                    .await?
             }
         };
 
@@ -615,13 +743,8 @@ impl McpConnectionManager {
             tracing::info!("✅ Connected to MCP server (no server info available)");
         }
 
-        // List available tools
-        let tools_result = running_service
-            .list_tools(Default::default())
-            .await
-            .context("Failed to list tools from MCP server")?;
-
-        let mcp_tools = tools_result.tools;
+        // List available tools (every page)
+        let mcp_tools = list_all_tools_bounded(running_service.peer(), &tool.name).await?;
         tracing::info!(
             "📦 Found {} tools from MCP server {}",
             mcp_tools.len(),
@@ -635,10 +758,15 @@ impl McpConnectionManager {
         // Clone the peer before wrapping in Arc (peer is Clone)
         let client_peer = running_service.peer().clone();
 
+        let call_options = config
+            .as_ref()
+            .map(McpConfig::call_options)
+            .unwrap_or_default();
         let connection = McpServerConnection {
             tool: tool.clone(),
             mcp_tools,
             client: client_peer,
+            call_options,
             _running_service: Arc::new(running_service),
         };
 
@@ -662,11 +790,11 @@ impl McpConnectionManager {
 
         if let Some(conn) = cached {
             // Validate the cached connection is still alive
-            match conn._running_service.list_tools(Default::default()).await {
-                Ok(tools_result) => {
+            match list_all_tools_bounded(&conn.client, &tool.name).await {
+                Ok(tools) => {
                     // Update cached tools in case they changed
                     let mut updated = conn.clone();
-                    updated.mcp_tools = tools_result.tools;
+                    updated.mcp_tools = tools;
                     {
                         let mut connections = self.connections.write().await;
                         connections.insert(tool.id.clone(), updated.clone());
@@ -752,38 +880,41 @@ impl McpConnectionManager {
     pub async fn test_http_connection(&self, endpoint: &str) -> Result<Vec<McpTool>> {
         tracing::info!("🧪 Testing HTTP connection to: {}", endpoint);
 
-        let running_service = self.connect_http(endpoint, None, None).await?;
+        let running_service = self
+            .connect_http(
+                endpoint,
+                None,
+                None,
+                ChatShellClientHandler::new(endpoint, None)
+                    .with_client_version(env!("CARGO_PKG_VERSION")),
+            )
+            .await?;
 
-        let tools_result = running_service
-            .list_tools(Default::default())
-            .await
-            .context("Failed to list tools from MCP server")?;
+        let tools = list_all_tools_bounded(running_service.peer(), endpoint).await?;
 
-        tracing::info!(
-            "✅ HTTP test successful: found {} tools",
-            tools_result.tools.len()
-        );
+        tracing::info!("✅ HTTP test successful: found {} tools", tools.len());
 
-        Ok(tools_result.tools)
+        Ok(tools)
     }
 
     /// Test connection to an MCP server via STDIO
     pub async fn test_stdio_connection(&self, config: &McpConfig) -> Result<Vec<McpTool>> {
         tracing::info!("🧪 Testing STDIO connection: {:?}", config.command);
 
-        let running_service = self.connect_stdio(config).await?;
+        let label = config.command.clone().unwrap_or_default();
+        let running_service = self
+            .connect_stdio(
+                config,
+                ChatShellClientHandler::new(&label, None)
+                    .with_client_version(env!("CARGO_PKG_VERSION")),
+            )
+            .await?;
 
-        let tools_result = running_service
-            .list_tools(Default::default())
-            .await
-            .context("Failed to list tools from MCP server")?;
+        let tools = list_all_tools_bounded(running_service.peer(), &label).await?;
 
-        tracing::info!(
-            "✅ STDIO test successful: found {} tools",
-            tools_result.tools.len()
-        );
+        tracing::info!("✅ STDIO test successful: found {} tools", tools.len());
 
-        Ok(tools_result.tools)
+        Ok(tools)
     }
 
     /// Test connection to an MCP server (auto-detect transport type)
@@ -828,11 +959,21 @@ pub fn sync_tool_definitions(
     for tool in mcp_tools {
         let file_name = format!("{}.json", sanitize_name(&tool.name));
         let file_path = server_dir.join(&file_name);
-        let definition = serde_json::json!({
+        // Spec metadata only (INV-5): never tokens, headers, or OAuth data.
+        let mut definition = serde_json::json!({
             "name": tool.name,
             "description": tool.description,
             "inputSchema": tool.input_schema,
         });
+        if let Some(title) = &tool.title {
+            definition["title"] = serde_json::json!(title);
+        }
+        if let Some(annotations) = &tool.annotations {
+            definition["annotations"] = serde_json::json!(annotations);
+        }
+        if let Some(output_schema) = &tool.output_schema {
+            definition["outputSchema"] = serde_json::json!(output_schema);
+        }
         let json_str = serde_json::to_string_pretty(&definition)
             .context("Failed to serialize MCP tool definition")?;
         std::fs::write(&file_path, json_str)
@@ -946,6 +1087,36 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&fetch).unwrap();
         assert_eq!(value["name"], "read/file");
         assert_eq!(value["description"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn sync_tool_definitions_writes_annotations_and_output_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool: McpTool = serde_json::from_value(json!({
+            "name": "weather",
+            "title": "Weather",
+            "inputSchema": {"type": "object"},
+            "outputSchema": {"type": "object", "properties": {"t": {"type": "number"}}},
+            "annotations": {"readOnlyHint": true, "openWorldHint": true},
+        }))
+        .unwrap();
+        let out = sync_tool_definitions(dir.path(), "srv", &[tool]).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("weather.json")).unwrap())
+                .unwrap();
+        assert_eq!(value["title"], "Weather");
+        assert_eq!(value["annotations"]["readOnlyHint"], true);
+        assert_eq!(value["annotations"]["openWorldHint"], true);
+        assert_eq!(value["outputSchema"]["properties"]["t"]["type"], "number");
+
+        // Absent metadata stays absent (no nulls).
+        let plain = mcp_tool("plain", None);
+        let out = sync_tool_definitions(dir.path(), "srv2", &[plain]).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("plain.json")).unwrap())
+                .unwrap();
+        assert!(value.get("annotations").is_none());
+        assert!(value.get("outputSchema").is_none());
     }
 
     #[test]

@@ -12,10 +12,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chatshell_agent_core::mcp::{McpCallOptions, call_tool_with_options, render_call_tool_result};
 use rig::agent::tool::Tool;
 use rmcp::RoleClient;
-use rmcp::model::{CallToolRequestParams, ContentBlock};
-use rmcp::service::Peer;
+use rmcp::handler::client::progress::ProgressDispatcher;
+use rmcp::model::{CallToolRequestParams, ProgressNotificationParam};
+use rmcp::service::{Peer, ServiceError};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -31,6 +33,15 @@ pub enum McpToolUseError {
     CallFailed(String),
     #[error("MCP tool call blocked: {0}")]
     Blocked(String),
+    #[error(
+        "MCP tool '{tool}' on server '{server}' timed out after {secs} s without a response. \
+         The server may still be working; do not assume the call had no effect."
+    )]
+    TimedOut {
+        server: String,
+        tool: String,
+        secs: u64,
+    },
     #[error(
         "MCP server '{server}' rejected ChatShell's credentials; the user must sign in to it \
          again in ChatShell. Do not retry this call. ({detail})"
@@ -50,13 +61,27 @@ pub struct McpToolUseArgs {
     pub arguments: serde_json::Value,
 }
 
-/// Maps "server/tool" -> (server_name, Peer<RoleClient>)
-pub type McpClientMap = Arc<RwLock<HashMap<String, (String, Peer<RoleClient>)>>>;
+/// Called with (server, tool, progress) for each `notifications/progress`
+/// a server sends about an in-flight call.
+pub type McpProgressNotifier = Arc<dyn Fn(&str, &str, &ProgressNotificationParam) + Send + Sync>;
+
+/// How to reach the server that owns a tool.
+#[derive(Clone)]
+pub struct McpClientEntry {
+    pub server_name: String,
+    pub peer: Peer<RoleClient>,
+    pub call_options: McpCallOptions,
+    pub progress: ProgressDispatcher,
+}
+
+/// Maps "server/tool" -> the owning server's client
+pub type McpClientMap = Arc<RwLock<HashMap<String, McpClientEntry>>>;
 
 #[derive(Clone)]
 pub struct McpToolUseTool {
     clients: McpClientMap,
     on_auth_failure: Option<McpAuthFailureNotifier>,
+    on_progress: Option<McpProgressNotifier>,
 }
 
 impl McpToolUseTool {
@@ -64,7 +89,15 @@ impl McpToolUseTool {
         Self {
             clients,
             on_auth_failure: None,
+            on_progress: None,
         }
+    }
+
+    /// Forward server progress for in-flight calls (the streaming layer
+    /// emits it to the frontend).
+    pub fn with_progress_notifier(mut self, notifier: McpProgressNotifier) -> Self {
+        self.on_progress = Some(notifier);
+        self
     }
 
     /// Report auth-classified call failures (the streaming layer drops the
@@ -197,9 +230,12 @@ impl Tool for McpToolUseTool {
         // Security: scan arguments (every transport)
         scan_mcp_arguments(&args.tool, &args.arguments).map_err(McpToolUseError::Blocked)?;
 
-        let clients = self.clients.read().await;
-        let (_server_name, client) = clients
+        let entry = self
+            .clients
+            .read()
+            .await
             .get(&key)
+            .cloned()
             .ok_or_else(|| McpToolUseError::UnknownTool(key.clone()))?;
 
         tracing::info!(
@@ -212,8 +248,35 @@ impl Tool for McpToolUseTool {
 
         let mut params = CallToolRequestParams::new(args.tool.clone());
         params.arguments = Some(arguments);
-        let result = match client.call_tool(params).await {
+        let on_progress = self.on_progress.clone();
+        let (server, tool) = (args.server.clone(), args.tool.clone());
+        let result = call_tool_with_options(
+            &entry.peer,
+            params,
+            entry.call_options,
+            Some(&entry.progress),
+            move |update| {
+                if let Some(notify) = &on_progress {
+                    notify(&server, &tool, &update);
+                }
+            },
+        )
+        .await;
+        let result = match result {
             Ok(r) => r,
+            Err(ServiceError::Timeout { timeout }) => {
+                tracing::warn!(
+                    "⏱️ [mcp_tool_use] '{}' on '{}' timed out after {:?}",
+                    args.tool,
+                    args.server,
+                    timeout
+                );
+                return Err(McpToolUseError::TimedOut {
+                    server: args.server.clone(),
+                    tool: args.tool.clone(),
+                    secs: timeout.as_secs(),
+                });
+            }
             Err(e) => {
                 // Only this arm (a transport/protocol failure) can mean the
                 // server rejected our credentials; `is_error` results below
@@ -238,59 +301,16 @@ impl Tool for McpToolUseTool {
             }
         };
 
-        if let Some(true) = result.is_error {
-            let error_msg: String = result
-                .content
-                .into_iter()
-                .filter_map(|c| match c {
-                    ContentBlock::Text(raw) => Some(raw.text.to_string()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            let msg = if error_msg.is_empty() {
+        let rendered = render_call_tool_result(&result);
+        if rendered.is_error {
+            let msg = if rendered.text.is_empty() {
                 "No error message returned".to_string()
             } else {
-                error_msg
+                rendered.text
             };
             return Err(McpToolUseError::CallFailed(msg));
         }
-
-        Ok(result
-            .content
-            .into_iter()
-            .map(|c| match c {
-                ContentBlock::Text(raw) => raw.text.to_string(),
-                ContentBlock::Image(raw) => {
-                    format!("data:{};base64,{}", raw.mime_type, raw.data)
-                }
-                ContentBlock::Resource(raw) => match raw.resource {
-                    rmcp::model::ResourceContents::TextResourceContents {
-                        uri,
-                        mime_type,
-                        text,
-                        ..
-                    } => {
-                        format!(
-                            "{mime_type}{uri}:{text}",
-                            mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                        )
-                    }
-                    rmcp::model::ResourceContents::BlobResourceContents {
-                        uri,
-                        mime_type,
-                        blob,
-                        ..
-                    } => format!(
-                        "{mime_type}{uri}:{blob}",
-                        mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                    ),
-                    _ => String::new(),
-                },
-                _ => String::new(),
-            })
-            .collect::<String>())
+        Ok(rendered.text)
     }
 }
 

@@ -40,4 +40,18 @@ oauth_metadata?: OAuthMetadata,
 /**
  * Custom HTTP headers (for HTTP transport)
  */
-headers?: { [key in string]: string }, };
+headers?: { [key in string]: string }, 
+/**
+ * Per-call deadline for `tools/call` in seconds. Unset = 30 s, 0 = no
+ * deadline.
+ */
+tool_call_timeout_secs?: number, 
+/**
+ * Progress notifications push the deadline back. Unset = on.
+ */
+reset_timeout_on_progress?: boolean, 
+/**
+ * Ceiling on a call whose deadline keeps being reset by progress, in
+ * seconds. Unset = 600 s, 0 = no ceiling.
+ */
+max_tool_call_duration_secs?: number, };

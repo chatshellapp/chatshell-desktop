@@ -17,6 +17,13 @@ export interface McpToolInfo {
   description?: string
 }
 
+/** Latest server progress for an in-flight MCP tool call. */
+export interface McpToolProgress {
+  progress: number
+  total?: number | null
+  message?: string | null
+}
+
 export type McpConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'needs_auth'
 
 interface McpState {
@@ -46,6 +53,8 @@ interface McpState {
   // during that conversation (drives the in-chat banner; dismissing removes
   // the entry until the next report)
   authReports: Record<string, string[]>
+  // conversationId -> tool-call display name -> latest progress
+  toolProgress: Record<string, Record<string, McpToolProgress>>
 
   // Actions
   loadServers: () => Promise<void>
@@ -89,6 +98,11 @@ interface McpState {
   clearAuthReport: (conversationId: string, serverId: string) => void
   reauthorize: (serverId: string) => Promise<void>
   recheckNeedsAuth: () => Promise<void>
+
+  // Live MCP updates
+  setToolProgress: (conversationId: string, toolName: string, progress: McpToolProgress) => void
+  clearToolProgress: (conversationId: string, toolName: string) => void
+  refreshServerTools: (id: string) => Promise<void>
 }
 
 export const useMcpStore = create<McpState>()(
@@ -105,6 +119,7 @@ export const useMcpStore = create<McpState>()(
     probeResults: {},
     needsAuth: {},
     authReports: {},
+    toolProgress: {},
 
     loadServers: async () => {
       set((draft) => {
@@ -469,6 +484,33 @@ export const useMcpStore = create<McpState>()(
           draft.connectionStatus[id] = 'connected'
         }
       })
+    },
+
+    setToolProgress: (conversationId: string, toolName: string, progress: McpToolProgress) => {
+      set((draft) => {
+        draft.toolProgress[conversationId] ??= {}
+        draft.toolProgress[conversationId][toolName] = progress
+      })
+    },
+
+    clearToolProgress: (conversationId: string, toolName: string) => {
+      if (!get().toolProgress[conversationId]?.[toolName]) return
+      set((draft) => {
+        delete draft.toolProgress[conversationId][toolName]
+      })
+    },
+
+    // The server's tool list changed: refresh it where settings shows it.
+    refreshServerTools: async (id: string) => {
+      if (!get().serverTools[id]) return
+      try {
+        const tools = await invoke<McpToolInfo[]>('list_mcp_server_tools', { id })
+        set((draft) => {
+          draft.serverTools[id] = tools
+        })
+      } catch (error) {
+        logger.warn('[mcpStore] Failed to refresh tools after list change:', { id, error })
+      }
     },
 
     clearAuthReport: (conversationId: string, serverId: string) => {

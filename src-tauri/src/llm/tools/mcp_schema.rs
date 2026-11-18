@@ -17,6 +17,40 @@ pub enum McpSchemaError {
     ReadError(String),
 }
 
+/// One-line summary of a tool's annotations from its definition JSON, e.g.
+/// `Hints (server-declared, unverified): read-only, idempotent`. `None` when
+/// the definition carries no annotations (or none we summarize).
+fn annotation_summary(definition: &serde_json::Value) -> Option<String> {
+    let a = definition.get("annotations")?.as_object()?;
+    let flag = |key: &str| a.get(key).and_then(serde_json::Value::as_bool);
+    let mut parts: Vec<&str> = Vec::new();
+    match flag("readOnlyHint") {
+        Some(true) => parts.push("read-only"),
+        Some(false) => parts.push("may modify"),
+        None => {}
+    }
+    match flag("destructiveHint") {
+        Some(true) => parts.push("destructive"),
+        Some(false) => parts.push("not destructive"),
+        None => {}
+    }
+    if flag("idempotentHint") == Some(true) {
+        parts.push("idempotent");
+    }
+    match flag("openWorldHint") {
+        Some(true) => parts.push("open-world"),
+        Some(false) => parts.push("closed-world"),
+        None => {}
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Hints (server-declared, unverified): {}",
+        parts.join(", ")
+    ))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct McpSchemaArgs {
     pub server: String,
@@ -165,6 +199,13 @@ impl Tool for McpSchemaTool {
         // do not control; bound what enters the model's context (UTF-8
         // boundary safe).
         const MAX_SCHEMA_CHARS: usize = 8_000;
+        let summary = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .as_ref()
+            .and_then(annotation_summary)
+            .map(|line| format!("{line}\n"))
+            .unwrap_or_default();
+
         let mut bounded = content;
         if bounded.len() > MAX_SCHEMA_CHARS {
             let mut end = MAX_SCHEMA_CHARS;
@@ -173,12 +214,12 @@ impl Tool for McpSchemaTool {
             }
             bounded.truncate(end);
             Ok(format!(
-                "<mcp_schema server=\"{}\" tool=\"{}\">\n{}\n[schema truncated at {} chars — the server published an unusually large schema; call the tool with conservative arguments or inspect the server source]\n</mcp_schema>",
+                "<mcp_schema server=\"{}\" tool=\"{}\">\n{summary}{}\n[schema truncated at {} chars — the server published an unusually large schema; call the tool with conservative arguments or inspect the server source]\n</mcp_schema>",
                 args.server, args.tool, bounded, MAX_SCHEMA_CHARS
             ))
         } else {
             Ok(format!(
-                "<mcp_schema server=\"{}\" tool=\"{}\">\n{}\n</mcp_schema>",
+                "<mcp_schema server=\"{}\" tool=\"{}\">\n{summary}{}\n</mcp_schema>",
                 args.server, args.tool, bounded
             ))
         }
@@ -304,5 +345,49 @@ mod tests {
 
         assert!(out.contains("{\"type\":\"object\"}"));
         assert!(!out.contains("truncated"));
+        assert!(!out.contains("Hints"), "no annotations, no summary line");
+    }
+
+    #[test]
+    fn annotation_summary_lists_declared_hints() {
+        let def = json!({"annotations": {
+            "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true
+        }});
+        assert_eq!(
+            annotation_summary(&def).as_deref(),
+            Some("Hints (server-declared, unverified): read-only, not destructive, idempotent")
+        );
+        assert_eq!(annotation_summary(&json!({"annotations": {}})), None);
+        assert_eq!(annotation_summary(&json!({})), None);
+    }
+
+    #[tokio::test]
+    async fn schema_output_leads_with_annotation_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_dir = dir.path().join("srv");
+        std::fs::create_dir_all(&schema_dir).unwrap();
+        std::fs::write(
+            schema_dir.join("tool.json"),
+            json!({"name": "tool", "annotations": {"destructiveHint": true}}).to_string(),
+        )
+        .unwrap();
+        let tool = McpSchemaTool::new(
+            vec![server("srv", vec![("tool", "desc")])],
+            dir.path().to_string_lossy().to_string(),
+        );
+        let out = <McpSchemaTool as Tool>::call(
+            &tool,
+            &mut ToolContext::default(),
+            McpSchemaArgs {
+                server: "srv".to_string(),
+                tool: "tool".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            out.contains("\nHints (server-declared, unverified): destructive\n{"),
+            "{out}"
+        );
     }
 }

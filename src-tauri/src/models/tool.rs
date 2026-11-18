@@ -154,9 +154,35 @@ pub struct McpConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub headers: Option<HashMap<String, String>>,
+
+    /// Per-call deadline for `tools/call` in seconds. Unset = 30 s, 0 = no
+    /// deadline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub tool_call_timeout_secs: Option<u64>,
+
+    /// Progress notifications push the deadline back. Unset = on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reset_timeout_on_progress: Option<bool>,
+
+    /// Ceiling on a call whose deadline keeps being reset by progress, in
+    /// seconds. Unset = 600 s, 0 = no ceiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub max_tool_call_duration_secs: Option<u64>,
 }
 
 impl McpConfig {
+    /// Deadline settings for `tools/call` on this server.
+    pub fn call_options(&self) -> chatshell_agent_core::mcp::McpCallOptions {
+        chatshell_agent_core::mcp::McpCallOptions::from_settings(
+            self.tool_call_timeout_secs,
+            self.reset_timeout_on_progress,
+            self.max_tool_call_duration_secs,
+        )
+    }
+
     /// Create a new HTTP transport config
     pub fn http() -> Self {
         Self {
@@ -168,6 +194,9 @@ impl McpConfig {
             auth_type: None,
             oauth_metadata: None,
             headers: None,
+            tool_call_timeout_secs: None,
+            reset_timeout_on_progress: None,
+            max_tool_call_duration_secs: None,
         }
     }
 
@@ -182,6 +211,9 @@ impl McpConfig {
             auth_type: None,
             oauth_metadata: None,
             headers: None,
+            tool_call_timeout_secs: None,
+            reset_timeout_on_progress: None,
+            max_tool_call_duration_secs: None,
         }
     }
 

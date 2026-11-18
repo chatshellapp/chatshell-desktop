@@ -96,6 +96,12 @@ pub struct McpServerConfig {
     pub auth_type: Option<String>, // "none", "bearer", "oauth"
     pub oauth_metadata: Option<OAuthMetadataDto>,
     pub headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub tool_call_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub reset_timeout_on_progress: Option<bool>,
+    #[serde(default)]
+    pub max_tool_call_duration_secs: Option<u64>,
 }
 
 /// OAuth metadata DTO for frontend
@@ -135,6 +141,9 @@ impl From<McpConfig> for McpServerConfig {
                 is_authorized: m.is_authorized,
             }),
             headers: config.headers,
+            tool_call_timeout_secs: config.tool_call_timeout_secs,
+            reset_timeout_on_progress: config.reset_timeout_on_progress,
+            max_tool_call_duration_secs: config.max_tool_call_duration_secs,
         }
     }
 }
@@ -164,6 +173,9 @@ impl From<McpServerConfig> for McpConfig {
                 is_authorized: m.is_authorized,
             }),
             headers: config.headers,
+            tool_call_timeout_secs: config.tool_call_timeout_secs,
+            reset_timeout_on_progress: config.reset_timeout_on_progress,
+            max_tool_call_duration_secs: config.max_tool_call_duration_secs,
         }
     }
 }

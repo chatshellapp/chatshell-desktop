@@ -9,8 +9,8 @@ use crate::llm::agent_builder::{
 };
 use crate::llm::tools::{BashTool, TempFileList};
 use crate::llm::tools::{
-    HttpUrlByteFetcher, McpSchemaTool, McpServerCatalog, McpToolUseTool, SkillCatalogEntry,
-    SkillTool, VisionQuestionResponder,
+    HttpUrlByteFetcher, McpClientEntry, McpSchemaTool, McpServerCatalog, McpToolUseTool,
+    SkillCatalogEntry, SkillTool, VisionQuestionResponder,
 };
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
@@ -21,14 +21,11 @@ use crate::models::{
 use crate::prompts;
 use rig::agent::Agent;
 use rig::completion::Message as RigMessage;
-use rmcp::RoleClient;
 use rmcp::model::Tool as RmcpTool;
-use rmcp::service::Peer;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Emitter;
-use tauri::Manager;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
@@ -753,27 +750,19 @@ pub(crate) async fn handle_agent_streaming(
                 loaded.server_tools.len()
             );
 
-            let mcp_tools_dir = app
-                .path()
-                .app_cache_dir()
-                .map(|d| d.join("mcp-tools"))
-                .unwrap_or_else(|_| std::env::temp_dir().join("chatshell-mcp-tools"));
+            let mcp_tools_dir = crate::mcp::tool_definitions_dir(&app);
             if let Err(e) = std::fs::create_dir_all(&mcp_tools_dir) {
                 tracing::warn!("⚠️ [agent_streaming] Failed to create mcp-tools dir: {}", e);
             }
 
-            let mut client_map: HashMap<String, (String, Peer<RoleClient>)> = HashMap::new();
+            let mut client_map: HashMap<String, McpClientEntry> = HashMap::new();
             let mut server_catalogs: Vec<McpServerCatalog> = Vec::new();
 
-            for (tools, client) in &loaded.server_tools {
+            for (tools, entry) in &loaded.server_tools {
                 if tools.is_empty() {
                     continue;
                 }
-                let server_name = tools
-                    .first()
-                    .and_then(|t| loaded.tool_name_to_server_name.get(&t.name.to_string()))
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string());
+                let server_name = entry.server_name.clone();
 
                 match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
                     Ok(_server_dir) => {
@@ -781,7 +770,7 @@ pub(crate) async fn handle_agent_streaming(
                         for tool in tools {
                             let desc = tool.description.as_deref().unwrap_or("No description");
                             let key = format!("{}/{}", server_name, tool.name);
-                            client_map.insert(key, (server_name.clone(), client.clone()));
+                            client_map.insert(key, entry.clone());
                             catalog_tools.push((tool.name.to_string(), desc.to_string()));
                         }
                         server_catalogs.push(McpServerCatalog {
@@ -825,6 +814,10 @@ pub(crate) async fn handle_agent_streaming(
                             conversation_id_clone.clone(),
                             state_clone.mcp_manager.clone(),
                             loaded.server_name_to_id.clone(),
+                        ))
+                        .with_progress_notifier(mcp_progress_notifier(
+                            app.clone(),
+                            conversation_id_clone.clone(),
                         )),
                 );
             }
@@ -1853,9 +1846,31 @@ fn mcp_auth_failure_notifier<R: tauri::Runtime>(
     })
 }
 
+/// Forward MCP progress notifications to the frontend as
+/// `mcp-tool-progress` (the tool-call card shows the latest message).
+fn mcp_progress_notifier<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    conversation_id: String,
+) -> crate::llm::tools::McpProgressNotifier {
+    Arc::new(move |server: &str, tool: &str, update| {
+        let _ = app.emit(
+            "mcp-tool-progress",
+            serde_json::json!({
+                "conversation_id": conversation_id,
+                "server_name": server,
+                // Same key the tool-call card is rendered under.
+                "tool_name": format!("mcp__{}__{}", sanitize_server_name(server), tool),
+                "progress": update.progress,
+                "total": update.total,
+                "message": update.message,
+            }),
+        );
+    })
+}
+
 /// Result of loading MCP tools: server tools for the agent + mappings for tool name resolution.
 struct LoadedMcpTools {
-    server_tools: Vec<(Vec<RmcpTool>, Peer<RoleClient>)>,
+    server_tools: Vec<(Vec<RmcpTool>, McpClientEntry)>,
     /// Maps MCP tool name (e.g. "search") to the user-visible server name (e.g. "github").
     tool_name_to_server_name: HashMap<String, String>,
     /// Servers that need the user to sign in again: (DB id, name).
@@ -1938,7 +1953,15 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
             tool_name_to_server_name.insert(key, conn.tool.name.clone());
             tool_name_to_server_name.insert(t.name.to_string(), conn.tool.name.clone());
         }
-        server_tools.push((tools, conn.client));
+        server_tools.push((
+            tools,
+            McpClientEntry {
+                server_name: conn.tool.name.clone(),
+                progress: conn.progress_dispatcher(),
+                call_options: conn.call_options,
+                peer: conn.client,
+            },
+        ));
     }
 
     Some(LoadedMcpTools {

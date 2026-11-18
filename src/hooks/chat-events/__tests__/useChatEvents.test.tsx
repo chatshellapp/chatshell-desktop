@@ -91,6 +91,8 @@ const BACKEND_EVENTS = [
   'generation-stopped',
   'mcp-auth-required',
   'mcp-servers-connected',
+  'mcp-tool-progress',
+  'mcp-tools-changed',
   'permission-requested',
   'permission-resolved',
   'reasoning-started',
@@ -704,6 +706,54 @@ describe('useChatEvents', () => {
       const state = useMcpStore.getState()
       expect(state.needsAuth['server-1']).toBeUndefined()
       expect(state.connectionStatus['server-1']).toBe('connected')
+    })
+
+    it('tracks MCP tool progress until the call completes', () => {
+      setupHook()
+      useMcpStore.setState({ toolProgress: {} })
+      const toolName = 'mcp__srv__slow'
+
+      emit('mcp-tool-progress', {
+        conversation_id: CONV,
+        server_name: 'srv',
+        tool_name: toolName,
+        progress: 2,
+        total: 4,
+        message: 'Indexing',
+      })
+      expect(useMcpStore.getState().toolProgress[CONV][toolName]).toEqual({
+        progress: 2,
+        total: 4,
+        message: 'Indexing',
+      })
+
+      emit('tool-call-completed', {
+        conversation_id: CONV,
+        tool_call_id: 'tc-1',
+        tool_name: toolName,
+        tool_input: '{}',
+        tool_output: 'done',
+      })
+      expect(useMcpStore.getState().toolProgress[CONV][toolName]).toBeUndefined()
+    })
+
+    it('refreshes a listed server when its tool list changes', async () => {
+      setupHook()
+      useMcpStore.setState({ serverTools: { 'server-1': [{ name: 'a' }] } })
+      vi.mocked(invoke).mockResolvedValue([{ name: 'a' }, { name: 'added' }])
+
+      emit('mcp-tools-changed', { server_id: 'server-1', server_name: 'srv', tool_count: 2 })
+      await vi.waitFor(() => expect(useMcpStore.getState().serverTools['server-1']).toHaveLength(2))
+      expect(invoke).toHaveBeenCalledWith('list_mcp_server_tools', { id: 'server-1' })
+    })
+
+    it('does not fetch tools for a server settings never listed', () => {
+      setupHook()
+      useMcpStore.setState({ serverTools: {} })
+      vi.mocked(invoke).mockClear()
+
+      emit('mcp-tools-changed', { server_id: 'server-2', server_name: 'other', tool_count: 1 })
+      expect(invoke).not.toHaveBeenCalledWith('list_mcp_server_tools', { id: 'server-2' })
     })
   })
 })

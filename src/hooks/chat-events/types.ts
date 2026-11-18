@@ -48,6 +48,24 @@ export interface McpAuthRequiredEvent {
   server_name?: string
 }
 
+/** Server progress for an in-flight MCP tool call. */
+export interface McpToolProgressEvent {
+  conversation_id: string
+  server_name: string
+  /** Display key of the tool-call card (`mcp__<server>__<tool>`). */
+  tool_name: string
+  progress: number
+  total?: number | null
+  message?: string | null
+}
+
+/** A server reported a tool list change; the backend already re-listed. */
+export interface McpToolsChangedEvent {
+  server_id: string
+  server_name: string
+  tool_count: number
+}
+
 /** MCP servers that connected for a send (clears needs-sign-in state). */
 export interface McpServersConnectedEvent {
   conversation_id: string

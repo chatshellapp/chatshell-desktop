@@ -393,6 +393,10 @@ pub fn run() {
                 .set_token_store(Arc::new(commands::mcp::DbMcpTokenStore::new(
                     app_state.db.clone(),
                 )));
+            // Server-reported tool list changes refresh definitions + UI.
+            app_state
+                .mcp_manager
+                .set_tools_changed_hook(mcp::tools_changed_hook(app.handle().clone()));
             // Grab handle before app_state is moved into managed state
             let manager_for_sweep = app_state.bash_session_manager.clone();
             app.manage(app_state);

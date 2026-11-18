@@ -17,6 +17,26 @@ import { diffStatCounts } from '@/lib/tool-diff'
 import { humanizeToolError } from '@/lib/tool-errors'
 
 import { getToolIconByName } from '@/components/builtin-tool-icon'
+import { useMcpStore, type McpToolProgress } from '@/stores/mcpStore'
+
+// Latest server progress for a running MCP call. The card does not know its
+// conversation, so look the display name up across conversations (only one
+// call per tool name is realistically in flight at a time).
+function findToolProgress(
+  byConversation: Record<string, Record<string, McpToolProgress>>,
+  toolName: string
+): McpToolProgress | undefined {
+  for (const perTool of Object.values(byConversation)) {
+    const progress = perTool[toolName]
+    if (progress) return progress
+  }
+  return undefined
+}
+
+function formatToolProgress(p: McpToolProgress): string {
+  const count = p.total ? `${p.progress}/${p.total}` : `${p.progress}`
+  return p.message ? `${p.message} (${count})` : count
+}
 
 // Re-export StreamingToolCall from store types for consistency
 export type { StreamingToolCall } from '@/stores/message/types'
@@ -161,6 +181,9 @@ export function ToolCallPreview({
   const isBuiltin = parsed.type === 'builtin'
   const isMcp = parsed.type === 'mcp'
   const hasSpecializedRenderer = isBuiltin && SPECIALIZED_TOOLS.has(parsed.toolName)
+  const mcpProgress = useMcpStore((s) =>
+    isMcp && isInProgress ? findToolProgress(s.toolProgress, toolName) : undefined
+  )
 
   const inputSummary = useMemo(
     () =>
@@ -239,6 +262,12 @@ export function ToolCallPreview({
           {inputSummary && (
             <span className="text-xs text-muted-foreground/50 truncate min-w-0 font-mono">
               {inputSummary}
+            </span>
+          )}
+
+          {mcpProgress && (
+            <span className="text-xs text-muted-foreground/60 truncate min-w-0 flex-shrink">
+              {formatToolProgress(mcpProgress)}
             </span>
           )}
 
