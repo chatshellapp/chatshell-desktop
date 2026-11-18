@@ -28,4 +28,8 @@ frequency_penalty?: number | null,
 /**
  * Absent keeps, null clears, value sets
  */
-presence_penalty?: number | null, additional_params?: unknown, is_default?: boolean, };
+presence_penalty?: number | null, 
+/**
+ * Provider-specific JSON object. Absent keeps, null clears, value sets
+ */
+additional_params?: unknown, is_default?: boolean, };

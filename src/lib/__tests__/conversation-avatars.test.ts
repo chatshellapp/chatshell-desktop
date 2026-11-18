@@ -146,7 +146,13 @@ describe('buildConversationAvatars', () => {
 
     it('skips a missing model without any display name', () => {
       const avatars = buildConversationAvatars(
-        [makeParticipant({ participant_type: 'model', participant_id: 'missing', display_name: '' })],
+        [
+          makeParticipant({
+            participant_type: 'model',
+            participant_id: 'missing',
+            display_name: '',
+          }),
+        ],
         () => undefined
       )
 
