@@ -327,10 +327,7 @@ mod tests {
         // restores that row in place: conversations referencing the id
         // reattach to the live model, and one live row remains.
         let second = db.create_model(req("gpt-x")).await.unwrap();
-        assert_eq!(
-            second.id, first.id,
-            "re-adding restores the tombstoned row"
-        );
+        assert_eq!(second.id, first.id, "re-adding restores the tombstoned row");
 
         let (_, _, is_deleted, deleted_at) = raw_row(&db, &first.id).await;
         assert_eq!(is_deleted, 0);
