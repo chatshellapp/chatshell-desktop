@@ -104,6 +104,8 @@ pub struct McpServerConfig {
     pub max_tool_call_duration_secs: Option<u64>,
     #[serde(default)]
     pub trust_annotations: Option<bool>,
+    #[serde(default)]
+    pub prefer_2026_protocol: Option<bool>,
 }
 
 /// OAuth metadata DTO for frontend
@@ -147,6 +149,7 @@ impl From<McpConfig> for McpServerConfig {
             reset_timeout_on_progress: config.reset_timeout_on_progress,
             max_tool_call_duration_secs: config.max_tool_call_duration_secs,
             trust_annotations: config.trust_annotations,
+            prefer_2026_protocol: config.prefer_2026_protocol,
         }
     }
 }
@@ -180,6 +183,7 @@ impl From<McpServerConfig> for McpConfig {
             reset_timeout_on_progress: config.reset_timeout_on_progress,
             max_tool_call_duration_secs: config.max_tool_call_duration_secs,
             trust_annotations: config.trust_annotations,
+            prefer_2026_protocol: config.prefer_2026_protocol,
         }
     }
 }
@@ -192,6 +196,7 @@ impl McpConfig {
         self.reset_timeout_on_progress = cfg.reset_timeout_on_progress;
         self.max_tool_call_duration_secs = cfg.max_tool_call_duration_secs;
         self.trust_annotations = cfg.trust_annotations;
+        self.prefer_2026_protocol = cfg.prefer_2026_protocol;
     }
 }
 
@@ -974,7 +979,12 @@ pub async fn get_mcp_prompt(
         .get_or_connect(&tool)
         .await
         .map_err(|e| format!("{e:#}"))?;
-    chatshell_agent_core::mcp::get_prompt_text(&connection.client, &name, arguments)
-        .await
-        .map_err(|e| format!("{e:#}"))
+    chatshell_agent_core::mcp::get_prompt_text(
+        &connection.client,
+        &name,
+        arguments,
+        Some(&connection.handler()),
+    )
+    .await
+    .map_err(|e| format!("{e:#}"))
 }

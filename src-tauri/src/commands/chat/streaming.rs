@@ -2036,6 +2036,7 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
             McpClientEntry {
                 server_name: conn.tool.name.clone(),
                 progress: conn.progress_dispatcher(),
+                handler: conn.handler(),
                 call_options: conn.call_options,
                 peer: conn.client,
             },

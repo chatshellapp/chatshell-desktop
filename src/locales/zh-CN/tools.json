@@ -132,6 +132,8 @@
   "trustAnnotations": "信任工具标注",
   "trustAnnotationsHelp": "此服务器标记为只读的工具将无需审批直接运行。标记为破坏性的工具无论此项是否开启都会请求审批。",
   "trustAnnotationsWarning": "仅对你信任的服务器开启。服务器可能把会修改数据的工具错误地标记为只读。",
+  "prefer2026Protocol": "使用 2026-07-28 协议（实验性）",
+  "prefer2026ProtocolHelp": "优先尝试更新的无状态 MCP 协议版本，服务器不支持时会自动回退。修改后请重新连接该服务器。",
   "descriptionOptional": "描述（可选）",
   "descriptionPlaceholder": "对此 MCP 服务器的简要描述",
   "toolsUnsupportedByModelBanner": "当前模型不支持工具调用。工具将不会被使用。",

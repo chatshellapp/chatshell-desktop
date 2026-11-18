@@ -178,9 +178,25 @@ pub struct McpConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub trust_annotations: Option<bool>,
+
+    /// Try the 2026-07-28 protocol revision first (`server/discover`,
+    /// falling back to `initialize` for older servers). Experimental;
+    /// unset = off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub prefer_2026_protocol: Option<bool>,
 }
 
 impl McpConfig {
+    /// The handshake for this server (FR-16).
+    pub fn protocol_mode(&self) -> chatshell_agent_core::mcp::McpProtocolMode {
+        if self.prefer_2026_protocol == Some(true) {
+            chatshell_agent_core::mcp::McpProtocolMode::PreferModern
+        } else {
+            chatshell_agent_core::mcp::McpProtocolMode::Legacy
+        }
+    }
+
     /// Deadline settings for `tools/call` on this server.
     pub fn call_options(&self) -> chatshell_agent_core::mcp::McpCallOptions {
         chatshell_agent_core::mcp::McpCallOptions::from_settings(
@@ -205,6 +221,7 @@ impl McpConfig {
             reset_timeout_on_progress: None,
             max_tool_call_duration_secs: None,
             trust_annotations: None,
+            prefer_2026_protocol: None,
         }
     }
 
@@ -223,6 +240,7 @@ impl McpConfig {
             reset_timeout_on_progress: None,
             max_tool_call_duration_secs: None,
             trust_annotations: None,
+            prefer_2026_protocol: None,
         }
     }
 

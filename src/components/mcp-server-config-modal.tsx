@@ -180,6 +180,7 @@ export function McpServerConfigModal({
   const [headers, setHeaders] = React.useState<HeaderEntry[]>([])
   const [toolCallTimeout, setToolCallTimeout] = React.useState('')
   const [trustAnnotations, setTrustAnnotations] = React.useState(false)
+  const [prefer2026Protocol, setPrefer2026Protocol] = React.useState(false)
   // Settings without a field here, carried through an edit unchanged
   const [hiddenSettings, setHiddenSettings] = React.useState<
     Pick<McpServerConfig, 'reset_timeout_on_progress' | 'max_tool_call_duration_secs'>
@@ -217,6 +218,7 @@ export function McpServerConfigModal({
         config?.tool_call_timeout_secs != null ? String(config.tool_call_timeout_secs) : ''
       )
       setTrustAnnotations(config?.trust_annotations ?? false)
+      setPrefer2026Protocol(config?.prefer_2026_protocol ?? false)
       setHiddenSettings({
         reset_timeout_on_progress: config?.reset_timeout_on_progress,
         max_tool_call_duration_secs: config?.max_tool_call_duration_secs,
@@ -238,6 +240,7 @@ export function McpServerConfigModal({
     setHeaders([])
     setToolCallTimeout('')
     setTrustAnnotations(false)
+    setPrefer2026Protocol(false)
     setHiddenSettings({})
     setSaving(false)
     setShowJsonInput(false)
@@ -345,6 +348,7 @@ export function McpServerConfigModal({
         headers: transport === 'http' ? buildHeadersMap() : undefined,
         tool_call_timeout_secs: parseTimeoutSecs(toolCallTimeout),
         trust_annotations: trustAnnotations || undefined,
+        prefer_2026_protocol: prefer2026Protocol || undefined,
         ...hiddenSettings,
       }
 
@@ -649,6 +653,19 @@ export function McpServerConfigModal({
                     {t('trustAnnotationsWarning')}
                   </p>
                 )}
+              </div>
+
+              {/* 2026-07-28 protocol revision (experimental) */}
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="mcp-modal-prefer-2026">{t('prefer2026Protocol')}</Label>
+                  <Switch
+                    id="mcp-modal-prefer-2026"
+                    checked={prefer2026Protocol}
+                    onCheckedChange={setPrefer2026Protocol}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">{t('prefer2026ProtocolHelp')}</p>
               </div>
 
               {/* Description */}

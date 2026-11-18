@@ -116,16 +116,21 @@ impl Tool for McpResourceReadTool {
             args.server
         );
 
-        let result = read_resource_with_options(&entry.peer, &args.uri, entry.call_options)
-            .await
-            .map_err(|e| match e {
-                ServiceError::Timeout { timeout } => McpResourceReadError::TimedOut {
-                    server: args.server.clone(),
-                    uri: args.uri.clone(),
-                    secs: timeout.as_secs(),
-                },
-                other => McpResourceReadError::ReadFailed(other.to_string()),
-            })?;
+        let result = read_resource_with_options(
+            &entry.peer,
+            &args.uri,
+            entry.call_options,
+            Some(&entry.handler),
+        )
+        .await
+        .map_err(|e| match e {
+            ServiceError::Timeout { timeout } => McpResourceReadError::TimedOut {
+                server: args.server.clone(),
+                uri: args.uri.clone(),
+                secs: timeout.as_secs(),
+            },
+            other => McpResourceReadError::ReadFailed(other.to_string()),
+        })?;
 
         Ok(render_read_resource_result(&result, self.spill.as_ref()))
     }

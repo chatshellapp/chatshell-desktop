@@ -72,6 +72,8 @@ pub struct McpClientEntry {
     pub peer: Peer<RoleClient>,
     pub call_options: McpCallOptions,
     pub progress: ProgressDispatcher,
+    /// The connection's handler: answers MRTR input rounds (FR-17).
+    pub handler: chatshell_agent_core::mcp::ChatShellClientHandler,
 }
 
 /// Maps "server/tool" -> the owning server's client
@@ -255,6 +257,7 @@ impl Tool for McpToolUseTool {
             params,
             entry.call_options,
             Some(&entry.progress),
+            Some(&entry.handler),
             move |update| {
                 if let Some(notify) = &on_progress {
                     notify(&server, &tool, &update);

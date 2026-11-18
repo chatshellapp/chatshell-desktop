@@ -60,4 +60,10 @@ max_tool_call_duration_secs?: number,
  * read-only runs without an approval prompt. Unset = off (annotations
  * can then only add prompts).
  */
-trust_annotations?: boolean, };
+trust_annotations?: boolean, 
+/**
+ * Try the 2026-07-28 protocol revision first (`server/discover`,
+ * falling back to `initialize` for older servers). Experimental;
+ * unset = off.
+ */
+prefer_2026_protocol?: boolean, };

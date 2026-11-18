@@ -132,6 +132,8 @@
   "trustAnnotations": "Trust tool annotations",
   "trustAnnotationsHelp": "Tools this server marks as read-only run without asking for approval. Tools it marks as destructive always ask, whether or not this is on.",
   "trustAnnotationsWarning": "Only enable this for servers you trust. A server can mislabel a tool that changes data as read-only.",
+  "prefer2026Protocol": "Use the 2026-07-28 protocol (experimental)",
+  "prefer2026ProtocolHelp": "Tries the newer stateless MCP revision first and falls back automatically for servers that don't support it. Reconnect the server after changing this.",
   "descriptionOptional": "Description (optional)",
   "descriptionPlaceholder": "A brief description of this MCP server",
   "toolsUnsupportedByModelBanner": "The current model does not support tool calling. Tools will not be used.",

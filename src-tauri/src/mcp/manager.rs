@@ -7,7 +7,7 @@ use rmcp::handler::client::progress::ProgressDispatcher;
 use rmcp::model::{Resource, ResourceTemplate, Tool as McpTool};
 use rmcp::service::Peer;
 use rmcp::transport::TokioChildProcess;
-use rmcp::{RoleClient, ServiceExt};
+use rmcp::RoleClient;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
@@ -179,6 +179,11 @@ impl Clone for McpServerConnection {
 }
 
 impl McpServerConnection {
+    /// The connection's handler: fulfils MRTR input rounds (FR-17).
+    pub fn handler(&self) -> ChatShellClientHandler {
+        self._running_service.service().clone()
+    }
+
     /// Routes `notifications/progress` to in-flight calls on this server.
     pub fn progress_dispatcher(&self) -> ProgressDispatcher {
         self._running_service
@@ -557,6 +562,7 @@ impl McpConnectionManager {
         auth_header: Option<String>,
         custom_headers: Option<&HashMap<String, String>>,
         handler: ChatShellClientHandler,
+        protocol: core_mcp::McpProtocolMode,
     ) -> Result<McpRunningService> {
         tracing::info!("🌐 Connecting via HTTP to: {}", endpoint);
 
@@ -564,6 +570,7 @@ impl McpConnectionManager {
             endpoint: endpoint.to_string(),
             auth_token: auth_header,
             custom_headers: custom_headers.cloned().unwrap_or_default(),
+            protocol,
         };
         connect_http_service(&config, handler).await
     }
@@ -673,12 +680,13 @@ impl McpConnectionManager {
         tracing::info!("✅ Created STDIO transport for MCP server");
 
         // Connect using the transport
-        let running_service = handler
-            .serve(transport)
+        let running_service = core_mcp::serve_client(handler, transport, config.protocol_mode())
             .await
             .context("Failed to establish MCP connection via STDIO")?;
-        // Same client settings as HTTP (response cache off).
+        // Same client settings as HTTP (response cache off, subscriptions
+        // on 2026-07-28 sessions).
         core_mcp::prepare_client_peer(running_service.peer()).await;
+        core_mcp::start_subscriptions(&running_service).await;
 
         Ok(running_service)
     }
@@ -777,6 +785,10 @@ impl McpConnectionManager {
                     auth_header,
                     custom_headers,
                     self.handler_for(tool),
+                    config
+                        .as_ref()
+                        .map(McpConfig::protocol_mode)
+                        .unwrap_or_default(),
                 )
                 .await?
             }
@@ -949,6 +961,7 @@ impl McpConnectionManager {
                 None,
                 ChatShellClientHandler::new(endpoint, None)
                     .with_client_version(env!("CARGO_PKG_VERSION")),
+                core_mcp::McpProtocolMode::Legacy,
             )
             .await?;
 
