@@ -75,7 +75,7 @@ fn rewrite(store: &MemStore, access: &str, refresh: Option<&str>, expires_at: Op
 
 /// The real sign-in: discovery, dynamic registration, PKCE authorize via
 /// the mock identity provider, code exchange.
-async fn sign_in() -> (oauth::OAuthDiscoveryResult, String, oauth::OAuthTokens) {
+pub(super) async fn sign_in() -> (oauth::OAuthDiscoveryResult, String, oauth::OAuthTokens) {
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()

@@ -6,6 +6,8 @@
 pub(crate) mod auth_error;
 pub mod elicitation;
 #[cfg(test)]
+mod live_feature_tests;
+#[cfg(test)]
 mod live_tests;
 mod manager;
 pub(crate) mod oauth;

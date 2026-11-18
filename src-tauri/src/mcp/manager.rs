@@ -3,11 +3,11 @@
 //! Manages connections to MCP servers via Streamable HTTP and STDIO transports.
 
 use anyhow::{Context, Result};
+use rmcp::RoleClient;
 use rmcp::handler::client::progress::ProgressDispatcher;
 use rmcp::model::{Resource, ResourceTemplate, Tool as McpTool};
 use rmcp::service::Peer;
 use rmcp::transport::TokioChildProcess;
-use rmcp::RoleClient;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
