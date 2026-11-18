@@ -8,6 +8,36 @@ Each release section is published as the GitHub release notes, the in-app update
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-18
+
+### Added
+
+- Dark mode. Settings > Appearance offers Light, Dark, and System themes. System is the default and follows the OS appearance as it changes.
+- The assistant can ask you questions mid-reply, with single or multiple choice options, a recommended answer, and a free-text box. Skip a question or choose to chat about it instead. Turn it on or off as a built-in tool.
+- MCP servers can ask for input during a tool call. A form opens next to the approval card, and URL requests open the browser only when you click.
+- MCP prompts appear in the prompt picker. Fill in their arguments and the rendered text is inserted into the message box for review.
+- A new tool lets the assistant read MCP server resources. Large text is trimmed and binary contents are saved with the conversation's tool output.
+- MCP servers that ask for workspace roots get the conversation's working directory, or its scratch folder when none is set.
+- MCP tool calls show server progress on the running tool card, and the tool list refreshes when the server reports a change.
+- MCP server settings add a tool-call timeout and a Trust tool annotations switch, off by default. When it is on, tools the server marks as read-only run without asking.
+- An experimental switch per MCP server to use the 2026-07-28 protocol. Servers that do not support it fall back to the earlier version.
+- Parameter presets have an Additional Parameters (JSON) field for provider-specific fields, such as `{"reasoning_effort": "low"}`.
+- A Review Model picker in Settings > Auxiliary Models chooses the model that reviews actions in Auto mode.
+
+### Changed
+
+- MCP tools that the server marks as destructive always ask for approval and show a warning on the approval card.
+- Expired MCP sign-ins are refreshed automatically. When a server needs you to sign in again, a banner in the chat offers to re-authorize, and the server shows a Sign-in expired badge.
+- Selected MCP servers connect at the same time instead of one after another.
+- MCP tool results show structured content, and tool calls that run too long end with a timeout error instead of hanging.
+
+### Fixed
+
+- Conversations with a deleted model keep its avatar and name.
+- Clearing a preset's additional parameters now removes them instead of keeping the old value.
+- Images returned by tools now reach the model on OpenRouter, Ollama, Azure, and other Chat Completions-style providers.
+- The question and MCP input dialogs keep their title and buttons in view when the form is long.
+
 ## [0.11.0] - 2026-11-16
 
 ### Added
@@ -456,7 +486,8 @@ Each release section is published as the GitHub release notes, the in-app update
 - Markdown rendering with syntax highlighting and Mermaid diagrams.
 - API keys encrypted at rest.
 
-[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/chatshellapp/chatshell-desktop/compare/v0.10.0...v0.10.1
