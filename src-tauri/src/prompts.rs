@@ -65,7 +65,9 @@ use the `skill` tool to load its full instructions before proceeding.";
 pub const MCP_INSTRUCTIONS: &str = "External tools are available from connected MCP servers. \
 Use `mcp_schema` first to load a tool's definition and understand \
 its parameters, then call `mcp_tool_use` to execute it. \
-Pass both `server` and `tool` to each call.";
+Pass both `server` and `tool` to each call. \
+Resources a server lists in the `mcp_schema` catalog are read with \
+`mcp_resource_read` (pass `server` and `uri`).";
 
 /// Build user prompt for title generation (pairs with TITLE_GENERATION_SYSTEM_PROMPT)
 pub fn build_title_generation_user_prompt(user_message: &str) -> String {

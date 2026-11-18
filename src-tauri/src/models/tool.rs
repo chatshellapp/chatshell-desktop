@@ -171,6 +171,13 @@ pub struct McpConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "number")]
     pub max_tool_call_duration_secs: Option<u64>,
+
+    /// The user trusts this server's tool annotations: a tool it declares
+    /// read-only runs without an approval prompt. Unset = off (annotations
+    /// can then only add prompts).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub trust_annotations: Option<bool>,
 }
 
 impl McpConfig {
@@ -197,6 +204,7 @@ impl McpConfig {
             tool_call_timeout_secs: None,
             reset_timeout_on_progress: None,
             max_tool_call_duration_secs: None,
+            trust_annotations: None,
         }
     }
 
@@ -214,6 +222,7 @@ impl McpConfig {
             tool_call_timeout_secs: None,
             reset_timeout_on_progress: None,
             max_tool_call_duration_secs: None,
+            trust_annotations: None,
         }
     }
 

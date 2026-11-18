@@ -33,6 +33,7 @@ pub use chatshell_agent_core::tools::{
 };
 pub use chatshell_agent_core::{bash_security, path_policy};
 mod image_question;
+mod mcp_resource_read;
 mod mcp_schema;
 mod mcp_tool_use;
 mod skill;
@@ -40,6 +41,7 @@ mod web_fetch;
 mod web_search;
 
 pub use image_question::VisionQuestionResponder;
+pub use mcp_resource_read::McpResourceReadTool;
 pub use mcp_schema::{McpSchemaTool, McpServerCatalog};
 pub use mcp_tool_use::{
     McpAuthFailureNotifier, McpClientEntry, McpProgressNotifier, McpToolUseTool,

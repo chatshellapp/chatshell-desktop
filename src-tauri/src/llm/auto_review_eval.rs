@@ -145,6 +145,7 @@ impl Fixture {
             network_allowed: false,
             scratch_dir: sandbox.then(|| self.workspace.with_file_name(".scratch")),
             cwd_drifted: false,
+            mcp_tool_hints: Default::default(),
         }
     }
 }

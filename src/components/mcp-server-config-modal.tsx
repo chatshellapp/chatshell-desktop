@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useMcpStore } from '@/stores/mcpStore'
 import type { Tool, McpTransportType, McpServerConfig } from '@/types'
@@ -154,6 +155,14 @@ interface McpServerConfigModalProps {
   editingServer?: Tool | null
 }
 
+/** Whole seconds from the timeout field; empty or invalid = default. */
+export function parseTimeoutSecs(text: string): number | undefined {
+  const trimmed = text.trim()
+  if (!trimmed) return undefined
+  const value = Number(trimmed)
+  return Number.isInteger(value) && value >= 0 ? value : undefined
+}
+
 export function McpServerConfigModal({
   open,
   onOpenChange,
@@ -169,6 +178,12 @@ export function McpServerConfigModal({
   const [cwd, setCwd] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [headers, setHeaders] = React.useState<HeaderEntry[]>([])
+  const [toolCallTimeout, setToolCallTimeout] = React.useState('')
+  const [trustAnnotations, setTrustAnnotations] = React.useState(false)
+  // Settings without a field here, carried through an edit unchanged
+  const [hiddenSettings, setHiddenSettings] = React.useState<
+    Pick<McpServerConfig, 'reset_timeout_on_progress' | 'max_tool_call_duration_secs'>
+  >({})
   const [saving, setSaving] = React.useState(false)
 
   // JSON paste mode state
@@ -198,6 +213,14 @@ export function McpServerConfigModal({
         ? Object.entries(config.headers).map(([key, value]) => ({ key, value: String(value) }))
         : []
       setHeaders(h)
+      setToolCallTimeout(
+        config?.tool_call_timeout_secs != null ? String(config.tool_call_timeout_secs) : ''
+      )
+      setTrustAnnotations(config?.trust_annotations ?? false)
+      setHiddenSettings({
+        reset_timeout_on_progress: config?.reset_timeout_on_progress,
+        max_tool_call_duration_secs: config?.max_tool_call_duration_secs,
+      })
     } else if (open && !editingServer) {
       resetForm()
     }
@@ -213,6 +236,9 @@ export function McpServerConfigModal({
     setCwd('')
     setDescription('')
     setHeaders([])
+    setToolCallTimeout('')
+    setTrustAnnotations(false)
+    setHiddenSettings({})
     setSaving(false)
     setShowJsonInput(false)
     setJsonText('')
@@ -317,6 +343,9 @@ export function McpServerConfigModal({
         env: transport === 'stdio' && env.trim() ? parseEnvVars(env) : undefined,
         cwd: transport === 'stdio' && cwd.trim() ? cwd.trim() : undefined,
         headers: transport === 'http' ? buildHeadersMap() : undefined,
+        tool_call_timeout_secs: parseTimeoutSecs(toolCallTimeout),
+        trust_annotations: trustAnnotations || undefined,
+        ...hiddenSettings,
       }
 
       let serverId: string
@@ -588,6 +617,39 @@ export function McpServerConfigModal({
                   </div>
                 </>
               )}
+
+              {/* Tool call timeout */}
+              <div className="grid gap-2">
+                <Label htmlFor="mcp-modal-timeout">{t('toolCallTimeout')}</Label>
+                <Input
+                  id="mcp-modal-timeout"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="30"
+                  value={toolCallTimeout}
+                  onChange={(e) => setToolCallTimeout(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{t('toolCallTimeoutHelp')}</p>
+              </div>
+
+              {/* Annotation trust */}
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="mcp-modal-trust-annotations">{t('trustAnnotations')}</Label>
+                  <Switch
+                    id="mcp-modal-trust-annotations"
+                    checked={trustAnnotations}
+                    onCheckedChange={setTrustAnnotations}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">{t('trustAnnotationsHelp')}</p>
+                {trustAnnotations && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    {t('trustAnnotationsWarning')}
+                  </p>
+                )}
+              </div>
 
               {/* Description */}
               <div className="grid gap-2">

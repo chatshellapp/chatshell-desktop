@@ -51,16 +51,52 @@ fn annotation_summary(definition: &serde_json::Value) -> Option<String> {
     ))
 }
 
+/// Resources shown per server in the catalog (URIs are what
+/// `mcp_resource_read` takes).
+const MAX_RESOURCES_PER_SERVER: usize = 30;
+
+fn push_resource_line(desc: &mut String, label: &str, items: &[(String, String)]) {
+    if items.is_empty() {
+        return;
+    }
+    let shown: Vec<String> = items
+        .iter()
+        .take(MAX_RESOURCES_PER_SERVER)
+        .map(|(uri, name)| {
+            if name.is_empty() || name == uri {
+                uri.clone()
+            } else {
+                format!("{name} <{uri}>")
+            }
+        })
+        .collect();
+    desc.push_str(&format!(
+        "    {label} (read with mcp_resource_read): {}",
+        shown.join(", ")
+    ));
+    if items.len() > MAX_RESOURCES_PER_SERVER {
+        desc.push_str(&format!(
+            ", ...+{} more",
+            items.len() - MAX_RESOURCES_PER_SERVER
+        ));
+    }
+    desc.push('\n');
+}
+
 #[derive(Debug, Deserialize)]
 pub struct McpSchemaArgs {
     pub server: String,
     pub tool: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct McpServerCatalog {
     pub name: String,
     pub tools: Vec<(String, String)>,
+    /// (uri, name) of each listed resource.
+    pub resources: Vec<(String, String)>,
+    /// (uriTemplate, name) of each resource template.
+    pub resource_templates: Vec<(String, String)>,
 }
 
 #[derive(Clone)]
@@ -127,6 +163,8 @@ impl Tool for McpSchemaTool {
                 desc.push_str(&format!(", ...+{} more", tool_count - MAX_TOOLS_PER_SERVER));
             }
             desc.push('\n');
+            push_resource_line(&mut desc, "resources", &server.resources);
+            push_resource_line(&mut desc, "resource_templates", &server.resource_templates);
         }
         if server_count > MAX_SERVERS {
             desc.push_str(&format!(
@@ -238,7 +276,48 @@ mod tests {
                 .into_iter()
                 .map(|(n, d)| (n.to_string(), d.to_string()))
                 .collect(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn description_lists_resources_and_templates_per_server() {
+        let catalog = McpServerCatalog {
+            name: "docs".to_string(),
+            tools: vec![],
+            resources: vec![
+                ("mem://guide".to_string(), "Guide".to_string()),
+                ("mem://raw".to_string(), "mem://raw".to_string()),
+            ],
+            resource_templates: vec![("mem://{key}".to_string(), "by key".to_string())],
+        };
+        let tool = McpSchemaTool::new(vec![catalog], "/tmp".to_string());
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(
+            desc.contains(
+                "resources (read with mcp_resource_read): Guide <mem://guide>, mem://raw"
+            ),
+            "{desc}"
+        );
+        assert!(
+            desc.contains("resource_templates (read with mcp_resource_read): by key <mem://{key}>")
+        );
+    }
+
+    #[test]
+    fn description_caps_resources_per_server() {
+        let catalog = McpServerCatalog {
+            name: "big".to_string(),
+            resources: (0..40)
+                .map(|i| (format!("mem://r{i}"), String::new()))
+                .collect(),
+            ..Default::default()
+        };
+        let tool = McpSchemaTool::new(vec![catalog], "/tmp".to_string());
+        let desc = rig::agent::tool::Tool::description(&tool);
+        assert!(desc.contains("mem://r29"));
+        assert!(!desc.contains("mem://r30"));
+        assert!(desc.contains("+10 more"));
     }
 
     #[test]
@@ -269,6 +348,7 @@ mod tests {
         let server_catalog = McpServerCatalog {
             name: "big".to_string(),
             tools,
+            ..Default::default()
         };
         let tool = McpSchemaTool::new(vec![server_catalog], "/tmp".to_string());
         let desc = rig::agent::tool::Tool::description(&tool);

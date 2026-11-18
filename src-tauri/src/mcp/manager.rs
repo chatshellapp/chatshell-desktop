@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 use rmcp::handler::client::progress::ProgressDispatcher;
-use rmcp::model::Tool as McpTool;
+use rmcp::model::{Resource, ResourceTemplate, Tool as McpTool};
 use rmcp::service::Peer;
 use rmcp::transport::TokioChildProcess;
 use rmcp::{RoleClient, ServiceExt};
@@ -154,6 +154,10 @@ pub struct McpServerConnection {
     pub client: Peer<RoleClient>,
     /// Deadline settings for `tools/call` on this server.
     pub call_options: McpCallOptions,
+    /// Resources and resource templates (empty when the server does not
+    /// advertise the `resources` capability).
+    pub resources: Vec<Resource>,
+    pub resource_templates: Vec<ResourceTemplate>,
     /// The running service that keeps the connection alive
     /// IMPORTANT: This MUST be kept alive for the connection to work.
     /// Dropping this will cancel the background transport task.
@@ -167,6 +171,8 @@ impl Clone for McpServerConnection {
             mcp_tools: self.mcp_tools.clone(),
             client: self.client.clone(),
             call_options: self.call_options,
+            resources: self.resources.clone(),
+            resource_templates: self.resource_templates.clone(),
             _running_service: Arc::clone(&self._running_service),
         }
     }
@@ -762,11 +768,14 @@ impl McpConnectionManager {
             .as_ref()
             .map(McpConfig::call_options)
             .unwrap_or_default();
+        let (resources, resource_templates) = list_resources_for(&client_peer, &tool.name).await;
         let connection = McpServerConnection {
             tool: tool.clone(),
             mcp_tools,
             client: client_peer,
             call_options,
+            resources,
+            resource_templates,
             _running_service: Arc::new(running_service),
         };
 
@@ -792,9 +801,11 @@ impl McpConnectionManager {
             // Validate the cached connection is still alive
             match list_all_tools_bounded(&conn.client, &tool.name).await {
                 Ok(tools) => {
-                    // Update cached tools in case they changed
+                    // Update cached tools (and resources) in case they changed
                     let mut updated = conn.clone();
                     updated.mcp_tools = tools;
+                    (updated.resources, updated.resource_templates) =
+                        list_resources_for(&conn.client, &tool.name).await;
                     {
                         let mut connections = self.connections.write().await;
                         connections.insert(tool.id.clone(), updated.clone());
@@ -921,6 +932,31 @@ impl McpConnectionManager {
     pub async fn test_connection(&self, endpoint: &str) -> Result<Vec<McpTool>> {
         self.test_http_connection(endpoint).await
     }
+}
+
+/// A server's resources and templates. Resources are optional: a server
+/// without the capability, or a failing listing, yields empty lists and
+/// never fails the connection.
+async fn list_resources_for(
+    peer: &Peer<RoleClient>,
+    server: &str,
+) -> (Vec<Resource>, Vec<ResourceTemplate>) {
+    if !core_mcp::supports_resources(peer) {
+        return (Vec::new(), Vec::new());
+    }
+    let resources = core_mcp::list_all_resources_bounded(peer, server)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("⚠️ Listing resources of '{server}' failed: {e:#}");
+            Vec::new()
+        });
+    let templates = core_mcp::list_all_resource_templates_bounded(peer, server)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::debug!("Listing resource templates of '{server}' failed: {e:#}");
+            Vec::new()
+        });
+    (resources, templates)
 }
 
 /// Sanitize a string for use as a directory or file name.

@@ -158,6 +158,7 @@
       "privateNetwork": "This fetch targets your local machine or a private network.",
       "sensitiveRead": "This file often contains secrets such as exported API keys. Approve only if the agent needs it.",
       "outsideDeletion": "This permanently deletes files that already exist outside the workspace. Approve only if you asked for this deletion.",
+      "mcpDestructive": "The MCP server marks this tool as destructive. Session and remembered approvals do not cover it.",
       "sensitiveWrite": "This writes to a protected location: stored credentials, a startup item, or agent or app settings. Approve only if you asked for this change.",
       "sandbox": "The sandbox blocked this command: it wrote outside the workspace or touched a protected file.",
       "sandboxNetwork": "The sandbox blocked this command's network access.",

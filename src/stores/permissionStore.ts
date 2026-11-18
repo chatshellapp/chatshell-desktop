@@ -27,6 +27,7 @@ export type PermissionWarningKind =
   | 'sensitive_read'
   | 'sensitive_write'
   | 'outside_deletion'
+  | 'mcp_destructive'
   | 'sandbox'
   | 'sandbox_network'
   | 'sandbox_credentials'

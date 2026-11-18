@@ -54,4 +54,10 @@ reset_timeout_on_progress?: boolean,
  * Ceiling on a call whose deadline keeps being reset by progress, in
  * seconds. Unset = 600 s, 0 = no ceiling.
  */
-max_tool_call_duration_secs?: number, };
+max_tool_call_duration_secs?: number, 
+/**
+ * The user trusts this server's tool annotations: a tool it declares
+ * read-only runs without an approval prompt. Unset = off (annotations
+ * can then only add prompts).
+ */
+trust_annotations?: boolean, };

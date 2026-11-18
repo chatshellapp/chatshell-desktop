@@ -9,8 +9,8 @@ use crate::llm::agent_builder::{
 };
 use crate::llm::tools::{BashTool, TempFileList};
 use crate::llm::tools::{
-    HttpUrlByteFetcher, McpClientEntry, McpSchemaTool, McpServerCatalog, McpToolUseTool,
-    SkillCatalogEntry, SkillTool, VisionQuestionResponder,
+    HttpUrlByteFetcher, McpClientEntry, McpResourceReadTool, McpSchemaTool, McpServerCatalog,
+    McpToolUseTool, SkillCatalogEntry, SkillTool, VisionQuestionResponder,
 };
 use crate::llm::{ChatMessage, ChatResponse, StreamChunkType};
 use crate::mcp::sync_tool_definitions;
@@ -632,6 +632,7 @@ pub(crate) async fn handle_agent_streaming(
                 network_allowed: network_flag.load(std::sync::atomic::Ordering::SeqCst),
                 scratch_dir: scratch_dir.clone(),
                 cwd_drifted: cwd_drift_flag.load(std::sync::atomic::Ordering::SeqCst),
+                mcp_tool_hints: Default::default(),
             };
             let posture = chatshell_agent_core::judgment::ruleset::Posture {
                 os: std::env::consts::OS.to_string(),
@@ -659,6 +660,7 @@ pub(crate) async fn handle_agent_streaming(
         }
         _ => None,
     };
+    let mcp_tool_hints = crate::llm::permission::McpToolHintsHandle::default();
     let gate = crate::llm::permission::PermissionGate::with_environment(
         conversation_id_clone.clone(),
         core_mode,
@@ -673,6 +675,7 @@ pub(crate) async fn handle_agent_streaming(
             judge: judge_session.clone(),
             deltas: execution_deltas.clone(),
             cwd_drifted: sandboxed.then(|| cwd_drift_flag.clone()),
+            mcp_tool_hints: mcp_tool_hints.clone(),
         },
     );
 
@@ -743,6 +746,10 @@ pub(crate) async fn handle_agent_streaming(
                 );
             }
 
+            // Annotations reach the gate (FR-10): destructive declarations
+            // force prompts; read-only ones relax only trusted servers.
+            *mcp_tool_hints.write().unwrap_or_else(|e| e.into_inner()) = loaded.tool_hints.clone();
+
             let total: usize = loaded.server_tools.iter().map(|(t, _)| t.len()).sum();
             tracing::info!(
                 "🔌 [agent_streaming] Loaded {} MCP tools from {} server(s)",
@@ -758,11 +765,20 @@ pub(crate) async fn handle_agent_streaming(
             let mut client_map: HashMap<String, McpClientEntry> = HashMap::new();
             let mut server_catalogs: Vec<McpServerCatalog> = Vec::new();
 
+            let mut resource_servers: HashMap<String, McpClientEntry> = HashMap::new();
             for (tools, entry) in &loaded.server_tools {
-                if tools.is_empty() {
+                let server_name = entry.server_name.clone();
+                let (resources, templates) = loaded
+                    .server_resources
+                    .get(&server_name)
+                    .cloned()
+                    .unwrap_or_default();
+                if tools.is_empty() && resources.is_empty() && templates.is_empty() {
                     continue;
                 }
-                let server_name = entry.server_name.clone();
+                if !resources.is_empty() || !templates.is_empty() {
+                    resource_servers.insert(server_name.clone(), entry.clone());
+                }
 
                 match sync_tool_definitions(&mcp_tools_dir, &server_name, tools) {
                     Ok(_server_dir) => {
@@ -776,6 +792,14 @@ pub(crate) async fn handle_agent_streaming(
                         server_catalogs.push(McpServerCatalog {
                             name: server_name,
                             tools: catalog_tools,
+                            resources: resources
+                                .iter()
+                                .map(|r| (r.uri.clone(), r.name.clone()))
+                                .collect(),
+                            resource_templates: templates
+                                .iter()
+                                .map(|t| (t.uri_template.clone(), t.name.clone()))
+                                .collect(),
                         });
                     }
                     Err(e) => {
@@ -805,6 +829,19 @@ pub(crate) async fn handle_agent_streaming(
                     )
                     .with_unavailable(needs_auth_names, loaded.unreachable.clone()),
                 );
+                if !resource_servers.is_empty() {
+                    let mut tool = McpResourceReadTool::new(Arc::new(resource_servers));
+                    if let Some(dir) = &tool_output_dir {
+                        tool = tool.with_spill_target(chatshell_agent_core::tools::SpillTarget {
+                            dir: dir.clone(),
+                            reference_scheme: Some(
+                                chatshell_agent_core::tools::reference::TOOL_OUTPUT_SCHEME
+                                    .to_string(),
+                            ),
+                        });
+                    }
+                    config = config.with_mcp_resource_read(tool);
+                }
             }
             if !client_map.is_empty() {
                 config = config.with_mcp_tool_use(
@@ -1879,6 +1916,16 @@ struct LoadedMcpTools {
     unreachable: Vec<String>,
     /// Connected server name -> DB id (for mid-run auth failures).
     server_name_to_id: HashMap<String, String>,
+    /// Annotation hints per `server/tool` for the permission gate.
+    tool_hints: HashMap<String, chatshell_agent_core::permission::McpToolHints>,
+    /// Server name -> (resources, resource templates).
+    server_resources: HashMap<
+        String,
+        (
+            Vec<rmcp::model::Resource>,
+            Vec<rmcp::model::ResourceTemplate>,
+        ),
+    >,
 }
 
 /// Load MCP tools by their tool IDs.
@@ -1945,9 +1992,28 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
     let mut tool_name_to_server_name = HashMap::new();
     let mut server_name_to_id = HashMap::new();
     let mut server_tools = Vec::new();
+    let mut tool_hints = HashMap::new();
+    let mut server_resources = HashMap::new();
 
     for (conn, tools) in result.connections {
         server_name_to_id.insert(conn.tool.name.clone(), conn.tool.id.clone());
+        server_resources.insert(
+            conn.tool.name.clone(),
+            (conn.resources.clone(), conn.resource_templates.clone()),
+        );
+        let trusted = conn
+            .tool
+            .parse_mcp_config()
+            .and_then(|c| c.trust_annotations)
+            .unwrap_or(false);
+        for t in &tools {
+            if let Some(hints) = mcp_tool_hints_for(t, trusted) {
+                tool_hints.insert(
+                    chatshell_agent_core::permission::McpToolHints::key(&conn.tool.name, &t.name),
+                    hints,
+                );
+            }
+        }
         for t in &tools {
             let key = format!("{}/{}", conn.tool.name, t.name);
             tool_name_to_server_name.insert(key, conn.tool.name.clone());
@@ -1970,6 +2036,24 @@ async fn load_mcp_tools_by_ids(state: &AppState, tool_ids: &[String]) -> Option<
         needs_auth,
         unreachable,
         server_name_to_id,
+        tool_hints,
+        server_resources,
+    })
+}
+
+/// Gate hints from a tool's annotations; `None` when it declares neither
+/// `readOnlyHint` nor `destructiveHint` as true (unannotated behavior).
+fn mcp_tool_hints_for(
+    tool: &RmcpTool,
+    trusted: bool,
+) -> Option<chatshell_agent_core::permission::McpToolHints> {
+    let annotations = tool.annotations.as_ref()?;
+    let read_only = annotations.read_only_hint == Some(true);
+    let destructive = annotations.destructive_hint == Some(true);
+    (read_only || destructive).then_some(chatshell_agent_core::permission::McpToolHints {
+        read_only,
+        destructive,
+        trusted,
     })
 }
 

@@ -152,6 +152,28 @@ describe('PermissionApprovalDialog', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('warns that a destructive MCP tool is not covered by approvals', () => {
+    usePermissionStore.getState().show({
+      requestId: 'req-mcp',
+      conversationId: 'conv-1',
+      toolName: 'mcp_tool_use',
+      subject: 'github/delete_repo',
+      tier: 'write',
+      grant: null,
+      warning: {
+        kind: 'mcp_destructive',
+        detail: 'The MCP server declares github/delete_repo as destructive',
+      },
+    })
+    render(<PermissionApprovalDialog />)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The MCP server marks this tool as destructive.'
+    )
+    expect(
+      screen.queryByRole('button', { name: /allow for this session/i })
+    ).not.toBeInTheDocument()
+  })
+
   it('renders no warning line for an ordinary prompt', () => {
     seedPending()
     render(<PermissionApprovalDialog />)

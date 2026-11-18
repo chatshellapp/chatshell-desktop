@@ -105,6 +105,9 @@ pub struct AgentConfig {
     pub mcp_schema_tool: Option<McpSchemaTool>,
     /// MCP tool execution tool
     pub mcp_tool_use: Option<McpToolUseTool>,
+    /// MCP resource reads; only registered alongside `mcp_schema` (whose
+    /// catalog lists the resources).
+    pub mcp_resource_read: Option<crate::llm::tools::McpResourceReadTool>,
     /// Skill tool with embedded catalog
     pub skill_tool: Option<SkillTool>,
     /// Project root directory for path security enforcement
@@ -153,6 +156,12 @@ impl AgentConfig {
     /// Set the MCP tool execution tool
     pub fn with_mcp_tool_use(mut self, tool: McpToolUseTool) -> Self {
         self.mcp_tool_use = Some(tool);
+        self
+    }
+
+    /// Set the MCP resource read tool
+    pub fn with_mcp_resource_read(mut self, tool: crate::llm::tools::McpResourceReadTool) -> Self {
+        self.mcp_resource_read = Some(tool);
         self
     }
 
@@ -775,6 +784,13 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
     if config.mcp_tool_use.is_some() && first != FirstTool::McpToolUse {
         tracing::info!("🔌 Adding mcp_tool_use tool to agent");
         sb = sb.tool(config.mcp_tool_use.clone().unwrap());
+    }
+    // Never the first tool: it is only set together with `mcp_schema`.
+    if let Some(tool) = &config.mcp_resource_read
+        && config.mcp_schema_tool.is_some()
+    {
+        tracing::info!("📚 Adding mcp_resource_read tool to agent");
+        sb = sb.tool(tool.clone());
     }
     if config.skill_tool.is_some() && first != FirstTool::Skill {
         tracing::info!("📋 Adding skill tool to agent");

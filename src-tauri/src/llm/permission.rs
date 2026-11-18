@@ -24,8 +24,9 @@ use chatshell_agent_core::judgment::{
 };
 use chatshell_agent_core::net_policy;
 use chatshell_agent_core::permission::{
-    ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, PermissionMode,
-    PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in, subject_for,
+    ForcedPrompt, ForcedPromptKind, GateContext, GateDecision, GrantScope, McpToolHints,
+    PermissionMode, PermissionTier, SessionGrants, grant_scope, remember_scope, resolve_in,
+    subject_for,
 };
 use chatshell_agent_core::permission_store::PersistentGrantStore;
 use chatshell_agent_core::shell_env::BashEnvStore;
@@ -324,7 +325,13 @@ pub struct GateEnvironment {
     /// The bash shell has left its launch directory (shared with the bash
     /// tool; relative write targets are then unprovable).
     pub cwd_drifted: Option<Arc<AtomicBool>>,
+    /// MCP tool annotations keyed `server/tool`, filled once the turn's MCP
+    /// servers have connected (after the gate is built).
+    pub mcp_tool_hints: McpToolHintsHandle,
 }
+
+/// Shared, late-filled MCP tool hints for one turn.
+pub type McpToolHintsHandle = Arc<std::sync::RwLock<HashMap<String, McpToolHints>>>;
 
 /// The device's remembered-grant store, if initialized.
 pub fn persistent_grants() -> Option<&'static PersistentGrantStore> {
@@ -540,6 +547,12 @@ impl PermissionGate {
                 .cwd_drifted
                 .as_ref()
                 .is_some_and(|flag| flag.load(Ordering::SeqCst)),
+            mcp_tool_hints: self
+                .environment
+                .mcp_tool_hints
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 
@@ -1771,6 +1784,87 @@ mod tests {
         assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
     }
 
+    /// An `ask` gate whose MCP hints are filled after construction, as the
+    /// streaming layer does once servers connect.
+    fn mcp_hint_fixture(hints: McpToolHints) -> Fixture {
+        let registry = ApprovalRegistry::new();
+        let grants: GrantStore = Arc::new(Mutex::new(HashMap::new()));
+        let (emitter, captured) = test_emitter();
+        let handle = McpToolHintsHandle::default();
+        let gate = PermissionGate::with_environment(
+            "conv-1".to_string(),
+            PermissionMode::Ask,
+            grants.clone(),
+            registry.clone(),
+            emitter,
+            GateEnvironment {
+                mcp_tool_hints: handle.clone(),
+                ..GateEnvironment::default()
+            },
+        );
+        handle
+            .write()
+            .unwrap()
+            .insert(McpToolHints::key("srv", "tool"), hints);
+        Fixture {
+            gate,
+            registry,
+            grants,
+            captured,
+        }
+    }
+
+    #[tokio::test]
+    async fn trusted_read_only_mcp_tool_runs_without_prompt() {
+        let f = mcp_hint_fixture(McpToolHints {
+            read_only: true,
+            destructive: false,
+            trusted: true,
+        });
+        let call = json!({"server": "srv", "tool": "tool"});
+        assert_eq!(
+            f.gate.check("mcp_tool_use", &call).await,
+            CheckOutcome::Allow
+        );
+        assert!(f.captured.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn destructive_mcp_tool_prompts_despite_session_grant() {
+        let f = mcp_hint_fixture(McpToolHints {
+            read_only: false,
+            destructive: true,
+            trusted: false,
+        });
+        f.grants
+            .lock()
+            .unwrap()
+            .entry("conv-1".to_string())
+            .or_default()
+            .grant_server_tool("srv", "tool");
+        let call = json!({"server": "srv", "tool": "tool"});
+        let task = tokio::spawn({
+            let gate = f.gate.clone();
+            async move { gate.check("mcp_tool_use", &call).await }
+        });
+        answer_when_prompted(&f.registry, &f.captured, ApprovalDecision::Deny, 0).await;
+        assert!(matches!(task.await.unwrap(), CheckOutcome::Deny(_)));
+        let payload = f
+            .captured
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(event, _)| event.as_str() == PERMISSION_REQUESTED_EVENT)
+            .map(|(_, payload)| payload.clone())
+            .unwrap();
+        assert_eq!(payload["warning"]["kind"], "mcp_destructive");
+        assert_eq!(
+            payload["grant"],
+            Value::Null,
+            "forced prompts offer no grant"
+        );
+    }
+
     #[tokio::test]
     async fn requested_payload_carries_structured_grant() {
         let f = fixture(PermissionMode::Ask);
@@ -2234,6 +2328,7 @@ mod tests {
                 judge: None,
                 deltas,
                 cwd_drifted: None,
+                mcp_tool_hints: Default::default(),
             },
         );
         Fixture {
@@ -2456,6 +2551,7 @@ mod tests {
                 judge: Some(session.clone()),
                 deltas: deltas.clone(),
                 cwd_drifted: None,
+                mcp_tool_hints: Default::default(),
             },
         );
         JudgedFixture {

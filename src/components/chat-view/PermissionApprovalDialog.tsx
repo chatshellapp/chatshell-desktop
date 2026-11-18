@@ -125,6 +125,8 @@ function warningText(t: TFunction, kind: PermissionWarningKind): string {
       return t('permission.warning.sensitiveWrite')
     case 'outside_deletion':
       return t('permission.warning.outsideDeletion')
+    case 'mcp_destructive':
+      return t('permission.warning.mcpDestructive')
     case 'sandbox':
       return t('permission.warning.sandbox')
     case 'sandbox_network':

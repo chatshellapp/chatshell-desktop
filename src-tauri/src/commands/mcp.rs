@@ -102,6 +102,8 @@ pub struct McpServerConfig {
     pub reset_timeout_on_progress: Option<bool>,
     #[serde(default)]
     pub max_tool_call_duration_secs: Option<u64>,
+    #[serde(default)]
+    pub trust_annotations: Option<bool>,
 }
 
 /// OAuth metadata DTO for frontend
@@ -144,6 +146,7 @@ impl From<McpConfig> for McpServerConfig {
             tool_call_timeout_secs: config.tool_call_timeout_secs,
             reset_timeout_on_progress: config.reset_timeout_on_progress,
             max_tool_call_duration_secs: config.max_tool_call_duration_secs,
+            trust_annotations: config.trust_annotations,
         }
     }
 }
@@ -176,7 +179,19 @@ impl From<McpServerConfig> for McpConfig {
             tool_call_timeout_secs: config.tool_call_timeout_secs,
             reset_timeout_on_progress: config.reset_timeout_on_progress,
             max_tool_call_duration_secs: config.max_tool_call_duration_secs,
+            trust_annotations: config.trust_annotations,
         }
+    }
+}
+
+impl McpConfig {
+    /// Copy the transport-independent client settings (call deadlines,
+    /// annotation trust) from a frontend config.
+    fn apply_client_settings(&mut self, cfg: &McpServerConfig) {
+        self.tool_call_timeout_secs = cfg.tool_call_timeout_secs;
+        self.reset_timeout_on_progress = cfg.reset_timeout_on_progress;
+        self.max_tool_call_duration_secs = cfg.max_tool_call_duration_secs;
+        self.trust_annotations = cfg.trust_annotations;
     }
 }
 
@@ -217,6 +232,7 @@ pub async fn create_mcp_server(
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
                 tracing::info!("🔌 Creating HTTP MCP server: {} at {}", name, ep);
                 let mut mcp_config = McpConfig::http();
+                mcp_config.apply_client_settings(&cfg);
                 mcp_config.headers = cfg.headers;
                 (
                     Some(ep),
@@ -308,6 +324,7 @@ pub async fn update_mcp_server(
                 let ep = endpoint.ok_or("HTTP transport requires an endpoint URL")?;
                 tracing::info!("📝 Updating HTTP MCP server: {} at {}", name, ep);
                 let mut mcp_config = McpConfig::http();
+                mcp_config.apply_client_settings(&cfg);
                 mcp_config.headers = cfg.headers;
                 // Preserve existing OAuth state
                 if let Some(ref ec) = existing_config {
