@@ -9,7 +9,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use chatshell_agent_core::provider_catalog;
 use rig::agent::{Agent, AgentBuilder};
-use rig::client::{AgentClientExt, Nothing};
+use rig::client::{AgentClientExt, CompletionClient, Nothing};
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::providers::{
@@ -460,7 +460,10 @@ pub fn create_openrouter_agent(
         openrouter_config.model_params.additional_params = Some(params);
     }
 
-    Ok(build_agent(client.agent(model_id), &openrouter_config))
+    Ok(build_agent(
+        images_out_of_tool_results(client.completion_model(model_id)),
+        &openrouter_config,
+    ))
 }
 
 /// Create an Ollama agent with full configuration
@@ -476,7 +479,10 @@ pub fn create_ollama_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    Ok(build_agent(
+        images_out_of_tool_results(client.completion_model(model_id)),
+        config,
+    ))
 }
 
 /// Create an Anthropic agent with full configuration.
@@ -531,7 +537,10 @@ pub fn create_azure_agent(
         .http_client(http_client)
         .build()?;
 
-    Ok(build_agent(client.agent(model_id), config))
+    Ok(build_agent(
+        images_out_of_tool_results(client.completion_model(model_id)),
+        config,
+    ))
 }
 
 /// Create a Google Gemini agent with full configuration
@@ -549,6 +558,20 @@ pub fn create_gemini_agent(
         .build()?;
 
     Ok(build_agent(client.agent(model_id), config))
+}
+
+/// Agent builder for a wire whose `tool` messages must be text (Chat
+/// Completions-style: OpenRouter, Ollama, Azure, xAI, the rig-native
+/// fleet). The permission hook turns `data:image/` tool output into image
+/// blocks for every provider; on these wires rig would reject the request,
+/// so the wrapper moves those images into the user content that follows
+/// the tool results. Anthropic, Gemini and the OpenAI Responses API accept
+/// images in tool results and are built without it.
+fn images_out_of_tool_results<M>(model: M) -> AgentBuilder
+where
+    M: rig::completion::CompletionModel + 'static,
+{
+    AgentBuilder::new(chatshell_agent_core::tool_images::ToolResultImagesAsUserContent::new(model))
 }
 
 /// Helper function to apply common configuration to any agent builder
@@ -881,7 +904,10 @@ fn create_rig_native_agent(
                 .base_url(base_url.unwrap_or($provider::DEFAULT_BASE_URL))
                 .http_client(http_client.clone())
                 .build()?;
-            Ok(build_agent(client.agent(model_id), config))
+            Ok(build_agent(
+                images_out_of_tool_results(client.completion_model(model_id)),
+                config,
+            ))
         }};
     }
     match provider_type {
