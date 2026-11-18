@@ -620,6 +620,11 @@ pub(crate) async fn handle_agent_streaming(
         .as_ref()
         .and_then(|settings| settings.working_directory.as_ref())
         .map(PathBuf::from);
+    // The root MCP servers see this run (FR-14): the workspace, else the
+    // conversation's scratch directory.
+    let mcp_root = workspace
+        .clone()
+        .unwrap_or_else(|| crate::storage::conversation_scratch_dir(&app, &conversation_id_clone));
     let execution_deltas = chatshell_agent_core::tools::bash_sandbox::ExecutionDeltas::default();
     let judge_session = match judge_model {
         Some((model, params))
@@ -718,6 +723,13 @@ pub(crate) async fn handle_agent_streaming(
     let mcp_server_ids: Vec<String> = collect_mcp_server_ids(&all_enabled_tool_ids);
     // Load MCP tools from enabled servers and build McpSchemaTool + McpToolUseTool
     let mcp_tool_name_to_server_name: Arc<HashMap<String, String>> = if !mcp_server_ids.is_empty() {
+        // Record the root before connecting, so a server asking during
+        // initialization already gets this run's workspace.
+        for server_id in &mcp_server_ids {
+            state_clone
+                .mcp_manager
+                .set_server_root(server_id, mcp_root.clone());
+        }
         let loaded = load_mcp_tools_by_ids(&state_clone, &mcp_server_ids).await;
         if let Some(loaded) = loaded {
             for (server_id, server_name) in &loaded.needs_auth {

@@ -214,6 +214,10 @@ pub struct McpConnectionManager {
     /// Shows server elicitation requests to the user (FR-12). Unset in
     /// tests: requests are then declined and the capability not advertised.
     elicitation: std::sync::RwLock<Option<Arc<dyn core_mcp::McpElicitationPrompter>>>,
+    /// Root each server last ran under (FR-14), keyed by server id: the
+    /// run's workspace, else its scratch directory. Connections are pooled
+    /// across conversations, so `roots/list` answers the latest run's root.
+    roots: Arc<std::sync::Mutex<HashMap<String, std::path::PathBuf>>>,
     /// Where refreshed OAuth grants are persisted. Unset in tests and
     /// before app setup; without it no refresh is attempted.
     token_store: std::sync::RwLock<Option<Arc<dyn McpTokenStore>>>,
@@ -243,6 +247,24 @@ impl McpConnectionManager {
             .unwrap_or_else(|e| e.into_inner()) = Some(hook);
     }
 
+    /// Record the root a run uses for `server_id` (answers later
+    /// `roots/list` requests on its pooled connection).
+    pub fn set_server_root(&self, server_id: &str, root: std::path::PathBuf) {
+        self.roots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(server_id.to_string(), root);
+    }
+
+    /// The root last recorded for `server_id`.
+    pub fn server_root(&self, server_id: &str) -> Option<std::path::PathBuf> {
+        self.roots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(server_id)
+            .cloned()
+    }
+
     /// Install the dialog for server elicitation requests.
     pub fn set_elicitation_prompter(&self, prompter: Arc<dyn core_mcp::McpElicitationPrompter>) {
         *self.elicitation.write().unwrap_or_else(|e| e.into_inner()) = Some(prompter);
@@ -259,8 +281,17 @@ impl McpConnectionManager {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
         };
+        let roots = Arc::clone(&self.roots);
+        let server_id = tool.id.clone();
         let handler = ChatShellClientHandler::new(&tool.name, Some(Arc::new(sink)))
-            .with_client_version(env!("CARGO_PKG_VERSION"));
+            .with_client_version(env!("CARGO_PKG_VERSION"))
+            .with_roots(Arc::new(move || {
+                roots
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&server_id)
+                    .cloned()
+            }));
         match self
             .elicitation
             .read()
@@ -1088,6 +1119,28 @@ mod tests {
         let guard = crate::crypto::keys_test_guard();
         crate::crypto::set_keys_for_tests([0x5a; 32], None);
         guard
+    }
+
+    // ---- roots (FR-14) ----
+
+    #[test]
+    fn server_roots_track_the_latest_run() {
+        let manager = McpConnectionManager::new();
+        assert_eq!(manager.server_root("s1"), None);
+        manager.set_server_root("s1", "/work/a".into());
+        manager.set_server_root("s1", "/work/b".into());
+        manager.set_server_root("s2", "/work/c".into());
+        assert_eq!(manager.server_root("s1"), Some("/work/b".into()));
+        assert_eq!(manager.server_root("s2"), Some("/work/c".into()));
+    }
+
+    #[test]
+    fn handlers_advertise_roots() {
+        use rmcp::ClientHandler;
+        let manager = McpConnectionManager::new();
+        let tool = make_tool("s1", "Files", None, None, None);
+        let info = manager.handler_for(&tool).get_info();
+        assert!(info.capabilities.roots.is_some());
     }
 
     // ---- sanitize_name ----

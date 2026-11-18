@@ -929,7 +929,10 @@ pub async fn list_mcp_prompts(
         .await
         .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
-    for tool in tools.into_iter().filter(|t| t.r#type == "mcp" && t.is_enabled) {
+    for tool in tools
+        .into_iter()
+        .filter(|t| t.r#type == "mcp" && t.is_enabled)
+    {
         let connection = match state.mcp_manager.get_or_connect(&tool).await {
             Ok(c) => c,
             Err(e) => {
