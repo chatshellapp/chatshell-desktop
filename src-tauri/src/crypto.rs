@@ -81,6 +81,21 @@ static KEYCHAIN_AVAILABLE: OnceLock<bool> = OnceLock::new();
 /// If keychain access is denied entirely, falls back to an ephemeral
 /// in-memory key; API keys will need to be re-entered after app restart.
 pub fn init_encryption_key() {
+    // Unit tests run on parallel threads and every `Database::new` lands
+    // here. The test keychain is a non-persistent mock, so resolving would
+    // mint a fresh random key and replace the one a concurrent test just
+    // encrypted with (observed as a load-sensitive decrypt failure in the
+    // MCP OAuth refresh tests). Keep whatever key is cached, or install a
+    // fixed one; tests that need specific keys use `set_keys_for_tests`.
+    if cfg!(test) {
+        let mut cache = ENCRYPTION_KEY_CACHE.write();
+        if cache.is_none() {
+            *cache = Some([0x5a; 32]);
+        }
+        let _ = KEYCHAIN_AVAILABLE.set(true);
+        return;
+    }
+
     match init_encryption_key_inner() {
         Ok(()) => {
             let _ = KEYCHAIN_AVAILABLE.set(true);
