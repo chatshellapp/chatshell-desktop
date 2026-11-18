@@ -465,16 +465,52 @@ export function parseAskUserOutput(
   }
 }
 
-export function AskUserOutput({ toolOutput }: ToolOutputProps) {
+/** The question texts from an `ask_user` tool input, in order. */
+export function parseAskUserQuestions(input: string | undefined): string[] {
+  if (!input) return []
+  try {
+    const parsed = JSON.parse(input)
+    if (!Array.isArray(parsed?.questions)) return []
+    return parsed.questions
+      .map((q: { question?: unknown }) => (typeof q?.question === 'string' ? q.question : ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function AskUserQuestionList({ questions }: { questions: string[] }) {
+  if (questions.length === 0) return null
+  return (
+    <ul className="space-y-1">
+      {questions.map((question, i) => (
+        <li key={i} className="text-muted-foreground whitespace-pre-wrap">
+          {question}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function AskUserOutput({ toolInput, toolOutput }: ToolOutputProps) {
   const { t } = useTranslation('tools')
   const parsed = useMemo(() => (toolOutput ? parseAskUserOutput(toolOutput) : null), [toolOutput])
-  if (!toolOutput) return null
+  const questions = useMemo(() => parseAskUserQuestions(toolInput), [toolInput])
+  // Still waiting on the user: show what was asked.
+  if (!toolOutput) {
+    return (
+      <div className="text-xs">
+        <AskUserQuestionList questions={questions} />
+      </div>
+    )
+  }
   if (!parsed) return <SimpleTextOutput toolOutput={toolOutput} />
   return (
     <div className="space-y-2 text-xs">
       {parsed.status !== 'answered' && (
         <p className="text-muted-foreground/70">{t(`askUserOutput.${parsed.status}`)}</p>
       )}
+      {parsed.answers.length === 0 && <AskUserQuestionList questions={questions} />}
       {parsed.answers.map((answer) => (
         <div key={answer.id} className="space-y-0.5">
           <p className="text-muted-foreground">{answer.question}</p>
@@ -722,7 +758,7 @@ export function ToolOutputRenderer({
     case 'kill_shell':
       return <SimpleTextOutput toolOutput={toolOutput} />
     case 'ask_user':
-      return <AskUserOutput toolOutput={toolOutput} />
+      return <AskUserOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'edit':
       return <EditOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'write':

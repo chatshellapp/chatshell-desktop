@@ -72,6 +72,7 @@ const SPECIALIZED_TOOLS = new Set([
   'mcp_schema',
   'bash',
   'kill_shell',
+  'ask_user',
   'edit',
   'write',
   'grep',

@@ -209,3 +209,47 @@ describe('ToolCallPreview humanized errors', () => {
     expect(block.querySelector('details')).toBeNull()
   })
 })
+
+describe('ToolCallPreview ask_user', () => {
+  const input = JSON.stringify({
+    questions: [{ id: 'db', question: 'Which database?', options: [] }],
+  })
+
+  it('shows the answers when the card is expanded', () => {
+    const output = [
+      'The user answered your questions.',
+      JSON.stringify({
+        status: 'answered',
+        answers: [{ id: 'db', question: 'Which database?', selected: ['SQLite'] }],
+      }),
+    ].join('\n')
+    render(
+      <ToolCallPreview
+        toolCall={makeToolCall({
+          tool_name: 'ask_user',
+          tool_input: input,
+          tool_output: JSON.stringify(output),
+        })}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /ask_user/ }))
+
+    expect(screen.getByText('Which database?')).toBeInTheDocument()
+    expect(screen.getByText('SQLite')).toBeInTheDocument()
+  })
+
+  it('lists the questions asked when the user dismissed them', () => {
+    render(
+      <ToolCallPreview
+        toolCall={makeToolCall({
+          tool_name: 'ask_user',
+          tool_input: input,
+          tool_output: 'Dismissed.\n{"status":"declined"}',
+        })}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /ask_user/ }))
+
+    expect(screen.getByText('Which database?')).toBeInTheDocument()
+  })
+})
