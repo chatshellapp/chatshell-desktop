@@ -196,8 +196,8 @@ export function AskUserDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => !open && respond('decline')}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] max-w-lg flex-col">
+        <DialogHeader className="shrink-0 pr-6">
           <DialogTitle className="flex items-center gap-2">
             <MessageCircleQuestionMark className="size-5 shrink-0" />
             {t('askUser.title', { count })}
@@ -205,31 +205,33 @@ export function AskUserDialog() {
           <DialogDescription className="text-left">{t('askUser.description')}</DialogDescription>
         </DialogHeader>
 
-        <form
-          className="grid gap-5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (armed) void respond('submit')
-          }}
-        >
-          {pending.questions.map((question) => (
-            <QuestionField
-              key={question.id}
-              question={question}
-              entry={entries[question.id] ?? { selected: [], text: '' }}
-              disabled={!armed}
-              onChange={(entry) => setEntries((prev) => ({ ...prev, [question.id]: entry }))}
-            />
-          ))}
-        </form>
+        <div className="-mx-6 -my-1 min-h-0 flex-1 overflow-y-auto px-6 py-1">
+          <form
+            className="grid gap-5"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (armed) void respond('submit')
+            }}
+          >
+            {pending.questions.map((question) => (
+              <QuestionField
+                key={question.id}
+                question={question}
+                entry={entries[question.id] ?? { selected: [], text: '' }}
+                disabled={!armed}
+                onChange={(entry) => setEntries((prev) => ({ ...prev, [question.id]: entry }))}
+              />
+            ))}
+          </form>
+        </div>
 
         {queue.length > 1 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="shrink-0 text-xs text-muted-foreground">
             {t('askUser.queueCount', { count: queue.length - 1 })}
           </p>
         )}
 
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="shrink-0 gap-2 sm:justify-between">
           <Button variant="ghost" disabled={!armed} onClick={() => respond('discuss')}>
             {t('askUser.discuss')}
           </Button>

@@ -302,58 +302,61 @@ export function McpElicitationDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => !open && answer('decline')}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] max-w-md flex-col">
+        <DialogHeader className="shrink-0 pr-6">
           <DialogTitle className="flex items-center gap-2">
             <MessageSquareText className="size-5 shrink-0" />
             {t('elicitation.title', { server: pending.serverName })}
           </DialogTitle>
+        </DialogHeader>
+
+        <div className="-mx-6 -my-1 grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-1">
           <DialogDescription className="text-left whitespace-pre-wrap">
             {pending.message}
           </DialogDescription>
-        </DialogHeader>
 
-        {pending.mode === 'form' && schema && (
-          <form
-            className="grid gap-3"
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (armed) submit()
-            }}
-          >
-            {Object.entries(schema.properties ?? {}).map(([name, property]) => (
-              <Field
-                key={name}
-                name={name}
-                property={property}
-                required={(schema.required ?? []).includes(name)}
-                value={values[name] ?? ''}
-                disabled={!armed}
-                onChange={(value) => setValues((prev) => ({ ...prev, [name]: value }))}
-              />
-            ))}
-            {error && (
-              <p role="alert" className="text-xs text-destructive">
-                {error}
-              </p>
-            )}
-          </form>
-        )}
+          {pending.mode === 'form' && schema && (
+            <form
+              className="grid gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (armed) submit()
+              }}
+            >
+              {Object.entries(schema.properties ?? {}).map(([name, property]) => (
+                <Field
+                  key={name}
+                  name={name}
+                  property={property}
+                  required={(schema.required ?? []).includes(name)}
+                  value={values[name] ?? ''}
+                  disabled={!armed}
+                  onChange={(value) => setValues((prev) => ({ ...prev, [name]: value }))}
+                />
+              ))}
+              {error && (
+                <p role="alert" className="text-xs text-destructive">
+                  {error}
+                </p>
+              )}
+            </form>
+          )}
 
-        {pending.mode === 'url' && (
-          <div className="grid gap-1.5 rounded-md bg-muted px-3 py-2 text-xs">
-            <p className="font-medium">{t('elicitation.urlHost', { host })}</p>
-            <p className="font-mono break-all text-muted-foreground">{pending.url}</p>
-          </div>
-        )}
+          {pending.mode === 'url' && (
+            <div className="grid gap-1.5 rounded-md bg-muted px-3 py-2 text-xs">
+              <p className="font-medium">{t('elicitation.urlHost', { host })}</p>
+              <p className="font-mono break-all text-muted-foreground">{pending.url}</p>
+            </div>
+          )}
+        </div>
 
         {queue.length > 1 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="shrink-0 text-xs text-muted-foreground">
             {t('elicitation.queueCount', { count: queue.length - 1 })}
           </p>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="ghost" disabled={!armed} onClick={() => answer('cancel')}>
             {t('elicitation.cancel')}
           </Button>
