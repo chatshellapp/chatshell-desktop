@@ -28,8 +28,9 @@
 //! ```
 
 pub use chatshell_agent_core::tools::{
-    BashSessionManager, BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder,
-    KillShellTool, ReadTool, SharedBashSession, TempFileList, UrlByteFetcher, WriteTool,
+    AskUserTool, BashSessionManager, BashTool, EditTool, GlobTool, GrepTool,
+    ImageQuestionResponder, KillShellTool, ReadTool, SharedBashSession, TempFileList,
+    UrlByteFetcher, WriteTool,
 };
 pub use chatshell_agent_core::{bash_security, path_policy};
 mod image_question;

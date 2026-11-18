@@ -1,3 +1,4 @@
+mod ask_user;
 mod assistants;
 mod attachments;
 pub(crate) mod capabilities;
@@ -78,6 +79,7 @@ pub async fn ensure_no_generation(state: &AppState, conversation_id: &str) -> Re
 }
 
 // Re-export all commands
+pub use ask_user::*;
 pub use assistants::*;
 pub use attachments::*;
 pub use capabilities::*;

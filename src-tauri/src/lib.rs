@@ -407,6 +407,14 @@ pub fn run() {
                 .mcp_manager
                 .set_elicitation_prompter(elicitation.clone());
             app.manage(elicitation);
+            // Model questions (`ask_user`) go to the frontend dialog.
+            app.manage(llm::ask_user::AskUserBroker::new({
+                let handle = app.handle().clone();
+                std::sync::Arc::new(move |event: &str, payload: serde_json::Value| {
+                    use tauri::Emitter;
+                    let _ = handle.emit(event, payload);
+                })
+            }));
             // Server-reported tool list changes refresh definitions + UI.
             app_state
                 .mcp_manager
@@ -499,6 +507,7 @@ pub fn run() {
             commands::delete_conversation_settings,
             // Permission gate
             commands::resolve_permission,
+            commands::resolve_ask_user,
             commands::mcp::resolve_mcp_elicitation,
             commands::mcp::list_mcp_prompts,
             commands::mcp::get_mcp_prompt,

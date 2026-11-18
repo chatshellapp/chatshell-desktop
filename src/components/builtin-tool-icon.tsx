@@ -6,6 +6,7 @@ import {
   FilePlus2,
   FolderSearch,
   Globe,
+  MessageCircleQuestionMark,
   Pencil,
   FileText,
   Power,
@@ -14,6 +15,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import {
+  BUILTIN_ASK_USER_ID,
   BUILTIN_BASH_ID,
   BUILTIN_EDIT_ID,
   BUILTIN_GLOB_ID,
@@ -35,6 +37,7 @@ const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   [BUILTIN_WRITE_ID]: FilePlus2,
   [BUILTIN_GREP_ID]: FileSearch,
   [BUILTIN_GLOB_ID]: FolderSearch,
+  [BUILTIN_ASK_USER_ID]: MessageCircleQuestionMark,
 }
 
 const TOOL_NAME_ICONS: Record<string, LucideIcon> = {
@@ -49,6 +52,7 @@ const TOOL_NAME_ICONS: Record<string, LucideIcon> = {
   glob: FolderSearch,
   skill: BookOpen,
   mcp_schema: Braces,
+  ask_user: MessageCircleQuestionMark,
 }
 
 export function getBuiltinToolIcon(toolId: string): LucideIcon {

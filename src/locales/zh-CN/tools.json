@@ -12,7 +12,15 @@
     "openInBrowser": "在浏览器中打开"
   },
   "toolInput": {
-    "killShellSummary": "终止会话"
+    "killShellSummary": "终止会话",
+    "askUserSummary": "{{count}} 个问题"
+  },
+  "askUserOutput": {
+    "skipped": "已跳过",
+    "discuss": "用户选择改为在聊天中讨论。",
+    "declined": "用户未回答就关闭了问题。",
+    "cancelled": "问题在回答前已关闭。",
+    "note": "备注：{{note}}"
   },
   "globOutput": {
     "file": "文件",

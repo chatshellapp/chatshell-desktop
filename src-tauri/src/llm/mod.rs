@@ -2,6 +2,7 @@ pub mod agent_builder;
 pub mod agent_streaming;
 #[cfg(test)]
 mod anthropic_wire_tests;
+pub mod ask_user;
 pub mod auto_review;
 #[cfg(test)]
 mod auto_review_eval;

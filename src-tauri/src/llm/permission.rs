@@ -1408,6 +1408,9 @@ fn allow_source(
     if tool_name == "bash" && args.get("command").and_then(Value::as_str).is_none() {
         return "no command (the tool reports it)";
     }
+    if tool_name == chatshell_agent_core::tools::ASK_USER_TOOL_NAME {
+        return "the user answers in the question dialog";
+    }
     if PermissionTier::for_tool(tool_name) == PermissionTier::Read {
         return "read-only tool";
     }

@@ -25,14 +25,15 @@ use rmcp::model::Tool as RmcpTool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use super::title::auto_generate_title_if_needed;
 use crate::db::tools::{
-    BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID, BUILTIN_KILL_SHELL_ID,
-    BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID, BUILTIN_WRITE_ID,
+    BUILTIN_ASK_USER_ID, BUILTIN_BASH_ID, BUILTIN_EDIT_ID, BUILTIN_GLOB_ID, BUILTIN_GREP_ID,
+    BUILTIN_KILL_SHELL_ID, BUILTIN_READ_ID, BUILTIN_WEB_FETCH_ID, BUILTIN_WEB_SEARCH_ID,
+    BUILTIN_WRITE_ID,
 };
 
 /// RAII guard that deletes tracked bash temp files when the streaming task exits
@@ -340,6 +341,7 @@ pub(crate) async fn handle_agent_streaming(
     let write_enabled = all_enabled_tool_ids.contains(&BUILTIN_WRITE_ID.to_string());
     let grep_enabled = all_enabled_tool_ids.contains(&BUILTIN_GREP_ID.to_string());
     let glob_enabled = all_enabled_tool_ids.contains(&BUILTIN_GLOB_ID.to_string());
+    let ask_user_enabled = all_enabled_tool_ids.contains(&BUILTIN_ASK_USER_ID.to_string());
 
     if web_search_enabled {
         let search_provider = state_clone.db.get_search_provider().await;
@@ -418,6 +420,15 @@ pub(crate) async fn handle_agent_streaming(
     if kill_shell_enabled && bash_enabled {
         tracing::info!("🔪 [agent_streaming] Enabling kill_shell tool");
         config = config.with_kill_shell();
+    }
+    // Questions close as cancelled when the user stops the turn.
+    if ask_user_enabled
+        && let Some(broker) = app.try_state::<Arc<crate::llm::ask_user::AskUserBroker>>()
+    {
+        tracing::info!("❓ [agent_streaming] Enabling ask_user tool");
+        config = config.with_ask_user(crate::llm::tools::AskUserTool::new(
+            broker.for_turn(conversation_id_clone.clone(), cancel_token.clone()),
+        ));
     }
     if read_enabled {
         tracing::info!("📖 [agent_streaming] Enabling read tool");

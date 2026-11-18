@@ -20,6 +20,7 @@ import type {
   McpServersConnectedEvent,
   McpToolProgressEvent,
   McpElicitationRequestedEvent,
+  AskUserRequestedEvent,
   McpToolsChangedEvent,
   PermissionRequestedEvent,
   PermissionResolvedEvent,
@@ -31,6 +32,7 @@ import type {
 import { usePermissionStore } from '@/stores/permissionStore'
 import { useMcpStore } from '@/stores/mcpStore'
 import { useElicitationStore } from '@/stores/elicitationStore'
+import { useAskUserStore } from '@/stores/askUserStore'
 import { useAutoReviewStore, type AutoReviewDecidedEvent } from '@/stores/autoReviewStore'
 import { toast } from 'sonner'
 import i18n from '@/lib/i18n'
@@ -335,6 +337,25 @@ export function useChatEvents() {
       }
     )
 
+    // The model asks the user questions mid-turn (`ask_user`)
+    const unlistenAskUserRequested = listen<AskUserRequestedEvent>(
+      'ask-user-requested',
+      (event) => {
+        const p = event.payload
+        logger.info('[useChatEvents] Received ask-user-requested:', p.request_id)
+        useAskUserStore.getState().show({
+          requestId: p.request_id,
+          conversationId: p.conversation_id,
+          questions: p.questions ?? [],
+        })
+      }
+    )
+
+    // Backend-closed questions (turn stopped): dismiss
+    const unlistenAskUserResolved = listen<{ request_id: string }>('ask-user-resolved', (event) => {
+      useAskUserStore.getState().remove(event.payload.request_id)
+    })
+
     // A server changed its tool list mid-session (backend already re-listed)
     const unlistenMcpToolsChanged = listen<McpToolsChangedEvent>('mcp-tools-changed', (event) => {
       logger.info('[useChatEvents] Received mcp-tools-changed event:', event.payload)
@@ -392,6 +413,8 @@ export function useChatEvents() {
       unlistenMcpToolsChanged.then((fn) => fn())
       unlistenElicitationRequested.then((fn) => fn())
       unlistenElicitationResolved.then((fn) => fn())
+      unlistenAskUserRequested.then((fn) => fn())
+      unlistenAskUserResolved.then((fn) => fn())
       unlistenPermissionRequested.then((fn) => fn())
       unlistenPermissionResolved.then((fn) => fn())
       unlistenAutoReview.then((fn) => fn())

@@ -213,6 +213,20 @@
     "invalidField": "请检查“{{field}}”：该项为必填或取值无效。",
     "queueCount": "还有 {{count}} 个请求等待处理"
   },
+  "askUser": {
+    "title_one": "助手有一个问题",
+    "title_other": "助手有 {{count}} 个问题",
+    "description": "选择一个选项，或输入你自己的回答。跳过的问题会被报告为未回答。",
+    "recommended": "推荐",
+    "answerPlaceholder": "输入你的回答",
+    "otherPlaceholder": "或输入你自己的回答",
+    "notePlaceholder": "添加备注（可选）",
+    "textLabel": "关于“{{question}}”的自定义回答或备注",
+    "submit": "提交",
+    "skip": "跳过",
+    "discuss": "改为在聊天中讨论",
+    "queueCount": "还有 {{count}} 个请求等待处理"
+  },
   "turn": {
     "sendFailed": "发送失败",
     "stoppedBeforeResponse": "已在回复前停止",

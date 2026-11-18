@@ -8,6 +8,7 @@ import { WelcomeState } from './WelcomeState'
 import { MessageList } from './MessageList'
 import { PermissionApprovalDialog } from './PermissionApprovalDialog'
 import { McpElicitationDialog } from './McpElicitationDialog'
+import { AskUserDialog } from './AskUserDialog'
 import { useSearchStore } from '@/stores/searchStore'
 import { useMessageStore } from '@/stores/message'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
@@ -316,6 +317,7 @@ export function ChatView() {
 
       <PermissionApprovalDialog />
       <McpElicitationDialog />
+      <AskUserDialog />
     </div>
   )
 }

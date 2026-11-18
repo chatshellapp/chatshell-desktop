@@ -213,6 +213,20 @@
     "invalidField": "Check \"{{field}}\": it is required or has an invalid value.",
     "queueCount": "{{count}} more request(s) waiting"
   },
+  "askUser": {
+    "title_one": "The assistant has a question",
+    "title_other": "The assistant has {{count}} questions",
+    "description": "Pick an option or type your own answer. Skipped questions are reported as unanswered.",
+    "recommended": "Recommended",
+    "answerPlaceholder": "Type your answer",
+    "otherPlaceholder": "Or type your own answer",
+    "notePlaceholder": "Add a note (optional)",
+    "textLabel": "Your own answer or note for {{question}}",
+    "submit": "Submit",
+    "skip": "Skip",
+    "discuss": "Chat about this instead",
+    "queueCount": "{{count}} more request(s) waiting"
+  },
   "turn": {
     "sendFailed": "Send failed",
     "stoppedBeforeResponse": "Stopped before a response",

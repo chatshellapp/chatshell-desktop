@@ -22,6 +22,7 @@ pub const BUILTIN_WRITE_ID: &str = "builtin-write";
 pub const BUILTIN_GREP_ID: &str = "builtin-grep";
 pub const BUILTIN_GLOB_ID: &str = "builtin-glob";
 pub const BUILTIN_KILL_SHELL_ID: &str = "builtin-kill-shell";
+pub const BUILTIN_ASK_USER_ID: &str = "builtin-ask-user";
 
 impl Database {
     /// Create a new tool
@@ -265,6 +266,11 @@ impl Database {
                 "Kill Shell",
                 "Terminate the current bash session. All state will be lost and a new session will be created on the next bash command.",
             ),
+            (
+                BUILTIN_ASK_USER_ID,
+                "Ask User",
+                "Let the assistant ask you short multiple-choice or free-text questions when a decision is genuinely yours to make, and wait for your answer.",
+            ),
         ];
 
         let mut newly_created_ids: Vec<&str> = Vec::new();
@@ -425,6 +431,7 @@ mod tests {
             BUILTIN_GREP_ID,
             BUILTIN_GLOB_ID,
             BUILTIN_KILL_SHELL_ID,
+            BUILTIN_ASK_USER_ID,
         ]
         .iter()
         .map(|s| s.to_string())
@@ -716,11 +723,15 @@ mod tests {
         db.ensure_builtin_tools().await.unwrap();
 
         let builtins = db.list_tools_by_type(TOOL_TYPE_BUILTIN).await.unwrap();
-        assert_eq!(builtins.len(), 9, "no duplicate builtin rows");
+        assert_eq!(
+            builtins.len(),
+            builtin_ids().len(),
+            "no duplicate builtin rows"
+        );
         let mut names: Vec<String> = builtins.iter().map(|t| t.name.clone()).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), 9, "one row per builtin name");
+        assert_eq!(names.len(), builtin_ids().len(), "one row per builtin name");
     }
 
     #[tokio::test]

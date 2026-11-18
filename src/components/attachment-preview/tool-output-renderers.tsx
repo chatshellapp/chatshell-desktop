@@ -115,6 +115,10 @@ export function getToolInputSummary(toolName: string, toolInput?: string): strin
         return parsed.description || (parsed.command ? extractCommandNames(parsed.command) : null)
       case 'kill_shell':
         return i18n.t('toolInput.killShellSummary', { ns: 'tools' })
+      case 'ask_user':
+        return Array.isArray(parsed.questions)
+          ? i18n.t('toolInput.askUserSummary', { ns: 'tools', count: parsed.questions.length })
+          : null
       case 'web_search':
         return parsed.query || null
       case 'web_fetch':
@@ -433,6 +437,65 @@ export function SimpleTextOutput({ toolOutput }: ToolOutputProps) {
   return <p className="text-xs text-muted-foreground/70 leading-relaxed">{toolOutput}</p>
 }
 
+type AskUserResultStatus = 'answered' | 'discuss' | 'declined' | 'cancelled'
+
+export interface AskUserResultEntry {
+  id: string
+  question: string
+  selected?: string[]
+  free_text?: string
+  note?: string
+  skipped?: boolean
+}
+
+/** Parse an `ask_user` tool result: an instruction line, then JSON. */
+export function parseAskUserOutput(
+  output: string
+): { status: AskUserResultStatus; answers: AskUserResultEntry[] } | null {
+  const lines = output.trim().split('\n')
+  try {
+    const body = JSON.parse(lines[lines.length - 1])
+    if (!body || typeof body.status !== 'string') return null
+    return {
+      status: body.status as AskUserResultStatus,
+      answers: Array.isArray(body.answers) ? body.answers : [],
+    }
+  } catch {
+    return null
+  }
+}
+
+export function AskUserOutput({ toolOutput }: ToolOutputProps) {
+  const { t } = useTranslation('tools')
+  const parsed = useMemo(() => (toolOutput ? parseAskUserOutput(toolOutput) : null), [toolOutput])
+  if (!toolOutput) return null
+  if (!parsed) return <SimpleTextOutput toolOutput={toolOutput} />
+  return (
+    <div className="space-y-2 text-xs">
+      {parsed.status !== 'answered' && (
+        <p className="text-muted-foreground/70">{t(`askUserOutput.${parsed.status}`)}</p>
+      )}
+      {parsed.answers.map((answer) => (
+        <div key={answer.id} className="space-y-0.5">
+          <p className="text-muted-foreground">{answer.question}</p>
+          {answer.skipped ? (
+            <p className="text-muted-foreground/60 italic">{t('askUserOutput.skipped')}</p>
+          ) : (
+            <p className="font-medium whitespace-pre-wrap">
+              {[...(answer.selected ?? []), answer.free_text].filter(Boolean).join(', ')}
+            </p>
+          )}
+          {answer.note && (
+            <p className="text-muted-foreground/70 whitespace-pre-wrap">
+              {t('askUserOutput.note', { note: answer.note })}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function GrepOutput({ toolOutput }: ToolOutputProps) {
   const { t } = useTranslation('tools')
   const output = toolOutput || ''
@@ -658,6 +721,8 @@ export function ToolOutputRenderer({
       return <BashOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'kill_shell':
       return <SimpleTextOutput toolOutput={toolOutput} />
+    case 'ask_user':
+      return <AskUserOutput toolOutput={toolOutput} />
     case 'edit':
       return <EditOutput toolInput={toolInput} toolOutput={toolOutput} />
     case 'write':

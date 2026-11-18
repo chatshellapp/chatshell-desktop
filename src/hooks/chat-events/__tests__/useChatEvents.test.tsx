@@ -76,6 +76,8 @@ function setupHook() {
 // (src-tauri/src/commands/chat/streaming.rs and friends). The hook must
 // subscribe to each name once; payload field names are snake_case on the wire.
 const BACKEND_EVENTS = [
+  'ask-user-requested',
+  'ask-user-resolved',
   'attachment-processing-complete',
   'attachment-processing-error',
   'attachment-processing-started',

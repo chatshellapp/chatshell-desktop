@@ -22,9 +22,9 @@ use crate::llm::ChatResponse;
 use crate::llm::agent_streaming;
 use crate::llm::common::{StreamChunkType, build_user_content, create_http_client};
 use crate::llm::tools::{
-    BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder, KillShellTool, McpSchemaTool,
-    McpToolUseTool, ReadTool, SharedBashSession, SkillTool, TempFileList, UrlByteFetcher,
-    WebFetchTool, WebSearchTool, WriteTool,
+    AskUserTool, BashTool, EditTool, GlobTool, GrepTool, ImageQuestionResponder, KillShellTool,
+    McpSchemaTool, McpToolUseTool, ReadTool, SharedBashSession, SkillTool, TempFileList,
+    UrlByteFetcher, WebFetchTool, WebSearchTool, WriteTool,
 };
 use crate::llm::{
     azure as azure_provider, cohere as cohere_provider, deepseek as deepseek_provider,
@@ -110,6 +110,9 @@ pub struct AgentConfig {
     pub mcp_resource_read: Option<crate::llm::tools::McpResourceReadTool>,
     /// Skill tool with embedded catalog
     pub skill_tool: Option<SkillTool>,
+    /// `ask_user` with the turn's question dialog; set only when someone
+    /// can answer.
+    pub ask_user: Option<AskUserTool>,
     /// Project root directory for path security enforcement
     pub project_root: Option<PathBuf>,
     /// Approval gate; when set, a permission hook intercepts every tool
@@ -338,6 +341,12 @@ impl AgentConfig {
         self
     }
 
+    /// Let the model ask the user questions through `tool`'s dialog
+    pub fn with_ask_user(mut self, tool: AskUserTool) -> Self {
+        self.ask_user = Some(tool);
+        self
+    }
+
     /// Enable all built-in tools
     pub fn with_builtin_tools(mut self) -> Self {
         self.enable_web_search = true;
@@ -426,7 +435,8 @@ pub fn create_openrouter_agent(
             || config.enable_kill_shell
             || config.mcp_schema_tool.is_some()
             || config.mcp_tool_use.is_some()
-            || config.skill_tool.is_some();
+            || config.skill_tool.is_some()
+            || config.ask_user.is_some();
 
         if !has_tools {
             openrouter_config.model_params.additional_params = Some(serde_json::json!({
@@ -585,7 +595,8 @@ fn build_agent(mut builder: AgentBuilder, config: &AgentConfig) -> Agent {
         || config.enable_glob
         || config.mcp_schema_tool.is_some()
         || config.mcp_tool_use.is_some()
-        || config.skill_tool.is_some();
+        || config.skill_tool.is_some()
+        || config.ask_user.is_some();
 
     if has_tools {
         return build_agent_with_tools(builder, config);
@@ -736,6 +747,7 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
                 FirstTool::McpSchema => $builder.tool(config.mcp_schema_tool.clone().unwrap()),
                 FirstTool::McpToolUse => $builder.tool(config.mcp_tool_use.clone().unwrap()),
                 FirstTool::Skill => $builder.tool(config.skill_tool.clone().unwrap()),
+                FirstTool::AskUser => $builder.tool(config.ask_user.clone().unwrap()),
             }
         }};
     }
@@ -796,6 +808,12 @@ fn build_agent_with_tools(builder: AgentBuilder, config: &AgentConfig) -> Agent 
         tracing::info!("📋 Adding skill tool to agent");
         sb = sb.tool(config.skill_tool.clone().unwrap());
     }
+    if let Some(tool) = &config.ask_user
+        && first != FirstTool::AskUser
+    {
+        tracing::info!("❓ Adding ask_user tool to agent");
+        sb = sb.tool(tool.clone());
+    }
 
     sb.build()
 }
@@ -814,6 +832,7 @@ enum FirstTool {
     McpSchema,
     McpToolUse,
     Skill,
+    AskUser,
 }
 
 fn first_added(config: &AgentConfig) -> FirstTool {
@@ -837,8 +856,10 @@ fn first_added(config: &AgentConfig) -> FirstTool {
         FirstTool::McpSchema
     } else if config.mcp_tool_use.is_some() {
         FirstTool::McpToolUse
-    } else {
+    } else if config.skill_tool.is_some() {
         FirstTool::Skill
+    } else {
+        FirstTool::AskUser
     }
 }
 
@@ -1367,8 +1388,8 @@ mod tests {
     #[test]
     fn first_added_picks_the_highest_priority_tool() {
         assert!(
-            first_added(&AgentConfig::new()) == FirstTool::Skill,
-            "empty config falls back to Skill"
+            first_added(&AgentConfig::new()) == FirstTool::AskUser,
+            "empty config falls back to the last-ranked tool"
         );
         let config = AgentConfig::new()
             .with_web_fetch()
@@ -1403,6 +1424,27 @@ mod tests {
 
         let config = AgentConfig::new().with_skill_tool(empty_skill_tool());
         assert!(first_added(&config) == FirstTool::Skill);
+
+        let config = AgentConfig::new()
+            .with_skill_tool(empty_skill_tool())
+            .with_ask_user(silent_ask_user());
+        assert!(first_added(&config) == FirstTool::Skill);
+        let config = AgentConfig::new().with_ask_user(silent_ask_user());
+        assert!(first_added(&config) == FirstTool::AskUser);
+    }
+
+    fn silent_ask_user() -> AskUserTool {
+        struct Silent;
+        impl chatshell_agent_core::tools::AskUserPrompter for Silent {
+            fn prompt(
+                &self,
+                _request: chatshell_agent_core::tools::AskUserRequest,
+            ) -> futures::future::BoxFuture<'static, chatshell_agent_core::tools::AskUserOutcome>
+            {
+                Box::pin(async { chatshell_agent_core::tools::AskUserOutcome::Cancelled })
+            }
+        }
+        AskUserTool::new(Arc::new(Silent))
     }
 
     // ------------------------------------------------------------------

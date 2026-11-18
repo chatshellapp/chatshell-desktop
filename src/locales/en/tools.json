@@ -12,7 +12,15 @@
     "openInBrowser": "Open in browser"
   },
   "toolInput": {
-    "killShellSummary": "terminate session"
+    "killShellSummary": "terminate session",
+    "askUserSummary": "{{count}} question(s)"
+  },
+  "askUserOutput": {
+    "skipped": "Skipped",
+    "discuss": "The user chose to discuss in chat instead.",
+    "declined": "The user dismissed the questions without answering.",
+    "cancelled": "The questions closed before an answer.",
+    "note": "Note: {{note}}"
   },
   "globOutput": {
     "file": "file",

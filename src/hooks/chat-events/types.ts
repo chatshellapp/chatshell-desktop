@@ -69,6 +69,13 @@ export interface McpElicitationRequestedEvent {
   url?: string
 }
 
+/** The model asks the user questions (`ask_user`). */
+export interface AskUserRequestedEvent {
+  request_id: string
+  conversation_id: string
+  questions: import('@/stores/askUserStore').AskUserQuestion[]
+}
+
 /** A server reported a tool list change; the backend already re-listed. */
 export interface McpToolsChangedEvent {
   server_id: string
