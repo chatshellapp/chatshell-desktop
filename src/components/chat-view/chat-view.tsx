@@ -7,6 +7,7 @@ import { PendingMessageItem } from './PendingMessageItem'
 import { WelcomeState } from './WelcomeState'
 import { MessageList } from './MessageList'
 import { PermissionApprovalDialog } from './PermissionApprovalDialog'
+import { McpElicitationDialog } from './McpElicitationDialog'
 import { useSearchStore } from '@/stores/searchStore'
 import { useMessageStore } from '@/stores/message'
 import { useAttachmentBlobStore } from '@/stores/attachmentBlobStore'
@@ -314,6 +315,7 @@ export function ChatView() {
       </div>
 
       <PermissionApprovalDialog />
+      <McpElicitationDialog />
     </div>
   )
 }

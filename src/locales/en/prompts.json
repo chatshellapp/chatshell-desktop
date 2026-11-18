@@ -56,5 +56,10 @@
   "selectUserPrompt": "Select User Prompt",
   "choosePromptTemplate": "Choose a prompt template to fill in the input",
   "noUserPromptsAvailable": "No user prompts available",
-  "createUserPromptsInLibrary": "Create user prompts in the Library"
+  "createUserPromptsInLibrary": "Create user prompts in the Library",
+  "mcpPromptGroup": "MCP · {{server}}",
+  "mcpPromptsLoading": "Loading MCP prompts…",
+  "mcpPromptInsert": "Insert",
+  "mcpPromptBack": "Back",
+  "mcpPromptMissingArgument": "Fill in \"{{argument}}\"."
 }

@@ -393,6 +393,20 @@ pub fn run() {
                 .set_token_store(Arc::new(commands::mcp::DbMcpTokenStore::new(
                     app_state.db.clone(),
                 )));
+            // Server elicitation requests (FR-12) go to the frontend dialog.
+            let elicitation = {
+                let handle = app.handle().clone();
+                mcp::elicitation::ElicitationBroker::new(std::sync::Arc::new(
+                    move |event: &str, payload: serde_json::Value| {
+                        use tauri::Emitter;
+                        let _ = handle.emit(event, payload);
+                    },
+                ))
+            };
+            app_state
+                .mcp_manager
+                .set_elicitation_prompter(elicitation.clone());
+            app.manage(elicitation);
             // Server-reported tool list changes refresh definitions + UI.
             app_state
                 .mcp_manager
@@ -485,6 +499,9 @@ pub fn run() {
             commands::delete_conversation_settings,
             // Permission gate
             commands::resolve_permission,
+            commands::mcp::resolve_mcp_elicitation,
+            commands::mcp::list_mcp_prompts,
+            commands::mcp::get_mcp_prompt,
             commands::count_permission_grants,
             commands::clear_permission_grants,
             commands::get_bash_environment,

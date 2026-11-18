@@ -761,6 +761,7 @@ export function ChatInput(/* _props: ChatInputProps */) {
       <UserPromptQuickSelectDialog
         isOpen={isUserPromptDialogOpen}
         onOpenChange={setIsUserPromptDialogOpen}
+        mcpServerIds={conversationSettings?.enabledMcpServerIds ?? []}
         onSelectPrompt={(_promptId, content) => {
           const pos = cursorPositionRef.current
           if (pos !== null && input.length > 0) {

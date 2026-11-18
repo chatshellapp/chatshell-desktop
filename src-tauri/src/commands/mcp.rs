@@ -889,3 +889,89 @@ pub async fn probe_mcp_endpoint(
         }
     }
 }
+
+/// Answer a server's elicitation request (`accept` with `content` for a
+/// form, `decline`, or `cancel`). False when the request is unknown or
+/// already closed (timeout, server cancelled) — the dialog is gone then.
+/// The core validates and scans accepted content before it reaches the
+/// server.
+#[tauri::command]
+pub async fn resolve_mcp_elicitation(
+    broker: State<'_, std::sync::Arc<crate::mcp::elicitation::ElicitationBroker>>,
+    request_id: String,
+    action: String,
+    content: Option<serde_json::Value>,
+) -> Result<bool, String> {
+    let answer = crate::mcp::elicitation::parse_answer(&action, content)
+        .ok_or_else(|| format!("Unknown elicitation action: {action}"))?;
+    Ok(broker.answer(&request_id, answer))
+}
+
+/// Prompts one MCP server offers (FR-13).
+#[derive(Debug, Clone, Serialize)]
+pub struct McpServerPrompts {
+    pub server_id: String,
+    pub server_name: String,
+    pub prompts: Vec<chatshell_agent_core::mcp::McpPromptInfo>,
+}
+
+/// List the prompts of the given servers for the composer picker. Servers
+/// that fail to connect or offer no prompts are left out (the chat's
+/// sign-in banner reports auth failures on send).
+#[tauri::command]
+pub async fn list_mcp_prompts(
+    state: State<'_, AppState>,
+    server_ids: Vec<String>,
+) -> Result<Vec<McpServerPrompts>, String> {
+    let tools = state
+        .db
+        .get_tools_by_ids(&server_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for tool in tools.into_iter().filter(|t| t.r#type == "mcp" && t.is_enabled) {
+        let connection = match state.mcp_manager.get_or_connect(&tool).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("⚠️ Prompts unavailable for '{}': {e:#}", tool.name);
+                continue;
+            }
+        };
+        match chatshell_agent_core::mcp::list_all_prompts_bounded(&connection.client, &tool.name)
+            .await
+        {
+            Ok(prompts) if !prompts.is_empty() => out.push(McpServerPrompts {
+                server_id: tool.id.clone(),
+                server_name: tool.name.clone(),
+                prompts,
+            }),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("⚠️ Listing prompts of '{}' failed: {e:#}", tool.name),
+        }
+    }
+    Ok(out)
+}
+
+/// Render one prompt for insertion into the composer (never sent on its
+/// own: the user reviews it first). Arguments are scanned first.
+#[tauri::command]
+pub async fn get_mcp_prompt(
+    state: State<'_, AppState>,
+    server_id: String,
+    name: String,
+    arguments: std::collections::BTreeMap<String, String>,
+) -> Result<String, String> {
+    let tool = state
+        .db
+        .get_tool(&server_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let connection = state
+        .mcp_manager
+        .get_or_connect(&tool)
+        .await
+        .map_err(|e| format!("{e:#}"))?;
+    chatshell_agent_core::mcp::get_prompt_text(&connection.client, &name, arguments)
+        .await
+        .map_err(|e| format!("{e:#}"))
+}

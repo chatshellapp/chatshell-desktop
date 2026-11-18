@@ -59,6 +59,16 @@ export interface McpToolProgressEvent {
   message?: string | null
 }
 
+/** A server asks the user for input during a call (FR-12). */
+export interface McpElicitationRequestedEvent {
+  request_id: string
+  server_name: string
+  mode: 'form' | 'url'
+  message: string
+  schema?: import('@/stores/elicitationStore').ElicitationSchema
+  url?: string
+}
+
 /** A server reported a tool list change; the backend already re-listed. */
 export interface McpToolsChangedEvent {
   server_id: string

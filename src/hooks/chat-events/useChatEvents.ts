@@ -19,6 +19,7 @@ import type {
   McpAuthRequiredEvent,
   McpServersConnectedEvent,
   McpToolProgressEvent,
+  McpElicitationRequestedEvent,
   McpToolsChangedEvent,
   PermissionRequestedEvent,
   PermissionResolvedEvent,
@@ -29,6 +30,7 @@ import type {
 } from './types'
 import { usePermissionStore } from '@/stores/permissionStore'
 import { useMcpStore } from '@/stores/mcpStore'
+import { useElicitationStore } from '@/stores/elicitationStore'
 import { useAutoReviewStore, type AutoReviewDecidedEvent } from '@/stores/autoReviewStore'
 import { toast } from 'sonner'
 import i18n from '@/lib/i18n'
@@ -299,6 +301,40 @@ export function useChatEvents() {
       })
     })
 
+    // A server asks the user for input mid-call (form or link)
+    const unlistenElicitationRequested = listen<McpElicitationRequestedEvent>(
+      'mcp-elicitation-requested',
+      (event) => {
+        const p = event.payload
+        logger.info('[useChatEvents] Received mcp-elicitation-requested:', p.request_id)
+        useElicitationStore.getState().show(
+          p.mode === 'url'
+            ? {
+                requestId: p.request_id,
+                serverName: p.server_name,
+                mode: 'url',
+                message: p.message,
+                url: p.url ?? '',
+              }
+            : {
+                requestId: p.request_id,
+                serverName: p.server_name,
+                mode: 'form',
+                message: p.message,
+                schema: p.schema ?? {},
+              }
+        )
+      }
+    )
+
+    // Backend-closed elicitations (timeout, server cancelled): dismiss
+    const unlistenElicitationResolved = listen<{ request_id: string }>(
+      'mcp-elicitation-resolved',
+      (event) => {
+        useElicitationStore.getState().remove(event.payload.request_id)
+      }
+    )
+
     // A server changed its tool list mid-session (backend already re-listed)
     const unlistenMcpToolsChanged = listen<McpToolsChangedEvent>('mcp-tools-changed', (event) => {
       logger.info('[useChatEvents] Received mcp-tools-changed event:', event.payload)
@@ -354,6 +390,8 @@ export function useChatEvents() {
       unlistenMcpServersConnected.then((fn) => fn())
       unlistenMcpToolProgress.then((fn) => fn())
       unlistenMcpToolsChanged.then((fn) => fn())
+      unlistenElicitationRequested.then((fn) => fn())
+      unlistenElicitationResolved.then((fn) => fn())
       unlistenPermissionRequested.then((fn) => fn())
       unlistenPermissionResolved.then((fn) => fn())
       unlistenAutoReview.then((fn) => fn())

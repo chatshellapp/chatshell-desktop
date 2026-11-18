@@ -203,6 +203,16 @@
       }
     }
   },
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel request",
+    "openLink": "Open link",
+    "urlHost": "Opens a page on {{host}} in your browser",
+    "invalidField": "Check \"{{field}}\": it is required or has an invalid value.",
+    "queueCount": "{{count}} more request(s) waiting"
+  },
   "turn": {
     "sendFailed": "Send failed",
     "stoppedBeforeResponse": "Stopped before a response",

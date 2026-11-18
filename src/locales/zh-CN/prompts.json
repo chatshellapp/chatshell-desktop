@@ -56,5 +56,10 @@
   "choosePromptTemplate": "选择提示词模板以填入输入框",
   "searchPrompts": "搜索提示词...",
   "noUserPromptsAvailable": "暂无可用用户提示词",
-  "createUserPromptsInLibrary": "在提示词库中创建用户提示词"
+  "createUserPromptsInLibrary": "在提示词库中创建用户提示词",
+  "mcpPromptGroup": "MCP · {{server}}",
+  "mcpPromptsLoading": "正在加载 MCP 提示词…",
+  "mcpPromptInsert": "插入",
+  "mcpPromptBack": "返回",
+  "mcpPromptMissingArgument": "请填写“{{argument}}”。"
 }

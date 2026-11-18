@@ -203,6 +203,16 @@
       }
     }
   },
+  "elicitation": {
+    "title": "{{server}} 需要你提供信息",
+    "submit": "提交",
+    "decline": "拒绝",
+    "cancel": "取消请求",
+    "openLink": "打开链接",
+    "urlHost": "将在浏览器中打开 {{host}} 上的页面",
+    "invalidField": "请检查“{{field}}”：该项为必填或取值无效。",
+    "queueCount": "还有 {{count}} 个请求等待处理"
+  },
   "turn": {
     "sendFailed": "发送失败",
     "stoppedBeforeResponse": "已在回复前停止",

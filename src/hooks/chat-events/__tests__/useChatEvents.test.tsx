@@ -90,6 +90,8 @@ const BACKEND_EVENTS = [
   'conversation-updated',
   'generation-stopped',
   'mcp-auth-required',
+  'mcp-elicitation-requested',
+  'mcp-elicitation-resolved',
   'mcp-servers-connected',
   'mcp-tool-progress',
   'mcp-tools-changed',

@@ -4,6 +4,7 @@
 //! tool definitions that can be used with LLM agents.
 
 pub(crate) mod auth_error;
+pub mod elicitation;
 #[cfg(test)]
 mod live_tests;
 mod manager;

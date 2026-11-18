@@ -211,6 +211,9 @@ pub struct McpConnectionManager {
     connections: ConnectionMap,
     /// Called after a server-reported tool list change was applied.
     tools_changed_hook: std::sync::RwLock<Option<McpToolsChangedHook>>,
+    /// Shows server elicitation requests to the user (FR-12). Unset in
+    /// tests: requests are then declined and the capability not advertised.
+    elicitation: std::sync::RwLock<Option<Arc<dyn core_mcp::McpElicitationPrompter>>>,
     /// Where refreshed OAuth grants are persisted. Unset in tests and
     /// before app setup; without it no refresh is attempted.
     token_store: std::sync::RwLock<Option<Arc<dyn McpTokenStore>>>,
@@ -240,6 +243,11 @@ impl McpConnectionManager {
             .unwrap_or_else(|e| e.into_inner()) = Some(hook);
     }
 
+    /// Install the dialog for server elicitation requests.
+    pub fn set_elicitation_prompter(&self, prompter: Arc<dyn core_mcp::McpElicitationPrompter>) {
+        *self.elicitation.write().unwrap_or_else(|e| e.into_inner()) = Some(prompter);
+    }
+
     fn handler_for(&self, tool: &Tool) -> ChatShellClientHandler {
         let sink = ListChangedSink {
             connections: Arc::downgrade(&self.connections),
@@ -251,8 +259,17 @@ impl McpConnectionManager {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
         };
-        ChatShellClientHandler::new(&tool.name, Some(Arc::new(sink)))
-            .with_client_version(env!("CARGO_PKG_VERSION"))
+        let handler = ChatShellClientHandler::new(&tool.name, Some(Arc::new(sink)))
+            .with_client_version(env!("CARGO_PKG_VERSION"));
+        match self
+            .elicitation
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            Some(prompter) => handler.with_elicitation(prompter),
+            None => handler,
+        }
     }
 
     fn token_store(&self) -> Option<Arc<dyn McpTokenStore>> {
