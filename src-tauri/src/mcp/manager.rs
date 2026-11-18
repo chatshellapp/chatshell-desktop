@@ -449,7 +449,7 @@ impl McpConnectionManager {
 
     /// Create the standard client info for MCP connections
     #[cfg(test)]
-    fn create_client_info() -> rmcp::model::ClientInfo {
+    fn create_client_info() -> rmcp::model::ClientConfig {
         use rmcp::ClientHandler;
         ChatShellClientHandler::new("test", None)
             .with_client_version(env!("CARGO_PKG_VERSION"))
@@ -629,6 +629,8 @@ impl McpConnectionManager {
             .serve(transport)
             .await
             .context("Failed to establish MCP connection via STDIO")?;
+        // Same client settings as HTTP (response cache off).
+        core_mcp::prepare_client_peer(running_service.peer()).await;
 
         Ok(running_service)
     }
@@ -742,8 +744,9 @@ impl McpConnectionManager {
         // Get server info for logging
         if let Some(server_info) = running_service.peer_info() {
             tracing::info!(
-                "✅ Connected to MCP server: {:?}",
-                server_info.server_info.name
+                "✅ Connected to MCP server: {:?} (protocol {})",
+                server_info.server_info.as_ref().map(|i| i.name.as_str()),
+                server_info.protocol_version
             );
         } else {
             tracing::info!("✅ Connected to MCP server (no server info available)");

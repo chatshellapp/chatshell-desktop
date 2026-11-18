@@ -65,9 +65,10 @@ shell-words = "1"
 nanoid = "0.4"
 
 # LLM framework (0.42 facade: rig-core portable contracts + rig-agent runtime)
-rig = { version = "0.42", features = ["rmcp"] }
-# Keep in lockstep with the rig facade's rmcp major version
-rmcp = { version = "2", features = ["client", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
+rig = "0.42"
+# MCP SDK, used directly (no rig `rmcp` bridge: our mcp_tool_use is a plain
+# rig tool). Default features pull in server-side dependencies.
+rmcp = { version = "3.11", default-features = false, features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 
 # Logging
 tracing = "0.1"
