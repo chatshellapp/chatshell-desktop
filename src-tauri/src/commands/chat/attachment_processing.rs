@@ -684,7 +684,7 @@ mod tests {
         let attachments = dir.path().join("attachments");
         std::fs::create_dir_all(attachments.join("files")).unwrap();
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgb8(image::RgbImage::new(4, 4))
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(32, 32))
             .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
             .unwrap();
         std::fs::write(attachments.join("files/img.png"), &png).unwrap();
